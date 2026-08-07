@@ -5,6 +5,8 @@ import type { FormEvent } from "react"
 import { ArrowRight, CheckCircle2, Clock, ShieldCheck, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
+const CONTACT_EMAIL = "baptiste.papoul52@gmail.com"
+
 const perks = [
   { icon: Clock, text: "Réponse sous 24 h ouvrées" },
   { icon: ShieldCheck, text: "Audit gratuit et sans engagement" },
@@ -16,6 +18,18 @@ export function ContactCta() {
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    const formData = new FormData(e.currentTarget)
+    const name = formData.get("name")
+    const company = formData.get("company")
+    const email = formData.get("email")
+    const need = formData.get("need")
+
+    const subject = encodeURIComponent(`Demande de démo — ${company}`)
+    const body = encodeURIComponent(
+      `Nom : ${name}\nEntreprise : ${company}\nEmail : ${email}\n\nBesoin :\n${need}`,
+    )
+    window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`
+
     setSubmitted(true)
   }
 
