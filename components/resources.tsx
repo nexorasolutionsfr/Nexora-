@@ -1,6 +1,8 @@
+import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
 
 type Article = {
+  slug: string
   category: string
   title: string
   excerpt: string
@@ -9,24 +11,24 @@ type Article = {
 
 const articles: Article[] = [
   {
+    slug: "5-taches-automatiser-pme",
     category: "Guide",
     title: "5 tâches que toute PME devrait automatiser en premier",
-    excerpt:
-      "Les automatisations à plus fort ROI pour démarrer, avec des exemples concrets par service.",
+    excerpt: "Les automatisations les plus utiles pour démarrer, avec des exemples concrets par métier.",
     readTime: "6 min",
   },
   {
-    category: "Garages",
+    slug: "ne-plus-rater-demande-devis-email",
+    category: "Cas pratique",
     title: "Comment ne plus rater aucune demande de devis par email",
-    excerpt:
-      "Tri et priorisation automatique des demandes clients, sans changer vos outils actuels.",
+    excerpt: "Tri et priorisation automatique des demandes clients, sans changer vos outils actuels.",
     readTime: "5 min",
   },
   {
-    category: "Cas client",
-    title: "Comment une PME a divisé son temps de facturation par 5",
-    excerpt:
-      "Retour d'expérience détaillé sur un projet d'automatisation comptable de A à Z.",
+    slug: "pme-facturation-temps-divise-par-5",
+    category: "Cas d'usage",
+    title: "Comment une PME peut diviser son temps de facturation par 5",
+    excerpt: "Exemple concret d'automatisation de la facturation, étape par étape.",
     readTime: "5 min",
   },
 ]
@@ -56,9 +58,9 @@ export function Resources() {
 
         <div className="mt-12 grid gap-5 md:grid-cols-3">
           {articles.map((a) => (
-            <a
+            <Link
               key={a.title}
-              href="#contact"
+              href={`/ressources/${a.slug}`}
               className="group flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 transition-colors hover:border-primary/50"
             >
               <div className="flex items-center justify-between">
@@ -72,10 +74,10 @@ export function Resources() {
               </h3>
               <p className="text-sm leading-relaxed text-muted-foreground">{a.excerpt}</p>
               <span className="mt-auto inline-flex items-center gap-1.5 text-sm font-medium text-primary">
-                En discuter avec nous
+                Lire l'article
                 <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </span>
-            </a>
+            </Link>
           ))}
         </div>
       </div>
