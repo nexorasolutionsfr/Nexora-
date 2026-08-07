@@ -29,7 +29,7 @@ const plans: Plan[] = [
   },
   {
     name: "Croissance",
-    price: "79 €",
+    price: "À partir de 79 €",
     priceNote: "/ mois",
     description: "Pour automatiser en continu et faire évoluer vos process, une fois le premier essai concluant.",
     features: [
@@ -87,9 +87,9 @@ export function Pricing() {
                 </span>
               )}
 
-              <div className="flex flex-col gap-1.5 sm:gap-2">
+                <div className="flex flex-col gap-1.5 sm:gap-2">
                 <h3 className="font-display text-lg font-semibold sm:text-xl">{plan.name}</h3>
-                <div className="flex flex-col gap-0.5">
+                <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                   <span className="whitespace-nowrap font-display text-2xl font-bold tracking-tight sm:text-3xl">
                     {plan.price}
                   </span>
