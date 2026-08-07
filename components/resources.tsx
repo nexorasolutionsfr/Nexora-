@@ -16,11 +16,11 @@ const articles: Article[] = [
     readTime: "6 min",
   },
   {
-    category: "n8n",
-    title: "n8n vs Zapier : lequel choisir pour votre entreprise ?",
+    category: "Garages",
+    title: "Comment ne plus rater aucune demande de devis par email",
     excerpt:
-      "Coûts, flexibilité, souveraineté des données : le comparatif honnête pour bien décider.",
-    readTime: "8 min",
+      "Tri et priorisation automatique des demandes clients, sans changer vos outils actuels.",
+    readTime: "5 min",
   },
   {
     category: "Cas client",
@@ -46,10 +46,10 @@ export function Resources() {
             </p>
           </div>
           <a
-            href="#ressources"
+            href="#contact"
             className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
           >
-            Tous les articles
+            Discutons de votre projet
             <ArrowUpRight className="h-4 w-4" />
           </a>
         </div>
@@ -58,7 +58,7 @@ export function Resources() {
           {articles.map((a) => (
             <a
               key={a.title}
-              href="#ressources"
+              href="#contact"
               className="group flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 transition-colors hover:border-primary/50"
             >
               <div className="flex items-center justify-between">
@@ -72,7 +72,7 @@ export function Resources() {
               </h3>
               <p className="text-sm leading-relaxed text-muted-foreground">{a.excerpt}</p>
               <span className="mt-auto inline-flex items-center gap-1.5 text-sm font-medium text-primary">
-                Lire l'article
+                En discuter avec nous
                 <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </span>
             </a>
