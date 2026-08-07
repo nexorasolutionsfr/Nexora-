@@ -115,8 +115,9 @@ export function generateStaticParams() {
   return articles.map((a) => ({ slug: a.slug }))
 }
 
-export default function ArticlePage({ params }: { params: { slug: string } }) {
-  const article = articles.find((a) => a.slug === params.slug)
+export default async function ArticlePage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params
+  const article = articles.find((a) => a.slug === slug)
   if (!article) notFound()
 
   return (
