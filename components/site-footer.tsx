@@ -3,15 +3,26 @@ import { Workflow } from "lucide-react"
 const columns = [
   {
     title: "Solutions",
-    links: ["Prospection & CRM", "Facturation", "Support client", "E-commerce", "Reporting"],
+    links: [
+      { label: "Cas d'usage par métier", href: "#cas-usage" },
+      { label: "Notre méthode", href: "#methode" },
+      { label: "Demander un audit", href: "#contact" },
+    ],
   },
   {
     title: "Entreprise",
-    links: ["Cas d'usage", "Méthode", "Tarifs", "Témoignages", "Ressources"],
+    links: [
+      { label: "Tarifs", href: "#tarifs" },
+      { label: "Résultats attendus", href: "#temoignages" },
+      { label: "Ressources", href: "#ressources" },
+    ],
   },
   {
-    title: "Ressources",
-    links: ["Blog", "Guides n8n", "Cas clients", "FAQ", "Contact"],
+    title: "Contact",
+    links: [
+      { label: "FAQ", href: "#faq" },
+      { label: "Nous contacter", href: "#contact" },
+    ],
   },
 ]
 
@@ -38,12 +49,12 @@ export function SiteFooter() {
               <h3 className="text-sm font-semibold">{col.title}</h3>
               <ul className="flex flex-col gap-2">
                 {col.links.map((link) => (
-                  <li key={link}>
+                  <li key={link.label}>
                     <a
-                      href="#"
+                      href={link.href}
                       className="text-sm text-muted-foreground transition-colors hover:text-foreground"
                     >
-                      {link}
+                      {link.label}
                     </a>
                   </li>
                 ))}
