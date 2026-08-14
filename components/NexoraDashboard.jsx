@@ -445,7 +445,7 @@ function ApptDetailModal({ appt, onClose }) {
 // =====================================================================================
 // VIEWS
 // =====================================================================================
-function DashboardView({ stats, propositions, setView, onSelectAppt, loading }) {
+function DashboardView({ stats, propositions, setView, onSelectAppt, loading, rendezVous }) {
   const todayAppts = rendezVous.filter((r) => r.jour === "vendredi");
 
   if (loading) {
@@ -990,7 +990,7 @@ export default function NexoraDashboard() {
         </div>
 
         <div className="p-5 md:p-8">
-          {view === "dashboard" && <DashboardView stats={stats} propositions={propositions} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} />}
+          {view === "dashboard" && <DashboardView stats={stats} propositions={propositions} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} />}
           {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} />}
           {view === "demandes" && <DemandesView />}
