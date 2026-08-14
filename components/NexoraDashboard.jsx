@@ -1,3 +1,4 @@
+
 "use client"; import { supabase } from "@/lib/supabase";
 
 import React, { useState, useEffect } from "react";
@@ -31,7 +32,7 @@ import {
   AlertTriangle,
   CheckCircle2,
 } from "lucide-react";
-
+// Vercel rebuild trigger
 // =====================================================================================
 // DESIGN TOKENS
 // =====================================================================================
