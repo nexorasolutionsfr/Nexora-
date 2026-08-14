@@ -446,7 +446,7 @@ function ApptDetailModal({ appt, onClose }) {
 // VIEWS
 // =====================================================================================
 function DashboardView({ stats, propositions, setView, onSelectAppt, loading }) {
-  const todayAppts = rendezVousTable.filter((r) => r.jour === "vendredi");
+  const todayAppts = rendezVous.filter((r) => r.jour === "vendredi");
 
   if (loading) {
     return (
@@ -587,7 +587,7 @@ function AgendaView({ onSelectAppt }) {
   const [mode, setMode] = useState("jour");
   const [dayIndex, setDayIndex] = useState(4);
   const dayKey = joursSemaine[dayIndex];
-  const dayAppts = rendezVousTable.filter((r) => r.jour === dayKey);
+  const dayAppts = rendezVous.filter((r) => r.jour === dayKey);
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
@@ -654,7 +654,7 @@ function AgendaView({ onSelectAppt }) {
       ) : (
         <div className="grid grid-cols-5 divide-x divide-slate-100">
           {joursSemaine.map((j) => {
-            const appts = rendezVousTable.filter((a) => a.jour === j);
+            const appts = rendezVous.filter((a) => a.jour === j);
             return (
               <div key={j}>
                 <div className="text-[12.5px] font-medium text-slate-600 text-center py-2.5 border-b border-slate-100 capitalize">{joursLabel[j]}</div>
