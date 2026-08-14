@@ -583,7 +583,7 @@ function ValiderView({ propositions, onAccept, onRefuse }) {
   );
 }
 
-function AgendaView({ onSelectAppt }) {
+function AgendaView({ onSelectAppt, rendezVous }) {
   const [mode, setMode] = useState("jour");
   const [dayIndex, setDayIndex] = useState(4);
   const dayKey = joursSemaine[dayIndex];
@@ -992,7 +992,7 @@ export default function NexoraDashboard() {
         <div className="p-5 md:p-8">
           {view === "dashboard" && <DashboardView stats={stats} propositions={propositions} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} />}
-          {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} />}
+          {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} />}
           {view === "demandes" && <DemandesView />}
           {view === "clients" && <ClientsView />}
           {view === "parametres" && <ParametresView />}
