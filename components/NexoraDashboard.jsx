@@ -906,7 +906,13 @@ export default function NexoraDashboard() {
   async function loadRendezVous() {
     const { data, error } = await supabase
       .from("rendez_vous")
-      .select("*")
+      .select(`
+  *,
+  prestations (
+    nom,
+    categorie
+  )
+`)
       .eq(
         "garage_id",
         "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
