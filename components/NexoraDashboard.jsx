@@ -448,7 +448,7 @@ function ApptDetailModal({ appt, onClose }) {
 // =====================================================================================
 function DashboardView({ stats, propositions, setView, onSelectAppt, loading, rendezVous }) {
   const todayAppts = rendezVous.filter((r) => r.jour === "vendredi");
-
+  console.log("TODAY APPTS :", todayAppts);
   if (loading) {
     return (
       <div className="space-y-6">
