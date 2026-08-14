@@ -910,7 +910,19 @@ export default function NexoraDashboard() {
   .select(`
   *,
   prestations (
-    nom
+    nom,
+    categorie
+  ),
+  clients (
+    nom,
+    telephone,
+    email
+  ),
+  vehicules (
+    marque,
+    modele,
+    annee,
+    immatriculation
   )
 `)
   .eq(
