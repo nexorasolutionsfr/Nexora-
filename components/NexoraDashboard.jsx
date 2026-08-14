@@ -905,18 +905,12 @@ export default function NexoraDashboard() {
   useEffect(() => {
   async function loadRendezVous() {
     const { data, error } = await supabase
-      .from("rendez_vous")
-      .select(`
-  *,
-  prestations (
-    nom,
-    categorie
-  )
-`)
-      .eq(
-        "garage_id",
-        "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
-      );
+  .from("rendez_vous")
+  .select("*")
+  .eq(
+    "garage_id",
+    "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+  );
 
     if (error) {
       console.error("Erreur chargement RDV :", error);
