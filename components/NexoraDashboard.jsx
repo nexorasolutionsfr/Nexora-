@@ -1013,7 +1013,7 @@ setLoading(false);
   };
 
   const titles = {
-    dashboard: "Dashboard",
+    dashboard: "Dashboard TEST VERCEL",
     agenda: "Agenda",
     valider: "Rendez-vous à valider",
     demandes: "Demandes clients",
