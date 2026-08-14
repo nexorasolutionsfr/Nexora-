@@ -414,8 +414,9 @@ function NexoraControlCenter() {
 
 function ApptDetailModal({ appt, onClose }) {
   if (!appt) return null;
-  const client = getClient(appt.client_id);
-  const vehicule = getVehicule(appt.vehicule_id);
+
+  const client = appt.client;
+  const vehicule = appt.vehicule;
   const colors = catColor(appt.categorie);
   return (
     <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -427,9 +428,9 @@ function ApptDetailModal({ appt, onClose }) {
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
         </div>
-        <div className="text-lg font-semibold text-slate-900 mt-3">{client?.nom}</div>
+        <div className="text-lg font-semibold text-slate-900 mt-3">{client}</div>
         <div className="mt-4 space-y-2.5">
-          <div className="flex items-center gap-2 text-sm text-slate-700"><Car size={15} className="text-slate-400" /> {vehicule?.marque} {vehicule?.modele} · {vehicule?.immatriculation}</div>
+          <div className="flex items-center gap-2 text-sm text-slate-700"><Car size={15} className="text-slate-400" /> {vehicule} · {appt.immatriculation}</div>
           <div className="flex items-center gap-2 text-sm text-slate-700"><Clock size={15} className="text-slate-400" /> {appt.debut} – {appt.fin}</div>
           <div className="flex items-center gap-2 text-sm">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: colors.bar }} />
