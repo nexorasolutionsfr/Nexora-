@@ -525,6 +525,9 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
               <div className="text-sm text-slate-800">
               {a.vehicule}
               </div>
+             <div className="text-sm text-red-500">
+             TEST NEXORA
+              </div>
 
               <div className="text-sm text-slate-500">
                 {a.client}
