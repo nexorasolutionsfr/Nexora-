@@ -661,13 +661,13 @@ function AgendaView({ onSelectAppt, rendezVous }) {
                   )}
                   {slotAppts.map((a) => {
                     const c = catColor(a.categorie);
-                    const vehicule = getVehicule(a.vehicule_id);
-                    const client = getClient(a.client_id);
+                    const vehicule = a.vehicule;
+                    const client = a.client;
                     const rows = durationRows(a.debut, a.fin);
                     return (
                       <button key={a.id} onClick={() => onSelectAppt(a)} className="text-left rounded-lg px-3 py-2 w-full mb-1" style={{ backgroundColor: c.bg, borderLeft: `3px solid ${c.bar}`, minHeight: `${rows * 40}px` }}>
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-[13px] font-medium" style={{ color: c.text }}>{client?.nom} — {vehicule?.marque} {vehicule?.modele}</div>
+                          <div className="text-[13px] font-medium" style={{ color: c.text }}>{client} — {vehicule}</div>
                           <Badge tone={STATUT_TONE[a.statut] || "slate"}>{a.statut}</Badge>
                         </div>
                         <div className="text-[12px] text-slate-500">{a.prestation} · {a.debut}-{a.fin} · {rows * 30} min</div>
