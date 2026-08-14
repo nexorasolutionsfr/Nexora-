@@ -920,8 +920,27 @@ export default function NexoraDashboard() {
 
     console.log("RDV Nexora :", data);
 
-    setRendezVous(data || []);
-    setLoading(false);
+  const formattedRdv = (data || []).map((rdv) => {
+  const debut = new Date(rdv.date_debut);
+  const fin = new Date(rdv.date_fin);
+
+  return {
+    ...rdv,
+    jour: debut.toLocaleDateString("fr-FR", { weekday: "long" }),
+    debut: debut.toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    fin: fin.toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    prestation: rdv.prestation_id || "Prestation",
+  };
+});
+
+setRendezVous(formattedRdv);
+setLoading(false);
   }
 
   loadRendezVous();
