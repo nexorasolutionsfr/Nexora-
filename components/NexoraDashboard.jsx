@@ -587,7 +587,7 @@ function AgendaView({ onSelectAppt }) {
   const [mode, setMode] = useState("jour");
   const [dayIndex, setDayIndex] = useState(4);
   const dayKey = joursSemaine[dayIndex];
-  const dayAppts = rendezVousTable.filter((r) => r.jour === dayKey);
+  const dayAppts = rendezVousFormattes.filter((r) => r.jour === dayKey);
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
