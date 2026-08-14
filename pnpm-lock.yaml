@@ -48,6 +48,9 @@ importers:
         specifier: ^1.4.0
         version: 1.4.0
     devDependencies:
+      '@tailwindcss/oxide':
+        specifier: ^4.3.3
+        version: 4.3.3
       '@tailwindcss/postcss':
         specifier: ^4.3.3
         version: 4.3.3
