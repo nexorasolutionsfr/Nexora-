@@ -509,14 +509,13 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
         <div className="px-5 py-4 border-b border-slate-100 font-semibold text-slate-900 text-[15px]">Agenda du jour</div>
         <div className="divide-y divide-slate-100">
-          {todayAppts.slice(0, 4).map((a) => {
-            const vehicule = getVehicule(a.vehicule_id);
+          {rendezVous.slice(0, 4).map((a) => {
             const colors = catColor(a.categorie);
             return (
               <button key={a.id} onClick={() => onSelectAppt(a)} className="w-full px-5 py-3.5 flex items-center gap-4 hover:bg-slate-50/70 text-left">
                 <div className="text-[13px] font-medium text-slate-500 w-24 shrink-0">{a.debut} - {a.fin}</div>
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colors.bar }} />
-                <div className="text-sm text-slate-800">{vehicule?.marque} {vehicule?.modele}</div>
+                <div className="text-sm text-slate-800">{a.vehicule}</div>
                 <div className="text-[13px] text-slate-400">·</div>
                 <div className="text-sm text-slate-500">{a.prestation}</div>
                 <Badge tone={STATUT_TONE[a.statut] || "slate"}>{a.statut}</Badge>
