@@ -894,8 +894,16 @@ function ParametresView() {
 // APP SHELL
 // =====================================================================================
 export default function NexoraDashboard() {
-useEffect(() => {
-  async function testSupabase() {
+  const [view, setView] = useState("dashboard");
+  const [stats, setStats] = useState({ pending: 4, toValidate: propositionsRdvTable.length, today: 5, clients: clientsTable.length });
+  const [propositions, setPropositions] = useState(propositionsRdvTable);
+  const [toast, setToast] = useState(null);
+  const [selectedAppt, setSelectedAppt] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [rendezVous, setRendezVous] = useState([]);
+
+  useEffect(() => {
+  async function loadRendezVous() {
     const { data, error } = await supabase
       .from("rendez_vous")
       .select("*")
@@ -904,23 +912,20 @@ useEffect(() => {
         "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
       );
 
+    if (error) {
+      console.error("Erreur chargement RDV :", error);
+      setLoading(false);
+      return;
+    }
+
     console.log("RDV Nexora :", data);
-    console.log("Erreur Supabase :", error);
+
+    setRendezVous(data || []);
+    setLoading(false);
   }
 
-  testSupabase();
+  loadRendezVous();
 }, []);
-  const [view, setView] = useState("dashboard");
-  const [stats, setStats] = useState({ pending: 4, toValidate: propositionsRdvTable.length, today: 5, clients: clientsTable.length });
-  const [propositions, setPropositions] = useState(propositionsRdvTable);
-  const [toast, setToast] = useState(null);
-  const [selectedAppt, setSelectedAppt] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 700);
-    return () => clearTimeout(t);
-  }, []);
 
   const flashToast = (message, tone = "success") => {
     setToast({ message, tone });
