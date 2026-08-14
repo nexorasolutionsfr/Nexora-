@@ -58,6 +58,7 @@ const SOURCE_META = {
   site: { label: "Site internet", icon: Globe, bg: "#EAF0FF", text: "#2748A6" },
   telephone_ia: { label: "IA vocale", icon: Phone, bg: "#F1EBFE", text: "#6D28D9" },
   whatsapp: { label: "WhatsApp", icon: MessageSquare, bg: "#E7F6EC", text: "#15803D" },
+  nexora: { label: "Nexora", icon: Globe, bg: "#EAF0FF", text: "#2748A6" },
 };
 
 // =====================================================================================
@@ -437,7 +438,9 @@ function ApptDetailModal({ appt, onClose }) {
             <span style={{ color: colors.text }} className="font-medium">{appt.prestation}</span>
             <span className="text-slate-400">· {colors.label}</span>
           </div>
-          <div className="flex items-center gap-2 text-sm text-slate-600"><Phone size={15} className="text-slate-400" /> {client?.telephone}</div>
+          <div className="flex items-center gap-2 text-sm text-slate-700">
+          <Phone size={15} className="text-slate-400" /> {appt.telephone}
+          </div>
         </div>
       </div>
     </div>
