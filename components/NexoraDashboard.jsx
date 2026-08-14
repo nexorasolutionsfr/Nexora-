@@ -1,4 +1,4 @@
-"use client";
+"use client"; import { supabase } from "@/lib/supabase";
 
 import React, { useState, useEffect } from "react";
 import {
@@ -894,6 +894,22 @@ function ParametresView() {
 // APP SHELL
 // =====================================================================================
 export default function NexoraDashboard() {
+useEffect(() => {
+  async function testSupabase() {
+    const { data, error } = await supabase
+      .from("rendez_vous")
+      .select("*")
+      .eq(
+        "garage_id",
+        "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+      );
+
+    console.log("RDV Nexora :", data);
+    console.log("Erreur Supabase :", error);
+  }
+
+  testSupabase();
+}, []);
   const [view, setView] = useState("dashboard");
   const [stats, setStats] = useState({ pending: 4, toValidate: propositionsRdvTable.length, today: 5, clients: clientsTable.length });
   const [propositions, setPropositions] = useState(propositionsRdvTable);
