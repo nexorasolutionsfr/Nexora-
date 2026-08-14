@@ -953,7 +953,13 @@ export default function NexoraDashboard() {
       hour: "2-digit",
       minute: "2-digit",
     }),
-    prestation: rdv.prestation_id || "Prestation",
+    prestation: rdv.prestations?.nom || "Prestation",
+    client: rdv.clients?.nom || "Client inconnu",
+    telephone: rdv.clients?.telephone || "",
+    email: rdv.clients?.email || "",
+    vehicule: `${rdv.vehicules?.marque || ""} ${rdv.vehicules?.modele || ""}`.trim(),
+    immatriculation: rdv.vehicules?.immatriculation || "",
+    categorie: rdv.prestations?.categorie || "",
   };
 });
 
