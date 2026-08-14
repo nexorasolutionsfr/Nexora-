@@ -901,28 +901,7 @@ export default function NexoraDashboard() {
   const [selectedAppt, setSelectedAppt] = useState(null);
   const [loading, setLoading] = useState(true);
   const [rendezVous, setRendezVous] = useState([]);
-  const rendezVousFormattes = rendezVous.map((rdv) => ({
-  id: rdv.id,
-  garage_id: rdv.garage_id,
-  client_id: rdv.client_id,
-  vehicule_id: rdv.vehicule_id,
-  jour: new Date(rdv.date_debut).toLocaleDateString("fr-FR", {
-    weekday: "long",
-  }),
-  debut: new Date(rdv.date_debut).toLocaleTimeString("fr-FR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }),
-  fin: new Date(rdv.date_fin).toLocaleTimeString("fr-FR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }),
-  prestation: rdv.notes?.split(" - ")[0] || "Prestation",
-  categorie: "entretien",
-  statut: rdv.statut,
-  source: rdv.source,
-}));
-
+ 
   useEffect(() => {
   async function loadRendezVous() {
     const { data, error } = await supabase
