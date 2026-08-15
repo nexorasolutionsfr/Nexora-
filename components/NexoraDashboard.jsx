@@ -451,7 +451,13 @@ function ApptDetailModal({ appt, onClose }) {
 // VIEWS
 // =====================================================================================
 function DashboardView({ stats, propositions, setView, onSelectAppt, loading, rendezVous }) {
-  const todayAppts = rendezVous.filter((r) => r.jour === "vendredi");
+  const today = new Date().toLocaleDateString("fr-FR", {
+  weekday: "long",
+});
+
+const todayAppts = rendezVous.filter(
+  (r) => r.jour === today
+);
   console.log("TODAY APPTS :", todayAppts);
   if (loading) {
     return (
@@ -1013,7 +1019,7 @@ setLoading(false);
   };
 
   const titles = {
-    dashboard: "Dashboard TEST VERCEL",
+    dashboard: "Dashboard",
     agenda: "Agenda",
     valider: "Rendez-vous à valider",
     demandes: "Demandes clients",
