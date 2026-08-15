@@ -631,6 +631,21 @@ function AgendaView({ onSelectAppt, rendezVous }) {
   const [mode, setMode] = useState("jour");
 
 const [currentDate, setCurrentDate] = useState(new Date());
+const changeDate = (direction) => {
+  setCurrentDate((prev) => {
+    const date = new Date(prev);
+
+    if (mode === "jour") {
+      date.setDate(date.getDate() + direction);
+    }
+
+    if (mode === "semaine") {
+      date.setDate(date.getDate() + (direction * 7));
+    }
+
+    return date;
+  });
+};
 
 const dayKey = currentDate.toLocaleDateString("fr-FR", {
   weekday: "long",
@@ -639,13 +654,15 @@ const dayKey = currentDate.toLocaleDateString("fr-FR", {
 const dayAppts = rendezVous.filter((r) => r.jour === dayKey);
 const startOfWeek = new Date(currentDate);
 startOfWeek.setDate(currentDate.getDate() - currentDate.getDay() + 1);
+const endOfWeek = new Date(startOfWeek);
+endOfWeek.setDate(startOfWeek.getDate() + 6);
 
-const weekDays = joursSemaine.map((_, index) => {
+const weekDays = Array.from({ length: 7 }, (_, index) => {
   const date = new Date(startOfWeek);
   date.setDate(startOfWeek.getDate() + index);
 
   return {
-    key: joursSemaine[index],
+    key: date.toISOString().split("T")[0],
     date,
     label: date.toLocaleDateString("fr-FR", {
       weekday: "short",
@@ -659,20 +676,25 @@ const weekDays = joursSemaine.map((_, index) => {
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <button 
-          onClick={() => setCurrentDate((d) => new Date(d.setDate(d.getDate() - 1)))} className="p-1.5 rounded-lg border border-slate-200 text-slate-500"><ChevronLeft size={16} /></button>
-          <div className="font-semibold text-slate-900 text-[15px] capitalize">{mode === "jour"
+          onClick={() => changeDate(-1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500"><ChevronLeft size={16} /></button>
+          <div className="w-[260px] text-center font-semibold text-slate-900 text-[15px] capitalize">
+{mode === "jour"
   ? currentDate.toLocaleDateString("fr-FR", {
       weekday: "long",
       day: "numeric",
       month: "long",
     })
-  : `Semaine du ${currentDate.toLocaleDateString("fr-FR", {
+  : `Semaine du ${startOfWeek.toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "long",
+    })} au ${endOfWeek.toLocaleDateString("fr-FR", {
       day: "numeric",
       month: "long",
     })}`
-}         </div>
+}
+          </div>
           <button 
-          onClick={() => setCurrentDate((d) => new Date(d.setDate(d.getDate() + 1)))} className="p-1.5 rounded-lg border border-slate-200 text-slate-500"><ChevronRight size={16} /></button>
+         onClick={() => changeDate(1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500"><ChevronRight size={16} /></button>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-xl border border-slate-200 overflow-hidden text-[13px]">
@@ -732,8 +754,8 @@ const weekDays = joursSemaine.map((_, index) => {
         <div className="grid grid-cols-5 divide-x divide-slate-100">
           {weekDays.map((day) => {
             const appts = rendezVous.filter(
-              (a) => a.jour === day.key
-            );
+  (a) => a.jour === day.key
+);
             return (
               <div key={day.key}>
                 <div className="text-[12.5px] font-medium text-slate-600 text-center py-2.5 border-b border-slate-100 capitalize">{day.label}</div>
