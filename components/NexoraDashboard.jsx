@@ -996,7 +996,12 @@ function ParametresView() {
 // =====================================================================================
 export default function NexoraDashboard() {
   const [view, setView] = useState("dashboard");
-  const [stats, setStats] = useState({ pending: 4, toValidate: propositionsRdvTable.length, today: 5, clients: clientsTable.length });
+  const [stats, setStats] = useState({
+  pending: 0,
+  toValidate: 0,
+  today: 0,
+  clients: 0
+});
   const [propositions, setPropositions] = useState(propositionsRdvTable);
   const [toast, setToast] = useState(null);
   const [selectedAppt, setSelectedAppt] = useState(null);
