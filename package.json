@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@tailwindcss/oxide": "^4.3.3",
+    "@tailwindcss/oxide-linux-x64-gnu": "^4.3.3",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^24",
     "@types/react": "^19",

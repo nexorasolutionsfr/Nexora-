@@ -209,8 +209,21 @@ const navItems = [
   { key: "parametres", label: "Paramètres", icon: Settings },
 ];
 
-const joursSemaine = ["lundi", "mardi", "mercredi", "jeudi", "vendredi"];
-const joursLabel = { lundi: "Lun 10", mardi: "Mar 11", mercredi: "Mer 12", jeudi: "Jeu 13", vendredi: "Ven 14" };
+const joursSemaine = [
+  "lundi",
+  "mardi",
+  "mercredi",
+  "jeudi",
+  "vendredi"
+];
+
+const joursLabel = {
+  lundi: "Lun",
+  mardi: "Mar",
+  mercredi: "Mer",
+  jeudi: "Jeu",
+  vendredi: "Ven",
+};
 const heuresGrille = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
 
 const durationRows = (debut, fin) => {
@@ -616,17 +629,50 @@ function ValiderView({ propositions, onAccept, onRefuse }) {
 
 function AgendaView({ onSelectAppt, rendezVous }) {
   const [mode, setMode] = useState("jour");
-  const [dayIndex, setDayIndex] = useState(4);
-  const dayKey = joursSemaine[dayIndex];
-  const dayAppts = rendezVous.filter((r) => r.jour === dayKey);
+
+const [currentDate, setCurrentDate] = useState(new Date());
+
+const dayKey = currentDate.toLocaleDateString("fr-FR", {
+  weekday: "long",
+});
+
+const dayAppts = rendezVous.filter((r) => r.jour === dayKey);
+const startOfWeek = new Date(currentDate);
+startOfWeek.setDate(currentDate.getDate() - currentDate.getDay() + 1);
+
+const weekDays = joursSemaine.map((_, index) => {
+  const date = new Date(startOfWeek);
+  date.setDate(startOfWeek.getDate() + index);
+
+  return {
+    key: joursSemaine[index],
+    date,
+    label: date.toLocaleDateString("fr-FR", {
+      weekday: "short",
+      day: "numeric",
+    }),
+  };
+});
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => setDayIndex((d) => Math.max(0, d - 1))} className="p-1.5 rounded-lg border border-slate-200 text-slate-500"><ChevronLeft size={16} /></button>
-          <div className="font-semibold text-slate-900 text-[15px] capitalize">{mode === "jour" ? `${dayKey} 14 août` : "Semaine du 10 août"}</div>
-          <button onClick={() => setDayIndex((d) => Math.min(4, d + 1))} className="p-1.5 rounded-lg border border-slate-200 text-slate-500"><ChevronRight size={16} /></button>
+          <button 
+          onClick={() => setCurrentDate((d) => new Date(d.setDate(d.getDate() - 1)))} className="p-1.5 rounded-lg border border-slate-200 text-slate-500"><ChevronLeft size={16} /></button>
+          <div className="font-semibold text-slate-900 text-[15px] capitalize">{mode === "jour"
+  ? currentDate.toLocaleDateString("fr-FR", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    })
+  : `Semaine du ${currentDate.toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "long",
+    })}`
+}         </div>
+          <button 
+          onClick={() => setCurrentDate((d) => new Date(d.setDate(d.getDate() + 1)))} className="p-1.5 rounded-lg border border-slate-200 text-slate-500"><ChevronRight size={16} /></button>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-xl border border-slate-200 overflow-hidden text-[13px]">
@@ -684,11 +730,13 @@ function AgendaView({ onSelectAppt, rendezVous }) {
         </div>
       ) : (
         <div className="grid grid-cols-5 divide-x divide-slate-100">
-          {joursSemaine.map((j) => {
-            const appts = rendezVous.filter((a) => a.jour === j);
+          {weekDays.map((day) => {
+            const appts = rendezVous.filter(
+              (a) => a.jour === day.key
+            );
             return (
-              <div key={j}>
-                <div className="text-[12.5px] font-medium text-slate-600 text-center py-2.5 border-b border-slate-100 capitalize">{joursLabel[j]}</div>
+              <div key={day.key}>
+                <div className="text-[12.5px] font-medium text-slate-600 text-center py-2.5 border-b border-slate-100 capitalize">{day.label}</div>
                 <div className="p-2 space-y-1.5 min-h-[320px]">
                   {appts.length === 0 && <div className="text-[11.5px] text-slate-300 text-center pt-4">Aucun RDV</div>}
                   {appts.map((a) => {
