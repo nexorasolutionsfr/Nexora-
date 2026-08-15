@@ -1074,7 +1074,68 @@ setLoading(false);
 
   loadRendezVous();
 }, []);
+useEffect(() => {
+  async function loadStats() {
 
+    const today = new Date().toISOString().split("T")[0];
+
+    const [
+      clientsResult,
+      propositionsResult,
+      demandesResult,
+      rdvTodayResult
+    ] = await Promise.all([
+
+      supabase
+        .from("clients")
+        .select("id", { count: "exact", head: true })
+        .eq(
+          "garage_id",
+          "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+        ),
+
+      supabase
+        .from("propositions_rdv")
+        .select("id", { count: "exact", head: true })
+        .eq(
+          "garage_id",
+          "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+        )
+        .eq("statut", "en_attente"),
+
+      supabase
+        .from("demandes")
+        .select("id", { count: "exact", head: true })
+        .eq(
+          "garage_id",
+          "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+        )
+        .neq("statut", "rendez_vous_confirme"),
+
+      supabase
+        .from("rendez_vous")
+        .select("id", { count: "exact", head: true })
+        .eq(
+          "garage_id",
+          "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+        )
+        .gte("date_debut", `${today}T00:00:00`)
+        .lte("date_debut", `${today}T23:59:59`)
+    ]);
+
+
+    setStats({
+      pending: demandesResult.count || 0,
+      toValidate: propositionsResult.count || 0,
+      today: rdvTodayResult.count || 0,
+      clients: clientsResult.count || 0
+    });
+
+  }
+
+  loadStats();
+
+}, []);
   const flashToast = (message, tone = "success") => {
     setToast({ message, tone });
     setTimeout(() => setToast(null), 2800);
