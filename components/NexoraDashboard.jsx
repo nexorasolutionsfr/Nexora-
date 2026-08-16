@@ -1300,7 +1300,7 @@ setPropositions(formattedPropositions);
   if (!proposition) return;
 
 
-// AJOUTER ICI
+// Vérifier qu'un rendez-vous n'existe pas déjà
 const { data: existingRDV } = await supabase
   .from("rendez_vous")
   .select("id")
@@ -1314,26 +1314,9 @@ if (existingRDV) {
   return;
 }
 
-  // 1 - mettre à jour la proposition
-  const { error: updateError } = await supabase
-    .from("propositions_rdv")
-    .update({
-      statut: "accepte",
-      date_validation: new Date().toISOString(),
-    })
-    .eq("id", id);
 
 
-  if (updateError) {
-  console.error(
-    "Erreur validation proposition :",
-    JSON.stringify(updateError, null, 2)
-  );
-  return;
-}
-
-
-  // 2 - créer le rendez-vous réel
+  // 1 - créer le rendez-vous réel
   const { error: insertError } = await supabase
   .from("rendez_vous")
   .insert({
@@ -1358,6 +1341,25 @@ if (existingRDV) {
   return;
 }
 
+
+    
+  // 2 - valider la proposition seulement après création du RDV
+  const { error: updateError } = await supabase
+  .from("propositions_rdv")
+  .update({
+    statut: "accepte",
+    date_validation: new Date().toISOString(),
+  })
+  .eq("id", id);
+
+
+if (updateError) {
+  console.error(
+    "Erreur validation proposition :",
+    JSON.stringify(updateError, null, 2)
+  );
+  return;
+}
 
   // 3 - rafraîchir l'écran
   setPropositions((prev) =>
