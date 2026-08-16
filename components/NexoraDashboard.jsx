@@ -873,7 +873,7 @@ const statutLabel = (s) => {
     <button
       className="text-sm font-medium text-white px-3 py-2 rounded-xl"
       style={{ backgroundColor: "#3D6BE0" }}
-      onClick={() => setSelectedDemande(d)}
+      onClick={() => setSelectDemande(d)}
     >
       Proposer un RDV
     </button>
