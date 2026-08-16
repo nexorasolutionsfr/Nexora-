@@ -1289,9 +1289,13 @@ setPropositions(formattedPropositions);
   // Remplacer par : fetch(N8N_WEBHOOK_URL + '/rdv-accepte', { method: 'POST', body: JSON.stringify({ proposition_id: id, garage_id: garage.id }) })
   const handleAccept = async (id) => {
 
+  console.log("CLICK ACCEPTER ID :", id);
+
   const proposition = propositions.find(
     (p) => p.id === id
   );
+
+  console.log("PROPOSITION ACCEPTEE :", proposition);
     console.log("PROPOSITION ACCEPTEE :", proposition);
 
   if (!proposition) return;
