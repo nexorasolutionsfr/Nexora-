@@ -1312,12 +1312,12 @@ setPropositions(formattedPropositions);
 
 
   if (updateError) {
-    console.error(
-      "Erreur validation proposition :",
-      updateError
-    );
-    return;
-  }
+  console.error(
+    "Erreur validation proposition :",
+    JSON.stringify(updateError, null, 2)
+  );
+  return;
+}
 
 
   // 2 - créer le rendez-vous réel
