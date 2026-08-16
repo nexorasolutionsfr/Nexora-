@@ -1105,7 +1105,82 @@ function ProposerRdvModal({ demande, onClose }) {
 
         </div>
 
+<div className="mt-6 space-y-4">
 
+  <div>
+    <label className="text-sm text-slate-500">
+      Prestation
+    </label>
+
+    <select
+      className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
+      defaultValue=""
+    >
+      <option value="" disabled>
+        Choisir une prestation
+      </option>
+      <option>
+        Pneus
+      </option>
+      <option>
+        Révision complète
+      </option>
+      <option>
+        Freins
+      </option>
+      <option>
+        Diagnostic panne
+      </option>
+    </select>
+  </div>
+
+
+  <div className="grid grid-cols-2 gap-3">
+
+    <div>
+      <label className="text-sm text-slate-500">
+        Date proposée
+      </label>
+
+      <input
+        type="date"
+        className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
+      />
+    </div>
+
+
+    <div>
+      <label className="text-sm text-slate-500">
+        Heure
+      </label>
+
+      <input
+        type="time"
+        className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
+      />
+    </div>
+
+  </div>
+
+
+  <div>
+    <label className="text-sm text-slate-500">
+      Message client
+    </label>
+
+    <textarea
+      className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
+      rows="4"
+      defaultValue={`Bonjour ${demande.clients?.nom},
+
+Nous pouvons vous proposer un rendez-vous pour votre véhicule.
+
+Cordialement,
+${garage.nom}`}
+    />
+  </div>
+
+</div>
         <div className="flex justify-end gap-3 mt-6">
 
           <button
@@ -1120,7 +1195,7 @@ function ProposerRdvModal({ demande, onClose }) {
             className="px-4 py-2 rounded-xl text-white cursor-pointer"
             style={{ backgroundColor:"#3D6BE0" }}
           >
-            Continuer
+            Envoyer la proposition
           </button>
 
         </div>
