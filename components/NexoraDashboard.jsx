@@ -797,6 +797,7 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
 }
 
 function DemandesView({ demandes }) {
+  console.log("DEMANDE SELECTIONNEE :", selectedDemande);
   const statutTone = (s) => {
   if (s === "nouveau") return "amber";
   if (s === "rendez_vous_confirme") return "green";
@@ -869,7 +870,7 @@ const statutLabel = (s) => {
     <button
       className="text-sm font-medium text-white px-3 py-2 rounded-xl"
       style={{ backgroundColor: "#3D6BE0" }}
-      onClick={() => console.log("PROPOSER RDV :", d)}
+      onClick={() => setSelectedDemande(d)}
     >
       Proposer un RDV
     </button>
@@ -1075,6 +1076,7 @@ export default function NexoraDashboard() {
   const [loading, setLoading] = useState(true);
   const [rendezVous, setRendezVous] = useState([]);
   const [demandes, setDemandes] = useState([]);
+  const [selectedDemande, setSelectedDemande] = useState(null);
  
   useEffect(() => {
   async function loadRendezVous() {
@@ -1546,7 +1548,12 @@ if (updateError) {
           {view === "dashboard" && <DashboardView stats={stats} propositions={propositions} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} />}
           {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} />}
-          {view === "demandes" && <DemandesView demandes={demandes} />}
+          {view === "demandes" && (
+            <DemandesView
+              demandes={demandes}
+              onSelectDemande={setSelectedDemande}
+            />
+          )}
           {view === "clients" && <ClientsView />}
           {view === "parametres" && <ParametresView />}
         </div>
