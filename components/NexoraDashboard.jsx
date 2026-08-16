@@ -1168,9 +1168,12 @@ useEffect(() => {
 
 
     if (error) {
-      console.error("Erreur chargement propositions :", error);
-      return;
-    }
+ console.error(
+   "Erreur chargement propositions :",
+   JSON.stringify(error, null, 2)
+ );
+ return;
+}
 
 
     console.log("PROPOSITIONS NEXORA :", data);
