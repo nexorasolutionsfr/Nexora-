@@ -796,9 +796,9 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
   );
 }
 
-function DemandesView() {
+function DemandesView({ demandes }) {
   const statutTone = (s) => (s === "Nouveau" ? "amber" : s === "Traité" ? "green" : "slate");
-  if (demandesTable.length === 0) {
+  if (demandes.length === 0) {
     return <EmptyState icon={Inbox} title="Aucune demande pour le moment" subtitle="Les nouvelles demandes clients apparaîtront ici automatiquement." />;
   }
   return (
@@ -812,7 +812,7 @@ function DemandesView() {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {demandesTable.map((d) => {
+          {demandes.map((d) => {
             const client = getClient(d.client_id);
             const vehicule = getVehicule(d.vehicule_id);
             return (
@@ -1022,6 +1022,7 @@ export default function NexoraDashboard() {
   const [selectedAppt, setSelectedAppt] = useState(null);
   const [loading, setLoading] = useState(true);
   const [rendezVous, setRendezVous] = useState([]);
+  const [demandes, setDemandes] = useState([]);
  
   useEffect(() => {
   async function loadRendezVous() {
@@ -1087,8 +1088,42 @@ setRendezVous(formattedRdv);
 setLoading(false);
   }
 
-  loadRendezVous();
+    loadRendezVous();
 }, []);
+
+
+useEffect(() => {
+
+  async function loadDemandes() {
+
+    const { data, error } = await supabase
+      .from("demandes")
+      .select("*")
+      .eq(
+        "garage_id",
+        "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+      )
+      .order("created_at", { ascending: false });
+
+
+    if (error) {
+      console.error(
+        "Erreur chargement demandes :",
+        error
+      );
+      return;
+    }
+
+
+    setDemandes(data || []);
+  }
+
+
+  loadDemandes();
+
+}, []);
+
+
 useEffect(() => {
   async function loadStats() {
 
@@ -1444,7 +1479,7 @@ if (updateError) {
           {view === "dashboard" && <DashboardView stats={stats} propositions={propositions} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} />}
           {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} />}
-          {view === "demandes" && <DemandesView />}
+          {view === "demandes" && <DemandesView demandes={demandes} />}
           {view === "clients" && <ClientsView />}
           {view === "parametres" && <ParametresView />}
         </div>
