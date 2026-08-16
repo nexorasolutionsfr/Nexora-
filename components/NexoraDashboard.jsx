@@ -1176,7 +1176,12 @@ useEffect(() => {
 }
 
 
-    const formattedPropositions = (data || []).map((p) => {
+console.log(
+  JSON.stringify(data, null, 2)
+);
+
+
+const formattedPropositions = (data || []).map((p) => {
 
   const debut = new Date(p.date_debut_proposee);
   const fin = new Date(p.date_fin_proposee);
