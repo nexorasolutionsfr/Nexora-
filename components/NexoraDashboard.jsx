@@ -518,10 +518,10 @@ console.log("UPCOMING APPTS :", upcomingAppts);
                 <div key={p.id} className="px-5 py-4 flex items-center justify-between">
                   <div>
                     <div className="flex items-center gap-2">
-                      <div className="text-sm font-medium text-slate-900">{client?.nom} — {a.vehicule}</div>
+                      <div className="text-sm font-medium text-slate-900">{a.client} — {a.vehicule}</div>
                       <SourceBadge source={p.source} />
                     </div>
-                    <div className="text-[13px] text-slate-500 mt-0.5">{p.prestation} · {p.jour}, {p.creneau}</div>
+                    <div className="text-[13px] text-slate-500 mt-0.5">{p.prestation} · {p.jour}, {p.debut} - {p.fin}</div>
                   </div>
                   <Badge tone="amber">En attente</Badge>
                 </div>
@@ -960,7 +960,7 @@ function ParametresView() {
               <span className="flex items-center gap-2 text-slate-700">
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(p.categorie).bar }} /> {p.nom}
               </span>
-              <span className="text-slate-500 text-[13px]">{p.duree_min} min</span>
+              <span className="text-slate-500 text-[13px]">{p.duree} min</span>
             </div>
           ))}
         </div>
