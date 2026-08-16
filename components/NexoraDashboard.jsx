@@ -1166,52 +1166,9 @@ console.log(
 
 
 const formattedPropositions = (data || []).map((p) => {
-
-  const debut = new Date(p.date_debut_proposee);
-  const fin = new Date(p.date_fin_proposee);
-
   return {
     ...p,
-
-    client: p.clients?.nom || "Client inconnu",
-
-    telephone: p.clients?.telephone || "",
-
-    vehicule:
-      `${p.vehicules?.marque || ""} ${p.vehicules?.modele || ""}`.trim(),
-
-    immatriculation:
-      p.vehicules?.immatriculation || "",
-
-    prestation:
-      p.prestations?.nom || "Prestation",
-
-    jour:
-      debut.toLocaleDateString("fr-FR", {
-        weekday: "long",
-      }),
-
-    date:
-      debut.toLocaleDateString("fr-FR"),
-
-    debut:
-      debut.toLocaleTimeString("fr-FR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-
-    fin:
-      fin.toLocaleTimeString("fr-FR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-
-    duree:
-      Math.round(
-        (fin - debut) / 60000
-      ),
   };
-
 });
 
 console.log(
