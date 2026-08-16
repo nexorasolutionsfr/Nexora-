@@ -1170,7 +1170,6 @@ console.log(
   data?.[0]?.demandes
 );
 
-
 const formattedPropositions = await Promise.all(
   (data || []).map(async (p) => {
 
@@ -1265,6 +1264,10 @@ console.log(
   JSON.stringify(formattedPropositions[0], null, 2)
 );
 
+    console.log(
+  "MESSAGE FINAL :",
+  formattedPropositions?.[0]?.message
+);
 setPropositions(formattedPropositions);
 
 
