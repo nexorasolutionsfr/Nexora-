@@ -471,6 +471,9 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
   );
 
 console.log("UPCOMING APPTS :", upcomingAppts);
+  const todayCount = upcomingAppts.filter(
+  (r) => new Date(r.date_debut).toLocaleDateString("fr-FR") === new Date().toLocaleDateString("fr-FR")
+).length;
   if (loading) {
     return (
       <div className="space-y-6">
