@@ -1141,7 +1141,12 @@ useEffect(() => {
 
     const { data, error } = await supabase
   .from("propositions_rdv")
-  .select("*")
+  .select(`
+  *,
+  demandes (
+    message_original
+  )
+`)
   .eq(
     "garage_id",
     "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
@@ -1160,6 +1165,10 @@ useEffect(() => {
 
 console.log(
   JSON.stringify(data, null, 2)
+);
+    console.log(
+  "DEMANDE LIEE :",
+  data?.[0]?.demandes
 );
 
 
