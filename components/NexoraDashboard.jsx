@@ -522,6 +522,9 @@ console.log("UPCOMING APPTS :", upcomingAppts);
                       <SourceBadge source={p.source} />
                     </div>
                     <div className="text-[13px] text-slate-500 mt-0.5">{p.prestation} · {p.jour}, {p.debut} - {p.fin}</div>
+                    <div className="text-[13px] text-slate-500 mt-2">
+                    {p.message}
+                    </div>
                   </div>
                   <Badge tone="amber">En attente</Badge>
                 </div>
