@@ -828,8 +828,7 @@ const statutLabel = (s) => {
   return (
     <tr
   key={d.id}
-  onClick={() => onSelectDemande(d)}
-  className="hover:bg-slate-50/60 cursor-pointer"
+  className="hover:bg-slate-50/60"
 >
 
       <td className="px-5 py-3.5 font-medium text-slate-900">
@@ -872,7 +871,7 @@ const statutLabel = (s) => {
 <td className="px-5 py-3.5">
   {d.statut === "nouveau" && (
     <button
-      className="text-sm font-medium text-white px-3 py-2 rounded-xl"
+      className="text-sm font-medium text-white px-3 py-2 rounded-xl cursor-pointer"
       style={{ backgroundColor: "#3D6BE0" }}
       onClick={() => onSelectDemande(d)}
     >
@@ -1067,21 +1066,21 @@ function ProposerRdvModal({ demande, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
 
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900">
 
         <h2 className="text-lg font-semibold text-slate-900">
           Proposer un rendez-vous
         </h2>
 
-        <div className="mt-5 space-y-3 text-sm">
+        <div className="mt-5 space-y-3 text-sm text-slate-700">
 
           <div>
             <span className="text-slate-500">
               Client :
             </span>
-            <div className="font-medium">
-              {demande.clients?.nom}
-            </div>
+            <div className="font-medium text-slate-900">
+            {demande.clients?.nom}
+          </div>
           </div>
 
 
@@ -1089,9 +1088,9 @@ function ProposerRdvModal({ demande, onClose }) {
             <span className="text-slate-500">
               Véhicule :
             </span>
-            <div className="font-medium">
-              {demande.vehicules?.marque} {demande.vehicules?.modele} {demande.vehicules?.annee}
-            </div>
+            <div className="font-medium text-slate-900">
+            {demande.vehicules?.marque} {demande.vehicules?.modele} {demande.vehicules?.annee}
+          </div>
           </div>
 
 
@@ -1099,9 +1098,9 @@ function ProposerRdvModal({ demande, onClose }) {
             <span className="text-slate-500">
               Demande :
             </span>
-            <div className="font-medium">
-              {demande.type_demande}
-            </div>
+            <div className="font-medium text-slate-900">
+            {demande.type_demande}
+          </div>
           </div>
 
         </div>
@@ -1111,14 +1110,14 @@ function ProposerRdvModal({ demande, onClose }) {
 
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl border border-slate-200"
+            className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 cursor-pointer"
           >
             Annuler
           </button>
 
 
           <button
-            className="px-4 py-2 rounded-xl text-white"
+            className="px-4 py-2 rounded-xl text-white cursor-pointer"
             style={{ backgroundColor:"#3D6BE0" }}
           >
             Continuer
