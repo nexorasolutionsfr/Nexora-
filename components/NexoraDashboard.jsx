@@ -518,7 +518,7 @@ console.log("UPCOMING APPTS :", upcomingAppts);
                 <div key={p.id} className="px-5 py-4 flex items-center justify-between">
                   <div>
                     <div className="flex items-center gap-2">
-                      <div className="text-sm font-medium text-slate-900">{client?.nom} — {vehicule?.marque} {vehicule?.modele}</div>
+                      <div className="text-sm font-medium text-slate-900">{client?.nom} — {a.vehicule}</div>
                       <SourceBadge source={p.source} />
                     </div>
                     <div className="text-[13px] text-slate-500 mt-0.5">{p.prestation} · {p.jour}, {p.creneau}</div>
@@ -581,27 +581,25 @@ function ValiderView({ propositions, onAccept, onRefuse }) {
   return (
     <div className="space-y-4">
       {propositions.map((p) => {
-        const client = getClient(p.client_id);
-        const vehicule = getVehicule(p.vehicule_id);
         return (
           <div key={p.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
             <div className="flex items-start justify-between flex-wrap gap-2">
               <div>
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <div className="font-semibold text-slate-900 text-[15px]">{client?.nom}</div>
+                  <div className="font-semibold text-slate-900 text-[15px]">{p.client}</div>
                   <Badge tone="amber">En attente de validation</Badge>
                   <SourceBadge source={p.source} />
                 </div>
-                <div className="text-[13px] text-slate-500 mt-1">{client?.telephone}</div>
+                <div className="text-[13px] text-slate-500 mt-1">{p.telephone}</div>
               </div>
               <div className="text-right">
                 <div className="text-sm font-medium text-slate-900">{p.jour}</div>
-                <div className="text-[13px] text-slate-500">{p.creneau} · {p.duree_min} min</div>
+                <div className="text-[13px] text-slate-500">{p.debut} - {p.fin} · {p.duree} min</div>
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-              <div className="flex items-center gap-2 text-sm text-slate-700"><Car size={15} className="text-slate-400" /> {vehicule?.marque} {vehicule?.modele} · {vehicule?.immatriculation}</div>
+              <div className="flex items-center gap-2 text-sm text-slate-700"><Car size={15} className="text-slate-400" /> {p.vehicule} · {p.immatriculation}</div>
               <div className="text-sm text-slate-700 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(p.categorie).bar }} /> {p.prestation}
               </div>
@@ -768,7 +766,7 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
                     const vehicule = getVehicule(a.vehicule_id);
                     return (
                       <button key={a.id} onClick={() => onSelectAppt(a)} className="w-full text-left rounded-lg px-2.5 py-2" style={{ backgroundColor: c.bg, borderLeft: `3px solid ${c.bar}` }}>
-                        <div className="text-[11.5px] font-medium" style={{ color: c.text }}>{a.debut} · {vehicule?.marque}</div>
+                        <div className="text-[11.5px] font-medium" style={{ color: c.text }}>{a.debut} · {a.vehicule}</div>
                         <div className="text-[11px] text-slate-500 truncate">{a.prestation}</div>
                       </button>
                     );
@@ -1204,6 +1202,9 @@ const formattedPropositions = await Promise.all(
       immatriculation:
         vehicule?.immatriculation || "",
 
+      annee:
+        vehicule?.annee || "",
+
       prestation:
         prestation?.nom || "Prestation",
 
@@ -1243,8 +1244,8 @@ console.log(
   formattedPropositions
 );
 console.log(
-  "PREMIERE PROPOSITION :",
-  formattedPropositions[0]
+  "PREMIERE PROPOSITION JSON :",
+  JSON.stringify(formattedPropositions[0], null, 2)
 );
 
 setPropositions(formattedPropositions);
