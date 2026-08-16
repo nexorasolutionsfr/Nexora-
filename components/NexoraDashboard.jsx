@@ -1165,11 +1165,78 @@ console.log(
 );
 
 
-const formattedPropositions = (data || []).map((p) => {
-  return {
-    ...p,
-  };
-});
+const formattedPropositions = await Promise.all(
+  (data || []).map(async (p) => {
+
+    const { data: client } = await supabase
+      .from("clients")
+      .select("*")
+      .eq("id", p.client_id)
+      .single();
+
+    const { data: vehicule } = await supabase
+      .from("vehicules")
+      .select("*")
+      .eq("id", p.vehicule_id)
+      .single();
+
+    const { data: prestation } = await supabase
+      .from("prestations")
+      .select("*")
+      .eq("id", p.prestation_id)
+      .single();
+
+
+    const debut = new Date(p.date_debut_proposee);
+    const fin = new Date(p.date_fin_proposee);
+
+
+    return {
+      ...p,
+
+      client: client?.nom || "Client inconnu",
+
+      telephone: client?.telephone || "",
+
+      vehicule:
+        `${vehicule?.marque || ""} ${vehicule?.modele || ""}`.trim(),
+
+      immatriculation:
+        vehicule?.immatriculation || "",
+
+      prestation:
+        prestation?.nom || "Prestation",
+
+
+      jour:
+        debut.toLocaleDateString("fr-FR", {
+          weekday: "long",
+        }),
+
+
+      date:
+        debut.toLocaleDateString("fr-FR"),
+
+
+      debut:
+        debut.toLocaleTimeString("fr-FR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+
+
+      fin:
+        fin.toLocaleTimeString("fr-FR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+
+
+      duree:
+        Math.round((fin - debut) / 60000),
+    };
+  })
+);
 
 console.log(
   "PROPOSITIONS FORMATEES :",
