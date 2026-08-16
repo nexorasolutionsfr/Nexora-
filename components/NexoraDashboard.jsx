@@ -49,6 +49,17 @@ const CATEGORY_COLORS = {
   urgence: { bar: "#DC2626", bg: "#FDECEC", text: "#B91C1C", label: "Urgence" },
 };
 const catColor = (cat) => CATEGORY_COLORS[cat] || CATEGORY_COLORS.entretien;
+function formatPhone(phone) {
+  if (!phone) return "";
+
+  const clean = phone.replace(/\s/g, "");
+
+  if (clean.length === 10) {
+    return clean.match(/.{1,2}/g).join(" ");
+  }
+
+  return phone;
+}
 
 const STATUT_TONE = { "Confirmé": "green", "En attente": "amber", "Terminé": "slate" };
 const URGENCE_TONE = { "Élevée": "red", "Moyenne": "amber", "Faible": "slate" };
@@ -452,7 +463,7 @@ function ApptDetailModal({ appt, onClose }) {
             <span className="text-slate-400">· {colors.label}</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-slate-700">
-          <Phone size={15} className="text-slate-400" /> {appt.telephone}
+          <Phone size={15} className="text-slate-400" /> {formatPhone(appt.telephone)}
           </div>
         </div>
       </div>
@@ -593,7 +604,7 @@ function ValiderView({ propositions, onAccept, onRefuse }) {
                   <Badge tone="amber">En attente de validation</Badge>
                   <SourceBadge source={p.source} />
                 </div>
-                <div className="text-[13px] text-slate-500 mt-1">{p.telephone}</div>
+                <div className="text-[13px] text-slate-500 mt-1">{formatPhone(p.telephone)}</div>
               </div>
               <div className="text-right">
                 <div className="text-sm font-medium text-slate-900">{p.jour}</div>
@@ -868,7 +879,7 @@ function ClientsView() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-          <div className="flex items-center gap-2 text-sm text-slate-600"><Phone size={14} className="text-slate-400" /> {selected?.telephone}</div>
+          <Phone size={14} className="text-slate-400" /> {formatPhone(selected?.telephone)}
           <div className="flex items-center gap-2 text-sm text-slate-600"><Mail size={14} className="text-slate-400" /> {selected?.email}</div>
         </div>
 
