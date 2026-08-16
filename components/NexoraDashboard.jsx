@@ -1062,7 +1062,75 @@ function ParametresView() {
     </div>
   );
 }
+function ProposerRdvModal({ demande, onClose }) {
 
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+
+      <div className="bg-white rounded-2xl p-6 w-full max-w-lg">
+
+        <h2 className="text-lg font-semibold text-slate-900">
+          Proposer un rendez-vous
+        </h2>
+
+        <div className="mt-5 space-y-3 text-sm">
+
+          <div>
+            <span className="text-slate-500">
+              Client :
+            </span>
+            <div className="font-medium">
+              {demande.clients?.nom}
+            </div>
+          </div>
+
+
+          <div>
+            <span className="text-slate-500">
+              Véhicule :
+            </span>
+            <div className="font-medium">
+              {demande.vehicules?.marque} {demande.vehicules?.modele} {demande.vehicules?.annee}
+            </div>
+          </div>
+
+
+          <div>
+            <span className="text-slate-500">
+              Demande :
+            </span>
+            <div className="font-medium">
+              {demande.type_demande}
+            </div>
+          </div>
+
+        </div>
+
+
+        <div className="flex justify-end gap-3 mt-6">
+
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl border border-slate-200"
+          >
+            Annuler
+          </button>
+
+
+          <button
+            className="px-4 py-2 rounded-xl text-white"
+            style={{ backgroundColor:"#3D6BE0" }}
+          >
+            Continuer
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+  );
+}
 // =====================================================================================
 // APP SHELL
 // =====================================================================================
