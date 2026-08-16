@@ -1143,24 +1143,7 @@ useEffect(() => {
 
     const { data, error } = await supabase
       .from("propositions_rdv")
-      .select(`
-        *,
-        clients (
-          nom,
-          telephone,
-          email
-        ),
-        vehicules (
-          marque,
-          modele,
-          immatriculation
-        ),
-        prestations (
-          nom,
-          categorie,
-          duree_minutes
-        )
-      `)
+      .select("*")
       .eq(
         "garage_id",
         "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
