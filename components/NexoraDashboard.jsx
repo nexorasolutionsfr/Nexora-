@@ -797,7 +797,18 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
 }
 
 function DemandesView({ demandes }) {
-  const statutTone = (s) => (s === "Nouveau" ? "amber" : s === "Traité" ? "green" : "slate");
+  const statutTone = (s) => {
+  if (s === "nouveau") return "amber";
+  if (s === "rendez_vous_confirme") return "green";
+  return "slate";
+};
+
+
+const statutLabel = (s) => {
+  if (s === "nouveau") return "Nouveau";
+  if (s === "rendez_vous_confirme") return "Rendez-vous confirmé";
+  return s;
+};
   if (demandes.length === 0) {
     return <EmptyState icon={Inbox} title="Aucune demande pour le moment" subtitle="Les nouvelles demandes clients apparaîtront ici automatiquement." />;
   }
@@ -849,7 +860,7 @@ function DemandesView({ demandes }) {
 
       <td className="px-5 py-3.5">
         <Badge tone={statutTone(d.statut)}>
-          {d.statut}
+          {statutLabel(d.statut)}
         </Badge>
       </td>
 
