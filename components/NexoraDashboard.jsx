@@ -1513,7 +1513,12 @@ if (updateError) {
           </div>
         </div>
       </aside>
-
+{selectedDemande && (
+  <ProposerRdvModal
+    demande={selectedDemande}
+    onClose={() => setSelectedDemande(null)}
+  />
+)}
       <main className="flex-1 min-w-0">
         <div className="flex items-center justify-between px-5 md:px-8 py-5 border-b border-slate-200 bg-white">
           <div>
