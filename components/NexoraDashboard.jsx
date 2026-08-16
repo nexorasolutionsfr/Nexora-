@@ -825,7 +825,11 @@ const statutLabel = (s) => {
         <tbody className="divide-y divide-slate-100">
           {demandes.map((d) => {
   return (
-    <tr key={d.id} className="hover:bg-slate-50/60">
+    <tr
+  key={d.id}
+  onClick={() => onSelectDemande(d)}
+  className="hover:bg-slate-50/60 cursor-pointer"
+>
 
       <td className="px-5 py-3.5 font-medium text-slate-900">
         {d.clients?.nom || "Client inconnu"}
@@ -1076,10 +1080,7 @@ export default function NexoraDashboard() {
   const [rendezVous, setRendezVous] = useState([]);
   const [demandes, setDemandes] = useState([]);
   const [selectedDemande, setSelectedDemande] = useState(null);
-  useEffect(() => {
-  console.log("DEMANDE SELECTIONNEE PARENT :", selectedDemande);
-}, [selectedDemande]);
- 
+  
   useEffect(() => {
   async function loadRendezVous() {
     const { data, error } = await supabase
