@@ -1,18 +1,27 @@
 import { supabase } from "@/lib/supabase";
 
 export default async function TestSupabase() {
-  const { data, error } = await supabase
-    .from("rendez_vous")
-    .select("*")
-    .eq(
-      "garage_id",
-      "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
-    );
+
+  const demandes = await supabase
+    .from("demandes")
+    .select("*");
+
+  const propositions = await supabase
+    .from("propositions_rdv")
+    .select("*");
+
+  const clients = await supabase
+    .from("clients")
+    .select("*");
 
   return (
     <pre>
       {JSON.stringify(
-        { data, error },
+        {
+          demandes,
+          propositions,
+          clients
+        },
         null,
         2
       )}
