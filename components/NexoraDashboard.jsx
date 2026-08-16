@@ -31,6 +31,18 @@ import {
   Star,
   AlertTriangle,
   CheckCircle2,
+  BellRing,
+  CircleDollarSign,
+  ClipboardList,
+  Send,
+  Plus,
+  Save,
+  Pencil,
+  Trash2,
+  CalendarDays,
+  CalendarRange,
+  ArrowRight,
+  ReceiptText,
 } from "lucide-react";
 // Vercel rebuild trigger
 // =====================================================================================
@@ -43,6 +55,21 @@ const ACCENT_SOFT = "#EAF0FF";
 const BG = "#F5F7FA";
 const ACTIVE_GARAGE_ID = "bcd7f692-1c28-435c-87d1-92f84aa0e6bb";
 const APP_TIME_ZONE = "Europe/Paris";
+const WORKSHOP_STAGES = [
+  { key: "a_venir", label: "À venir", color: "#64748B" },
+  { key: "depose", label: "Véhicule déposé", color: "#3D6BE0" },
+  { key: "diagnostic", label: "Diagnostic", color: "#7C3AED" },
+  { key: "attente_client", label: "En attente client", color: "#D97706" },
+  { key: "intervention", label: "En intervention", color: "#0F766E" },
+  { key: "pret", label: "Prêt", color: "#16A34A" },
+];
+const WORKSHOP_RESOURCES = [
+  { id: "mec_1", name: "Lucas Martin", role: "Mécanicien", color: "#3D6BE0" },
+  { id: "mec_2", name: "Inès Robert", role: "Mécanicienne", color: "#7C3AED" },
+  { id: "mec_3", name: "Thomas Leroy", role: "Mécanicien", color: "#0F766E" },
+  { id: "pont_1", name: "Pont 1", role: "Pont", color: "#D97706" },
+  { id: "pont_2", name: "Pont 2", role: "Pont", color: "#DC2626" },
+];
 
 const dateKey = (value) => {
   if (!value) return "";
@@ -64,6 +91,26 @@ const dayLabel = (value) => new Intl.DateTimeFormat("fr-FR", {
   timeZone: APP_TIME_ZONE,
   weekday: "long",
 }).format(new Date(value));
+const cleanMotif = (value = "") => value.replace(/[.\s]+$/, "").trim();
+const isToday = (value) => dateKey(value) === dateKey(new Date());
+const dateTimeLabel = (value) => new Intl.DateTimeFormat("fr-FR", {
+  timeZone: APP_TIME_ZONE,
+  day: "2-digit",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+}).format(new Date(value));
+
+function getGarageOpenState(garageData) {
+  const now = new Date();
+  const localDay = new Intl.DateTimeFormat("en-US", { timeZone: APP_TIME_ZONE, weekday: "short" }).format(now);
+  if (["Sat", "Sun"].includes(localDay)) return { open: false, label: "Fermé aujourd’hui" };
+  const time = new Intl.DateTimeFormat("fr-FR", { timeZone: APP_TIME_ZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(now);
+  const opening = garageData.horaire_ouverture || "08:00";
+  const closing = garageData.horaire_fermeture || "18:00";
+  const open = opening <= time && time < closing;
+  return { open, label: open ? "Ouvert maintenant" : `Ouvre ${opening}–${closing}` };
+}
 
 const CATEGORY_COLORS = {
   entretien: { bar: "#16A34A", bg: "#E7F6EC", text: "#15803D", label: "Entretien" },
@@ -237,6 +284,7 @@ const getDerniereVisite = (clientId) => {
 
 const navItems = [
   { key: "dashboard", label: "Dashboard", icon: Home },
+  { key: "atelier", label: "Atelier en direct", icon: Wrench },
   { key: "agenda", label: "Agenda", icon: Calendar },
   { key: "valider", label: "Rendez-vous à valider", icon: Clock },
   { key: "demandes", label: "Demandes clients", icon: Inbox },
@@ -265,6 +313,24 @@ const durationRows = (debut, fin) => {
   const [h1, m1] = debut.split(":").map(Number);
   const [h2, m2] = fin.split(":").map(Number);
   return Math.max(1, ((h2 * 60 + m2) - (h1 * 60 + m1)) / 30);
+};
+const findSuggestedSlot = (rendezVous, duration = 60) => {
+  const candidate = new Date();
+  candidate.setMinutes(0, 0, 0);
+  for (let offset = 0; offset < 14; offset += 1) {
+    const day = new Date(candidate);
+    day.setDate(candidate.getDate() + offset);
+    if ([0, 6].includes(day.getDay())) continue;
+    for (let hour = 8; hour < 18; hour += 1) {
+      const start = new Date(day);
+      start.setHours(hour, 0, 0, 0);
+      if (start <= new Date()) continue;
+      const end = new Date(start.getTime() + duration * 60_000);
+      const unavailable = rendezVous.some((rdv) => new Date(rdv.date_debut) < end && new Date(rdv.date_fin) > start);
+      if (!unavailable) return { date: dateKey(start), time: timeLabel(start) };
+    }
+  }
+  return { date: dateKey(candidate), time: "09:00" };
 };
 
 // =====================================================================================
@@ -362,7 +428,8 @@ function Toggle({ checked }) {
   );
 }
 
-function GarageIdentityCard() {
+function GarageIdentityCard({ garageData = garage }) {
+  const openState = getGarageOpenState(garageData);
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col sm:flex-row sm:items-center gap-5">
       <div className="w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 border-2 border-dashed" style={{ borderColor: "#CBD5E1", backgroundColor: "#F8FAFC" }} title="Emplacement du logo du garage">
@@ -370,15 +437,15 @@ function GarageIdentityCard() {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="text-lg font-semibold text-slate-900">{garage.nom}</div>
-          <Badge tone={garage.ouvert_aujourdhui ? "green" : "red"}>
-            {garage.ouvert_aujourdhui ? "🟢 Ouvert aujourd'hui" : "🔴 Fermé aujourd'hui"}
+          <div className="text-lg font-semibold text-slate-900">{garageData.nom}</div>
+          <Badge tone={openState.open ? "green" : "red"}>
+            {openState.open ? "🟢 Ouvert maintenant" : "🔴 Fermé actuellement"}
           </Badge>
         </div>
         <div className="flex items-center gap-4 mt-1.5 flex-wrap">
-          <span className="flex items-center gap-1.5 text-[13px] text-slate-500"><MapPin size={13} /> {garage.ville}</span>
-          <span className="flex items-center gap-1.5 text-[13px] text-slate-500"><Clock size={13} /> {garage.horaire_ouverture}–{garage.horaire_fermeture}</span>
-          <span className="flex items-center gap-1.5 text-[13px] text-slate-500"><Users size={13} /> {garage.nb_mecaniciens} mécaniciens disponibles</span>
+          <span className="flex items-center gap-1.5 text-[13px] text-slate-500"><MapPin size={13} /> {garageData.ville}</span>
+          <span className="flex items-center gap-1.5 text-[13px] text-slate-500"><Clock size={13} /> {garageData.horaire_ouverture}–{garageData.horaire_fermeture}</span>
+          <span className="flex items-center gap-1.5 text-[13px] text-slate-500"><Users size={13} /> {garageData.nb_mecaniciens} mécaniciens disponibles · {openState.label}</span>
         </div>
       </div>
     </div>
@@ -386,16 +453,15 @@ function GarageIdentityCard() {
 }
 
 // Centre de contrôle Nexora IA — carte ROI + timeline des actions automatisées
-function NexoraControlCenter() {
-  const heures = Math.floor(aiStatsToday.tempsEconomiseMin / 60);
-  const minutes = aiStatsToday.tempsEconomiseMin % 60;
-  const valeurRecuperee = Math.round((aiStatsToday.tempsEconomiseMin / 60) * aiStatsToday.tarifHoraireAdmin);
+function NexoraControlCenter({ aiStats = aiStatsToday, timeline = timelineTable }) {
+  const heures = Math.floor(aiStats.tempsEconomiseMin / 60);
+  const minutes = aiStats.tempsEconomiseMin % 60;
+  const valeurRecuperee = Math.round((aiStats.tempsEconomiseMin / 60) * aiStats.tarifHoraireAdmin);
   const rows = [
-    { label: "Emails analysés", value: aiStatsToday.emailsAnalyses },
-    { label: "Demandes clients détectées", value: aiStatsToday.demandesDetectees },
-    { label: "Créneaux calculés", value: aiStatsToday.creneauxCalcules },
-    { label: "Propositions envoyées", value: aiStatsToday.propositionsEnvoyees },
-    { label: "Rendez-vous confirmés", value: aiStatsToday.rdvConfirmes },
+    { label: "Demandes détectées", value: aiStats.demandesDetectees },
+    { label: "Créneaux calculés", value: aiStats.creneauxCalcules },
+    { label: "Propositions à traiter", value: aiStats.propositionsEnvoyees },
+    { label: "Rendez-vous confirmés", value: aiStats.rdvConfirmes },
   ];
 
   return (
@@ -408,7 +474,7 @@ function NexoraControlCenter() {
           </div>
           <div className="font-semibold text-[15px]">Nexora Intelligence</div>
         </div>
-        <div className="text-[12.5px] mt-1" style={{ color: "#8CA0C9" }}>Aujourd'hui</div>
+        <div className="text-[12.5px] mt-1" style={{ color: "#8CA0C9" }}>Données opérationnelles du jour</div>
 
         <div className="mt-4 space-y-2.5 relative">
           {rows.map((r) => (
@@ -434,9 +500,9 @@ function NexoraControlCenter() {
       </div>
 
       <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-        <div className="font-semibold text-slate-900 text-[15px] mb-4">Activité automatisée en direct</div>
+        <div className="flex items-center justify-between mb-4"><div className="font-semibold text-slate-900 text-[15px]">Activité automatisée en direct</div><span className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-700"><span className="w-2 h-2 rounded-full bg-emerald-500" />Synchronisé</span></div>
         <div className="space-y-0">
-          {timelineTable.map((t, i) => {
+          {timeline.length === 0 ? <div className="py-8 text-center text-[13px] text-slate-400">L’activité n8n et Supabase apparaîtra ici en direct.</div> : timeline.map((t, i) => {
             const meta = TIMELINE_ICON[t.type];
             const Icon = meta.icon;
             const isLast = i === timelineTable.length - 1;
@@ -495,10 +561,127 @@ function ApptDetailModal({ appt, onClose }) {
   );
 }
 
+function WorkshopControlPanel({ rendezVous, demandes, clients, garageData, onNavigate }) {
+  const now = new Date();
+  const dayAppointments = rendezVous.filter((r) => isToday(r.date_debut));
+  const urgent = demandes.filter((d) => d.urgence === "Élevée" && d.statut !== "rendez_vous_confirme").length;
+  const overdue = rendezVous.filter((r) => new Date(r.date_fin) < now && !["Terminé", "Annulé"].includes(r.statut)).length;
+  const imminent = dayAppointments.filter((r) => {
+    const minutes = (new Date(r.date_debut) - now) / 60000;
+    return minutes >= 0 && minutes <= 120;
+  }).length;
+  const toRecall = clients.filter((c) => c.fidele).length;
+  const occupiedMinutes = dayAppointments.reduce((sum, r) => sum + Math.max(0, (new Date(r.date_fin) - new Date(r.date_debut)) / 60000), 0);
+  const capacity = Math.max(1, (garageData.nb_mecaniciens || 1) * 9 * 60);
+  const occupancy = Math.min(100, Math.round((occupiedMinutes / capacity) * 100));
+  const cards = [
+    { label: "Urgences à traiter", value: urgent, hint: urgent ? "À appeler en priorité" : "Aucune urgence", icon: AlertTriangle, tone: "#DC2626", target: "demandes" },
+    { label: "Retards atelier", value: overdue, hint: overdue ? "Intervention à vérifier" : "Tout est à l’heure", icon: Clock, tone: "#D97706", target: "atelier" },
+    { label: "RDV dans 2 heures", value: imminent, hint: imminent ? "Préparez les dossiers" : "Rien d’imminent", icon: CalendarClock, tone: "#3D6BE0", target: "agenda" },
+    { label: "Clients à rappeler", value: toRecall, hint: "Fidélisation à déclencher", icon: Phone, tone: "#7C3AED", target: "clients" },
+  ];
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+      {cards.map((card) => {
+        const Icon = card.icon;
+        return <button key={card.label} onClick={() => onNavigate(card.target)} className="bg-white border border-slate-200 hover:border-slate-300 hover:shadow-sm rounded-2xl p-4 text-left transition-all">
+          <div className="flex justify-between gap-2"><div className="text-[12.5px] font-medium text-slate-500">{card.label}</div><div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${card.tone}18` }}><Icon size={15} color={card.tone} /></div></div>
+          <div className="text-2xl font-semibold text-slate-900 mt-2">{card.value}</div><div className="text-[12px] text-slate-400 mt-1">{card.hint}</div>
+        </button>;
+      })}
+      <button onClick={() => onNavigate("agenda")} className="rounded-2xl p-4 text-left text-white overflow-hidden relative" style={{ backgroundColor: NAVY }}>
+        <div className="absolute -right-7 -top-7 w-24 h-24 rounded-full bg-blue-400/20" />
+        <div className="text-[12.5px] text-blue-200">Taux de remplissage</div><div className="flex items-end gap-2 mt-2"><div className="text-2xl font-semibold">{occupancy}%</div><div className="text-[12px] text-blue-200 mb-1">aujourd’hui</div></div>
+        <div className="mt-3 h-1.5 rounded-full bg-white/15 overflow-hidden"><div className="h-full rounded-full bg-blue-300" style={{ width: `${occupancy}%` }} /></div>
+      </button>
+    </div>
+  );
+}
+
+function WorkshopTimeline({ rendezVous, onSelectAppt, compact = false }) {
+  const grouped = WORKSHOP_STAGES.map((stage) => ({
+    ...stage,
+    appointments: rendezVous.filter((r) => (r.statut_atelier || "a_venir") === stage.key && isToday(r.date_debut)),
+  }));
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+      <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100"><div><div className="font-semibold text-slate-900 text-[15px]">Flux atelier en direct</div><div className="text-[12.5px] text-slate-500 mt-0.5">Chaque véhicule est visible, de son arrivée à sa restitution.</div></div><Badge tone="green">{grouped.reduce((sum, stage) => sum + stage.appointments.length, 0)} véhicules suivis</Badge></div>
+      <div className={`grid grid-cols-1 ${compact ? "md:grid-cols-3" : "xl:grid-cols-6"} gap-px bg-slate-200`}>
+        {grouped.map((stage, index) => <div key={stage.key} className="bg-white min-h-[150px] p-3">
+          <div className="flex items-center justify-between gap-2 mb-3"><div className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: stage.color }}><span className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }} />{stage.label}</div><span className="text-[11px] text-slate-400">{stage.appointments.length}</span></div>
+          <div className="space-y-2">{stage.appointments.length === 0 ? <div className="text-[11.5px] text-slate-300 pt-3">Aucun véhicule</div> : stage.appointments.map((appt) => <button key={appt.id} onClick={() => onSelectAppt(appt)} className="w-full text-left rounded-lg p-2 hover:bg-slate-50 border border-slate-100"><div className="text-[12px] font-medium text-slate-800 truncate">{appt.client}</div><div className="text-[11px] text-slate-500 truncate">{appt.vehicule}</div><div className="text-[11px] font-medium mt-1" style={{ color: stage.color }}>{appt.debut}</div></button>)}</div>
+          {index < grouped.length - 1 && !compact && <ArrowRight size={14} className="hidden xl:block absolute" />}
+        </div>)}
+      </div>
+    </div>
+  );
+}
+
+function SmartAlerts({ clients, demandes, rendezVous, onNavigate }) {
+  const now = new Date();
+  const oneYearAgo = new Date(now);
+  oneYearAgo.setFullYear(now.getFullYear() - 1);
+  const dormantClients = clients.filter((client) => {
+    if (!client.fidele) return false;
+    const last = rendezVous.filter((rdv) => rdv.client_id === client.id && rdv.statut === "Terminé").sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut))[0];
+    return !last || new Date(last.date_debut) < oneYearAgo;
+  });
+  const technicalControl = clients.filter((client) => {
+    const vehicles = Array.isArray(client.vehicules) ? client.vehicules : [];
+    return vehicles.some((vehicle) => vehicle.controle_technique_echeance && new Date(vehicle.controle_technique_echeance) <= new Date(now.getTime() + 45 * 86_400_000));
+  });
+  const quotesToFollow = demandes.filter((demande) => demande.statut === "en_attente").length;
+  const unconfirmed = rendezVous.filter((rdv) => ["En attente", "en_attente"].includes(rdv.statut) && new Date(rdv.date_debut) > now).length;
+  const alerts = [
+    { label: "Clients fidèles à rappeler", value: dormantClients.length, note: "Aucune visite depuis 12 mois", target: "clients", tone: "#7C3AED" },
+    { label: "Contrôles techniques proches", value: technicalControl.length, note: "Échéance dans les 45 jours", target: "clients", tone: "#D97706" },
+    { label: "Devis à relancer", value: quotesToFollow, note: "Demande en attente client", target: "demandes", tone: "#3D6BE0" },
+    { label: "RDV non confirmés", value: unconfirmed, note: "À sécuriser avant l’atelier", target: "agenda", tone: "#DC2626" },
+  ];
+  return <div className="bg-white border border-slate-200 rounded-2xl shadow-sm"><div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between"><div><div className="font-semibold text-slate-900 text-[15px]">Opportunités et alertes intelligentes</div><div className="text-[12.5px] text-slate-500 mt-0.5">Ce que l’équipe peut faire pour éviter une perte de temps ou de chiffre d’affaires.</div></div><Sparkles size={17} color={ACCENT} /></div><div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 divide-x-0 sm:divide-x divide-y sm:divide-y-0 divide-slate-100">{alerts.map((alert) => <button key={alert.label} onClick={() => onNavigate(alert.target)} className="p-4 text-left hover:bg-slate-50 transition-colors"><div className="text-[12px] font-medium text-slate-500">{alert.label}</div><div className="text-2xl font-semibold mt-2" style={{ color: alert.tone }}>{alert.value}</div><div className="text-[11.5px] text-slate-400 mt-1">{alert.note}</div></button>)}</div></div>;
+}
+
+function FinancialOverview({ rendezVous, demandes, propositions }) {
+  const todayRdv = rendezVous.filter((r) => isToday(r.date_debut));
+  const completed = rendezVous.filter((r) => r.statut === "Terminé");
+  const estimate = (r) => Number(r.montant_ttc || r.montant || 0);
+  const forecast = todayRdv.reduce((sum, r) => sum + estimate(r), 0);
+  const average = completed.length ? Math.round(completed.reduce((sum, r) => sum + estimate(r), 0) / completed.length) : 0;
+  const accepted = propositions.filter((p) => p.statut === "accepte").length;
+  const rate = accepted + propositions.length ? Math.round((accepted / (accepted + propositions.length)) * 100) : 0;
+  const bySource = Object.keys(SOURCE_META).map((source) => ({ source, count: demandes.filter((d) => d.source === source).length })).filter((x) => x.count);
+  const max = Math.max(1, ...bySource.map((x) => x.count));
+  return <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+    <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm"><div className="flex items-center justify-between"><div><div className="font-semibold text-slate-900 text-[15px]">Pilotage financier</div><div className="text-[12.5px] text-slate-500">Estimation basée sur les montants renseignés.</div></div><CircleDollarSign size={19} color={ACCENT} /></div><div className="grid grid-cols-2 gap-3 mt-5"><div className="bg-blue-50 rounded-xl p-3"><div className="text-[11.5px] text-blue-700">CA prévisionnel jour</div><div className="text-xl font-semibold text-blue-950 mt-1">{forecast ? `${forecast.toLocaleString("fr-FR")} €` : "À renseigner"}</div></div><div className="bg-slate-50 rounded-xl p-3"><div className="text-[11.5px] text-slate-500">Panier moyen</div><div className="text-xl font-semibold text-slate-900 mt-1">{average ? `${average.toLocaleString("fr-FR")} €` : "—"}</div></div><div className="text-[13px] text-slate-600">Taux de validation <strong className="text-slate-900">{rate}%</strong></div><div className="text-[13px] text-slate-600">No-shows <strong className="text-slate-900">0</strong></div></div></div>
+    <div className="lg:col-span-3 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm"><div className="font-semibold text-slate-900 text-[15px]">Origine des demandes</div><div className="text-[12.5px] text-slate-500 mt-0.5">Pour investir là où les clients vous trouvent vraiment.</div><div className="mt-4 space-y-3">{bySource.length === 0 ? <div className="text-[13px] text-slate-400 py-3">Les sources apparaîtront avec les demandes clients.</div> : bySource.map(({ source, count }) => { const meta = SOURCE_META[source]; return <div key={source} className="grid grid-cols-[110px_1fr_28px] items-center gap-3"><div className="text-[12px] text-slate-600">{meta?.label || source}</div><div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${(count / max) * 100}%`, backgroundColor: meta?.text || ACCENT }} /></div><div className="text-[12px] font-semibold text-slate-700 text-right">{count}</div></div>; })}</div></div>
+  </div>;
+}
+
+function AutomationPanel({ events = [], garageData }) {
+  const status = garageData.google_agenda_connecte ? "Synchronisé" : "Connexion requise";
+  const chips = [
+    { label: "SMS", value: events.filter((e) => e.type === "sms").length, tone: "green" },
+    { label: "Emails", value: events.filter((e) => e.type === "email").length, tone: "green" },
+    { label: "Rappels", value: events.filter((e) => e.type === "rappel").length, tone: "amber" },
+    { label: "Google Calendar", value: status, tone: garageData.google_agenda_connecte ? "green" : "amber" },
+  ];
+  return <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm"><div className="flex items-start justify-between gap-3"><div><div className="font-semibold text-slate-900 text-[15px]">Automatisations suivies</div><div className="text-[12.5px] text-slate-500 mt-0.5">Chaque action n8n sera traçable ici.</div></div><BellRing size={18} color={ACCENT} /></div><div className="grid grid-cols-2 gap-2 mt-4">{chips.map((chip) => <div key={chip.label} className="bg-slate-50 rounded-xl px-3 py-2.5"><div className="text-[11px] text-slate-500">{chip.label}</div><div className="mt-1"><Badge tone={chip.tone}>{chip.value || "En attente"}</Badge></div></div>)}</div>{!garageData.google_agenda_connecte && <div className="mt-3 text-[12px] text-amber-800 bg-amber-50 rounded-lg p-2.5">Google Calendar n’est pas connecté : les rendez-vous restent suivis dans Nexora.</div>}{events.some((event) => event.statut === "erreur") && <div className="mt-3 text-[12px] text-red-800 bg-red-50 rounded-lg p-2.5">Une automatisation nécessite votre attention.</div>}</div>;
+}
+
+function AtelierView({ rendezVous, onSelectAppt, garageData }) {
+  const todayAppts = rendezVous.filter((r) => isToday(r.date_debut));
+  const resourceAppointments = (resource, index) => todayAppts.filter((appt, appointmentIndex) => (appt.mecanicien_id || appt.pont_id || WORKSHOP_RESOURCES[appointmentIndex % Math.max(1, garageData.nb_mecaniciens || 3)]?.id) === resource.id);
+  return <div className="space-y-5">
+    <div className="rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}><div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" /><div className="relative flex items-start justify-between flex-wrap gap-4"><div><div className="flex items-center gap-2"><Wrench size={18} color="#8FB0FF" /><span className="font-semibold">Atelier en direct</span></div><div className="text-2xl font-semibold mt-3">Votre équipe sait quoi faire, maintenant.</div><div className="text-[13px] mt-1 text-blue-200">Répartissez les véhicules, suivez les retards et gardez le client informé.</div></div><div className="grid grid-cols-2 gap-2"><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Véhicules aujourd’hui</div><div className="text-xl font-semibold mt-1">{todayAppts.length}</div></div><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Équipe disponible</div><div className="text-xl font-semibold mt-1">{garageData.nb_mecaniciens || 0}</div></div></div></div></div>
+    <WorkshopTimeline rendezVous={rendezVous} onSelectAppt={onSelectAppt} />
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"><div className="px-5 py-4 border-b border-slate-100"><div className="font-semibold text-slate-900 text-[15px]">Planning des ressources</div><div className="text-[12.5px] text-slate-500 mt-0.5">Affectez prochainement chaque rendez-vous à un mécanicien et à un pont.</div></div><div className="overflow-x-auto"><div className="min-w-[850px]"><div className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] border-b border-slate-100">{["Ressource", ...heuresGrille].map((hour) => <div key={hour} className="px-3 py-2 text-[11px] font-medium text-slate-400 border-r border-slate-100">{hour}</div>)}</div>{WORKSHOP_RESOURCES.map((resource, index) => { const assigned = resourceAppointments(resource, index); return <div key={resource.id} className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] min-h-[74px] border-b border-slate-100 last:border-0"><div className="px-3 py-3 border-r border-slate-100"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resource.color }} /><div><div className="text-[12.5px] font-medium text-slate-800">{resource.name}</div><div className="text-[11px] text-slate-400">{resource.role}</div></div></div></div><div className="col-span-10 relative p-1.5 flex gap-1.5">{assigned.map((appt) => <button key={appt.id} onClick={() => onSelectAppt(appt)} className="h-[58px] max-w-[180px] px-2 rounded-lg text-left overflow-hidden" style={{ backgroundColor: `${resource.color}1A`, borderLeft: `3px solid ${resource.color}`, width: `${Math.max(76, durationRows(appt.debut, appt.fin) * 66)}px` }}><div className="text-[11px] font-semibold truncate" style={{ color: resource.color }}>{appt.client}</div><div className="text-[10.5px] text-slate-500 truncate">{appt.prestation}</div></button>)}</div></div>; })}</div></div></div>
+  </div>;
+}
+
 // =====================================================================================
 // VIEWS
 // =====================================================================================
-function DashboardView({ stats, propositions, setView, onSelectAppt, loading, rendezVous }) {
+function DashboardView({ stats, propositions, setView, onSelectAppt, loading, rendezVous, demandes, clients, garageData, aiStats, timeline, automationEvents }) {
   const upcomingAppts = [...rendezVous]
     .filter((r) => new Date(r.date_fin) >= new Date())
     .sort((a, b) => new Date(a.date_debut) - new Date(b.date_debut));
@@ -520,7 +703,7 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
 
   return (
     <div className="space-y-6">
-      <GarageIdentityCard />
+      <GarageIdentityCard garageData={garageData} />
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <StatCard label="Demandes en attente" value={stats.pending} icon={Inbox} />
@@ -528,6 +711,10 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
         <StatCard label="RDV aujourd'hui" value={todayAppts.length} icon={Calendar} />
         <StatCard label="Clients" value={stats.clients} icon={Users} />
       </div>
+
+      <WorkshopControlPanel rendezVous={rendezVous} demandes={demandes} clients={clients} garageData={garageData} onNavigate={setView} />
+
+      <SmartAlerts clients={clients} demandes={demandes} rendezVous={rendezVous} onNavigate={setView} />
 
       {(urgentRequests > 0 || propositions.length > 0) && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
@@ -542,7 +729,14 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
         </div>
       )}
 
-      <NexoraControlCenter />
+      <NexoraControlCenter aiStats={aiStats} timeline={timeline} />
+
+      <WorkshopTimeline rendezVous={rendezVous} onSelectAppt={onSelectAppt} compact />
+
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+        <div className="xl:col-span-3"><FinancialOverview rendezVous={rendezVous} demandes={demandes} propositions={propositions} /></div>
+        <div className="xl:col-span-2"><AutomationPanel events={automationEvents} garageData={garageData} /></div>
+      </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
@@ -677,7 +871,7 @@ function ValiderView({ propositions, onAccept, onRefuse }) {
   );
 }
 
-function AgendaView({ onSelectAppt, rendezVous }) {
+function AgendaView({ onSelectAppt, rendezVous, garageData, onConnectCalendar }) {
   const [mode, setMode] = useState("jour");
 
 const [currentDate, setCurrentDate] = useState(new Date());
@@ -691,6 +885,14 @@ const changeDate = (direction) => {
 
     if (mode === "semaine") {
       date.setDate(date.getDate() + (direction * 7));
+    }
+
+    if (mode === "mois") {
+      date.setMonth(date.getMonth() + direction);
+    }
+
+    if (mode === "annee") {
+      date.setFullYear(date.getFullYear() + direction);
     }
 
     return date;
@@ -717,6 +919,15 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
     }),
   };
 });
+const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+const monthGridStart = new Date(monthStart);
+monthGridStart.setDate(monthStart.getDate() - ((monthStart.getDay() + 6) % 7));
+const monthDays = Array.from({ length: 42 }, (_, index) => {
+  const date = new Date(monthGridStart);
+  date.setDate(monthGridStart.getDate() + index);
+  return { date, key: dateKey(date), inMonth: date.getMonth() === currentDate.getMonth() };
+});
+const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
@@ -725,19 +936,19 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
           <button 
           onClick={() => changeDate(-1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500"><ChevronLeft size={16} /></button>
           <div className="w-[260px] text-center font-semibold text-slate-900 text-[15px] capitalize">
-{mode === "jour"
+          {mode === "jour"
   ? currentDate.toLocaleDateString("fr-FR", {
       weekday: "long",
       day: "numeric",
       month: "long",
     })
-  : `Semaine du ${startOfWeek.toLocaleDateString("fr-FR", {
+  : mode === "semaine" ? `Semaine du ${startOfWeek.toLocaleDateString("fr-FR", {
       day: "numeric",
       month: "long",
     })} au ${endOfWeek.toLocaleDateString("fr-FR", {
       day: "numeric",
       month: "long",
-    })}`
+    })}` : mode === "mois" ? monthLabel : `${currentDate.getFullYear()}`
 }
           </div>
           <button 
@@ -745,15 +956,15 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-xl border border-slate-200 overflow-hidden text-[13px]">
-            {["jour", "semaine"].map((m) => (
+            {["jour", "semaine", "mois", "annee"].map((m) => (
               <button key={m} onClick={() => setMode(m)} className="px-3.5 py-1.5 font-medium capitalize" style={mode === m ? { backgroundColor: ACCENT, color: "#fff" } : { backgroundColor: "#fff", color: "#64748B" }}>
                 {m}
               </button>
             ))}
           </div>
           {/* Préparé pour une future synchronisation bidirectionnelle Google Calendar */}
-          <button title="Créez une proposition depuis une demande client" className="flex items-center gap-1.5 text-[13px] font-medium text-white px-3.5 py-1.5 rounded-xl opacity-70 cursor-not-allowed" style={{ backgroundColor: ACCENT }} disabled>
-            <CalendarPlus size={14} /> Ajouter un rendez-vous
+          <button onClick={onConnectCalendar} className="flex items-center gap-1.5 text-[13px] font-medium text-white px-3.5 py-1.5 rounded-xl" style={{ backgroundColor: garageData.google_agenda_connecte ? "#16A34A" : ACCENT }}>
+            <CalendarPlus size={14} /> {garageData.google_agenda_connecte ? "Google synchronisé" : "Connecter Google"}
           </button>
         </div>
       </div>
@@ -797,7 +1008,7 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
             );
           })}
         </div>
-      ) : (
+      ) : mode === "semaine" ? (
         <div className="grid grid-cols-5 divide-x divide-slate-100">
           {weekDays.map((day) => {
             const appts = rendezVous.filter((a) => a.date_key === day.key);
@@ -821,12 +1032,16 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
             );
           })}
         </div>
+      ) : mode === "mois" ? (
+        <div className="grid grid-cols-7 divide-x divide-y divide-slate-100 border-t border-slate-100">{["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map((day) => <div key={day} className="px-2 py-2 text-center text-[11px] font-medium text-slate-400 bg-slate-50">{day}</div>)}{monthDays.map((day) => { const appts = rendezVous.filter((appt) => appt.date_key === day.key); return <div key={day.key} className={`min-h-[105px] p-2 ${day.inMonth ? "bg-white" : "bg-slate-50/70"}`}><div className={`text-[11px] font-medium mb-1 ${day.inMonth ? "text-slate-600" : "text-slate-300"}`}>{day.date.getDate()}</div><div className="space-y-1">{appts.slice(0, 3).map((appt) => <button key={appt.id} onClick={() => onSelectAppt(appt)} className="w-full truncate text-left text-[10.5px] px-1.5 py-1 rounded" style={{ color: catColor(appt.categorie).text, backgroundColor: catColor(appt.categorie).bg }}>{appt.debut} · {appt.client}</button>)}{appts.length > 3 && <div className="text-[10px] text-slate-400">+{appts.length - 3} RDV</div>}</div></div>; })}</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 p-5">{Array.from({ length: 12 }, (_, month) => { const label = new Date(currentDate.getFullYear(), month, 1).toLocaleDateString("fr-FR", { month: "long" }); const count = rendezVous.filter((appt) => { const date = new Date(appt.date_debut); return date.getFullYear() === currentDate.getFullYear() && date.getMonth() === month; }).length; return <button key={month} onClick={() => { setCurrentDate(new Date(currentDate.getFullYear(), month, 1)); setMode("mois"); }} className="rounded-xl border border-slate-200 p-4 text-left hover:border-blue-300 hover:bg-blue-50/30"><div className="capitalize text-sm font-semibold text-slate-800">{label}</div><div className="text-[12px] text-slate-500 mt-1">{count} rendez-vous</div><div className="mt-3 h-1.5 rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${Math.min(100, count * 12)}%`, backgroundColor: ACCENT }} /></div></button>; })}</div>
       )}
     </div>
   );
 }
 
-  function DemandesView({ demandes, onSelectDemande }) {
+  function DemandesView({ demandes, onSelectDemande, onRecommend }) {
 
   const statutTone = (s) => {
   if (s === "nouveau") return "amber";
@@ -872,10 +1087,10 @@ const statutLabel = (s) => {
       </td>
 
       <td className="px-5 py-3.5 text-slate-600">
-        {d.message_original
+        {cleanMotif(d.message_original
           ?.split("Demande :")
           ?.pop()
-          ?.trim() || d.type_demande}
+          ?.trim() || d.type_demande)}
       </td>
 
       <td className="px-5 py-3.5">
@@ -903,9 +1118,9 @@ const statutLabel = (s) => {
     <button
       className="text-sm font-medium text-white px-3 py-2 rounded-xl cursor-pointer"
       style={{ backgroundColor: "#3D6BE0" }}
-      onClick={() => onSelectDemande(d)}
+      onClick={() => onRecommend ? onRecommend(d) : onSelectDemande(d)}
     >
-      Proposer un RDV
+      Action recommandée
     </button>
   )}
 </td>
@@ -919,7 +1134,7 @@ const statutLabel = (s) => {
   );
 }
 
-function ClientsView({ clients = [], rendezVous = [] }) {
+function ClientsView({ clients = [], rendezVous = [], onToast }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const filtered = clients.filter((c) => c.nom?.toLowerCase().includes(query.toLowerCase()));
@@ -932,6 +1147,7 @@ function ClientsView({ clients = [], rendezVous = [] }) {
     .map((r) => ({ prestation: r.prestation, date: new Date(r.date_debut).toLocaleDateString("fr-FR"), statut: r.statut, note: r.notes }));
   const notes = [];
   const derniereVisite = historique.find((h) => h.statut === "termine" || h.statut === "Terminé")?.date || null;
+  const totalCA = rendezVous.filter((r) => r.client_id === selected?.id && r.statut === "Terminé").reduce((sum, r) => sum + Number(r.montant_ttc || r.montant || 0), 0);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
@@ -939,7 +1155,7 @@ function ClientsView({ clients = [], rendezVous = [] }) {
         <div className="p-3 border-b border-slate-100">
           <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2">
             <Search size={15} className="text-slate-400" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher un client..." className="bg-transparent text-sm outline-none w-full placeholder:text-slate-400" />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher un client..." className="bg-transparent text-sm text-slate-900 outline-none w-full placeholder:text-slate-400" />
           </div>
         </div>
         {filtered.length === 0 ? (
@@ -964,9 +1180,13 @@ function ClientsView({ clients = [], rendezVous = [] }) {
       </div>
 
       <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="text-lg font-semibold text-slate-900">{selected?.nom}</div>
-          {selected?.fidele && <Badge tone="amber">⭐ Client fidèle</Badge>}
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            {selected?.avatar_url ? <img src={selected.avatar_url} alt="" className="w-12 h-12 rounded-2xl object-cover" /> : <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}>{selected?.nom?.split(" ").map((n) => n[0]).slice(0, 2).join("") || "CL"}</div>}
+            <div><div className="text-lg font-semibold text-slate-900">{selected?.nom}</div><div className="text-[12.5px] text-slate-500">Dossier client et véhicule</div></div>
+            {selected?.fidele && <Badge tone="amber">⭐ Client fidèle</Badge>}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap"><a href={selected?.telephone ? `tel:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><Phone size={13} />Appeler</a><a href={selected?.telephone ? `sms:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><MessageSquare size={13} />SMS</a><button onClick={() => onToast?.("Création de devis à relier au module devis")} className="px-3 py-2 rounded-xl text-[12.5px] font-medium text-white flex items-center gap-1.5" style={{ backgroundColor: ACCENT }}><ReceiptText size={13} />Devis</button></div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
@@ -974,19 +1194,16 @@ function ClientsView({ clients = [], rendezVous = [] }) {
           <div className="flex items-center gap-2 text-sm text-slate-600"><Mail size={14} className="text-slate-400" /> {selected?.email}</div>
         </div>
 
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6">
+          <div className="bg-slate-50 rounded-xl p-3.5"><div className="text-[12px] text-slate-500">Dernière visite</div><div className="font-semibold text-slate-800 text-sm mt-1">{derniereVisite || "Aucune visite enregistrée"}</div></div>
+          <div className="bg-slate-50 rounded-xl p-3.5"><div className="text-[12px] text-slate-500">CA client enregistré</div><div className="font-semibold text-slate-800 text-sm mt-1">{totalCA ? `${totalCA.toLocaleString("fr-FR")} €` : "À renseigner"}</div></div>
+        </div>
+
         <div className="mt-6">
           <div className="text-[13px] font-medium text-slate-500 mb-2">Véhicule</div>
           <div className="bg-slate-50 rounded-xl p-3.5 flex items-center gap-3">
             <Car size={16} className="text-slate-400" />
             <div className="text-sm text-slate-800">{vehicule?.marque} {vehicule?.modele} ({vehicule?.annee}) · <span className="text-slate-500">{vehicule?.immatriculation}</span></div>
-          </div>
-        </div>
-
-        <div className="mt-6">
-          <div className="text-[13px] font-medium text-slate-500 mb-2">Informations garage</div>
-          <div className="bg-slate-50 rounded-xl p-3.5 flex items-center justify-between text-sm">
-            <span className="text-slate-600">Dernière visite</span>
-            <span className="font-medium text-slate-800">{derniereVisite || "Aucune visite enregistrée"}</span>
           </div>
         </div>
 
@@ -1043,65 +1260,31 @@ function SettingsRow({ label, value, right }) {
   );
 }
 
-function ParametresView({ prestations = [] }) {
+function ParametresView({ garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving }) {
+  const [newPrestation, setNewPrestation] = useState({ nom: "", categorie: "entretien", duree_minutes: 60 });
   const catalogue = prestations.length ? prestations : prestationsCatalogue;
-  return (
+  const field = (label, name, type = "text") => <label className="block"><span className="text-[12.5px] font-medium text-slate-500">{label}</span><input type={type} value={garageData[name] ?? ""} onChange={(event) => onGarageChange(name, type === "number" ? Number(event.target.value) : event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" /></label>;
+  const createPrestation = () => {
+    if (!newPrestation.nom.trim()) return;
+    onAddPrestation({ ...newPrestation, nom: newPrestation.nom.trim() });
+    setNewPrestation({ nom: "", categorie: "entretien", duree_minutes: 60 });
+  };
+  return <div className="space-y-5">
+    <div className="flex items-center justify-between flex-wrap gap-3"><div><div className="text-lg font-semibold text-slate-900">Paramètres du garage</div><div className="text-[13px] text-slate-500">Vos changements alimentent directement le dashboard et les automatisations.</div></div><button onClick={onSave} disabled={saving} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: ACCENT }}><Save size={15} />{saving ? "Enregistrement…" : "Enregistrer"}</button></div>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-      <SettingsSection title="Informations garage">
-        <SettingsRow label="Nom du garage" value={garage.nom} />
-        <SettingsRow label="Ville" value={garage.ville} />
-        <SettingsRow label="Mécaniciens" value={`${garage.nb_mecaniciens} disponibles`} />
-        <SettingsRow label="Multi-garages" right={<Badge tone="slate">Bientôt disponible</Badge>} />
-      </SettingsSection>
-
-      <SettingsSection title="Horaires d'ouverture">
-        <SettingsRow label="Lundi – Vendredi" value={`${garage.horaire_ouverture} – ${garage.horaire_fermeture}`} />
-        <SettingsRow label="Samedi" value="09:00 – 12:00" />
-        <SettingsRow label="Dimanche" value="Fermé" />
-      </SettingsSection>
-
-      <SettingsSection title="Prestations disponibles">
-        <div className="space-y-2">
-          {catalogue.map((p) => (
-            <div key={p.nom} className="flex items-center justify-between text-sm py-1.5">
-              <span className="flex items-center gap-2 text-slate-700">
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(p.categorie).bar }} /> {p.nom}
-              </span>
-              <span className="text-slate-500 text-[13px]">{p.duree_minutes || p.duree_min || p.duree} min</span>
-            </div>
-          ))}
-        </div>
-      </SettingsSection>
-
-      <SettingsSection title="Connexions">
-        <SettingsRow
-          label="Boîte Gmail"
-          right={<Badge tone={garage.gmail_connecte ? "green" : "slate"}>{garage.gmail_connecte ? "Connectée" : "Non connectée"}</Badge>}
-        />
-        <SettingsRow
-          label="Google Agenda"
-          right={<Badge tone={garage.google_agenda_connecte ? "green" : "slate"}>{garage.google_agenda_connecte ? "Connecté" : "Non connecté"}</Badge>}
-        />
-      </SettingsSection>
-
-      <SettingsSection title="Notifications">
-        <div className="flex items-center justify-between py-2.5 border-b border-slate-100">
-          <div className="text-sm text-slate-600">Notifications par email</div>
-          <Toggle checked={garage.notifications_email} />
-        </div>
-        <div className="flex items-center justify-between py-2.5">
-          <div className="text-sm text-slate-600">Notifications par SMS</div>
-          <Toggle checked={garage.notifications_sms} />
-        </div>
-      </SettingsSection>
+      <SettingsSection title="Informations garage"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{field("Nom du garage", "nom")} {field("Ville", "ville")} {field("Logo (URL)", "logo_url")} {field("Mécaniciens disponibles", "nb_mecaniciens", "number")}</div></SettingsSection>
+      <SettingsSection title="Horaires d’ouverture"><div className="grid grid-cols-2 gap-4">{field("Ouverture", "horaire_ouverture", "time")} {field("Fermeture", "horaire_fermeture", "time")}</div><div className="mt-4 rounded-xl bg-slate-50 p-3 text-[12.5px] text-slate-600">Le statut « Ouvert maintenant » du dashboard se calcule automatiquement avec ces horaires, du lundi au vendredi.</div></SettingsSection>
+      <SettingsSection title="Prestations disponibles"><div className="space-y-1.5 max-h-[230px] overflow-y-auto">{catalogue.map((p) => <div key={p.id || p.nom} className="flex items-center gap-2 text-sm py-2 border-b border-slate-100 last:border-0"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(p.categorie).bar }} /><span className="flex-1 text-slate-700">{p.nom}</span><span className="text-slate-500 text-[12px]">{p.duree_minutes || p.duree_min || p.duree} min</span>{p.id && <button onClick={() => onDeletePrestation(p.id)} className="ml-1 text-slate-400 hover:text-red-600" title="Supprimer"><Trash2 size={14} /></button>}</div>)}</div><div className="grid grid-cols-[1fr_110px_74px] gap-2 mt-4"><input value={newPrestation.nom} onChange={(event) => setNewPrestation((prev) => ({ ...prev, nom: event.target.value }))} className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900" placeholder="Nouvelle prestation" /><input type="number" min="15" step="15" value={newPrestation.duree_minutes} onChange={(event) => setNewPrestation((prev) => ({ ...prev, duree_minutes: Number(event.target.value) }))} className="rounded-xl border border-slate-200 px-2 py-2 text-sm text-slate-900" /><button onClick={createPrestation} className="rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}><Plus size={15} className="inline" /> Ajouter</button></div></SettingsSection>
+      <SettingsSection title="Connexions"><SettingsRow label="Boîte Gmail" right={<Badge tone={garageData.gmail_connecte ? "green" : "slate"}>{garageData.gmail_connecte ? "Connectée" : "Non connectée"}</Badge>} /><SettingsRow label="Google Agenda" right={<Badge tone={garageData.google_agenda_connecte ? "green" : "amber"}>{garageData.google_agenda_connecte ? "Connecté" : "À connecter dans n8n"}</Badge>} /><div className="mt-3 text-[12px] text-slate-500">La connexion Google Calendar doit être autorisée dans le workflow n8n, puis son état peut être enregistré ici.</div></SettingsSection>
+      <SettingsSection title="Notifications"><button onClick={() => onGarageChange("notifications_email", !garageData.notifications_email)} className="w-full flex items-center justify-between py-2.5 border-b border-slate-100"><span className="text-sm text-slate-600">Notifications par email</span><Toggle checked={garageData.notifications_email} /></button><button onClick={() => onGarageChange("notifications_sms", !garageData.notifications_sms)} className="w-full flex items-center justify-between py-2.5"><span className="text-sm text-slate-600">Notifications par SMS</span><Toggle checked={garageData.notifications_sms} /></button></SettingsSection>
     </div>
-  );
+  </div>;
 }
-function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting }) {
-  const [prestationId, setPrestationId] = useState("");
-  const [date, setDate] = useState(dateKey(new Date()));
-  const [time, setTime] = useState("09:00");
-  const [message, setMessage] = useState(`Bonjour ${demande.clients?.nom || ""},\n\nNous pouvons vous proposer un rendez-vous pour votre véhicule.\n\nCordialement,\n${garage.nom}`);
+function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting, garageData = garage }) {
+  const [prestationId, setPrestationId] = useState(demande.suggested_prestation_id || "");
+  const [date, setDate] = useState(demande.suggested_date || dateKey(new Date()));
+  const [time, setTime] = useState(demande.suggested_time || "09:00");
+  const [message, setMessage] = useState(`Bonjour ${demande.clients?.nom || ""},\n\nNous pouvons vous proposer un rendez-vous pour votre véhicule.\n\nCordialement,\n${garageData.nom}`);
   const selectedPrestation = prestations.find((p) => p.id === prestationId);
   const canSubmit = prestationId && date && time && !submitting;
 
@@ -1124,6 +1307,7 @@ function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting 
         <h2 className="text-lg font-semibold text-slate-900">
           Proposer un rendez-vous
         </h2>
+        {demande.suggested_date && <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1.5 text-[12px] font-medium text-blue-800"><Sparkles size={13} /> Créneau recommandé selon l’agenda</div>}
 
         <div className="mt-5 space-y-3 text-sm text-slate-700">
 
@@ -1245,7 +1429,7 @@ function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting 
             onClick={submit}
             disabled={!canSubmit}
             className="px-4 py-2 rounded-xl text-white cursor-pointer"
-            style={{ backgroundColor:"#3D6BE0", opacity: canSubmit ? 1 : 0.5 }}
+            style={{ backgroundColor:"#2748A6", opacity: canSubmit ? 1 : 0.5 }}
           >
             {submitting ? "Envoi…" : "Envoyer la proposition"}
           </button>
@@ -1278,6 +1462,11 @@ export default function NexoraDashboard() {
   const [prestations, setPrestations] = useState([]);
   const [clients, setClients] = useState([]);
   const [submittingProposal, setSubmittingProposal] = useState(false);
+  const [garageData, setGarageData] = useState(garage);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [aiStats, setAiStats] = useState(aiStatsToday);
+  const [activityTimeline, setActivityTimeline] = useState([]);
+  const [automationEvents, setAutomationEvents] = useState([]);
   
   useEffect(() => {
   async function loadRendezVous() {
@@ -1340,6 +1529,14 @@ setLoading(false);
 
     loadRendezVous();
 }, []);
+
+  useEffect(() => {
+    async function loadGarage() {
+      const { data, error } = await supabase.from("garages").select("*").eq("id", ACTIVE_GARAGE_ID).maybeSingle();
+      if (!error && data) setGarageData((previous) => ({ ...previous, ...data }));
+    }
+    loadGarage();
+  }, []);
 
   useEffect(() => {
     async function loadClients() {
@@ -1617,6 +1814,40 @@ setPropositions(formattedPropositions);
   loadPropositions();
 
 }, []);
+  useEffect(() => {
+    const todayDemandes = demandes.filter((demande) => isToday(demande.created_at));
+    const todayPropositions = propositions.filter((proposition) => isToday(proposition.created_at || proposition.date_debut_proposee));
+    const todayConfirmed = rendezVous.filter((rdv) => isToday(rdv.date_debut) && rdv.statut === "Confirmé");
+    const savedMinutes = (todayDemandes.length * 6) + (todayPropositions.length * 4) + (todayConfirmed.length * 3);
+    setAiStats({
+      emailsAnalyses: todayDemandes.filter((demande) => demande.source === "gmail").length,
+      demandesDetectees: todayDemandes.length,
+      creneauxCalcules: todayPropositions.length,
+      propositionsEnvoyees: todayPropositions.length,
+      rdvConfirmes: todayConfirmed.length,
+      tempsEconomiseMin: savedMinutes,
+      tarifHoraireAdmin: 38,
+    });
+    const activities = [
+      ...demandes.map((demande) => ({ id: `demande-${demande.id}`, at: demande.created_at, type: "reception", texte: `Demande reçue — ${demande.clients?.nom || "Client"}` })),
+      ...propositions.map((proposition) => ({ id: `proposition-${proposition.id}`, at: proposition.created_at || proposition.date_debut_proposee, type: "proposition", texte: `Créneau proposé — ${proposition.client || "Client"}` })),
+      ...rendezVous.map((rdv) => ({ id: `rdv-${rdv.id}`, at: rdv.created_at || rdv.date_debut, type: "confirmation", texte: `Rendez-vous confirmé — ${rdv.client || "Client"}` })),
+    ].filter((activity) => activity.at).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 5).map((activity) => ({ ...activity, heure: timeLabel(activity.at) }));
+    setActivityTimeline(activities);
+  }, [demandes, propositions, rendezVous]);
+
+  useEffect(() => {
+    async function loadAutomationEvents() {
+      const { data, error } = await supabase
+        .from("actions_ia")
+        .select("*")
+        .eq("garage_id", ACTIVE_GARAGE_ID)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (!error) setAutomationEvents(data || []);
+    }
+    loadAutomationEvents();
+  }, []);
   const flashToast = (message, tone = "success") => {
     setToast({ message, tone });
     setTimeout(() => setToast(null), 2800);
@@ -1822,8 +2053,79 @@ if (updateError) {
     }
   };
 
+  const handleRecommendedAppointment = (demande) => {
+    const matchedPrestation = prestations.find((prestation) => {
+      const needle = `${demande.type_demande || ""} ${demande.message_original || ""}`.toLowerCase();
+      return needle.includes(prestation.nom?.toLowerCase());
+    }) || prestations[0];
+    const slot = findSuggestedSlot(rendezVous, Number(matchedPrestation?.duree_minutes || matchedPrestation?.duree_min || 60));
+    setSelectedDemande({
+      ...demande,
+      suggested_prestation_id: matchedPrestation?.id,
+      suggested_date: slot.date,
+      suggested_time: slot.time,
+    });
+  };
+
+  const updateGarageField = (field, value) => setGarageData((previous) => ({ ...previous, [field]: value }));
+
+  const saveGarageSettings = async () => {
+    setSavingSettings(true);
+    const update = {
+      nom: garageData.nom,
+      ville: garageData.ville,
+      logo_url: garageData.logo_url || null,
+      horaire_ouverture: garageData.horaire_ouverture,
+      horaire_fermeture: garageData.horaire_fermeture,
+      nb_mecaniciens: garageData.nb_mecaniciens,
+      notifications_email: garageData.notifications_email,
+      notifications_sms: garageData.notifications_sms,
+    };
+    const { error } = await supabase.from("garages").update(update).eq("id", ACTIVE_GARAGE_ID);
+    setSavingSettings(false);
+    if (error) {
+      console.error("Erreur enregistrement garage :", error);
+      flashToast("Les paramètres n’ont pas pu être enregistrés", "error");
+      return;
+    }
+    flashToast("Paramètres du garage enregistrés");
+  };
+
+  const addPrestation = async (prestation) => {
+    const { data, error } = await supabase.from("prestations").insert({ ...prestation, garage_id: ACTIVE_GARAGE_ID }).select().single();
+    if (error) {
+      console.error("Erreur ajout prestation :", error);
+      flashToast("Impossible d’ajouter la prestation", "error");
+      return;
+    }
+    setPrestations((previous) => [...previous, data]);
+    flashToast("Prestation ajoutée au catalogue");
+  };
+
+  const deletePrestation = async (id) => {
+    if (!window.confirm("Supprimer cette prestation du catalogue ?")) return;
+    const { error } = await supabase.from("prestations").delete().eq("id", id).eq("garage_id", ACTIVE_GARAGE_ID);
+    if (error) {
+      console.error("Erreur suppression prestation :", error);
+      flashToast("Impossible de supprimer la prestation", "error");
+      return;
+    }
+    setPrestations((previous) => previous.filter((prestation) => prestation.id !== id));
+    flashToast("Prestation supprimée");
+  };
+
+  const connectGoogleCalendar = () => {
+    const connectUrl = process.env.NEXT_PUBLIC_GOOGLE_CALENDAR_CONNECT_URL;
+    if (connectUrl) {
+      window.open(connectUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    flashToast("Ajoutez NEXT_PUBLIC_GOOGLE_CALENDAR_CONNECT_URL après avoir configuré l’autorisation Google dans n8n", "error");
+  };
+
   const titles = {
     dashboard: "Dashboard",
+    atelier: "Atelier en direct",
     agenda: "Agenda",
     valider: "Rendez-vous à valider",
     demandes: "Demandes clients",
@@ -1851,8 +2153,8 @@ if (updateError) {
           <div className="flex items-center gap-2.5 px-2 py-2">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-[12.5px] font-semibold text-white shrink-0" style={{ backgroundColor: ACCENT }}>GD</div>
             <div className="leading-tight">
-              <div className="text-[13px] font-medium text-white">{garage.nom}</div>
-              <div className="text-[11.5px]" style={{ color: "#8CA0C9" }}>{garage.ville}</div>
+              <div className="text-[13px] font-medium text-white">{garageData.nom}</div>
+              <div className="text-[11.5px]" style={{ color: "#8CA0C9" }}>{garageData.ville}</div>
             </div>
           </div>
         </div>
@@ -1864,28 +2166,31 @@ if (updateError) {
   onClose={() => setSelectedDemande(null)}
   onSubmit={handleCreateProposal}
   submitting={submittingProposal}
+  garageData={garageData}
 />
 )}
       <main className="flex-1 min-w-0">
         <div className="flex items-center justify-between px-5 md:px-8 py-5 border-b border-slate-200 bg-white">
           <div>
             <div className="text-lg font-semibold text-slate-900">{titles[view]}</div>
-            <div className="text-[13px] text-slate-500">{garage.nom}</div>
+            <div className="text-[13px] text-slate-500">{garageData.nom}</div>
           </div>
         </div>
 
         <div className="p-5 md:p-8">
-          {view === "dashboard" && <DashboardView stats={stats} propositions={propositions} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} />}
+          {view === "dashboard" && <DashboardView stats={stats} propositions={propositions} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} demandes={demandes} clients={clients} garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} />}
+          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} />}
-          {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} />}
+          {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} garageData={garageData} onConnectCalendar={connectGoogleCalendar} />}
           {view === "demandes" && (
             <DemandesView
               demandes={demandes}
               onSelectDemande={setSelectedDemande}
+              onRecommend={handleRecommendedAppointment}
             />
           )}
-          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} />}
-          {view === "parametres" && <ParametresView prestations={prestations} />}
+          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} onToast={flashToast} />}
+          {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} />}
         </div>
       </main>
 
