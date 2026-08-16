@@ -1178,42 +1178,6 @@ console.log(
 
 setPropositions(formattedPropositions);
 
-  return {
-    ...p,
-
-    client: p.clients?.nom || "Client inconnu",
-
-telephone: p.clients?.telephone || "",
-
-email: p.clients?.email || "",
-
-vehicule:
-`${p.vehicules?.marque || ""} ${p.vehicules?.modele || ""}`.trim(),
-
-immatriculation:
-p.vehicules?.immatriculation || "",
-
-prestation:
-p.prestations?.nom || "Prestation",
-
-    debut: new Date(p.date_debut_proposee).toLocaleTimeString("fr-FR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
-
-    fin: new Date(p.date_fin_proposee).toLocaleTimeString("fr-FR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
-
-    jour: new Date(p.date_debut_proposee).toLocaleDateString("fr-FR", {
-      weekday: "long",
-    }),
-  };
-
-});
-
-setPropositions(formattedPropositions);
 
   }
 
