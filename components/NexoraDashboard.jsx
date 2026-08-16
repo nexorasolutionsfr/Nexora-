@@ -609,9 +609,6 @@ function ValiderView({ propositions, onAccept, onRefuse }) {
               <MessageSquare size={14} className="text-slate-400 mt-0.5 shrink-0" />
               <div className="text-[13px] text-slate-600">{p.message}</div>
             </div>
-            <div className="text-sm text-slate-600 mt-3">
-            {p.message}
-            </div>
             <div className="flex gap-2.5 mt-4">
               {/* Accepter -> webhook n8n : validation proposition_rdv -> création rendez_vous -> confirmation client -> sync Google Calendar */}
               <button onClick={() => onAccept(p.id)} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl" style={{ backgroundColor: "#16A34A" }}>
@@ -1188,6 +1185,11 @@ const formattedPropositions = await Promise.all(
       .select("*")
       .eq("id", p.vehicule_id)
       .single();
+    const { data: demande } = await supabase
+  .from("demandes")
+  .select("message_original")
+  .eq("id", p.demande_id)
+  .single();
 
     const { data: prestation } = await supabase
       .from("prestations")
@@ -1221,7 +1223,7 @@ const formattedPropositions = await Promise.all(
 
       
       message:
-        p.demandes?.message_original || "",
+        demande?.message_original || "",
 
 
       jour:
