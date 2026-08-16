@@ -1098,7 +1098,18 @@ useEffect(() => {
 
     const { data, error } = await supabase
       .from("demandes")
-      .select("*")
+      .select(`
+        *,
+        clients (
+          nom,
+          telephone
+        ),
+        vehicules (
+        marque,
+        modele,
+        annee
+        )
+     `)
       .eq(
         "garage_id",
         "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
@@ -1116,6 +1127,10 @@ useEffect(() => {
 
 
     setDemandes(data || []);
+    console.log(
+  "DEMANDES CHARGEES :",
+  JSON.stringify(data, null, 2)
+);
   }
 
 
