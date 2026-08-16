@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 
 export default async function TestSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
   const demandes = await supabase
     .from("demandes")
@@ -18,6 +19,7 @@ export default async function TestSupabase() {
     <pre>
       {JSON.stringify(
         {
+          url,
           demandes,
           propositions,
           clients
