@@ -494,7 +494,7 @@ console.log("UPCOMING APPTS :", upcomingAppts);
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <StatCard label="Demandes en attente" value={stats.pending} icon={Inbox} />
         <StatCard label="RDV à valider" value={stats.toValidate} icon={Clock} />
-        <StatCard label="RDV aujourd'hui" value={stats.today} icon={Calendar} />
+        <StatCard label="RDV aujourd'hui" value={todayCount} icon={Calendar} />
         <StatCard label="Clients" value={stats.clients} icon={Users} />
       </div>
 
