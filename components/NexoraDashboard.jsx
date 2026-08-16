@@ -481,7 +481,6 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
       new Date(a.date_debut) - new Date(b.date_debut)
   );
 
-console.log("UPCOMING APPTS :", upcomingAppts);
   const todayCount = upcomingAppts.filter(
   (r) => new Date(r.date_debut).toLocaleDateString("fr-FR") === new Date().toLocaleDateString("fr-FR")
 ).length;
@@ -873,7 +872,7 @@ const statutLabel = (s) => {
     <button
       className="text-sm font-medium text-white px-3 py-2 rounded-xl"
       style={{ backgroundColor: "#3D6BE0" }}
-      onClick={() => setSelectDemande(d)}
+      onClick={() => onSelectDemande(d)}
     >
       Proposer un RDV
     </button>
@@ -1080,7 +1079,6 @@ export default function NexoraDashboard() {
   const [rendezVous, setRendezVous] = useState([]);
   const [demandes, setDemandes] = useState([]);
   const [selectedDemande, setSelectedDemande] = useState(null);
-  console.log("STATE SELECTED DEMANDE OK", setSelectedDemande);
   
   useEffect(() => {
   async function loadRendezVous() {
@@ -1115,7 +1113,6 @@ export default function NexoraDashboard() {
       return;
     }
 
-    console.log("RDV Nexora :", data);
 
   const formattedRdv = (data || []).map((rdv) => {
   const debut = new Date(rdv.date_debut);
@@ -1185,10 +1182,7 @@ useEffect(() => {
 
 
     setDemandes(data || []);
-    console.log(
-  "DEMANDES CHARGEES :",
-  JSON.stringify(data, null, 2)
-);
+
   }
 
 
@@ -1286,13 +1280,6 @@ useEffect(() => {
 }
 
 
-console.log(
-  JSON.stringify(data, null, 2)
-);
-    console.log(
-  "DEMANDE LIEE :",
-  data?.[0]?.demandes
-);
 
 const formattedPropositions = await Promise.all(
   (data || []).map(async (p) => {
@@ -1379,19 +1366,9 @@ const formattedPropositions = await Promise.all(
   })
 );
 
-console.log(
-  "PROPOSITIONS FORMATEES :",
-  formattedPropositions
-);
-console.log(
-  "PREMIERE PROPOSITION JSON :",
-  JSON.stringify(formattedPropositions[0], null, 2)
-);
 
-    console.log(
-  "MESSAGE FINAL :",
-  formattedPropositions?.[0]?.message
-);
+
+
 setPropositions(formattedPropositions);
 
 
@@ -1408,13 +1385,11 @@ setPropositions(formattedPropositions);
   // Remplacer par : fetch(N8N_WEBHOOK_URL + '/rdv-accepte', { method: 'POST', body: JSON.stringify({ proposition_id: id, garage_id: garage.id }) })
   const handleAccept = async (id) => {
 
-  console.log("CLICK ACCEPTER ID :", id);
 
   const proposition = propositions.find(
     (p) => p.id === id
   );
 
-  console.log("PROPOSITION ACCEPTEE :", proposition);
 
   if (!proposition) return;
 
@@ -1428,7 +1403,6 @@ const { data: existingRDV } = await supabase
 
 
 if (existingRDV) {
-  console.log("RDV déjà existant :", existingRDV.id);
   flashToast("Ce rendez-vous existe déjà");
   return;
 }
