@@ -518,7 +518,7 @@ console.log("UPCOMING APPTS :", upcomingAppts);
                 <div key={p.id} className="px-5 py-4 flex items-center justify-between">
                   <div>
                     <div className="flex items-center gap-2">
-                      <div className="text-sm font-medium text-slate-900">{a.client} — {a.vehicule}</div>
+                      <div className="text-sm font-medium text-slate-900">{p.client} — {p.vehicule}</div>
                       <SourceBadge source={p.source} />
                     </div>
                     <div className="text-[13px] text-slate-500 mt-0.5">{p.prestation} · {p.jour}, {p.debut} - {p.fin}</div>
