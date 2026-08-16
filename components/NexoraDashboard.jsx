@@ -1242,6 +1242,10 @@ console.log(
   "PROPOSITIONS FORMATEES :",
   formattedPropositions
 );
+console.log(
+  "PREMIERE PROPOSITION :",
+  formattedPropositions[0]
+);
 
 setPropositions(formattedPropositions);
 
