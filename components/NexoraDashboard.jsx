@@ -796,6 +796,9 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
 }
 
 function DemandesView({ demandes, onSelectDemande }) {
+  function DemandesView({ demandes, onSelectDemande }) {
+
+  console.log("onSelectDemande reçu :", onSelectDemande);
   const statutTone = (s) => {
   if (s === "nouveau") return "amber";
   if (s === "rendez_vous_confirme") return "green";
