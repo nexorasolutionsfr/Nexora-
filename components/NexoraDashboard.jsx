@@ -795,7 +795,6 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
   );
 }
 
-function DemandesView({ demandes, onSelectDemande }) {
   function DemandesView({ demandes, onSelectDemande }) {
 
   console.log("onSelectDemande reçu :", onSelectDemande);
