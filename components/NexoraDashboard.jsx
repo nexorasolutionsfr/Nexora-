@@ -1004,7 +1004,7 @@ export default function NexoraDashboard() {
   today: 0,
   clients: 0
 });
-  const [propositions, setPropositions] = useState(propositionsRdvTable);
+  const [propositions, setPropositions] = useState([]);
   const [toast, setToast] = useState(null);
   const [selectedAppt, setSelectedAppt] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1136,6 +1136,54 @@ useEffect(() => {
   }
 
   loadStats();
+
+}, []);
+  useEffect(() => {
+  async function loadPropositions() {
+
+    const { data, error } = await supabase
+      .from("propositions_rdv")
+      .select(`
+        *,
+        clients (
+          nom,
+          telephone,
+          email
+        ),
+        vehicules (
+          marque,
+          modele,
+          immatriculation
+        ),
+        prestations (
+          nom,
+          categorie,
+          duree_minutes
+        )
+      `)
+      .eq(
+        "garage_id",
+        "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+      )
+      .eq(
+        "statut",
+        "en_attente"
+      );
+
+
+    if (error) {
+      console.error("Erreur chargement propositions :", error);
+      return;
+    }
+
+
+    console.log("PROPOSITIONS NEXORA :", data);
+
+    setPropositions(data || []);
+
+  }
+
+  loadPropositions();
 
 }, []);
   const flashToast = (message, tone = "success") => {
