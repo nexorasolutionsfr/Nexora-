@@ -1296,10 +1296,23 @@ setPropositions(formattedPropositions);
   );
 
   console.log("PROPOSITION ACCEPTEE :", proposition);
-    console.log("PROPOSITION ACCEPTEE :", proposition);
 
   if (!proposition) return;
 
+
+// AJOUTER ICI
+const { data: existingRDV } = await supabase
+  .from("rendez_vous")
+  .select("id")
+  .eq("demande_id", proposition.demande_id)
+  .maybeSingle();
+
+
+if (existingRDV) {
+  console.log("RDV déjà existant :", existingRDV.id);
+  flashToast("Ce rendez-vous existe déjà");
+  return;
+}
 
   // 1 - mettre à jour la proposition
   const { error: updateError } = await supabase
