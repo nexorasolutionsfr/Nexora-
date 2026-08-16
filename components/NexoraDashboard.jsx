@@ -813,20 +813,49 @@ function DemandesView({ demandes }) {
         </thead>
         <tbody className="divide-y divide-slate-100">
           {demandes.map((d) => {
-            const client = getClient(d.client_id);
-            const vehicule = getVehicule(d.vehicule_id);
-            return (
-              <tr key={d.id} className="hover:bg-slate-50/60">
-                <td className="px-5 py-3.5 font-medium text-slate-900">{client?.nom}</td>
-                <td className="px-5 py-3.5 text-slate-600">{vehicule?.marque} {vehicule?.modele}</td>
-                <td className="px-5 py-3.5 text-slate-600">{d.motif}</td>
-                <td className="px-5 py-3.5"><SourceBadge source={d.source} /></td>
-                <td className="px-5 py-3.5"><Badge tone={URGENCE_TONE[d.urgence]}>{d.urgence}</Badge></td>
-                <td className="px-5 py-3.5 text-slate-500">{d.date_souhaitee}</td>
-                <td className="px-5 py-3.5"><Badge tone={statutTone(d.statut)}>{d.statut}</Badge></td>
-              </tr>
-            );
-          })}
+  return (
+    <tr key={d.id} className="hover:bg-slate-50/60">
+
+      <td className="px-5 py-3.5 font-medium text-slate-900">
+        {d.clients?.nom || "Client inconnu"}
+      </td>
+
+      <td className="px-5 py-3.5 text-slate-600">
+        {d.vehicules
+          ? `${d.vehicules.marque} ${d.vehicules.modele}`
+          : ""}
+      </td>
+
+      <td className="px-5 py-3.5 text-slate-600">
+        {d.message_original
+          ?.split("Demande :")
+          ?.pop()
+          ?.trim() || d.type_demande}
+      </td>
+
+      <td className="px-5 py-3.5">
+        <SourceBadge source={d.source} />
+      </td>
+
+      <td className="px-5 py-3.5">
+        <Badge tone={URGENCE_TONE[d.urgence]}>
+          {d.urgence || "-"}
+        </Badge>
+      </td>
+
+      <td className="px-5 py-3.5 text-slate-500">
+        {new Date(d.created_at).toLocaleDateString("fr-FR")}
+      </td>
+
+      <td className="px-5 py-3.5">
+        <Badge tone={statutTone(d.statut)}>
+          {d.statut}
+        </Badge>
+      </td>
+
+    </tr>
+  );
+})}
         </tbody>
       </table>
     </div>
