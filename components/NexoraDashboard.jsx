@@ -1142,16 +1142,29 @@ useEffect(() => {
   async function loadPropositions() {
 
     const { data, error } = await supabase
-      .from("propositions_rdv")
-      .select("*")
-      .eq(
-        "garage_id",
-        "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
-      )
-      .eq(
-        "statut",
-        "en_attente"
-      );
+  .from("propositions_rdv")
+  .select(`
+    *,
+    clients (
+      nom,
+      telephone,
+      email
+    ),
+    vehicules (
+      marque,
+      modele,
+      immatriculation
+    ),
+    prestations (
+      nom,
+      categorie
+    )
+  `)
+  .eq(
+    "garage_id",
+    "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+  )
+  .eq("statut", "en_attente");
 
 
     if (error) {
@@ -1167,10 +1180,20 @@ useEffect(() => {
   return {
     ...p,
 
-    client: "Client Nexora",
-    telephone: "",
-    vehicule: "Véhicule",
-    prestation: "Prestation",
+    client: p.clients?.nom || "Client inconnu",
+
+telephone: p.clients?.telephone || "",
+
+email: p.clients?.email || "",
+
+vehicule:
+`${p.vehicules?.marque || ""} ${p.vehicules?.modele || ""}`.trim(),
+
+immatriculation:
+p.vehicules?.immatriculation || "",
+
+prestation:
+p.prestations?.nom || "Prestation",
 
     debut: new Date(p.date_debut_proposee).toLocaleTimeString("fr-FR", {
       hour: "2-digit",
