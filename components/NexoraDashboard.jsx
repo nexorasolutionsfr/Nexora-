@@ -1061,7 +1061,7 @@ function ParametresView() {
     </div>
   );
 }
-function ProposerRdvModal({ demande, onClose }) {
+function ProposerRdvModal({ demande, prestations, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
@@ -1113,25 +1113,20 @@ function ProposerRdvModal({ demande, onClose }) {
     </label>
 
     <select
-      className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
-      defaultValue=""
-    >
-      <option value="" disabled>
-        Choisir une prestation
-      </option>
-      <option>
-        Pneus
-      </option>
-      <option>
-        Révision complète
-      </option>
-      <option>
-        Freins
-      </option>
-      <option>
-        Diagnostic panne
-      </option>
-    </select>
+  className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
+  defaultValue=""
+>
+  <option value="" disabled>
+    Choisir une prestation
+  </option>
+
+  {prestations.map((p) => (
+    <option key={p.id} value={p.id}>
+      {p.nom} ({p.duree_minutes} min)
+    </option>
+  ))}
+
+</select>
   </div>
 
 
@@ -1223,6 +1218,7 @@ export default function NexoraDashboard() {
   const [rendezVous, setRendezVous] = useState([]);
   const [demandes, setDemandes] = useState([]);
   const [selectedDemande, setSelectedDemande] = useState(null);
+  const [prestations, setPrestations] = useState([]);
   
   useEffect(() => {
   async function loadRendezVous() {
@@ -1334,6 +1330,33 @@ useEffect(() => {
 
 }, []);
 
+  useEffect(() => {
+
+  async function loadPrestations() {
+
+    const { data, error } = await supabase
+      .from("prestations")
+      .select("*")
+      .eq(
+        "garage_id",
+        "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+      );
+
+
+    if (error) {
+      console.error("Erreur prestations :", error);
+      return;
+    }
+
+
+    setPrestations(data || []);
+
+  }
+
+
+  loadPrestations();
+
+}, []);
 
 useEffect(() => {
   async function loadStats() {
@@ -1659,9 +1682,10 @@ if (updateError) {
       </aside>
 {selectedDemande && (
   <ProposerRdvModal
-    demande={selectedDemande}
-    onClose={() => setSelectedDemande(null)}
-  />
+  demande={selectedDemande}
+  prestations={prestations}
+  onClose={() => setSelectedDemande(null)}
+/>
 )}
       <main className="flex-1 min-w-0">
         <div className="flex items-center justify-between px-5 md:px-8 py-5 border-b border-slate-200 bg-white">
