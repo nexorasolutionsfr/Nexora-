@@ -1162,7 +1162,34 @@ useEffect(() => {
 
     console.log("PROPOSITIONS NEXORA :", data);
 
-    setPropositions(data || []);
+    const formattedPropositions = (data || []).map((p) => {
+
+  return {
+    ...p,
+
+    client: "Client Nexora",
+    telephone: "",
+    vehicule: "Véhicule",
+    prestation: "Prestation",
+
+    debut: new Date(p.date_debut_proposee).toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+
+    fin: new Date(p.date_fin_proposee).toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+
+    jour: new Date(p.date_debut_proposee).toLocaleDateString("fr-FR", {
+      weekday: "long",
+    }),
+  };
+
+});
+
+setPropositions(formattedPropositions);
 
   }
 
