@@ -1080,6 +1080,7 @@ export default function NexoraDashboard() {
   const [rendezVous, setRendezVous] = useState([]);
   const [demandes, setDemandes] = useState([]);
   const [selectedDemande, setSelectedDemande] = useState(null);
+  console.log("STATE SELECTED DEMANDE OK", setSelectedDemande);
   
   useEffect(() => {
   async function loadRendezVous() {
