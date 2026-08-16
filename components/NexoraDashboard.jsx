@@ -41,6 +41,29 @@ const NAVY_SOFT = "#16264A";
 const ACCENT = "#3D6BE0";
 const ACCENT_SOFT = "#EAF0FF";
 const BG = "#F5F7FA";
+const ACTIVE_GARAGE_ID = "bcd7f692-1c28-435c-87d1-92f84aa0e6bb";
+const APP_TIME_ZONE = "Europe/Paris";
+
+const dateKey = (value) => {
+  if (!value) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+  const part = (type) => parts.find((item) => item.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+};
+const timeLabel = (value) => new Intl.DateTimeFormat("fr-FR", {
+  timeZone: APP_TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+}).format(new Date(value));
+const dayLabel = (value) => new Intl.DateTimeFormat("fr-FR", {
+  timeZone: APP_TIME_ZONE,
+  weekday: "long",
+}).format(new Date(value));
 
 const CATEGORY_COLORS = {
   entretien: { bar: "#16A34A", bg: "#E7F6EC", text: "#15803D", label: "Entretien" },
@@ -61,7 +84,8 @@ function formatPhone(phone) {
   return phone;
 }
 
-const STATUT_TONE = { "Confirmé": "green", "En attente": "amber", "Terminé": "slate" };
+const RDV_STATUS_LABEL = { confirme: "Confirmé", en_attente: "En attente", termine: "Terminé", annule: "Annulé" };
+const STATUT_TONE = { "Confirmé": "green", "En attente": "amber", "Terminé": "slate", "Annulé": "red" };
 const URGENCE_TONE = { "Élevée": "red", "Moyenne": "amber", "Faible": "slate" };
 
 const SOURCE_META = {
@@ -476,14 +500,11 @@ function ApptDetailModal({ appt, onClose }) {
 // =====================================================================================
 function DashboardView({ stats, propositions, setView, onSelectAppt, loading, rendezVous }) {
   const upcomingAppts = [...rendezVous]
-  .sort(
-    (a, b) =>
-      new Date(a.date_debut) - new Date(b.date_debut)
-  );
-
-  const todayCount = upcomingAppts.filter(
-  (r) => new Date(r.date_debut).toLocaleDateString("fr-FR") === new Date().toLocaleDateString("fr-FR")
-).length;
+    .filter((r) => new Date(r.date_fin) >= new Date())
+    .sort((a, b) => new Date(a.date_debut) - new Date(b.date_debut));
+  const todayKey = dateKey(new Date());
+  const todayAppts = upcomingAppts.filter((r) => r.date_key === todayKey);
+  const urgentRequests = stats.urgent || 0;
   if (loading) {
     return (
       <div className="space-y-6">
@@ -504,9 +525,22 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <StatCard label="Demandes en attente" value={stats.pending} icon={Inbox} />
         <StatCard label="RDV à valider" value={stats.toValidate} icon={Clock} />
-        <StatCard label="RDV aujourd'hui" value={todayCount} icon={Calendar} />
+        <StatCard label="RDV aujourd'hui" value={todayAppts.length} icon={Calendar} />
         <StatCard label="Clients" value={stats.clients} icon={Users} />
       </div>
+
+      {(urgentRequests > 0 || propositions.length > 0) && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-amber-100"><AlertTriangle size={18} className="text-amber-700" /></div>
+            <div>
+              <div className="text-sm font-semibold text-amber-950">Votre attention est requise</div>
+              <div className="text-[13px] text-amber-800">{urgentRequests ? `${urgentRequests} demande${urgentRequests > 1 ? "s" : ""} urgente${urgentRequests > 1 ? "s" : ""}` : ""}{urgentRequests && propositions.length ? " · " : ""}{propositions.length ? `${propositions.length} proposition${propositions.length > 1 ? "s" : ""} à valider` : ""}</div>
+            </div>
+          </div>
+          <button onClick={() => setView(urgentRequests ? "demandes" : "valider")} className="text-[13px] font-semibold px-3.5 py-2 rounded-xl bg-white border border-amber-200 text-amber-800">Traiter maintenant</button>
+        </div>
+      )}
 
       <NexoraControlCenter />
 
@@ -547,7 +581,9 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
         <div className="px-5 py-4 border-b border-slate-100 font-semibold text-slate-900 text-[15px]">Agenda du jour</div>
         <div className="divide-y divide-slate-100">
-          {rendezVous.slice(0, 4).map((a) => {
+          {todayAppts.length === 0 ? (
+            <div className="px-5 py-8 text-center text-slate-400 text-[13px]">Aucun rendez-vous prévu aujourd’hui.</div>
+          ) : todayAppts.slice(0, 4).map((a) => {
             const colors = catColor(a.categorie);
             return (
               <button key={a.id} onClick={() => onSelectAppt(a)} className="w-full px-5 py-3.5 flex items-center gap-4 hover:bg-slate-50/70 text-left">
@@ -661,11 +697,8 @@ const changeDate = (direction) => {
   });
 };
 
-const dayKey = currentDate.toLocaleDateString("fr-FR", {
-  weekday: "long",
-});
-
-const dayAppts = rendezVous.filter((r) => r.jour === dayKey);
+const selectedDateKey = dateKey(currentDate);
+const dayAppts = rendezVous.filter((r) => r.date_key === selectedDateKey);
 const startOfWeek = new Date(currentDate);
 startOfWeek.setDate(currentDate.getDate() - currentDate.getDay() + 1);
 const endOfWeek = new Date(startOfWeek);
@@ -676,7 +709,7 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
   date.setDate(startOfWeek.getDate() + index);
 
   return {
-    key: date.toISOString().split("T")[0],
+    key: dateKey(date),
     date,
     label: date.toLocaleDateString("fr-FR", {
       weekday: "short",
@@ -719,7 +752,7 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
             ))}
           </div>
           {/* Préparé pour une future synchronisation bidirectionnelle Google Calendar */}
-          <button className="flex items-center gap-1.5 text-[13px] font-medium text-white px-3.5 py-1.5 rounded-xl" style={{ backgroundColor: ACCENT }}>
+          <button title="Créez une proposition depuis une demande client" className="flex items-center gap-1.5 text-[13px] font-medium text-white px-3.5 py-1.5 rounded-xl opacity-70 cursor-not-allowed" style={{ backgroundColor: ACCENT }} disabled>
             <CalendarPlus size={14} /> Ajouter un rendez-vous
           </button>
         </div>
@@ -767,9 +800,7 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
       ) : (
         <div className="grid grid-cols-5 divide-x divide-slate-100">
           {weekDays.map((day) => {
-            const appts = rendezVous.filter(
-  (a) => a.jour === day.key
-);
+            const appts = rendezVous.filter((a) => a.date_key === day.key);
             return (
               <div key={day.key}>
                 <div className="text-[12.5px] font-medium text-slate-600 text-center py-2.5 border-b border-slate-100 capitalize">{day.label}</div>
@@ -797,7 +828,6 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
 
   function DemandesView({ demandes, onSelectDemande }) {
 
-  console.log("onSelectDemande reçu :", onSelectDemande);
   const statutTone = (s) => {
   if (s === "nouveau") return "amber";
   if (s === "rendez_vous_confirme") return "green";
@@ -889,15 +919,19 @@ const statutLabel = (s) => {
   );
 }
 
-function ClientsView() {
+function ClientsView({ clients = [], rendezVous = [] }) {
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState(clientsTable[0].id);
-  const filtered = clientsTable.filter((c) => c.nom.toLowerCase().includes(query.toLowerCase()));
-  const selected = getClient(selectedId);
-  const vehicule = getVehiculeByClient(selectedId);
-  const historique = getHistorique(selectedId);
-  const notes = getNotes(selectedId);
-  const derniereVisite = getDerniereVisite(selectedId);
+  const [selectedId, setSelectedId] = useState(null);
+  const filtered = clients.filter((c) => c.nom?.toLowerCase().includes(query.toLowerCase()));
+  const selected = clients.find((c) => c.id === selectedId) || filtered[0] || null;
+  const selectedVehicles = Array.isArray(selected?.vehicules) ? selected.vehicules : selected?.vehicules ? [selected.vehicules] : [];
+  const vehicule = selectedVehicles[0];
+  const historique = rendezVous
+    .filter((r) => r.client_id === selected?.id)
+    .sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut))
+    .map((r) => ({ prestation: r.prestation, date: new Date(r.date_debut).toLocaleDateString("fr-FR"), statut: r.statut, note: r.notes }));
+  const notes = [];
+  const derniereVisite = historique.find((h) => h.statut === "termine" || h.statut === "Terminé")?.date || null;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
@@ -913,9 +947,10 @@ function ClientsView() {
         ) : (
           <div className="divide-y divide-slate-100 max-h-[560px] overflow-y-auto">
             {filtered.map((c) => {
-              const v = getVehiculeByClient(c.id);
+              const vehicles = Array.isArray(c.vehicules) ? c.vehicules : c.vehicules ? [c.vehicules] : [];
+              const v = vehicles[0];
               return (
-                <button key={c.id} onClick={() => setSelectedId(c.id)} className="w-full text-left px-4 py-3 hover:bg-slate-50/70 flex items-center justify-between" style={selectedId === c.id ? { backgroundColor: ACCENT_SOFT } : {}}>
+                <button key={c.id} onClick={() => setSelectedId(c.id)} className="w-full text-left px-4 py-3 hover:bg-slate-50/70 flex items-center justify-between" style={selected?.id === c.id ? { backgroundColor: ACCENT_SOFT } : {}}>
                   <div>
                     <div className="text-sm font-medium text-slate-900">{c.nom}</div>
                     <div className="text-[12.5px] text-slate-500">{v?.marque} {v?.modele}</div>
@@ -1008,7 +1043,8 @@ function SettingsRow({ label, value, right }) {
   );
 }
 
-function ParametresView() {
+function ParametresView({ prestations = [] }) {
+  const catalogue = prestations.length ? prestations : prestationsCatalogue;
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
       <SettingsSection title="Informations garage">
@@ -1026,12 +1062,12 @@ function ParametresView() {
 
       <SettingsSection title="Prestations disponibles">
         <div className="space-y-2">
-          {prestationsCatalogue.map((p) => (
+          {catalogue.map((p) => (
             <div key={p.nom} className="flex items-center justify-between text-sm py-1.5">
               <span className="flex items-center gap-2 text-slate-700">
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(p.categorie).bar }} /> {p.nom}
               </span>
-              <span className="text-slate-500 text-[13px]">{p.duree} min</span>
+              <span className="text-slate-500 text-[13px]">{p.duree_minutes || p.duree_min || p.duree} min</span>
             </div>
           ))}
         </div>
@@ -1061,12 +1097,29 @@ function ParametresView() {
     </div>
   );
 }
-function ProposerRdvModal({ demande, prestations, onClose }) {
+function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting }) {
+  const [prestationId, setPrestationId] = useState("");
+  const [date, setDate] = useState(dateKey(new Date()));
+  const [time, setTime] = useState("09:00");
+  const [message, setMessage] = useState(`Bonjour ${demande.clients?.nom || ""},\n\nNous pouvons vous proposer un rendez-vous pour votre véhicule.\n\nCordialement,\n${garage.nom}`);
+  const selectedPrestation = prestations.find((p) => p.id === prestationId);
+  const canSubmit = prestationId && date && time && !submitting;
+
+  const submit = () => {
+    if (!canSubmit) return;
+    onSubmit({
+      demande,
+      prestation: selectedPrestation,
+      date,
+      time,
+      message,
+    });
+  };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
 
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(event) => event.stopPropagation()}>
 
         <h2 className="text-lg font-semibold text-slate-900">
           Proposer un rendez-vous
@@ -1114,7 +1167,8 @@ function ProposerRdvModal({ demande, prestations, onClose }) {
 
     <select
   className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
-  defaultValue=""
+  value={prestationId}
+  onChange={(event) => setPrestationId(event.target.value)}
 >
   <option value="" disabled>
     Choisir une prestation
@@ -1140,6 +1194,9 @@ function ProposerRdvModal({ demande, prestations, onClose }) {
       <input
         type="date"
         className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
+        min={dateKey(new Date())}
+        value={date}
+        onChange={(event) => setDate(event.target.value)}
       />
     </div>
 
@@ -1152,6 +1209,8 @@ function ProposerRdvModal({ demande, prestations, onClose }) {
       <input
         type="time"
         className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
+        value={time}
+        onChange={(event) => setTime(event.target.value)}
       />
     </div>
 
@@ -1166,12 +1225,8 @@ function ProposerRdvModal({ demande, prestations, onClose }) {
     <textarea
       className="w-full mt-1 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
       rows="4"
-      defaultValue={`Bonjour ${demande.clients?.nom},
-
-Nous pouvons vous proposer un rendez-vous pour votre véhicule.
-
-Cordialement,
-${garage.nom}`}
+      value={message}
+      onChange={(event) => setMessage(event.target.value)}
     />
   </div>
 
@@ -1187,10 +1242,12 @@ ${garage.nom}`}
 
 
           <button
+            onClick={submit}
+            disabled={!canSubmit}
             className="px-4 py-2 rounded-xl text-white cursor-pointer"
-            style={{ backgroundColor:"#3D6BE0" }}
+            style={{ backgroundColor:"#3D6BE0", opacity: canSubmit ? 1 : 0.5 }}
           >
-            Envoyer la proposition
+            {submitting ? "Envoi…" : "Envoyer la proposition"}
           </button>
 
         </div>
@@ -1219,6 +1276,8 @@ export default function NexoraDashboard() {
   const [demandes, setDemandes] = useState([]);
   const [selectedDemande, setSelectedDemande] = useState(null);
   const [prestations, setPrestations] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [submittingProposal, setSubmittingProposal] = useState(false);
   
   useEffect(() => {
   async function loadRendezVous() {
@@ -1244,7 +1303,7 @@ export default function NexoraDashboard() {
 `)
   .eq(
     "garage_id",
-    "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+    ACTIVE_GARAGE_ID
   );
 
     if (error) {
@@ -1260,15 +1319,10 @@ export default function NexoraDashboard() {
 
   return {
     ...rdv,
-    jour: debut.toLocaleDateString("fr-FR", { weekday: "long" }),
-    debut: debut.toLocaleTimeString("fr-FR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
-    fin: fin.toLocaleTimeString("fr-FR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
+    date_key: dateKey(rdv.date_debut),
+    jour: dayLabel(rdv.date_debut),
+    debut: timeLabel(rdv.date_debut),
+    fin: timeLabel(rdv.date_fin),
     prestation: rdv.prestations?.nom || "Prestation",
     client: rdv.clients?.nom || "Client inconnu",
     telephone: rdv.clients?.telephone || "",
@@ -1276,6 +1330,7 @@ export default function NexoraDashboard() {
     vehicule: `${rdv.vehicules?.marque || ""} ${rdv.vehicules?.modele || ""}`.trim(),
     immatriculation: rdv.vehicules?.immatriculation || "",
     categorie: rdv.prestations?.categorie || "",
+    statut: RDV_STATUS_LABEL[rdv.statut] || rdv.statut,
   };
 });
 
@@ -1285,6 +1340,22 @@ setLoading(false);
 
     loadRendezVous();
 }, []);
+
+  useEffect(() => {
+    async function loadClients() {
+      const { data, error } = await supabase
+        .from("clients")
+        .select("*, vehicules (id, marque, modele, annee, immatriculation)")
+        .eq("garage_id", ACTIVE_GARAGE_ID)
+        .order("nom");
+      if (error) {
+        console.error("Erreur chargement clients :", error);
+        return;
+      }
+      setClients(data || []);
+    }
+    loadClients();
+  }, []);
 
 
 useEffect(() => {
@@ -1307,7 +1378,7 @@ useEffect(() => {
      `)
       .eq(
         "garage_id",
-        "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+        ACTIVE_GARAGE_ID
       )
       .order("created_at", { ascending: false });
 
@@ -1339,7 +1410,7 @@ useEffect(() => {
       .select("*")
       .eq(
         "garage_id",
-        "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+        ACTIVE_GARAGE_ID
       );
 
 
@@ -1361,13 +1432,19 @@ useEffect(() => {
 useEffect(() => {
   async function loadStats() {
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = dateKey(new Date());
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowKey = dateKey(tomorrow);
+    const startOfToday = new Date(`${today}T00:00:00`).toISOString();
+    const startOfTomorrow = new Date(`${tomorrowKey}T00:00:00`).toISOString();
 
     const [
       clientsResult,
       propositionsResult,
       demandesResult,
-      rdvTodayResult
+      rdvTodayResult,
+      urgencesResult
     ] = await Promise.all([
 
       supabase
@@ -1375,7 +1452,7 @@ useEffect(() => {
         .select("id", { count: "exact", head: true })
         .eq(
           "garage_id",
-          "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+          ACTIVE_GARAGE_ID
         ),
 
       supabase
@@ -1383,7 +1460,7 @@ useEffect(() => {
         .select("id", { count: "exact", head: true })
         .eq(
           "garage_id",
-          "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+          ACTIVE_GARAGE_ID
         )
         .eq("statut", "en_attente"),
 
@@ -1392,7 +1469,7 @@ useEffect(() => {
         .select("id", { count: "exact", head: true })
         .eq(
           "garage_id",
-          "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+          ACTIVE_GARAGE_ID
         )
         .neq("statut", "rendez_vous_confirme"),
 
@@ -1401,10 +1478,17 @@ useEffect(() => {
         .select("id", { count: "exact", head: true })
         .eq(
           "garage_id",
-          "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+          ACTIVE_GARAGE_ID
         )
-        .gte("date_debut", `${today}T00:00:00`)
-        .lte("date_debut", `${today}T23:59:59`)
+        .gte("date_debut", startOfToday)
+        .lt("date_debut", startOfTomorrow),
+
+      supabase
+        .from("demandes")
+        .select("id", { count: "exact", head: true })
+        .eq("garage_id", ACTIVE_GARAGE_ID)
+        .eq("urgence", "Élevée")
+        .neq("statut", "rendez_vous_confirme")
     ]);
 
 
@@ -1412,7 +1496,8 @@ useEffect(() => {
       pending: demandesResult.count || 0,
       toValidate: propositionsResult.count || 0,
       today: rdvTodayResult.count || 0,
-      clients: clientsResult.count || 0
+      clients: clientsResult.count || 0,
+      urgent: urgencesResult.count || 0,
     });
 
   }
@@ -1429,11 +1514,26 @@ useEffect(() => {
   *,
   demandes (
     message_original
+  ),
+  clients (
+    nom,
+    telephone
+  ),
+  vehicules (
+    marque,
+    modele,
+    annee,
+    immatriculation
+  ),
+  prestations (
+    nom,
+    categorie,
+    duree_minutes
   )
 `)
   .eq(
     "garage_id",
-    "bcd7f692-1c28-435c-87d1-92f84aa0e6bb"
+    ACTIVE_GARAGE_ID
   )
   .eq("statut", "en_attente");
 
@@ -1448,31 +1548,11 @@ useEffect(() => {
 
 
 
-const formattedPropositions = await Promise.all(
-  (data || []).map(async (p) => {
-
-    const { data: client } = await supabase
-      .from("clients")
-      .select("*")
-      .eq("id", p.client_id)
-      .single();
-
-    const { data: vehicule } = await supabase
-      .from("vehicules")
-      .select("*")
-      .eq("id", p.vehicule_id)
-      .single();
-    const { data: demande } = await supabase
-  .from("demandes")
-  .select("message_original")
-  .eq("id", p.demande_id)
-  .single();
-
-    const { data: prestation } = await supabase
-      .from("prestations")
-      .select("*")
-      .eq("id", p.prestation_id)
-      .single();
+const formattedPropositions = (data || []).map((p) => {
+    const client = p.clients;
+    const vehicule = p.vehicules;
+    const demande = p.demandes;
+    const prestation = p.prestations;
 
 
     const debut = new Date(p.date_debut_proposee);
@@ -1498,40 +1578,33 @@ const formattedPropositions = await Promise.all(
       prestation:
         prestation?.nom || "Prestation",
 
+      categorie: prestation?.categorie || "diagnostic",
+
       
       message:
         demande?.message_original || "",
 
 
       jour:
-        debut.toLocaleDateString("fr-FR", {
-          weekday: "long",
-        }),
+        dayLabel(p.date_debut_proposee),
 
 
       date:
-        debut.toLocaleDateString("fr-FR"),
+        new Date(p.date_debut_proposee).toLocaleDateString("fr-FR", { timeZone: APP_TIME_ZONE }),
 
 
       debut:
-        debut.toLocaleTimeString("fr-FR", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
+        timeLabel(p.date_debut_proposee),
 
 
       fin:
-        fin.toLocaleTimeString("fr-FR", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
+        timeLabel(p.date_fin_proposee),
 
 
       duree:
         Math.round((fin - debut) / 60000),
     };
-  })
-);
+  });
 
 
 
@@ -1577,7 +1650,7 @@ if (existingRDV) {
 
 
   // 1 - créer le rendez-vous réel
-  const { error: insertError } = await supabase
+  const { data: createdRdv, error: insertError } = await supabase
   .from("rendez_vous")
   .insert({
     garage_id: proposition.garage_id,
@@ -1590,7 +1663,9 @@ if (existingRDV) {
     statut: "confirme",
     source: "nexora",
     notes: proposition.message || null,
-  });
+  })
+  .select("*, prestations (nom, categorie), clients (nom, telephone, email), vehicules (marque, modele, immatriculation)")
+  .single();
 
 
   if (insertError) {
@@ -1614,12 +1689,24 @@ if (existingRDV) {
 
 
 if (updateError) {
+  // Compensation : le rendez-vous n'est pas laissé orphelin si la proposition
+  // n'a pas pu être validée. À terme, remplacer ce duo par une RPC transactionnelle.
+  if (createdRdv?.id) await supabase.from("rendez_vous").delete().eq("id", createdRdv.id);
   console.error(
     "Erreur validation proposition :",
     JSON.stringify(updateError, null, 2)
   );
   return;
 }
+
+  const { error: demandeUpdateError } = await supabase
+    .from("demandes")
+    .update({ statut: "rendez_vous_confirme" })
+    .eq("id", proposition.demande_id);
+  if (demandeUpdateError) console.error("Erreur mise à jour demande :", demandeUpdateError);
+  setDemandes((prev) => prev.map((demande) => (
+    demande.id === proposition.demande_id ? { ...demande, statut: "rendez_vous_confirme" } : demande
+  )));
 
   // 3 - rafraîchir l'écran
   setPropositions((prev) =>
@@ -1630,7 +1717,27 @@ if (updateError) {
   setStats((s) => ({
     ...s,
     toValidate: Math.max(0, s.toValidate - 1),
+    pending: Math.max(0, s.pending - 1),
   }));
+
+  if (createdRdv) {
+    const dateDebut = new Date(createdRdv.date_debut);
+    setRendezVous((prev) => [...prev, {
+      ...createdRdv,
+      date_key: dateKey(createdRdv.date_debut),
+      jour: dayLabel(createdRdv.date_debut),
+      debut: timeLabel(createdRdv.date_debut),
+      fin: timeLabel(createdRdv.date_fin),
+      prestation: createdRdv.prestations?.nom || proposition.prestation,
+      categorie: createdRdv.prestations?.categorie || proposition.categorie,
+      statut: RDV_STATUS_LABEL[createdRdv.statut] || createdRdv.statut,
+      client: createdRdv.clients?.nom || proposition.client,
+      telephone: createdRdv.clients?.telephone || proposition.telephone,
+      vehicule: `${createdRdv.vehicules?.marque || ""} ${createdRdv.vehicules?.modele || ""}`.trim() || proposition.vehicule,
+      immatriculation: createdRdv.vehicules?.immatriculation || proposition.immatriculation,
+      date_debut: dateDebut.toISOString(),
+    }]);
+  }
 
 
   flashToast(
@@ -1638,11 +1745,81 @@ if (updateError) {
   );
 
 };
-  // Remplacer par : fetch(N8N_WEBHOOK_URL + '/rdv-refuse', { method: 'POST', body: JSON.stringify({ proposition_id: id, garage_id: garage.id }) })
-  const handleRefuse = (id) => {
+  const handleRefuse = async (id) => {
+    const { error } = await supabase
+      .from("propositions_rdv")
+      .update({ statut: "refuse", date_validation: new Date().toISOString() })
+      .eq("id", id)
+      .eq("statut", "en_attente");
+    if (error) {
+      console.error("Erreur refus proposition :", error);
+      flashToast("Impossible de refuser la proposition", "error");
+      return;
+    }
     setPropositions((prev) => prev.filter((p) => p.id !== id));
     setStats((s) => ({ ...s, toValidate: Math.max(0, s.toValidate - 1) }));
-    flashToast("Rendez-vous refusé — une nouvelle proposition sera envoyée au client", "error");
+    flashToast("Proposition refusée — Nexora peut maintenant rechercher un autre créneau");
+  };
+
+  const handleCreateProposal = async ({ demande, prestation, date, time, message }) => {
+    const start = new Date(`${date}T${time}:00`);
+    const duration = Number(prestation?.duree_minutes || prestation?.duree_min || 60);
+    const end = new Date(start.getTime() + duration * 60_000);
+    setSubmittingProposal(true);
+    try {
+      const { data: conflicts, error: conflictError } = await supabase
+        .from("rendez_vous")
+        .select("id")
+        .eq("garage_id", ACTIVE_GARAGE_ID)
+        .lt("date_debut", end.toISOString())
+        .gt("date_fin", start.toISOString())
+        .limit(1);
+      if (conflictError) throw conflictError;
+      if (conflicts?.length) {
+        flashToast("Ce créneau est déjà occupé. Choisissez une autre heure.", "error");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("propositions_rdv")
+        .insert({
+          garage_id: ACTIVE_GARAGE_ID,
+          demande_id: demande.id,
+          client_id: demande.client_id,
+          vehicule_id: demande.vehicule_id,
+          prestation_id: prestation.id,
+          date_debut_proposee: start.toISOString(),
+          date_fin_proposee: end.toISOString(),
+          statut: "en_attente",
+        })
+        .select("*, clients (nom, telephone), vehicules (marque, modele, immatriculation), prestations (nom, categorie), demandes (message_original)")
+        .single();
+      if (error) throw error;
+
+      const formatted = {
+        ...data,
+        client: data.clients?.nom || demande.clients?.nom || "Client inconnu",
+        telephone: data.clients?.telephone || demande.clients?.telephone || "",
+        vehicule: `${data.vehicules?.marque || demande.vehicules?.marque || ""} ${data.vehicules?.modele || demande.vehicules?.modele || ""}`.trim(),
+        immatriculation: data.vehicules?.immatriculation || "",
+        prestation: data.prestations?.nom || prestation.nom,
+        categorie: data.prestations?.categorie || prestation.categorie || "diagnostic",
+        message,
+        jour: dayLabel(data.date_debut_proposee),
+        debut: timeLabel(data.date_debut_proposee),
+        fin: timeLabel(data.date_fin_proposee),
+        duree: duration,
+      };
+      setPropositions((prev) => [formatted, ...prev]);
+      setStats((s) => ({ ...s, toValidate: s.toValidate + 1 }));
+      setSelectedDemande(null);
+      flashToast("Proposition créée — prête à être envoyée par votre workflow n8n");
+    } catch (error) {
+      console.error("Erreur création proposition :", error);
+      flashToast("La proposition n’a pas pu être créée", "error");
+    } finally {
+      setSubmittingProposal(false);
+    }
   };
 
   const titles = {
@@ -1685,6 +1862,8 @@ if (updateError) {
   demande={selectedDemande}
   prestations={prestations}
   onClose={() => setSelectedDemande(null)}
+  onSubmit={handleCreateProposal}
+  submitting={submittingProposal}
 />
 )}
       <main className="flex-1 min-w-0">
@@ -1705,8 +1884,8 @@ if (updateError) {
               onSelectDemande={setSelectedDemande}
             />
           )}
-          {view === "clients" && <ClientsView />}
-          {view === "parametres" && <ParametresView />}
+          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} />}
+          {view === "parametres" && <ParametresView prestations={prestations} />}
         </div>
       </main>
 
