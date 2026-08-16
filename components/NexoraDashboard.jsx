@@ -464,10 +464,7 @@ function ApptDetailModal({ appt, onClose }) {
 // VIEWS
 // =====================================================================================
 function DashboardView({ stats, propositions, setView, onSelectAppt, loading, rendezVous }) {
-  const now = new Date();
-
-const upcomingAppts = rendezVous
-  .filter((r) => new Date(r.date_debut) >= now)
+  const upcomingAppts = [...rendezVous]
   .sort(
     (a, b) =>
       new Date(a.date_debut) - new Date(b.date_debut)
