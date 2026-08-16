@@ -817,7 +817,7 @@ const statutLabel = (s) => {
       <table className="w-full text-sm min-w-[820px]">
         <thead>
           <tr className="bg-slate-50 text-slate-500 text-[12.5px] text-left">
-            {["Client", "Véhicule", "Motif", "Source", "Urgence", "Date souhaitée", "Statut"].map((h) => (
+            {["Client", "Véhicule", "Motif", "Source", "Urgence", "Date souhaitée", "Statut", "Action"].map((h) => (
               <th key={h} className="px-5 py-3 font-medium">{h}</th>
             ))}
           </tr>
@@ -859,12 +859,24 @@ const statutLabel = (s) => {
       </td>
 
       <td className="px-5 py-3.5">
-        <Badge tone={statutTone(d.statut)}>
-          {statutLabel(d.statut)}
-        </Badge>
-      </td>
+  <Badge tone={statutTone(d.statut)}>
+    {statutLabel(d.statut)}
+  </Badge>
+</td>
 
-    </tr>
+<td className="px-5 py-3.5">
+  {d.statut === "nouveau" && (
+    <button
+      className="text-sm font-medium text-white px-3 py-2 rounded-xl"
+      style={{ backgroundColor: "#3D6BE0" }}
+      onClick={() => console.log("PROPOSER RDV :", d)}
+    >
+      Proposer un RDV
+    </button>
+  )}
+</td>
+
+</tr>
   );
 })}
         </tbody>
