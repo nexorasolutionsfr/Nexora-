@@ -1287,11 +1287,78 @@ setPropositions(formattedPropositions);
   };
 
   // Remplacer par : fetch(N8N_WEBHOOK_URL + '/rdv-accepte', { method: 'POST', body: JSON.stringify({ proposition_id: id, garage_id: garage.id }) })
-  const handleAccept = (id) => {
-    setPropositions((prev) => prev.filter((p) => p.id !== id));
-    setStats((s) => ({ ...s, toValidate: Math.max(0, s.toValidate - 1) }));
-    flashToast("Rendez-vous confirmé — le client a été notifié");
-  };
+  const handleAccept = async (id) => {
+
+  const proposition = propositions.find(
+    (p) => p.id === id
+  );
+    console.log("PROPOSITION ACCEPTEE :", proposition);
+
+  if (!proposition) return;
+
+
+  // 1 - mettre à jour la proposition
+  const { error: updateError } = await supabase
+    .from("propositions_rdv")
+    .update({
+      statut: "accepte",
+      date_validation: new Date().toISOString(),
+    })
+    .eq("id", id);
+
+
+  if (updateError) {
+    console.error(
+      "Erreur validation proposition :",
+      updateError
+    );
+    return;
+  }
+
+
+  // 2 - créer le rendez-vous réel
+  const { error: insertError } = await supabase
+  .from("rendez_vous")
+  .insert({
+    garage_id: proposition.garage_id,
+    client_id: proposition.client_id,
+    vehicule_id: proposition.vehicule_id,
+    prestation_id: proposition.prestation_id,
+    demande_id: proposition.demande_id,
+    date_debut: proposition.date_debut_proposee,
+    date_fin: proposition.date_fin_proposee,
+    statut: "confirme",
+    source: "nexora",
+    notes: proposition.message || null,
+  });
+
+
+  if (insertError) {
+    console.error(
+      "Erreur création rendez-vous :",
+      insertError
+    );
+    return;
+  }
+
+
+  // 3 - rafraîchir l'écran
+  setPropositions((prev) =>
+    prev.filter((p) => p.id !== id)
+  );
+
+
+  setStats((s) => ({
+    ...s,
+    toValidate: Math.max(0, s.toValidate - 1),
+  }));
+
+
+  flashToast(
+    "Rendez-vous confirmé — le client a été notifié"
+  );
+
+};
   // Remplacer par : fetch(N8N_WEBHOOK_URL + '/rdv-refuse', { method: 'POST', body: JSON.stringify({ proposition_id: id, garage_id: garage.id }) })
   const handleRefuse = (id) => {
     setPropositions((prev) => prev.filter((p) => p.id !== id));
