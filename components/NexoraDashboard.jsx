@@ -1338,12 +1338,12 @@ setPropositions(formattedPropositions);
 
 
   if (insertError) {
-    console.error(
-      "Erreur création rendez-vous :",
-      insertError
-    );
-    return;
-  }
+  console.error(
+    "Erreur création rendez-vous :",
+    JSON.stringify(insertError, null, 2)
+  );
+  return;
+}
 
 
   // 3 - rafraîchir l'écran
