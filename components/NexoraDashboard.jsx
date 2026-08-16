@@ -464,12 +464,10 @@ function ApptDetailModal({ appt, onClose }) {
 // VIEWS
 // =====================================================================================
 function DashboardView({ stats, propositions, setView, onSelectAppt, loading, rendezVous }) {
-  const today = new Date().toLocaleDateString("fr-FR", {
-  weekday: "long",
-});
+  const today = new Date().toISOString().split("T")[0];
 
 const todayAppts = rendezVous.filter(
-  (r) => r.jour === today
+  (r) => r.date_debut?.split("T")[0] === today
 );
   console.log("TODAY APPTS :", todayAppts);
   if (loading) {
