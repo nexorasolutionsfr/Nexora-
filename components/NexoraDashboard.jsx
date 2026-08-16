@@ -610,7 +610,9 @@ function ValiderView({ propositions, onAccept, onRefuse }) {
 
             <div className="mt-3 bg-slate-50 rounded-xl p-3 flex gap-2 items-start">
               <MessageSquare size={14} className="text-slate-400 mt-0.5 shrink-0" />
-              <div className="text-[13px] text-slate-600">{p.message}</div>
+              <div className="text-[13px] text-slate-600 whitespace-pre-line">
+                {p.message}
+              </div>
             </div>
             <div className="flex gap-2.5 mt-4">
               {/* Accepter -> webhook n8n : validation proposition_rdv -> création rendez_vous -> confirmation client -> sync Google Calendar */}
