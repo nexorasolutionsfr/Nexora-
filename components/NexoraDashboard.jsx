@@ -464,12 +464,16 @@ function ApptDetailModal({ appt, onClose }) {
 // VIEWS
 // =====================================================================================
 function DashboardView({ stats, propositions, setView, onSelectAppt, loading, rendezVous }) {
-  const today = new Date().toISOString().split("T")[0];
+  const now = new Date();
 
-const todayAppts = rendezVous.filter(
-  (r) => r.date_debut?.split("T")[0] === today
-);
-  console.log("TODAY APPTS :", todayAppts);
+const upcomingAppts = rendezVous
+  .filter((r) => new Date(r.date_debut) >= now)
+  .sort(
+    (a, b) =>
+      new Date(a.date_debut) - new Date(b.date_debut)
+  );
+
+console.log("UPCOMING APPTS :", upcomingAppts);
   if (loading) {
     return (
       <div className="space-y-6">
