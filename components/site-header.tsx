@@ -39,6 +39,12 @@ export function SiteHeader() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
+          <a
+            href="/dashboard"
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Espace garage
+          </a>
           <Button render={<a href="#contact" />} variant="ghost" size="sm">
             Nous parler
           </Button>
@@ -71,6 +77,13 @@ export function SiteHeader() {
                 {link.label}
               </a>
             ))}
+            <a
+              href="/dashboard"
+              onClick={() => setOpen(false)}
+              className="rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              Espace garage
+            </a>
             <Button render={<a href="#contact" onClick={() => setOpen(false)} />} className="mt-2">
               Demander une démo
             </Button>
