@@ -53,7 +53,7 @@ const NAVY_SOFT = "#16264A";
 const ACCENT = "#3D6BE0";
 const ACCENT_SOFT = "#EAF0FF";
 const BG = "#F5F7FA";
-const ACTIVE_GARAGE_ID = "bcd7f692-1c28-435c-87d1-92f84aa0e6bb";
+let ACTIVE_GARAGE_ID = "bcd7f692-1c28-435c-87d1-92f84aa0e6bb";
 const APP_TIME_ZONE = "Europe/Paris";
 const WORKSHOP_STAGES = [
   { key: "a_venir", label: "À venir", color: "#64748B" },
@@ -2254,12 +2254,40 @@ function LoginScreen() {
 
 export default function NexoraDashboard() {
   const [session, setSession] = useState(undefined);
+  const [garageReady, setGarageReady] = useState(false);
+  const [garageError, setGarageError] = useState("");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      setGarageReady(false);
+      setGarageError("");
+    });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    supabase
+      .from("garages")
+      .select("id")
+      .eq("owner_user_id", session.user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || !data) {
+          setGarageError("Aucun garage n'est associe a ce compte. Contactez le support Nexora.");
+          return;
+        }
+        ACTIVE_GARAGE_ID = data.id;
+        setGarageReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
 
   if (session === undefined) {
     return (
@@ -2270,6 +2298,20 @@ export default function NexoraDashboard() {
   }
   if (!session) {
     return <LoginScreen />;
+  }
+  if (garageError) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#DC2626", padding: 24, textAlign: "center" }}>
+        {garageError}
+      </div>
+    );
+  }
+  if (!garageReady) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748B" }}>
+        Chargement...
+      </div>
+    );
   }
   return <NexoraDashboardInner />;
 }
