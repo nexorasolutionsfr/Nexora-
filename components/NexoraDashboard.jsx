@@ -817,56 +817,167 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
   );
 }
 
-function ValiderView({ propositions, onAccept, onRefuse }) {
+function ValiderView({ propositions, onAccept, onRefuse, onReschedule, garageId }) {
+  const [rescheduling, setRescheduling] = useState(null);
   if (propositions.length === 0) {
     return <EmptyState icon={Check} title="Aucun rendez-vous en attente" subtitle="Nexora vous préviendra dès qu'une nouvelle proposition arrive." />;
   }
   return (
     <div className="space-y-4">
-      {propositions.map((p) => {
-        return (
-          <div key={p.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <div className="flex items-start justify-between flex-wrap gap-2">
-              <div>
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <div className="font-semibold text-slate-900 text-[15px]">{p.client}</div>
-                  <Badge tone="amber">En attente de validation</Badge>
-                  <SourceBadge source={p.source} />
-                </div>
-                <div className="text-[13px] text-slate-500 mt-1">{formatPhone(p.telephone)}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm font-medium text-slate-900">{p.jour}</div>
-                <div className="text-[13px] text-slate-500">{p.debut} - {p.fin} · {p.duree} min</div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-              <div className="flex items-center gap-2 text-sm text-slate-700"><Car size={15} className="text-slate-400" /> {p.vehicule} · {p.immatriculation}</div>
-              <div className="text-sm text-slate-700 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(p.categorie).bar }} /> {p.prestation}
-              </div>
-            </div>
-
-            <div className="mt-3 bg-slate-50 rounded-xl p-3 flex gap-2 items-start">
-              <MessageSquare size={14} className="text-slate-400 mt-0.5 shrink-0" />
-              <div className="text-[13px] text-slate-600 whitespace-pre-line">
+      {propositions.map((p) => (
+        <PropositionCard
+          key={p.id}
+          p={p}
+          onAccept={onAccept}
+          onRefuse={onRefuse}
+          onOpenReschedule={() => setRescheduling(p)}
+        />
+      ))}
+      {rescheduling && (
+        <RescheduleModal
+          proposition={rescheduling}
+          garageId={garageId}
+          onClose={() => setRescheduling(null)}
+          onConfirm={(newStart, newEnd) => {
+            onReschedule(rescheduling.id, newStart, newEnd);
+            setRescheduling(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+function PropositionCard({ p, onAccept, onRefuse, onOpenReschedule }) {
+  const [showMessage, setShowMessage] = useState(false);
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+      <div className="flex items-start justify-between flex-wrap gap-2">
+        <div>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <div className="font-semibold text-slate-900 text-[15px]">{p.client}</div>
+            <Badge tone="amber">En attente de validation</Badge>
+            <SourceBadge source={p.source} />
+          </div>
+          <div className="text-[13px] text-slate-500 mt-1">{formatPhone(p.telephone)}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-sm font-medium text-slate-900">{p.jour}</div>
+          <div className="text-[13px] text-slate-500">{p.debut} - {p.fin} · {p.duree} min</div>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+        <div className="flex items-center gap-2 text-sm text-slate-700"><Car size={15} className="text-slate-400" /> {p.vehicule} · {p.immatriculation}</div>
+        <div className="text-sm text-slate-700 flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(p.categorie).bar }} /> {p.prestation}
+        </div>
+      </div>
+      <div className="mt-3 bg-slate-50 rounded-xl p-3">
+        <div className="flex gap-2 items-start">
+          <MessageSquare size={14} className="text-slate-400 mt-0.5 shrink-0" />
+          <div className="text-[13px] text-slate-700 flex-1">{p.motif || "Motif non précisé"}</div>
+        </div>
+        {p.message && (
+          <>
+            <button
+              onClick={() => setShowMessage((v) => !v)}
+              className="mt-2 text-[12px] font-medium text-slate-500 hover:text-slate-700"
+            >
+              {showMessage ? "Masquer le message original" : "Afficher le message original"}
+            </button>
+            {showMessage && (
+              <div className="mt-2 text-[13px] text-slate-600 whitespace-pre-line border-t border-slate-200 pt-2">
                 {p.message}
               </div>
-            </div>
-            <div className="flex gap-2.5 mt-4">
-              {/* Accepter -> webhook n8n : validation proposition_rdv -> création rendez_vous -> confirmation client -> sync Google Calendar */}
-              <button onClick={() => onAccept(p.id)} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl" style={{ backgroundColor: "#16A34A" }}>
-                <Check size={15} /> Accepter
-              </button>
-              {/* Refuser -> webhook n8n : message garage -> nouvelle proposition envoyée au client */}
-              <button onClick={() => onRefuse(p.id)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
-                <X size={15} /> Refuser
-              </button>
-            </div>
+            )}
+          </>
+        )}
+      </div>
+      <div className="flex gap-2.5 mt-4">
+        <button onClick={() => onAccept(p.id)} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl" style={{ backgroundColor: "#16A34A" }}>
+          <Check size={15} /> Accepter
+        </button>
+        <button onClick={onOpenReschedule} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
+          <Pencil size={15} /> Modifier la date
+        </button>
+        <button onClick={() => onRefuse(p.id)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
+          <X size={15} /> Refuser
+        </button>
+      </div>
+    </div>
+  );
+}
+function RescheduleModal({ proposition, garageId, onClose, onConfirm }) {
+  const initialDate = new Date(proposition.date_debut_proposee).toISOString().slice(0, 10);
+  const [date, setDate] = useState(initialDate);
+  const [time, setTime] = useState(proposition.debut || "09:00");
+  const [dayBookings, setDayBookings] = useState([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    async function loadDay() {
+      setLoading(true);
+      const start = `${date}T00:00:00`;
+      const end = `${date}T23:59:59`;
+      const { data } = await supabase
+        .from("rendez_vous")
+        .select("date_debut, date_fin, clients(nom)")
+        .eq("garage_id", garageId)
+        .gte("date_debut", start)
+        .lte("date_debut", end)
+        .order("date_debut");
+      setDayBookings(data || []);
+      setLoading(false);
+    }
+    loadDay();
+  }, [date]);
+  const duree = proposition.duree || 60;
+  const confirm = () => {
+    const newStart = `${date}T${time}:00`;
+    const startDate = new Date(newStart);
+    const endDate = new Date(startDate.getTime() + duree * 60000);
+    onConfirm(startDate.toISOString(), endDate.toISOString());
+  };
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+          <Calendar size={18} /> Modifier la date — {proposition.client}
+        </h2>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[12px] text-slate-500">Date</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
           </div>
-        );
-      })}
+          <div>
+            <label className="text-[12px] text-slate-500">Heure de début</label>
+            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div className="mt-4">
+          <div className="text-[12px] font-medium text-slate-500 mb-2">Disponibilités du garage ce jour-là</div>
+          {loading ? (
+            <div className="text-[13px] text-slate-400">Chargement…</div>
+          ) : dayBookings.length === 0 ? (
+            <div className="text-[13px] text-emerald-600">Aucun rendez-vous ce jour — journée libre</div>
+          ) : (
+            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+              {dayBookings.map((b, i) => (
+                <div key={i} className="flex items-center gap-2 text-[13px] text-slate-600 bg-slate-50 rounded-lg px-2.5 py-1.5">
+                  <Clock size={13} className="text-slate-400" />
+                  {timeLabel(b.date_debut)} - {timeLabel(b.date_fin)} · {b.clients?.nom || "Client"}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2.5 mt-6">
+          <button onClick={confirm} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl" style={{ backgroundColor: ACCENT }}>
+            <Check size={15} /> Confirmer la nouvelle date
+          </button>
+          <button onClick={onClose} className="text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
+            Annuler
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1723,8 +1834,9 @@ useEffect(() => {
   .from("propositions_rdv")
   .select(`
   *,
-  demandes (
-    message_original
+    demandes (
+    message_original,
+    motif
   ),
   clients (
     nom,
@@ -1792,6 +1904,9 @@ const formattedPropositions = (data || []).map((p) => {
       categorie: prestation?.categorie || "diagnostic",
 
       
+            motif:
+        demande?.motif || "",
+
       message:
         demande?.message_original || "",
 
@@ -1990,6 +2105,36 @@ if (updateError) {
   );
 
 };
+    const handleReschedule = async (id, newStart, newEnd) => {
+    const { error } = await supabase
+      .from("propositions_rdv")
+      .update({ date_debut_proposee: newStart, date_fin_proposee: newEnd })
+      .eq("id", id)
+      .eq("statut", "en_attente");
+
+    if (error) {
+      flashToast("Erreur lors de la modification de la date", "error");
+      return;
+    }
+
+    setPropositions((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              date_debut_proposee: newStart,
+              date_fin_proposee: newEnd,
+              jour: dayLabel(newStart),
+              date: new Date(newStart).toLocaleDateString("fr-FR", { timeZone: APP_TIME_ZONE }),
+              debut: timeLabel(newStart),
+              fin: timeLabel(newEnd),
+            }
+          : p
+      )
+    );
+    flashToast("Nouvelle date enregistrée");
+  };
+
   const handleRefuse = async (id) => {
     const { error } = await supabase
       .from("propositions_rdv")
@@ -2195,7 +2340,7 @@ if (updateError) {
         <div className="p-5 md:p-8">
           {view === "dashboard" && <DashboardView stats={stats} propositions={propositions} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} demandes={demandes} clients={clients} garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} />}
-          {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} />}
+          {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={ACTIVE_GARAGE_ID} />}
           {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} garageData={garageData} onConnectCalendar={connectGoogleCalendar} />}
           {view === "demandes" && (
             <DemandesView
