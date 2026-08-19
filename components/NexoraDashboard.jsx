@@ -1198,10 +1198,7 @@ const statutLabel = (s) => {
       </td>
 
       <td className="px-5 py-3.5 text-slate-600">
-        {cleanMotif(d.message_original
-          ?.split("Demande :")
-          ?.pop()
-          ?.trim() || d.type_demande)}
+        {d.motif || d.type_demande || "—"}
       </td>
 
       <td className="px-5 py-3.5">
