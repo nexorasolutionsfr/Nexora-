@@ -25,7 +25,6 @@ import {
   Sparkles,
   Bot,
   Globe,
-  StickyNote,
   TrendingUp,
   CalendarPlus,
   CalendarClock,
@@ -2053,7 +2052,6 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], onCreerD
     .filter((r) => r.client_id === selected?.id)
     .sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut))
     .map((r) => ({ prestation: r.prestation, date: new Date(r.date_debut).toLocaleDateString("fr-FR"), statut: r.statut, note: r.notes }));
-  const notes = [];
   const derniereVisite = historique.find((h) => h.statut === "termine" || h.statut === "Terminé")?.date || null;
   const totalCA = rendezVous.filter((r) => r.client_id === selected?.id && r.statut === "Terminé").reduce((sum, r) => sum + Number(r.montant_ttc || r.montant || 0), 0);
 
@@ -2138,18 +2136,6 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], onCreerD
                   </div>
                 </div>
                 {h.note && <div className="text-[12.5px] text-slate-500 mt-1.5 pl-6">{h.note}</div>}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-6">
-          <div className="text-[13px] font-medium text-slate-500 mb-2">Notes internes</div>
-          <div className="space-y-2">
-            {notes.length === 0 && <div className="text-[13px] text-slate-400">Aucune note enregistrée pour ce client.</div>}
-            {notes.map((n, i) => (
-              <div key={i} className="flex items-start gap-2 bg-amber-50 rounded-xl px-3.5 py-2.5 text-sm text-amber-900">
-                <StickyNote size={14} className="text-amber-500 mt-0.5 shrink-0" /> {n.note}
               </div>
             ))}
           </div>
@@ -3063,11 +3049,16 @@ if (updateError) {
     }
     setDevisList((prev) => prev.filter((d) => d.id !== id));
     flashToast("Devis accepté");
-    fetch("http://localhost:5678/webhook/devis-accepte", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ devis_id: id }),
-    }).catch(() => console.warn("n8n injoignable — email de confirmation non envoyé au client."));
+    const n8nBaseUrl = process.env.NEXT_PUBLIC_N8N_WEBHOOK_BASE_URL;
+    if (n8nBaseUrl) {
+      fetch(`${n8nBaseUrl}/webhook/devis-accepte`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ devis_id: id }),
+      }).catch(() => console.warn("n8n injoignable — email de confirmation non envoyé au client."));
+    } else {
+      console.warn("NEXT_PUBLIC_N8N_WEBHOOK_BASE_URL non configurée — email de confirmation non envoyé au client.");
+    }
   };
 
   const handleRefuseDevis = async (id) => {
@@ -3083,11 +3074,16 @@ if (updateError) {
     }
     setDevisList((prev) => prev.filter((d) => d.id !== id));
     flashToast("Devis refusé");
-    fetch("http://localhost:5678/webhook/devis-refuse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ devis_id: id }),
-    }).catch(() => console.warn("n8n injoignable — email de refus non envoyé au client."));
+    const n8nBaseUrl = process.env.NEXT_PUBLIC_N8N_WEBHOOK_BASE_URL;
+    if (n8nBaseUrl) {
+      fetch(`${n8nBaseUrl}/webhook/devis-refuse`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ devis_id: id }),
+      }).catch(() => console.warn("n8n injoignable — email de refus non envoyé au client."));
+    } else {
+      console.warn("NEXT_PUBLIC_N8N_WEBHOOK_BASE_URL non configurée — email de refus non envoyé au client.");
+    }
   };
 
   const handleUpdateDevisMontant = async (id, montantHt) => {
@@ -3400,6 +3396,9 @@ if (updateError) {
     valider: "Rendez-vous à valider",
     demandes: "Demandes clients",
     clients: "Clients",
+    devis: "Devis",
+    verifier: "Erreurs à vérifier",
+    factures: "Factures",
     parametres: "Paramètres",
   };
 
