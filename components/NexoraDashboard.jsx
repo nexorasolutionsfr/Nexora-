@@ -1441,7 +1441,7 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
       {mode === "jour" ? (
         <div className="grid" style={{ gridTemplateColumns: "70px 1fr" }}>
           {heuresGrille.map((h) => {
-            const slotAppts = dayAppts.filter((a) => a.debut === h);
+            const slotAppts = dayAppts.filter((a) => a.debut?.slice(0, 2) === h.slice(0, 2));
             return (
               <React.Fragment key={h}>
                 <div className="text-[12px] text-slate-400 px-3 py-3 border-t border-slate-100">{h}</div>
