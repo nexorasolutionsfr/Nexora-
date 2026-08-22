@@ -64,13 +64,6 @@ const WORKSHOP_STAGES = [
   { key: "intervention", label: "En intervention", color: "#0F766E" },
   { key: "pret", label: "Prêt", color: "#16A34A" },
 ];
-const WORKSHOP_RESOURCES = [
-  { id: "mec_1", name: "Lucas Martin", role: "Mécanicien", color: "#3D6BE0" },
-  { id: "mec_2", name: "Inès Robert", role: "Mécanicienne", color: "#7C3AED" },
-  { id: "mec_3", name: "Thomas Leroy", role: "Mécanicien", color: "#0F766E" },
-  { id: "pont_1", name: "Pont 1", role: "Pont", color: "#D97706" },
-  { id: "pont_2", name: "Pont 2", role: "Pont", color: "#DC2626" },
-];
 
 const dateKey = (value) => {
   if (!value) return "";
@@ -552,7 +545,7 @@ function NexoraControlCenter({ aiStats = aiStatsToday, timeline = timelineTable 
   );
 }
 
-function ApptDetailModal({ appt, onClose }) {
+function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien }) {
   if (!appt) return null;
 
   const client = appt.client;
@@ -580,6 +573,7 @@ function ApptDetailModal({ appt, onClose }) {
           <div className="flex items-center gap-2 text-sm text-slate-700">
           <Phone size={15} className="text-slate-400" /> {formatPhone(appt.telephone)}
           </div>
+          {onAssignMecanicien && <label className="block pt-2"><span className="text-[12.5px] font-medium text-slate-500">Mécanicien</span><select value={appt.mecanicien_id || ""} onChange={(e) => onAssignMecanicien(appt.id, e.target.value || null)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"><option value="">Non assigné</option>{mecaniciens.filter((m) => m.actif !== false).map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}</select></label>}
         </div>
       </div>
     </div>
@@ -693,13 +687,15 @@ function AutomationPanel({ events = [], garageData }) {
   return <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm"><div className="flex items-start justify-between gap-3"><div><div className="font-semibold text-slate-900 text-[15px]">Automatisations suivies</div><div className="text-[12.5px] text-slate-500 mt-0.5">Chaque action n8n sera traçable ici.</div></div><BellRing size={18} color={ACCENT} /></div><div className="grid grid-cols-2 gap-2 mt-4">{chips.map((chip) => <div key={chip.label} className="bg-slate-50 rounded-xl px-3 py-2.5"><div className="text-[11px] text-slate-500">{chip.label}</div><div className="mt-1"><Badge tone={chip.tone}>{chip.value || "En attente"}</Badge></div></div>)}</div>{!garageData.google_agenda_connecte && <div className="mt-3 text-[12px] text-amber-800 bg-amber-50 rounded-lg p-2.5">Google Calendar n’est pas connecté : les rendez-vous restent suivis dans Nexora.</div>}{events.some((event) => event.statut === "erreur") && <div className="mt-3 text-[12px] text-red-800 bg-red-50 rounded-lg p-2.5">Une automatisation nécessite votre attention.</div>}</div>;
 }
 
-function AtelierView({ rendezVous, onSelectAppt, garageData }) {
+function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] }) {
   const todayAppts = rendezVous.filter((r) => isToday(r.date_debut));
-  const resourceAppointments = (resource, index) => todayAppts.filter((appt, appointmentIndex) => (appt.mecanicien_id || appt.pont_id || WORKSHOP_RESOURCES[appointmentIndex % Math.max(1, garageData.nb_mecaniciens || 3)]?.id) === resource.id);
+  const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
+  const resourceAppointments = (resourceId) => todayAppts.filter((appt) => (resourceId === null ? !appt.mecanicien_id : appt.mecanicien_id === resourceId));
+  const ressources = [...mecaniciensActifs.map((m) => ({ id: m.id, name: m.nom, role: "Mécanicien", color: m.couleur || "#3D6BE0" })), { id: null, name: "Non assigné", role: "", color: "#94A3B8" }];
   return <div className="space-y-5">
     <div className="rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}><div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" /><div className="relative flex items-start justify-between flex-wrap gap-4"><div><div className="flex items-center gap-2"><Wrench size={18} color="#8FB0FF" /><span className="font-semibold">Atelier en direct</span></div><div className="text-2xl font-semibold mt-3">Votre équipe sait quoi faire, maintenant.</div><div className="text-[13px] mt-1 text-blue-200">Répartissez les véhicules, suivez les retards et gardez le client informé.</div></div><div className="grid grid-cols-2 gap-2"><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Véhicules aujourd’hui</div><div className="text-xl font-semibold mt-1">{todayAppts.length}</div></div><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Équipe disponible</div><div className="text-xl font-semibold mt-1">{garageData.nb_mecaniciens || 0}</div></div></div></div></div>
     <WorkshopTimeline rendezVous={rendezVous} onSelectAppt={onSelectAppt} />
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"><div className="px-5 py-4 border-b border-slate-100"><div className="font-semibold text-slate-900 text-[15px]">Planning des ressources</div><div className="text-[12.5px] text-slate-500 mt-0.5">Affectez prochainement chaque rendez-vous à un mécanicien et à un pont.</div></div><div className="overflow-x-auto"><div className="min-w-[850px]"><div className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] border-b border-slate-100">{["Ressource", ...heuresGrille].map((hour) => <div key={hour} className="px-3 py-2 text-[11px] font-medium text-slate-400 border-r border-slate-100">{hour}</div>)}</div>{WORKSHOP_RESOURCES.map((resource, index) => { const assigned = resourceAppointments(resource, index); return <div key={resource.id} className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] min-h-[74px] border-b border-slate-100 last:border-0"><div className="px-3 py-3 border-r border-slate-100"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resource.color }} /><div><div className="text-[12.5px] font-medium text-slate-800">{resource.name}</div><div className="text-[11px] text-slate-400">{resource.role}</div></div></div></div><div className="col-span-10 relative p-1.5 flex gap-1.5">{assigned.map((appt) => <button key={appt.id} onClick={() => onSelectAppt(appt)} className="h-[58px] max-w-[180px] px-2 rounded-lg text-left overflow-hidden" style={{ backgroundColor: `${resource.color}1A`, borderLeft: `3px solid ${resource.color}`, width: `${Math.max(76, durationRows(appt.debut, appt.fin) * 66)}px` }}><div className="text-[11px] font-semibold truncate" style={{ color: resource.color }}>{appt.client}</div><div className="text-[10.5px] text-slate-500 truncate">{appt.prestation}</div></button>)}</div></div>; })}</div></div></div>
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"><div className="px-5 py-4 border-b border-slate-100"><div className="font-semibold text-slate-900 text-[15px]">Planning des ressources</div><div className="text-[12.5px] text-slate-500 mt-0.5">Cliquez un rendez-vous pour l’affecter à un mécanicien.</div></div><div className="overflow-x-auto"><div className="min-w-[850px]"><div className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] border-b border-slate-100">{["Ressource", ...heuresGrille].map((hour) => <div key={hour} className="px-3 py-2 text-[11px] font-medium text-slate-400 border-r border-slate-100">{hour}</div>)}</div>{mecaniciensActifs.length === 0 && <div className="px-5 py-6 text-[13px] text-slate-500">Ajoutez vos mécaniciens dans Paramètres pour affecter les rendez-vous.</div>}{ressources.map((resource) => { const assigned = resourceAppointments(resource.id); return <div key={resource.id ?? "non_assigne"} className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] min-h-[74px] border-b border-slate-100 last:border-0"><div className="px-3 py-3 border-r border-slate-100"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resource.color }} /><div><div className="text-[12.5px] font-medium text-slate-800">{resource.name}</div><div className="text-[11px] text-slate-400">{resource.role}</div></div></div></div><div className="col-span-10 relative p-1.5 flex gap-1.5">{assigned.map((appt) => <button key={appt.id} onClick={() => onSelectAppt(appt)} className="h-[58px] max-w-[180px] px-2 rounded-lg text-left overflow-hidden" style={{ backgroundColor: `${resource.color}1A`, borderLeft: `3px solid ${resource.color}`, width: `${Math.max(76, durationRows(appt.debut, appt.fin) * 66)}px` }}><div className="text-[11px] font-semibold truncate" style={{ color: resource.color }}>{appt.client}</div><div className="text-[10.5px] text-slate-500 truncate">{appt.prestation}</div></button>)}</div></div>; })}</div></div></div>
   </div>;
 }
 
@@ -2181,8 +2177,9 @@ function SettingsRow({ label, value, right }) {
   );
 }
 
-function ParametresView({ garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving }) {
+function ParametresView({ garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif }) {
   const [newPrestation, setNewPrestation] = useState({ nom: "", categorie: "entretien", duree_minutes: 60 });
+  const [newMecanicienNom, setNewMecanicienNom] = useState("");
   const catalogue = prestations.length ? prestations : prestationsCatalogue;
   const field = (label, name, type = "text") => <label className="block"><span className="text-[12.5px] font-medium text-slate-500">{label}</span><input type={type} value={garageData[name] ?? ""} onChange={(event) => onGarageChange(name, type === "number" ? Number(event.target.value) : event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" /></label>;
   const JOURS_SEMAINE = [["1", "Lundi"], ["2", "Mardi"], ["3", "Mercredi"], ["4", "Jeudi"], ["5", "Vendredi"], ["6", "Samedi"], ["7", "Dimanche"]];
@@ -2208,7 +2205,7 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
     <div className="flex items-center justify-between flex-wrap gap-3"><div><div className="text-lg font-semibold text-slate-900">Paramètres du garage</div><div className="text-[13px] text-slate-500">Vos changements alimentent directement le dashboard et les automatisations.</div></div><button onClick={onSave} disabled={saving} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: ACCENT }}><Save size={15} />{saving ? "Enregistrement…" : "Enregistrer"}</button></div>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
       <SettingsSection title="Informations garage"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{field("Nom du garage", "nom")} {field("Ville", "ville")} {field("Logo (URL)", "logo_url")} {field("Mécaniciens disponibles", "nb_mecaniciens", "number")}</div></SettingsSection>
-      <SettingsSection title="Horaires d’ouverture"><div className="space-y-2">{JOURS_SEMAINE.map(([jour, libelle]) => { const plages = plagesDuJour(jour); const ouvert = plages.length > 0; return <div key={jour} className="flex flex-wrap items-center gap-2 py-1.5 border-b border-slate-100 last:border-0"><label className="flex items-center gap-2 w-[132px] shrink-0"><input type="checkbox" checked={ouvert} onChange={(e) => basculerJour(jour, e.target.checked)} className="accent-blue-600" /><span className="text-[13px] font-medium text-slate-700">{libelle}</span></label>{ouvert ? <div className="flex flex-wrap items-center gap-1.5">{champHeure(jour, 0, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 0, 1)}{plages.length > 1 ? <><span className="text-slate-300 px-1">|</span>{champHeure(jour, 1, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 1, 1)}<button type="button" onClick={() => retirerApresMidi(jour)} className="text-[11px] text-slate-400 hover:text-red-500 px-1">retirer</button></> : <button type="button" onClick={() => ajouterApresMidi(jour)} className="text-[11px] text-blue-600 hover:underline px-1">+ après-midi</button>}</div> : <span className="text-[13px] text-slate-400">Fermé</span>}</div>; })}</div><div className="mt-4 rounded-xl bg-slate-50 p-3 text-[12.5px] text-slate-600">Ces horaires servent au calcul des créneaux proposés aux clients. Laissez un jour décoché pour le déclarer fermé.</div></SettingsSection>
+      <SettingsSection title="Horaires d’ouverture"><div className="space-y-2">{JOURS_SEMAINE.map(([jour, libelle]) => { const plages = plagesDuJour(jour); const ouvert = plages.length > 0; return <div key={jour} className="flex flex-wrap items-center gap-2 py-1.5 border-b border-slate-100 last:border-0"><label className="flex items-center gap-2 w-[132px] shrink-0"><input type="checkbox" checked={ouvert} onChange={(e) => basculerJour(jour, e.target.checked)} className="accent-blue-600" /><span className="text-[13px] font-medium text-slate-700">{libelle}</span></label>{ouvert ? <div className="flex flex-wrap items-center gap-1.5">{champHeure(jour, 0, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 0, 1)}{plages.length > 1 ? <><span className="text-slate-300 px-1">|</span>{champHeure(jour, 1, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 1, 1)}<button type="button" onClick={() => retirerApresMidi(jour)} className="text-[11px] text-slate-400 hover:text-red-500 px-1">retirer</button></> : <button type="button" onClick={() => ajouterApresMidi(jour)} className="text-[11px] text-blue-600 hover:underline px-1">+ après-midi</button>}</div> : <span className="text-[13px] text-slate-400">Fermé</span>}</div>; })}</div><div className="mt-4 rounded-xl bg-slate-50 p-3 text-[12.5px] text-slate-600">Ces horaires servent au calcul des créneaux proposés aux clients. Laissez un jour décoché pour le déclarer fermé.</div></SettingsSection><SettingsSection title="Mécaniciens"><div className="space-y-2">{mecaniciens.length === 0 && <div className="text-[13px] text-slate-400">Aucun mécanicien pour l’instant.</div>}{mecaniciens.map((m) => <div key={m.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-slate-100 last:border-0"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: m.couleur || "#3D6BE0" }} /><span className="text-[13px] font-medium text-slate-700">{m.nom}</span></div><label className="flex items-center gap-1.5 text-[12px] text-slate-500"><input type="checkbox" checked={m.actif !== false} onChange={(e) => onToggleMecanicienActif(m.id, e.target.checked)} className="accent-blue-600" />Actif</label></div>)}</div><div className="mt-3 flex gap-2"><input type="text" value={newMecanicienNom} onChange={(e) => setNewMecanicienNom(e.target.value)} placeholder="Nom du mécanicien" className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" /><button type="button" onClick={() => { if (newMecanicienNom.trim()) { onAddMecanicien(newMecanicienNom.trim()); setNewMecanicienNom(""); } }} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}>Ajouter</button></div></SettingsSection>
       <SettingsSection title="Prestations disponibles"><div className="space-y-1.5 max-h-[230px] overflow-y-auto">{catalogue.map((p) => <div key={p.id || p.nom} className="flex items-center gap-2 text-sm py-2 border-b border-slate-100 last:border-0"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(p.categorie).bar }} /><span className="flex-1 text-slate-700">{p.nom}</span><span className="text-slate-500 text-[12px]">{p.duree_minutes || p.duree_min || p.duree} min</span>{p.id && <button onClick={() => onDeletePrestation(p.id)} className="ml-1 text-slate-400 hover:text-red-600" title="Supprimer"><Trash2 size={14} /></button>}</div>)}</div><div className="grid grid-cols-[1fr_110px_74px] gap-2 mt-4"><input value={newPrestation.nom} onChange={(event) => setNewPrestation((prev) => ({ ...prev, nom: event.target.value }))} className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900" placeholder="Nouvelle prestation" /><input type="number" min="15" step="15" value={newPrestation.duree_minutes} onChange={(event) => setNewPrestation((prev) => ({ ...prev, duree_minutes: Number(event.target.value) }))} className="rounded-xl border border-slate-200 px-2 py-2 text-sm text-slate-900" /><button onClick={createPrestation} className="rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}><Plus size={15} className="inline" /> Ajouter</button></div></SettingsSection>
       <SettingsSection title="Connexions"><SettingsRow label="Boîte Gmail" right={<Badge tone={garageData.gmail_connecte ? "green" : "slate"}>{garageData.gmail_connecte ? "Connectée" : "Non connectée"}</Badge>} /><SettingsRow label="Google Agenda" right={<Badge tone={garageData.google_agenda_connecte ? "green" : "amber"}>{garageData.google_agenda_connecte ? "Connecté" : "À connecter dans n8n"}</Badge>} /><div className="mt-3 text-[12px] text-slate-500">La connexion Google Calendar doit être autorisée dans le workflow n8n, puis son état peut être enregistré ici.</div></SettingsSection>
       <SettingsSection title="Notifications"><button onClick={() => onGarageChange("notifications_email", !garageData.notifications_email)} className="w-full flex items-center justify-between py-2.5 border-b border-slate-100"><span className="text-sm text-slate-600">Notifications par email</span><Toggle checked={garageData.notifications_email} /></button><button onClick={() => onGarageChange("notifications_sms", !garageData.notifications_sms)} className="w-full flex items-center justify-between py-2.5"><span className="text-sm text-slate-600">Notifications par SMS</span><Toggle checked={garageData.notifications_sms} /></button></SettingsSection>
@@ -2399,6 +2396,7 @@ function NexoraDashboardInner() {
   const [demandes, setDemandes] = useState([]);
   const [selectedDemande, setSelectedDemande] = useState(null);
   const [prestations, setPrestations] = useState([]);
+  const [mecaniciens, setMecaniciens] = useState([]);
   const [clients, setClients] = useState([]);
   const [submittingProposal, setSubmittingProposal] = useState(false);
   const [garageData, setGarageData] = useState(garage);
@@ -2566,6 +2564,21 @@ useEffect(() => {
 
   loadPrestations();
 
+}, []);
+
+useEffect(() => {
+  async function loadMecaniciens() {
+    const { data, error } = await supabase
+      .from("mecaniciens")
+      .select("*")
+      .eq("garage_id", ACTIVE_GARAGE_ID);
+    if (error) {
+      console.error("Erreur mécaniciens :", error);
+      return;
+    }
+    setMecaniciens(data || []);
+  }
+  loadMecaniciens();
 }, []);
 
 useEffect(() => {
@@ -3336,6 +3349,41 @@ if (updateError) {
     flashToast("Prestation supprimée");
   };
 
+  const addMecanicien = async (nom) => {
+    const couleurs = ["#3D6BE0", "#7C3AED", "#0F766E", "#D97706", "#DC2626", "#16A34A"];
+    const couleur = couleurs[mecaniciens.length % couleurs.length];
+    const { data, error } = await supabase.from("mecaniciens").insert({ nom, couleur, garage_id: ACTIVE_GARAGE_ID }).select().single();
+    if (error) {
+      console.error("Erreur ajout mécanicien :", error);
+      flashToast("Impossible d’ajouter le mécanicien", "error");
+      return;
+    }
+    setMecaniciens((previous) => [...previous, data]);
+    flashToast("Mécanicien ajouté");
+  };
+
+  const toggleMecanicienActif = async (id, actif) => {
+    const { error } = await supabase.from("mecaniciens").update({ actif }).eq("id", id).eq("garage_id", ACTIVE_GARAGE_ID);
+    if (error) {
+      console.error("Erreur mise à jour mécanicien :", error);
+      flashToast("Impossible de mettre à jour le mécanicien", "error");
+      return;
+    }
+    setMecaniciens((previous) => previous.map((m) => (m.id === id ? { ...m, actif } : m)));
+  };
+
+  const assignMecanicien = async (rdvId, mecanicienId) => {
+    const { error } = await supabase.from("rendez_vous").update({ mecanicien_id: mecanicienId }).eq("id", rdvId).eq("garage_id", ACTIVE_GARAGE_ID);
+    if (error) {
+      console.error("Erreur affectation mécanicien :", error);
+      flashToast("Impossible d’affecter le mécanicien", "error");
+      return;
+    }
+    setRendezVous((previous) => previous.map((r) => (r.id === rdvId ? { ...r, mecanicien_id: mecanicienId } : r)));
+    setSelectedAppt((previous) => (previous && previous.id === rdvId ? { ...previous, mecanicien_id: mecanicienId } : previous));
+    flashToast("Mécanicien affecté");
+  };
+
   const connectGoogleCalendar = () => {
     const connectUrl = process.env.NEXT_PUBLIC_GOOGLE_CALENDAR_CONNECT_URL;
     if (connectUrl) {
@@ -3460,7 +3508,7 @@ if (updateError) {
 
         <div className="p-5 md:p-8">
           {view === "dashboard" && <DashboardView stats={stats} propositions={propositions} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} demandes={demandes} clients={clients} garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} />}
-          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} />}
+          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={ACTIVE_GARAGE_ID} />}
           {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} onAccept={handleAcceptDevis} onRefuse={handleRefuseDevis} onUpdateMontant={handleUpdateDevisMontant} onCreer={handleCreerDevis} />}
           {view === "verifier" && <ErreursView erreurs={erreurs} onResoudre={handleResoudreErreur} />}
@@ -3474,12 +3522,12 @@ if (updateError) {
             />
           )}
           {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} onCreerDevis={handleCreerDevis} onToast={flashToast} />}
-          {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} />}
+          {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} />}
         </div>
       </main>
 
       <Toast toast={toast} />
-      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} />
+      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} />
     </div>
   );
 }
