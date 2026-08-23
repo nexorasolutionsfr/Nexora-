@@ -60,8 +60,10 @@ const WORKSHOP_STAGES = [
   { key: "depose", label: "Véhicule déposé", color: "#3D6BE0" },
   { key: "diagnostic", label: "Diagnostic", color: "#7C3AED" },
   { key: "attente_client", label: "En attente client", color: "#D97706" },
+  { key: "attente_piece", label: "Attente pièce", color: "#EA580C" },
   { key: "intervention", label: "En intervention", color: "#0F766E" },
   { key: "pret", label: "Prêt", color: "#16A34A" },
+  { key: "restitue", label: "Restitué", color: "#475569" },
 ];
 
 const dateKey = (value) => {
@@ -407,7 +409,7 @@ function WorkshopTimeline({ rendezVous, onSelectAppt, compact = false }) {
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
       <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100"><div><div className="font-semibold text-slate-900 text-[15px]">Flux atelier en direct</div><div className="text-[12.5px] text-slate-500 mt-0.5">Chaque véhicule est visible, de son arrivée à sa restitution.</div></div><Badge tone="green">{grouped.reduce((sum, stage) => sum + stage.appointments.length, 0)} véhicules suivis</Badge></div>
-      <div className={`grid grid-cols-1 ${compact ? "md:grid-cols-3" : "xl:grid-cols-6"} gap-px bg-slate-200`}>
+          <div className={`grid grid-cols-1 ${compact ? "md:grid-cols-3" : "xl:grid-cols-8"} gap-px bg-slate-200`}>
         {grouped.map((stage, index) => <div key={stage.key} className="bg-white min-h-[150px] p-3">
           <div className="flex items-center justify-between gap-2 mb-3"><div className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: stage.color }}><span className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }} />{stage.label}</div><span className="text-[11px] text-slate-400">{stage.appointments.length}</span></div>
           <div className="space-y-2">{stage.appointments.length === 0 ? <div className="text-[11.5px] text-slate-300 pt-3">Aucun véhicule</div> : stage.appointments.map((appt) => <button key={appt.id} onClick={() => onSelectAppt(appt)} className="w-full text-left rounded-lg p-2 hover:bg-slate-50 border border-slate-100"><div className="text-[12px] font-medium text-slate-800 truncate">{appt.client}</div><div className="text-[11px] text-slate-500 truncate">{appt.vehicule}</div><div className="text-[11px] font-medium mt-1" style={{ color: stage.color }}>{appt.debut}</div></button>)}</div>
@@ -418,7 +420,7 @@ function WorkshopTimeline({ rendezVous, onSelectAppt, compact = false }) {
   );
 }
 
-function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien }) {
+function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, onUpdateStatutAtelier }) {
   if (!appt) return null;
 
   const client = appt.client;
@@ -447,6 +449,7 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien }
           <Phone size={15} className="text-slate-400" /> {formatPhone(appt.telephone)}
           </div>
           {onAssignMecanicien && <label className="block pt-2"><span className="text-[12.5px] font-medium text-slate-500">Mécanicien</span><select value={appt.mecanicien_id || ""} onChange={(e) => onAssignMecanicien(appt.id, e.target.value || null)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"><option value="">Non assigné</option>{mecaniciens.filter((m) => m.actif !== false).map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}</select></label>}
+          {onUpdateStatutAtelier && <label className="block pt-2"><span className="text-[12.5px] font-medium text-slate-500">Étape atelier</span><select value={appt.statut_atelier || "a_venir"} onChange={(e) => onUpdateStatutAtelier(appt.id, e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500">{WORKSHOP_STAGES.map((stage) => <option key={stage.key} value={stage.key}>{stage.label}</option>)}</select></label>}
         </div>
       </div>
     </div>
@@ -3269,7 +3272,19 @@ if (updateError) {
     }
     setRendezVous((previous) => previous.map((r) => (r.id === rdvId ? { ...r, mecanicien_id: mecanicienId } : r)));
     setSelectedAppt((previous) => (previous && previous.id === rdvId ? { ...previous, mecanicien_id: mecanicienId } : previous));
-    flashToast("Mécanicien affecté");
+        flashToast("Mécanicien affecté");
+  };
+
+  const updateStatutAtelier = async (rdvId, statutAtelier) => {
+    const { error } = await supabase.from("rendez_vous").update({ statut_atelier: statutAtelier }).eq("id", rdvId).eq("garage_id", ACTIVE_GARAGE_ID);
+    if (error) {
+      console.error("Erreur mise à jour étape atelier :", error);
+      flashToast("Impossible de mettre à jour l'étape", "error");
+      return;
+    }
+    setRendezVous((previous) => previous.map((r) => (r.id === rdvId ? { ...r, statut_atelier: statutAtelier } : r)));
+    setSelectedAppt((previous) => (previous && previous.id === rdvId ? { ...previous, statut_atelier: statutAtelier } : previous));
+    flashToast("Étape mise à jour");
   };
 
   const connectGoogleCalendar = () => {
@@ -3418,7 +3433,7 @@ if (updateError) {
       </main>
 
       <Toast toast={toast} />
-      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} />
+      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} onUpdateStatutAtelier={updateStatutAtelier} />
     </div>
   );
 }
