@@ -133,8 +133,8 @@ function formatPhone(phone) {
   return phone;
 }
 
-const RDV_STATUS_LABEL = { confirme: "Confirmé", en_attente: "En attente", termine: "Terminé", annule: "Annulé" };
-const STATUT_TONE = { "Confirmé": "green", "En attente": "amber", "Terminé": "slate", "Annulé": "red" };
+const RDV_STATUS_LABEL = { confirme: "Confirmé", en_attente: "En attente", termine: "Terminé", annule: "Annulé", absent: "Absent" };
+const STATUT_TONE = { "Confirmé": "green", "En attente": "amber", "Terminé": "slate", "Annulé": "red", "Absent": "red" };
 const URGENCE_TONE = { "Élevée": "red", "Moyenne": "amber", "Faible": "slate" };
 
 const SOURCE_META = {
@@ -295,12 +295,13 @@ function Logo() {
   );
 }
 
-function StatCard({ label, value, icon: Icon }) {
+function StatCard({ label, value, icon: Icon, note }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-5 flex items-start justify-between shadow-sm">
       <div>
         <div className="text-slate-500 text-[13px] font-medium">{label}</div>
         <div className="text-2xl font-semibold text-slate-900 mt-1.5">{value}</div>
+        {note && <div className="text-[11.5px] text-slate-400 mt-0.5">{note}</div>}
       </div>
       <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: ACCENT_SOFT }}>
         <Icon size={18} color={ACCENT} strokeWidth={2} />
@@ -398,152 +399,6 @@ function GarageIdentityCard({ garageData = garage }) {
 }
 
 // Centre de contrôle Nexora IA — carte ROI + timeline des actions automatisées
-function NexoraControlCenter({ aiStats = aiStatsToday, timeline = timelineTable }) {
-  const heures = Math.floor(aiStats.tempsEconomiseMin / 60);
-  const minutes = aiStats.tempsEconomiseMin % 60;
-  const valeurRecuperee = Math.round((aiStats.tempsEconomiseMin / 60) * aiStats.tarifHoraireAdmin);
-  const rows = [
-    { label: "Demandes détectées", value: aiStats.demandesDetectees },
-    { label: "Créneaux calculés", value: aiStats.creneauxCalcules },
-    { label: "Propositions à traiter", value: aiStats.propositionsEnvoyees },
-    { label: "Rendez-vous confirmés", value: aiStats.rdvConfirmes },
-  ];
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-      <div className="lg:col-span-2 rounded-2xl shadow-sm p-5 text-white relative overflow-hidden" style={{ backgroundColor: NAVY }}>
-        <div className="absolute -right-6 -top-6 w-28 h-28 rounded-full opacity-10" style={{ backgroundColor: ACCENT }} />
-        <div className="flex items-center gap-2 relative">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: "rgba(61,107,224,0.25)" }}>
-            <Bot size={16} color="#8FB0FF" />
-          </div>
-          <div className="font-semibold text-[15px]">Nexora Intelligence</div>
-        </div>
-        <div className="text-[12.5px] mt-1" style={{ color: "#8CA0C9" }}>Données opérationnelles du jour</div>
-
-        <div className="mt-4 space-y-2.5 relative">
-          {rows.map((r) => (
-            <div key={r.label} className="flex items-center justify-between text-[13.5px]">
-              <span style={{ color: "#C3D0EA" }}>{r.label}</span>
-              <span className="font-semibold">{r.value}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-4 pt-4 border-t space-y-2" style={{ borderColor: "#22335C" }}>
-          <div className="flex items-center gap-2 text-[13.5px]">
-            <Sparkles size={14} color="#8FB0FF" />
-            <span className="font-semibold">{heures}h{minutes ? minutes : ""}</span>
-            <span style={{ color: "#C3D0EA" }}>de temps administratif économisé</span>
-          </div>
-          <div className="flex items-center gap-2 text-[13.5px]">
-            <TrendingUp size={14} color="#8FB0FF" />
-            <span className="font-semibold">{valeurRecuperee}€</span>
-            <span style={{ color: "#C3D0EA" }}>de valeur administrative récupérée</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-        <div className="flex items-center justify-between mb-4"><div className="font-semibold text-slate-900 text-[15px]">Activité automatisée en direct</div><span className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-700"><span className="w-2 h-2 rounded-full bg-emerald-500" />Synchronisé</span></div>
-        <div className="space-y-0">
-          {timeline.length === 0 ? <div className="py-8 text-center text-[13px] text-slate-400">L’activité n8n et Supabase apparaîtra ici en direct.</div> : timeline.map((t, i) => {
-            const meta = TIMELINE_ICON[t.type];
-            const Icon = meta.icon;
-            const isLast = i === timelineTable.length - 1;
-            return (
-              <div key={i} className="flex gap-3">
-                <div className="flex flex-col items-center">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${meta.color}1A` }}>
-                    <Icon size={13} color={meta.color} />
-                  </div>
-                  {!isLast && <div className="w-px flex-1 my-1" style={{ backgroundColor: "#E2E8F0" }} />}
-                </div>
-                <div className="pb-4">
-                  <div className="text-[12px] text-slate-400 font-medium">{t.heure}</div>
-                  <div className="text-[13.5px] text-slate-700 mt-0.5">{t.texte}</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien }) {
-  if (!appt) return null;
-
-  const client = appt.client;
-  const vehicule = appt.vehicule;
-  const colors = catColor(appt.categorie);
-  return (
-    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge tone={STATUT_TONE[appt.statut] || "slate"}>{appt.statut}</Badge>
-            <SourceBadge source={appt.source} />
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
-        </div>
-        <div className="text-lg font-semibold text-slate-900 mt-3">{client}</div>
-        <div className="mt-4 space-y-2.5">
-          <div className="flex items-center gap-2 text-sm text-slate-700"><Car size={15} className="text-slate-400" /> {[vehicule, appt.immatriculation].filter(Boolean).join(" · ")}</div>
-          <div className="flex items-center gap-2 text-sm text-slate-700"><Clock size={15} className="text-slate-400" /> {appt.debut} – {appt.fin}</div>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: colors.bar }} />
-            <span style={{ color: colors.text }} className="font-medium">{appt.prestation}</span>
-            <span className="text-slate-400">· {colors.label}</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-slate-700">
-          <Phone size={15} className="text-slate-400" /> {formatPhone(appt.telephone)}
-          </div>
-          {onAssignMecanicien && <label className="block pt-2"><span className="text-[12.5px] font-medium text-slate-500">Mécanicien</span><select value={appt.mecanicien_id || ""} onChange={(e) => onAssignMecanicien(appt.id, e.target.value || null)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"><option value="">Non assigné</option>{mecaniciens.filter((m) => m.actif !== false).map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}</select></label>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function WorkshopControlPanel({ rendezVous, demandes, clients, garageData, onNavigate }) {
-  const now = new Date();
-  const dayAppointments = rendezVous.filter((r) => isToday(r.date_debut));
-  const urgent = demandes.filter((d) => d.urgence === "Élevée" && d.statut !== "rendez_vous_confirme").length;
-  const overdue = rendezVous.filter((r) => new Date(r.date_fin) < now && !["Terminé", "Annulé"].includes(r.statut)).length;
-  const imminent = dayAppointments.filter((r) => {
-    const minutes = (new Date(r.date_debut) - now) / 60000;
-    return minutes >= 0 && minutes <= 120;
-  }).length;
-  const toRecall = clients.filter((c) => c.fidele).length;
-  const occupiedMinutes = dayAppointments.reduce((sum, r) => sum + Math.max(0, (new Date(r.date_fin) - new Date(r.date_debut)) / 60000), 0);
-  const capacity = Math.max(1, (garageData.nb_mecaniciens || 1) * 9 * 60);
-  const occupancy = Math.min(100, Math.round((occupiedMinutes / capacity) * 100));
-  const cards = [
-    { label: "Urgences à traiter", value: urgent, hint: urgent ? "À appeler en priorité" : "Aucune urgence", icon: AlertTriangle, tone: "#DC2626", target: "demandes" },
-    { label: "Retards atelier", value: overdue, hint: overdue ? "Intervention à vérifier" : "Tout est à l’heure", icon: Clock, tone: "#D97706", target: "atelier" },
-    { label: "RDV dans 2 heures", value: imminent, hint: imminent ? "Préparez les dossiers" : "Rien d’imminent", icon: CalendarClock, tone: "#3D6BE0", target: "agenda" },
-    { label: "Clients à rappeler", value: toRecall, hint: "Fidélisation à déclencher", icon: Phone, tone: "#7C3AED", target: "clients" },
-  ];
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-      {cards.map((card) => {
-        const Icon = card.icon;
-        return <button key={card.label} onClick={() => onNavigate(card.target)} className="bg-white border border-slate-200 hover:border-slate-300 hover:shadow-sm rounded-2xl p-4 text-left transition-all">
-          <div className="flex justify-between gap-2"><div className="text-[12.5px] font-medium text-slate-500">{card.label}</div><div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${card.tone}18` }}><Icon size={15} color={card.tone} /></div></div>
-          <div className="text-2xl font-semibold text-slate-900 mt-2">{card.value}</div><div className="text-[12px] text-slate-400 mt-1">{card.hint}</div>
-        </button>;
-      })}
-      <button onClick={() => onNavigate("agenda")} className="rounded-2xl p-4 text-left text-white overflow-hidden relative" style={{ backgroundColor: NAVY }}>
-        <div className="absolute -right-7 -top-7 w-24 h-24 rounded-full bg-blue-400/20" />
-        <div className="text-[12.5px] text-blue-200">Taux de remplissage</div><div className="flex items-end gap-2 mt-2"><div className="text-2xl font-semibold">{occupancy}%</div><div className="text-[12px] text-blue-200 mb-1">aujourd’hui</div></div>
-        <div className="mt-3 h-1.5 rounded-full bg-white/15 overflow-hidden"><div className="h-full rounded-full bg-blue-300" style={{ width: `${occupancy}%` }} /></div>
-      </button>
-    </div>
-  );
-}
-
 function WorkshopTimeline({ rendezVous, onSelectAppt, compact = false }) {
   const grouped = WORKSHOP_STAGES.map((stage) => ({
     ...stage,
@@ -563,57 +418,6 @@ function WorkshopTimeline({ rendezVous, onSelectAppt, compact = false }) {
   );
 }
 
-function SmartAlerts({ clients, demandes, rendezVous, onNavigate }) {
-  const now = new Date();
-  const oneYearAgo = new Date(now);
-  oneYearAgo.setFullYear(now.getFullYear() - 1);
-  const dormantClients = clients.filter((client) => {
-    if (!client.fidele) return false;
-    const last = rendezVous.filter((rdv) => rdv.client_id === client.id && rdv.statut === "Terminé").sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut))[0];
-    return !last || new Date(last.date_debut) < oneYearAgo;
-  });
-  const technicalControl = clients.filter((client) => {
-    const vehicles = Array.isArray(client.vehicules) ? client.vehicules : client.vehicules ? [client.vehicules] : [];
-    return vehicles.some((vehicle) => vehicle.controle_technique_echeance && new Date(vehicle.controle_technique_echeance) <= new Date(now.getTime() + 45 * 86_400_000));
-  });
-  const quotesToFollow = demandes.filter((demande) => demande.statut === "en_attente").length;
-  const unconfirmed = rendezVous.filter((rdv) => ["En attente", "en_attente"].includes(rdv.statut) && new Date(rdv.date_debut) > now).length;
-  const alerts = [
-    { label: "Clients fidèles à rappeler", value: dormantClients.length, note: "Aucune visite depuis 12 mois", target: "clients", tone: "#7C3AED" },
-    { label: "Contrôles techniques proches", value: technicalControl.length, note: "Échéance dans les 45 jours", target: "clients", tone: "#D97706" },
-    { label: "Devis à relancer", value: quotesToFollow, note: "Demande en attente client", target: "demandes", tone: "#3D6BE0" },
-    { label: "RDV non confirmés", value: unconfirmed, note: "À sécuriser avant l’atelier", target: "agenda", tone: "#DC2626" },
-  ];
-  return <div className="bg-white border border-slate-200 rounded-2xl shadow-sm"><div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between"><div><div className="font-semibold text-slate-900 text-[15px]">Opportunités et alertes intelligentes</div><div className="text-[12.5px] text-slate-500 mt-0.5">Ce que l’équipe peut faire pour éviter une perte de temps ou de chiffre d’affaires.</div></div><Sparkles size={17} color={ACCENT} /></div><div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 divide-x-0 sm:divide-x divide-y sm:divide-y-0 divide-slate-100">{alerts.map((alert) => <button key={alert.label} onClick={() => onNavigate(alert.target)} className="p-4 text-left hover:bg-slate-50 transition-colors"><div className="text-[12px] font-medium text-slate-500">{alert.label}</div><div className="text-2xl font-semibold mt-2" style={{ color: alert.tone }}>{alert.value}</div><div className="text-[11.5px] text-slate-400 mt-1">{alert.note}</div></button>)}</div></div>;
-}
-
-function FinancialOverview({ rendezVous, demandes, propositions }) {
-  const todayRdv = rendezVous.filter((r) => isToday(r.date_debut));
-  const completed = rendezVous.filter((r) => r.statut === "Terminé");
-  const estimate = (r) => Number(r.montant_ttc || r.montant || 0);
-  const forecast = todayRdv.reduce((sum, r) => sum + estimate(r), 0);
-  const average = completed.length ? Math.round(completed.reduce((sum, r) => sum + estimate(r), 0) / completed.length) : 0;
-  const accepted = propositions.filter((p) => p.statut === "accepte").length;
-  const rate = accepted + propositions.length ? Math.round((accepted / (accepted + propositions.length)) * 100) : 0;
-  const bySource = Object.keys(SOURCE_META).map((source) => ({ source, count: demandes.filter((d) => d.source === source).length })).filter((x) => x.count);
-  const max = Math.max(1, ...bySource.map((x) => x.count));
-  return <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-    <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm"><div className="flex items-center justify-between"><div><div className="font-semibold text-slate-900 text-[15px]">Pilotage financier</div><div className="text-[12.5px] text-slate-500">Estimation basée sur les montants renseignés.</div></div><CircleDollarSign size={19} color={ACCENT} /></div><div className="grid grid-cols-2 gap-3 mt-5"><div className="bg-blue-50 rounded-xl p-3"><div className="text-[11.5px] text-blue-700">CA prévisionnel jour</div><div className="text-xl font-semibold text-blue-950 mt-1">{forecast ? `${forecast.toLocaleString("fr-FR")} €` : "À renseigner"}</div></div><div className="bg-slate-50 rounded-xl p-3"><div className="text-[11.5px] text-slate-500">Panier moyen</div><div className="text-xl font-semibold text-slate-900 mt-1">{average ? `${average.toLocaleString("fr-FR")} €` : "—"}</div></div><div className="text-[13px] text-slate-600">Taux de validation <strong className="text-slate-900">{rate}%</strong></div><div className="text-[13px] text-slate-600">No-shows <strong className="text-slate-900">0</strong></div></div></div>
-    <div className="lg:col-span-3 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm"><div className="font-semibold text-slate-900 text-[15px]">Origine des demandes</div><div className="text-[12.5px] text-slate-500 mt-0.5">Pour investir là où les clients vous trouvent vraiment.</div><div className="mt-4 space-y-3">{bySource.length === 0 ? <div className="text-[13px] text-slate-400 py-3">Les sources apparaîtront avec les demandes clients.</div> : bySource.map(({ source, count }) => { const meta = SOURCE_META[source]; return <div key={source} className="grid grid-cols-[110px_1fr_28px] items-center gap-3"><div className="text-[12px] text-slate-600">{meta?.label || source}</div><div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${(count / max) * 100}%`, backgroundColor: meta?.text || ACCENT }} /></div><div className="text-[12px] font-semibold text-slate-700 text-right">{count}</div></div>; })}</div></div>
-  </div>;
-}
-
-function AutomationPanel({ events = [], garageData }) {
-  const status = garageData.google_agenda_connecte ? "Synchronisé" : "Connexion requise";
-  const chips = [
-    { label: "SMS", value: events.filter((e) => e.type === "sms").length, tone: "green" },
-    { label: "Emails", value: events.filter((e) => e.type === "email").length, tone: "green" },
-    { label: "Rappels", value: events.filter((e) => e.type === "rappel").length, tone: "amber" },
-    { label: "Google Calendar", value: status, tone: garageData.google_agenda_connecte ? "green" : "amber" },
-  ];
-  return <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm"><div className="flex items-start justify-between gap-3"><div><div className="font-semibold text-slate-900 text-[15px]">Automatisations suivies</div><div className="text-[12.5px] text-slate-500 mt-0.5">Chaque action n8n sera traçable ici.</div></div><BellRing size={18} color={ACCENT} /></div><div className="grid grid-cols-2 gap-2 mt-4">{chips.map((chip) => <div key={chip.label} className="bg-slate-50 rounded-xl px-3 py-2.5"><div className="text-[11px] text-slate-500">{chip.label}</div><div className="mt-1"><Badge tone={chip.tone}>{chip.value || "En attente"}</Badge></div></div>)}</div>{!garageData.google_agenda_connecte && <div className="mt-3 text-[12px] text-amber-800 bg-amber-50 rounded-lg p-2.5">Google Calendar n’est pas connecté : les rendez-vous restent suivis dans Nexora.</div>}{events.some((event) => event.statut === "erreur") && <div className="mt-3 text-[12px] text-red-800 bg-red-50 rounded-lg p-2.5">Une automatisation nécessite votre attention.</div>}</div>;
-}
-
 function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] }) {
   const todayAppts = rendezVous.filter((r) => isToday(r.date_debut));
   const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
@@ -629,258 +433,363 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] })
 // =====================================================================================
 // VIEWS
 // =====================================================================================
-function RapportHebdomadaire() {
-  const [rapport, setRapport] = useState(null);
-  const [loadingRapport, setLoadingRapport] = useState(true);
-  const [ouvert, setOuvert] = useState(false);
+function DashboardView({ stats, propositions, setView, onSelectAppt, loading, rendezVous, demandes, clients, garageData, aiStats, timeline, automationEvents, factures = [], devisList = [], prestations = [] }) {
+  const [periode, setPeriode] = useState("30j");
 
-  useEffect(() => {
-    async function chargerRapport() {
-      const debutSemaine = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
-      const [
-        demandesRes,
-        rdvRes,
-        devisEnvoyesRes,
-        devisAcceptesRes,
-        devisRefusesRes,
-        facturesRes,
-        clientsRes,
-        urgentesRes,
-      ] = await Promise.all([
-        supabase.from("demandes").select("id", { count: "exact", head: true }).eq("garage_id", ACTIVE_GARAGE_ID).gte("created_at", debutSemaine),
-        supabase.from("rendez_vous").select("id", { count: "exact", head: true }).eq("garage_id", ACTIVE_GARAGE_ID).gte("date_debut", debutSemaine).in("statut", ["confirme", "termine"]),
-        supabase.from("devis").select("id", { count: "exact", head: true }).eq("garage_id", ACTIVE_GARAGE_ID).gte("created_at", debutSemaine),
-        supabase.from("devis").select("id", { count: "exact", head: true }).eq("garage_id", ACTIVE_GARAGE_ID).eq("statut", "accepte").gte("created_at", debutSemaine),
-        supabase.from("devis").select("id", { count: "exact", head: true }).eq("garage_id", ACTIVE_GARAGE_ID).eq("statut", "refuse").gte("created_at", debutSemaine),
-        supabase.from("factures").select("montant_ttc, statut").eq("garage_id", ACTIVE_GARAGE_ID).gte("created_at", debutSemaine),
-        supabase.from("clients").select("id", { count: "exact", head: true }).eq("garage_id", ACTIVE_GARAGE_ID).gte("created_at", debutSemaine),
-        supabase.from("demandes").select("id", { count: "exact", head: true }).eq("garage_id", ACTIVE_GARAGE_ID).eq("urgence", "Élevée").gte("created_at", debutSemaine),
-      ]);
-
-      const factures = facturesRes.data || [];
-      const caFacture = factures.reduce((s, f) => s + Number(f.montant_ttc || 0), 0);
-      const caEncaisse = factures.filter((f) => f.statut === "payee").reduce((s, f) => s + Number(f.montant_ttc || 0), 0);
-
-      setRapport({
-        demandes: demandesRes.count || 0,
-        rdv: rdvRes.count || 0,
-        devisEnvoyes: devisEnvoyesRes.count || 0,
-        devisAcceptes: devisAcceptesRes.count || 0,
-        devisRefuses: devisRefusesRes.count || 0,
-        nbFactures: factures.length,
-        caFacture,
-        caEncaisse,
-        nouveauxClients: clientsRes.count || 0,
-        urgentes: urgentesRes.count || 0,
-      });
-      setLoadingRapport(false);
-    }
-    chargerRapport();
-  }, []);
-
-  if (loadingRapport || !rapport) {
-    return <SkeletonCard h="h-32" />;
-  }
-
-  const tauxAcceptation = rapport.devisEnvoyes > 0 ? Math.round((rapport.devisAcceptes / rapport.devisEnvoyes) * 100) : null;
-
-  const lignes = [
-    { label: "Demandes reçues", value: rapport.demandes },
-    { label: "RDV confirmés", value: rapport.rdv },
-    { label: "Nouveaux clients", value: rapport.nouveauxClients },
-    { label: "Demandes urgentes", value: rapport.urgentes },
-    { label: "Devis envoyés", value: rapport.devisEnvoyes },
-    { label: "Devis acceptés", value: rapport.devisAcceptes },
-    { label: "Devis refusés", value: rapport.devisRefuses },
-    { label: "Factures émises", value: rapport.nbFactures },
-  ];
-
-  return (
-    <div className="rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}>
-      <div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" />
-      <div className="relative">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2">
-            <Bot size={18} color="#8FB0FF" />
-            <span className="font-semibold">Rapport de la semaine — Nexora</span>
-          </div>
-          <button onClick={() => setOuvert((v) => !v)} className="text-[12px] text-blue-200 hover:text-white">
-            {ouvert ? "Réduire" : "Voir le détail"}
-          </button>
-        </div>
-
-        <div className="mt-3 flex items-baseline gap-2 flex-wrap">
-          <span className="text-2xl font-semibold">{rapport.caFacture.toFixed(0)} €</span>
-          <span className="text-[13px] text-blue-200">facturés · {rapport.caEncaisse.toFixed(0)} € déjà encaissés</span>
-          {tauxAcceptation !== null && (
-            <span className="text-[13px] text-blue-200">· {tauxAcceptation}% des devis acceptés</span>
-          )}
-        </div>
-
-        {ouvert && (
-          <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {lignes.map((l) => (
-              <div key={l.label} className="bg-white/10 rounded-xl p-3">
-                <div className="text-[11px] text-blue-200">{l.label}</div>
-                <div className="text-xl font-semibold mt-1">{l.value}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DashboardView({ stats, propositions, setView, onSelectAppt, loading, rendezVous, demandes, clients, garageData, aiStats, timeline, automationEvents, factures = [], devisList = [] }) {
-  const upcomingAppts = [...rendezVous]
-    .filter((r) => new Date(r.date_fin) >= new Date())
-    .sort((a, b) => new Date(a.date_debut) - new Date(b.date_debut));
-  const todayKey = dateKey(new Date());
-  const todayAppts = upcomingAppts.filter((r) => r.date_key === todayKey);
-  const urgentRequests = stats.urgent || 0;
-
-  const debutMois = new Date();
-  debutMois.setDate(1);
-  debutMois.setHours(0, 0, 0, 0);
-  const facturesCeMois = factures.filter((f) => new Date(f.created_at) >= debutMois);
-  const caEncaisse = facturesCeMois.filter((f) => f.statut === "payee").reduce((s, f) => s + Number(f.montant_ttc || 0), 0);
-  const caEnAttente = factures.filter((f) => f.statut !== "payee").reduce((s, f) => s + Number(f.montant_ttc || 0), 0);
   if (loading) {
     return (
       <div className="space-y-6">
         <SkeletonCard h="h-24" />
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-          <SkeletonCard h="h-56" />
-          <div className="lg:col-span-3"><SkeletonCard h="h-56" /></div>
+        <SkeletonCard h="h-28" />
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <SkeletonCard h="h-24" /><SkeletonCard h="h-24" /><SkeletonCard h="h-24" /><SkeletonCard h="h-24" />
         </div>
-        <SkeletonCard h="h-40" />
+        <SkeletonCard h="h-72" />
+        <SkeletonCard h="h-32" />
       </div>
     );
   }
+
+  const now = new Date();
+  const todayKey = dateKey(now);
+  const upcomingAppts = [...rendezVous]
+    .filter((r) => new Date(r.date_fin) >= now)
+    .sort((a, b) => new Date(a.date_debut) - new Date(b.date_debut));
+  const todayAppts = upcomingAppts.filter((r) => r.date_key === todayKey);
+
+  const prestationById = Object.fromEntries(prestations.map((p) => [p.id, p]));
+  const rdvById = Object.fromEntries(rendezVous.map((r) => [r.id, r]));
+
+  // ---- File de priorites unifiee -------------------------------------------------
+  const oneYearAgo = new Date(now);
+  oneYearAgo.setFullYear(now.getFullYear() - 1);
+  const dormantClients = clients.filter((client) => {
+    if (!client.fidele) return false;
+    const last = rendezVous.filter((rdv) => rdv.client_id === client.id && rdv.statut === "Terminé").sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut))[0];
+    return !last || new Date(last.date_debut) < oneYearAgo;
+  });
+  const technicalControl = clients.filter((client) => {
+    const vehicles = Array.isArray(client.vehicules) ? client.vehicules : client.vehicules ? [client.vehicules] : [];
+    return vehicles.some((vehicle) => vehicle.controle_technique_echeance && new Date(vehicle.controle_technique_echeance) <= new Date(now.getTime() + 45 * 86_400_000));
+  });
+  const potentielPropositions = propositions.reduce((sum, p) => sum + Number(prestationById[p.prestation_id]?.prix_ht || 0), 0);
+  const urgentRequests = stats.urgent || 0;
+
+  const priorityItems = [];
+  if (propositions.length) {
+    priorityItems.push({
+      key: "propositions",
+      weight: 4,
+      label: `${propositions.length} proposition${propositions.length > 1 ? "s" : ""} de rendez-vous à valider`,
+      note: potentielPropositions ? `${potentielPropositions.toFixed(0)}€ potentiels` : "En attente de validation",
+      action: "Traiter",
+      target: "valider",
+    });
+  }
+  if (urgentRequests) {
+    priorityItems.push({
+      key: "urgentes",
+      weight: 5,
+      label: `${urgentRequests} demande${urgentRequests > 1 ? "s" : ""} urgente${urgentRequests > 1 ? "s" : ""}`,
+      note: "À traiter en priorité",
+      action: "Voir",
+      target: "demandes",
+    });
+  }
+  if (technicalControl.length) {
+    priorityItems.push({
+      key: "controle_technique",
+      weight: 2,
+      label: `${technicalControl.length} contrôle${technicalControl.length > 1 ? "s" : ""} technique${technicalControl.length > 1 ? "s" : ""} proche${technicalControl.length > 1 ? "s" : ""}`,
+      note: "Échéance dans les 45 jours",
+      action: "Voir",
+      target: "clients",
+    });
+  }
+  if (dormantClients.length) {
+    priorityItems.push({
+      key: "clients_fideles",
+      weight: 1,
+      label: `${dormantClients.length} client${dormantClients.length > 1 ? "s" : ""} fidèle${dormantClients.length > 1 ? "s" : ""} à rappeler`,
+      note: "Aucune visite depuis 12 mois",
+      action: "Voir",
+      target: "clients",
+    });
+  }
+  priorityItems.sort((a, b) => b.weight - a.weight);
+
+  // ---- Revenus & Performance -----------------------------------------------------
+  const periodeDays = { "7j": 7, "30j": 30, "12mois": 365 }[periode];
+  const periodeStart = new Date(now.getTime() - periodeDays * 86_400_000);
+  const facturesPeriode = factures.filter((f) => new Date(f.created_at) >= periodeStart);
+
+  const debutMoisCourant = new Date(now.getFullYear(), now.getMonth(), 1);
+  const debutMoisPrecedent = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const facturesMoisCourant = factures.filter((f) => new Date(f.created_at) >= debutMoisCourant);
+  const facturesMoisPrecedent = factures.filter((f) => { const d = new Date(f.created_at); return d >= debutMoisPrecedent && d < debutMoisCourant; });
+  const caMoisCourant = facturesMoisCourant.reduce((s, f) => s + Number(f.montant_ttc || 0), 0);
+  const caMoisPrecedent = facturesMoisPrecedent.reduce((s, f) => s + Number(f.montant_ttc || 0), 0);
+  const evolutionCA = caMoisPrecedent > 0 ? Math.round(((caMoisCourant - caMoisPrecedent) / caMoisPrecedent) * 100) : null;
+
+  const panierMoyen = facturesPeriode.length ? Math.round(facturesPeriode.reduce((s, f) => s + Number(f.montant_ttc || 0), 0) / facturesPeriode.length) : 0;
+
+  const devisPeriode = devisList.filter((d) => new Date(d.created_at) >= periodeStart);
+  const devisAcceptes = devisPeriode.filter((d) => d.statut === "accepte").length;
+  const devisRefuses = devisPeriode.filter((d) => d.statut === "refuse").length;
+  const tauxConversion = devisAcceptes + devisRefuses > 0 ? Math.round((devisAcceptes / (devisAcceptes + devisRefuses)) * 100) : null;
+
+  const rdvPeriode = rendezVous.filter((r) => { const d = new Date(r.date_debut); return d >= periodeStart && d <= now; });
+  const rdvFactures = facturesPeriode.length;
+  const rdvAbsents = rdvPeriode.filter((r) => r.statut === "Absent").length;
+  const tauxNoShow = rdvPeriode.length ? Math.round((rdvAbsents / rdvPeriode.length) * 100) : null;
+
+  const caParPrestation = {};
+  facturesPeriode.forEach((f) => {
+    const rdv = rdvById[f.rendez_vous_id];
+    const nom = rdv?.prestation || f.motif || "Autre";
+    caParPrestation[nom] = (caParPrestation[nom] || 0) + Number(f.montant_ttc || 0);
+  });
+  const topPrestations = Object.entries(caParPrestation).sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000);
+  const caParJour = {};
+  factures.filter((f) => new Date(f.created_at) >= sevenDaysAgo).forEach((f) => {
+    const jour = new Date(f.created_at).toLocaleDateString("fr-FR", { weekday: "long", timeZone: APP_TIME_ZONE });
+    const entry = caParJour[jour] || { total: 0, count: 0 };
+    entry.total += Number(f.montant_ttc || 0);
+    entry.count += 1;
+    caParJour[jour] = entry;
+  });
+  const meilleurJour = Object.entries(caParJour).sort((a, b) => b[1].total - a[1].total)[0];
+
+  const nbPoints = periode === "12mois" ? 12 : periodeDays;
+  const serie = Array.from({ length: nbPoints }, (_, index) => {
+    if (periode === "12mois") {
+      const moisDebut = new Date(now.getFullYear(), now.getMonth() - (11 - index), 1);
+      const moisFin = new Date(now.getFullYear(), now.getMonth() - (11 - index) + 1, 1);
+      return factures.filter((f) => { const d = new Date(f.created_at); return d >= moisDebut && d < moisFin; }).reduce((s, f) => s + Number(f.montant_ttc || 0), 0);
+    }
+    const jourDebut = new Date(periodeStart.getTime() + index * 86_400_000);
+    const jourFin = new Date(jourDebut.getTime() + 86_400_000);
+    return factures.filter((f) => { const d = new Date(f.created_at); return d >= jourDebut && d < jourFin; }).reduce((s, f) => s + Number(f.montant_ttc || 0), 0);
+  });
+  const chartWidth = 1040;
+  const chartHeight = 180;
+  const maxSerie = Math.max(1, ...serie);
+  const stepX = serie.length > 1 ? chartWidth / (serie.length - 1) : chartWidth;
+  const points = serie.map((v, index) => [index * stepX, chartHeight - (v / maxSerie) * (chartHeight - 20)]);
+  const linePath = points.map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const areaPath = `${linePath} L${chartWidth},${chartHeight} L0,${chartHeight} Z`;
+  const hasChartData = serie.some((v) => v > 0);
+
+  const objectif = Number(garageData.objectif_ca_mensuel || 0);
+  const progressionObjectif = objectif > 0 ? Math.min(100, Math.round((caMoisCourant / objectif) * 100)) : null;
+
+  // ---- Nexora Intelligence --------------------------------------------------------
+  const heuresEconomisees = Math.floor(aiStats.tempsEconomiseMin / 60);
+  const minutesEconomisees = aiStats.tempsEconomiseMin % 60;
+  const valeurRecuperee = Math.round((aiStats.tempsEconomiseMin / 60) * aiStats.tarifHoraireAdmin);
+  const automationEventsToday = automationEvents.filter((event) => isToday(event.created_at));
+  const smsAujourdhui = automationEventsToday.filter((event) => event.type === "sms").length;
+  const emailAujourdhui = automationEventsToday.filter((event) => event.type === "email").length;
+  const recentActivities = timeline.slice(0, 3);
 
   return (
     <div className="space-y-6">
       <GarageIdentityCard garageData={garageData} />
 
-      {(urgentRequests > 0 || propositions.length > 0) && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-amber-100"><AlertTriangle size={18} className="text-amber-700" /></div>
-            <div>
-              <div className="text-sm font-semibold text-amber-950">Votre attention est requise</div>
-              <div className="text-[13px] text-amber-800">{urgentRequests ? `${urgentRequests} demande${urgentRequests > 1 ? "s" : ""} urgente${urgentRequests > 1 ? "s" : ""}` : ""}{urgentRequests && propositions.length ? " · " : ""}{propositions.length ? `${propositions.length} proposition${propositions.length > 1 ? "s" : ""} à valider` : ""}</div>
-            </div>
+      {priorityItems.length > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 overflow-hidden">
+          <div className="px-5 pt-4 pb-2 flex items-center gap-2.5">
+            <AlertTriangle size={17} className="text-amber-700" />
+            <div className="text-sm font-semibold text-amber-950">À traiter en priorité</div>
           </div>
-          <button onClick={() => setView(urgentRequests ? "demandes" : "valider")} className="text-[13px] font-semibold px-3.5 py-2 rounded-xl bg-white border border-amber-200 text-amber-800">Traiter maintenant</button>
+          <div>
+            {priorityItems.map((item) => (
+              <div key={item.key} className="flex items-center justify-between gap-4 px-5 py-3 border-t border-amber-200/60">
+                <div className="min-w-0">
+                  <div className="text-[13.5px] font-medium text-amber-950">{item.label}</div>
+                  <div className="text-[12.5px] text-amber-800">{item.note}</div>
+                </div>
+                <button onClick={() => setView(item.target)} className="shrink-0 text-[13px] font-semibold px-4 py-2 rounded-xl bg-white border border-amber-200 text-amber-800">{item.action}</button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <StatCard label="Demandes en attente" value={stats.pending} icon={Inbox} />
-        <StatCard label="RDV à valider" value={stats.toValidate} icon={Clock} />
+        <StatCard label="RDV à valider" value={stats.toValidate} icon={Clock} note={potentielPropositions ? `${potentielPropositions.toFixed(0)}€ potentiels` : null} />
         <StatCard label="RDV aujourd'hui" value={todayAppts.length} icon={Calendar} />
         <StatCard label="Clients" value={stats.clients} icon={Users} />
       </div>
 
-      <WorkshopControlPanel rendezVous={rendezVous} demandes={demandes} clients={clients} garageData={garageData} onNavigate={setView} />
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <div className="flex items-start justify-between flex-wrap gap-4">
+          <div>
+            <div className="font-semibold text-slate-900 text-[15px]">Revenus & Performance</div>
+            <div className="flex items-baseline gap-2.5 mt-2.5">
+              <div className="text-[32px] font-semibold text-slate-900 tracking-tight tabular-nums">{caMoisCourant.toLocaleString("fr-FR")} €</div>
+              {evolutionCA !== null && (
+                <Badge tone={evolutionCA >= 0 ? "green" : "red"}>{evolutionCA >= 0 ? "+" : ""}{evolutionCA}% vs mois dernier</Badge>
+              )}
+            </div>
+            <div className="text-[12.5px] text-slate-400 mt-0.5">Chiffre d'affaires du mois</div>
+          </div>
+          <div className="flex gap-0.5 bg-slate-100 rounded-[10px] p-[3px]">
+            {[["7j", "7j"], ["30j", "30j"], ["12mois", "12 mois"]].map(([key, label]) => (
+              <button key={key} onClick={() => setPeriode(key)} className="text-[12.5px] font-medium px-3 py-1.5 rounded-lg" style={periode === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>{label}</button>
+            ))}
+          </div>
+        </div>
 
-      <SmartAlerts clients={clients} demandes={demandes} rendezVous={rendezVous} onNavigate={setView} />
+        <div className="mt-5">
+          {hasChartData ? (
+            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} width="100%" height={chartHeight} preserveAspectRatio="none" style={{ display: "block" }}>
+              <defs>
+                <linearGradient id="revGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={ACCENT} stopOpacity="0.22" />
+                  <stop offset="100%" stopColor={ACCENT} stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <line x1="0" y1={chartHeight * 0.17} x2={chartWidth} y2={chartHeight * 0.17} stroke="#F1F5F9" strokeWidth="1" />
+              <line x1="0" y1={chartHeight * 0.5} x2={chartWidth} y2={chartHeight * 0.5} stroke="#F1F5F9" strokeWidth="1" />
+              <path d={areaPath} fill="url(#revGradient)" />
+              <path d={linePath} fill="none" stroke={ACCENT} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          ) : (
+            <div className="h-[140px] flex items-center justify-center text-[13px] text-slate-400 bg-slate-50 rounded-xl">Pas encore assez de factures sur cette période pour tracer une courbe.</div>
+          )}
+        </div>
 
-      <RapportHebdomadaire />
+        {objectif > 0 && (
+          <div className="mt-5">
+            <div className="flex items-center justify-between text-[12.5px] mb-1.5">
+              <span className="text-slate-500 font-medium">Objectif du mois</span>
+              <span className="text-slate-900 font-semibold tabular-nums">{caMoisCourant.toLocaleString("fr-FR")} € / {objectif.toLocaleString("fr-FR")} €</span>
+            </div>
+            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+              <div className="h-full rounded-full" style={{ width: `${progressionObjectif}%`, backgroundColor: ACCENT }} />
+            </div>
+          </div>
+        )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <StatCard label={`Encaissé ce mois (${facturesCeMois.length} facture${facturesCeMois.length > 1 ? "s" : ""})`} value={`${caEncaisse.toFixed(0)} €`} icon={CircleDollarSign} />
-        <StatCard label="En attente de paiement" value={`${caEnAttente.toFixed(0)} €`} icon={ReceiptText} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
+          <div className="bg-slate-50 rounded-xl p-4">
+            <div className="text-[12.5px] font-semibold text-slate-700 mb-2.5">Indicateurs clés</div>
+            <div className="space-y-2">
+              <div className="flex justify-between text-[13px]"><span className="text-slate-500">Panier moyen</span><span className="font-semibold text-slate-900">{panierMoyen ? `${panierMoyen} €` : "—"}</span></div>
+              <div className="flex justify-between text-[13px]"><span className="text-slate-500">Taux de conversion devis</span><span className="font-semibold text-slate-900">{tauxConversion !== null ? `${tauxConversion}%` : "—"}</span></div>
+              <div className="flex justify-between text-[13px]"><span className="text-slate-500">RDV facturés</span><span className="font-semibold text-slate-900">{rdvFactures}</span></div>
+              <div className="flex justify-between text-[13px]"><span className="text-slate-500">No-shows</span><span className="font-semibold text-slate-900">{tauxNoShow !== null ? `${tauxNoShow}%` : "—"}</span></div>
+            </div>
+          </div>
+          <div className="bg-slate-50 rounded-xl p-4">
+            <div className="text-[12.5px] font-semibold text-slate-700 mb-2.5">Top prestations</div>
+            {topPrestations.length === 0 ? (
+              <div className="text-[13px] text-slate-400">Pas encore de facture sur cette période.</div>
+            ) : (
+              <div className="space-y-2">
+                {topPrestations.map(([nom, montant]) => (
+                  <div key={nom} className="flex justify-between items-center text-[13px]">
+                    <span className="flex items-center gap-2 text-slate-700"><span className="w-1.5 h-1.5 rounded-full bg-green-600 shrink-0" />{nom}</span>
+                    <span className="font-semibold text-slate-900">{montant.toFixed(0)} €</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {meilleurJour && (
+          <div className="mt-5 pt-4 border-t border-slate-100 flex items-center gap-2">
+            <Sparkles size={15} color={ACCENT} />
+            <span className="text-[13px] text-slate-600">Votre meilleur jour cette semaine : <strong className="text-slate-900 font-semibold">{meilleurJour[0]}, {meilleurJour[1].count} RDV facturé{meilleurJour[1].count > 1 ? "s" : ""}, {meilleurJour[1].total.toFixed(0)} €</strong></span>
+          </div>
+        )}
       </div>
 
-      <NexoraControlCenter aiStats={aiStats} timeline={timeline} />
+      <div className="rounded-2xl p-6 relative overflow-hidden" style={{ backgroundColor: NAVY }}>
+        <div className="absolute -right-8 -top-8 w-36 h-36 rounded-full opacity-10" style={{ backgroundColor: ACCENT }} />
+        <div className="flex items-start justify-between gap-5 flex-wrap relative">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0" style={{ backgroundColor: "rgba(61,107,224,0.25)" }}>
+                <Bot size={16} color="#8FB0FF" />
+              </div>
+              <div className="font-semibold text-[14.5px] text-white">Nexora Intelligence</div>
+            </div>
+            <div className="flex items-baseline gap-2 mt-3.5">
+              <div className="text-[30px] font-semibold text-white tracking-tight tabular-nums">{valeurRecuperee} €</div>
+              <span className="text-[12px] font-medium" style={{ color: "#8CA0C9" }}>de temps administratif économisé aujourd'hui</span>
+            </div>
+            <div className="text-[12px] mt-0.5" style={{ color: "#6B87BE" }}>soit {heuresEconomisees}h{minutesEconomisees ? minutesEconomisees : ""} rendues à votre équipe</div>
+          </div>
+          <div className="flex flex-col gap-1.5 min-w-[220px]">
+            <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#6B87BE" }}>Automatisations</span>
+            <div className="flex items-center justify-between text-[12.5px]">
+              <span className="flex items-center gap-1.5" style={{ color: "#C3D0EA" }}><span className="w-1.5 h-1.5 rounded-full bg-green-400" />SMS actif</span>
+              <span className="text-white font-semibold">{smsAujourdhui} envoyé{smsAujourdhui > 1 ? "s" : ""}</span>
+            </div>
+            <div className="flex items-center justify-between text-[12.5px]">
+              <span className="flex items-center gap-1.5" style={{ color: "#C3D0EA" }}><span className="w-1.5 h-1.5 rounded-full bg-green-400" />Email actif</span>
+              <span className="text-white font-semibold">{emailAujourdhui} envoyé{emailAujourdhui > 1 ? "s" : ""}</span>
+            </div>
+            <div className="flex items-center justify-between text-[12.5px]">
+              <span className="flex items-center gap-1.5" style={{ color: "#C3D0EA" }}><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: garageData.google_agenda_connecte ? "#4ADE80" : "#FBBF6B" }} />Google Calendar</span>
+              <span className="font-semibold" style={{ color: garageData.google_agenda_connecte ? "#fff" : "#FBBF6B" }}>{garageData.google_agenda_connecte ? "connecté" : "non connecté"}</span>
+            </div>
+          </div>
+        </div>
 
-      <WorkshopTimeline rendezVous={rendezVous} onSelectAppt={onSelectAppt} compact />
-
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-        <div className="xl:col-span-3"><FinancialOverview rendezVous={rendezVous} demandes={demandes} propositions={propositions} /></div>
-        <div className="xl:col-span-2"><AutomationPanel events={automationEvents} garageData={garageData} /></div>
+        {recentActivities.length > 0 && (
+          <div className="mt-5 pt-4 relative" style={{ borderTop: "1px solid #22335C" }}>
+            <div className="text-[11px] font-semibold uppercase tracking-wide mb-2.5" style={{ color: "#6B87BE" }}>Fait pour vous récemment</div>
+            <div className="space-y-2">
+              {recentActivities.map((activity) => (
+                <div key={activity.id} className="flex items-center gap-2.5">
+                  <span className="text-[11.5px] w-11 shrink-0 tabular-nums" style={{ color: "#6B87BE" }}>{activity.heure}</span>
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: "#8FB0FF" }} />
+                  <span className="text-[13px]" style={{ color: "#DCE4F5" }}>{activity.texte}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <div className="font-semibold text-slate-900 text-[15px]">Rendez-vous à valider</div>
-          <button onClick={() => setView("valider")} className="text-[13px] font-medium flex items-center gap-1" style={{ color: ACCENT }}>
-            Voir tout <ChevronRight size={14} />
+          <div className="font-semibold text-slate-900 text-[15px]">Aperçu du jour</div>
+          <button onClick={() => setView("agenda")} className="text-[13px] font-medium flex items-center gap-1" style={{ color: ACCENT }}>
+            Voir l'agenda complet <ChevronRight size={14} />
           </button>
         </div>
-        {propositions.length === 0 ? (
-          <div className="px-5 py-8 text-center text-slate-400 text-[13px]">Aucune proposition en attente pour le moment.</div>
+        {todayAppts.length === 0 ? (
+          <div className="px-5 py-8 text-center text-slate-400 text-[13px]">Aucun rendez-vous prévu aujourd'hui.</div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {propositions.slice(0, 2).map((p) => {
+            {todayAppts.slice(0, 4).map((a) => {
+              const colors = catColor(a.categorie);
               return (
-                <div key={p.id} className="px-5 py-4 flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-sm font-medium text-slate-900">{p.client} — {p.vehicule}</div>
-                      <SourceBadge source={p.source} />
-                    </div>
-                    <div className="text-[13px] text-slate-500 mt-0.5">{p.prestation} · {p.jour}, {p.debut} - {p.fin}</div>
-                    <div className="text-[13px] text-slate-500 mt-2">
-                    {p.message}
-                    </div>
-                  </div>
-                  <Badge tone="amber">En attente</Badge>
-                </div>
+                <button key={a.id} onClick={() => onSelectAppt(a)} className="w-full px-5 py-3.5 flex items-center gap-4 hover:bg-slate-50/70 text-left">
+                  <div className="text-[13px] font-medium text-slate-500 w-24 shrink-0">{a.debut} - {a.fin}</div>
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colors.bar }} />
+                  <div className="text-sm text-slate-800">{a.vehicule}</div>
+                  <div className="text-sm text-slate-500">{a.client}</div>
+                  <div className="text-[13px] text-slate-400">·</div>
+                  <div className="text-sm text-slate-500 flex-1">{a.prestation}</div>
+                  <Badge tone={STATUT_TONE[a.statut] || "slate"}>{a.statut}</Badge>
+                </button>
               );
             })}
           </div>
         )}
       </div>
-
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
-        <div className="px-5 py-4 border-b border-slate-100 font-semibold text-slate-900 text-[15px]">Agenda du jour</div>
-        <div className="divide-y divide-slate-100">
-          {todayAppts.length === 0 ? (
-            <div className="px-5 py-8 text-center text-slate-400 text-[13px]">Aucun rendez-vous prévu aujourd’hui.</div>
-          ) : todayAppts.slice(0, 4).map((a) => {
-            const colors = catColor(a.categorie);
-            return (
-              <button key={a.id} onClick={() => onSelectAppt(a)} className="w-full px-5 py-3.5 flex items-center gap-4 hover:bg-slate-50/70 text-left">
-               <div className="text-[13px] font-medium text-slate-500 w-24 shrink-0">
-              {a.debut} - {a.fin}
-              </div>
-
-              <span 
-             className="w-2 h-2 rounded-full shrink-0" 
-             style={{ backgroundColor: colors.bar }} 
-              />
-
-              <div className="text-sm text-slate-800">
-              {a.vehicule}
-              </div>
-              <div className="text-sm text-slate-500">
-                {a.client}
-              </div>
-
-              <div className="text-[13px] text-slate-400">
-                ·
-              </div>
-
-              <div className="text-sm text-slate-500">
-                {a.prestation}
-              </div>
-
-              <Badge tone={STATUT_TONE[a.statut] || "slate"}>
-                {a.statut}
-              </Badge>
-              </button>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }
-
 function ValiderView({ propositions, onAccept, onRefuse, onReschedule, garageId }) {
   const [rescheduling, setRescheduling] = useState(null);
   if (propositions.length === 0) {
@@ -1143,7 +1052,8 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
   );
 }
 
-function DevisView({ devisList, clients, prestations, onAccept, onRefuse, onUpdateMontant, onCreer }) {
+function DevisView({ devisList: devisListToutesSources, clients, prestations, onAccept, onRefuse, onUpdateMontant, onCreer }) {
+  const devisList = devisListToutesSources.filter((d) => d.statut === "en_attente");
   const [modalOuvert, setModalOuvert] = useState(false);
   return (
     <div className="space-y-4">
@@ -2123,6 +2033,12 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
       <SettingsSection title="Horaires d’ouverture"><div className="space-y-2">{JOURS_SEMAINE.map(([jour, libelle]) => { const plages = plagesDuJour(jour); const ouvert = plages.length > 0; return <div key={jour} className="flex flex-wrap items-center gap-2 py-1.5 border-b border-slate-100 last:border-0"><label className="flex items-center gap-2 w-[132px] shrink-0"><input type="checkbox" checked={ouvert} onChange={(e) => basculerJour(jour, e.target.checked)} className="accent-blue-600" /><span className="text-[13px] font-medium text-slate-700">{libelle}</span></label>{ouvert ? <div className="flex flex-wrap items-center gap-1.5">{champHeure(jour, 0, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 0, 1)}{plages.length > 1 ? <><span className="text-slate-300 px-1">|</span>{champHeure(jour, 1, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 1, 1)}<button type="button" onClick={() => retirerApresMidi(jour)} className="text-[11px] text-slate-400 hover:text-red-500 px-1">retirer</button></> : <button type="button" onClick={() => ajouterApresMidi(jour)} className="text-[11px] text-blue-600 hover:underline px-1">+ après-midi</button>}</div> : <span className="text-[13px] text-slate-400">Fermé</span>}</div>; })}</div><div className="mt-4 rounded-xl bg-slate-50 p-3 text-[12.5px] text-slate-600">Ces horaires servent au calcul des créneaux proposés aux clients. Laissez un jour décoché pour le déclarer fermé.</div></SettingsSection><SettingsSection title="Mécaniciens"><div className="space-y-2">{mecaniciens.length === 0 && <div className="text-[13px] text-slate-400">Aucun mécanicien pour l’instant.</div>}{mecaniciens.map((m) => <div key={m.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-slate-100 last:border-0"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: m.couleur || "#3D6BE0" }} /><span className="text-[13px] font-medium text-slate-700">{m.nom}</span></div><label className="flex items-center gap-1.5 text-[12px] text-slate-500"><input type="checkbox" checked={m.actif !== false} onChange={(e) => onToggleMecanicienActif(m.id, e.target.checked)} className="accent-blue-600" />Actif</label></div>)}</div><div className="mt-3 flex gap-2"><input type="text" value={newMecanicienNom} onChange={(e) => setNewMecanicienNom(e.target.value)} placeholder="Nom du mécanicien" className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" /><button type="button" onClick={() => { if (newMecanicienNom.trim()) { onAddMecanicien(newMecanicienNom.trim()); setNewMecanicienNom(""); } }} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}>Ajouter</button></div></SettingsSection>
       <SettingsSection title="Prestations disponibles"><div className="space-y-1.5 max-h-[230px] overflow-y-auto">{catalogue.map((p) => <div key={p.id || p.nom} className="flex items-center gap-2 text-sm py-2 border-b border-slate-100 last:border-0"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(p.categorie).bar }} /><span className="flex-1 text-slate-700">{p.nom}</span><span className="text-slate-500 text-[12px]">{p.duree_minutes || p.duree_min || p.duree} min</span>{p.id && <button onClick={() => onDeletePrestation(p.id)} className="ml-1 text-slate-400 hover:text-red-600" title="Supprimer"><Trash2 size={14} /></button>}</div>)}</div><div className="grid grid-cols-[1fr_110px_74px] gap-2 mt-4"><input value={newPrestation.nom} onChange={(event) => setNewPrestation((prev) => ({ ...prev, nom: event.target.value }))} className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900" placeholder="Nouvelle prestation" /><input type="number" min="15" step="15" value={newPrestation.duree_minutes} onChange={(event) => setNewPrestation((prev) => ({ ...prev, duree_minutes: Number(event.target.value) }))} className="rounded-xl border border-slate-200 px-2 py-2 text-sm text-slate-900" /><button onClick={createPrestation} className="rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}><Plus size={15} className="inline" /> Ajouter</button></div></SettingsSection>
       <SettingsSection title="Connexions"><SettingsRow label="Boîte Gmail" right={<Badge tone={garageData.gmail_connecte ? "green" : "slate"}>{garageData.gmail_connecte ? "Connectée" : "Non connectée"}</Badge>} /><SettingsRow label="Google Agenda" right={<Badge tone={garageData.google_agenda_connecte ? "green" : "amber"}>{garageData.google_agenda_connecte ? "Connecté" : "À connecter dans n8n"}</Badge>} /><div className="mt-3 text-[12px] text-slate-500">La connexion Google Calendar doit être autorisée dans le workflow n8n, puis son état peut être enregistré ici.</div></SettingsSection>
+      <SettingsSection title="Objectif">
+        <div className="space-y-3">
+          {field("Objectif de chiffre d'affaires mensuel (€)", "objectif_ca_mensuel", "number")}
+          <div className="text-[12.5px] text-slate-500">Sert de repere de progression sur le tableau de bord. Laissez vide pour ne rien afficher.</div>
+        </div>
+      </SettingsSection>
       <SettingsSection title="Notifications"><button onClick={() => onGarageChange("notifications_email", !garageData.notifications_email)} className="w-full flex items-center justify-between py-2.5 border-b border-slate-100"><span className="text-sm text-slate-600">Notifications par email</span><Toggle checked={garageData.notifications_email} /></button><button onClick={() => onGarageChange("notifications_sms", !garageData.notifications_sms)} className="w-full flex items-center justify-between py-2.5"><span className="text-sm text-slate-600">Notifications par SMS</span><Toggle checked={garageData.notifications_sms} /></button></SettingsSection>
     </div>
   </div>;
@@ -2700,7 +2616,6 @@ setPropositions(formattedPropositions);
           prestations ( nom, categorie )
         `)
         .eq("garage_id", ACTIVE_GARAGE_ID)
-        .eq("statut", "en_attente")
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -3250,6 +3165,7 @@ if (updateError) {
       horaire_fermeture: garageData.horaire_fermeture,
       horaires: garageData.horaires,
       nb_mecaniciens: garageData.nb_mecaniciens,
+      objectif_ca_mensuel: garageData.objectif_ca_mensuel || null,
       notifications_email: garageData.notifications_email,
       notifications_sms: garageData.notifications_sms,
     };
@@ -3447,7 +3363,7 @@ if (updateError) {
         )}
 
         <div className="p-5 md:p-8">
-          {view === "dashboard" && <DashboardView stats={stats} propositions={propositions} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} demandes={demandes} clients={clients} garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} />}
+          {view === "dashboard" && <DashboardView stats={stats} propositions={propositions} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} demandes={demandes} clients={clients} garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} prestations={prestations} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={ACTIVE_GARAGE_ID} />}
           {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} onAccept={handleAcceptDevis} onRefuse={handleRefuseDevis} onUpdateMontant={handleUpdateDevisMontant} onCreer={handleCreerDevis} />}
