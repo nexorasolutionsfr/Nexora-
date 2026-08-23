@@ -50,4 +50,38 @@ export default function AtelierScanPage({ params }) {
   return (
     <div style={{ minHeight: "100vh", background: "#F5F7FA", padding: 20, fontFamily: "-apple-system, sans-serif" }}>
       <div style={{ maxWidth: 420, margin: "0 auto" }}>
-        <div style={{ background: "#0F1B33", color: "white", borderRadius: 16, padding: 20, marginBottom: 20 }
+        <div style={{ background: "#0F1B33", color: "white", borderRadius: 16, padding: 20, marginBottom: 20 }}>
+          <div style={{ fontSize: 13, opacity: 0.7 }}>{info.client}</div>
+          <div style={{ fontSize: 18, fontWeight: 600, marginTop: 4 }}>{info.vehicule}</div>
+          <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>{info.prestation}</div>
+        </div>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10, color: "#0F1B33" }}>Où en est ce véhicule ?</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {ETAPES.map((etape) => (
+            <button
+              key={etape.key}
+              disabled={saving}
+              onClick={() => choisir(etape.key)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "14px 16px",
+                borderRadius: 12,
+                border: info.statut_atelier === etape.key ? `2px solid ${etape.color}` : "1px solid #E2E8F0",
+                background: info.statut_atelier === etape.key ? `${etape.color}1A` : "white",
+                fontSize: 15,
+                fontWeight: 500,
+                textAlign: "left",
+                color: "#0F1B33",
+              }}
+            >
+              <span style={{ width: 10, height: 10, borderRadius: "50%", background: etape.color }} />
+              {etape.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
