@@ -492,8 +492,8 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] })
       }
     `}</style>
     <div id="nexora-print-labels" className="hidden">
-      {todayAppts.map((appt) => (
-        <div key={appt.id} style={{ pageBreakAfter: "always", padding: 24, border: `3px solid ${catColor(appt.categorie).bar}`, borderRadius: 16, marginBottom: 16 }}>
+            {todayAppts.map((appt, index) => (
+        <div key={appt.id} style={{ pageBreakAfter: index < todayAppts.length - 1 ? "always" : "auto", padding: 24, border: `3px solid ${catColor(appt.categorie).bar}`, borderRadius: 16, marginBottom: 16 }}>
           <div style={{ fontSize: 28, fontWeight: 700 }}>{appt.client}</div>
           <div style={{ fontSize: 20, marginTop: 8 }}>{appt.vehicule} · {appt.immatriculation}</div>
           <div style={{ fontSize: 16, color: "#64748B", marginTop: 4 }}>{appt.debut} – {appt.fin} · {appt.prestation}</div>
