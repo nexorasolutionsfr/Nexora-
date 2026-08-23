@@ -414,7 +414,7 @@ function WorkshopTimeline({ rendezVous, onSelectAppt, mecaniciens = [], compact 
           <div className={`grid grid-cols-1 ${compact ? "md:grid-cols-3" : "xl:grid-cols-8"} gap-px bg-slate-200`}>
         {grouped.map((stage, index) => <div key={stage.key} className="bg-white min-h-[150px] p-3">
           <div className="flex items-center justify-between gap-2 mb-3"><div className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: stage.color }}><span className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }} />{stage.label}</div><span className="text-[11px] text-slate-400">{stage.appointments.length}</span></div>
-          <div className="space-y-2">{stage.appointments.length === 0 ? <div className="text-[11.5px] text-slate-300 pt-3">Aucun véhicule</div> : stage.appointments.map((appt) => {
+          <div className="space-y-2 max-h-[190px] overflow-y-auto pr-1">{stage.appointments.length === 0 ? <div className="text-[11.5px] text-slate-300 pt-3">Aucun véhicule</div> : stage.appointments.map((appt) => {
             const mecanicien = mecaniciens.find((m) => m.id === appt.mecanicien_id);
             return <button key={appt.id} onClick={() => onSelectAppt(appt)} className="w-full text-left rounded-lg p-2 hover:bg-slate-50 border border-slate-100">
               <div className="flex items-center gap-1.5">
