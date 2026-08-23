@@ -426,6 +426,8 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
   const client = appt.client;
   const vehicule = appt.vehicule;
   const colors = catColor(appt.categorie);
+  const currentStage = WORKSHOP_STAGES.find((s) => s.key === (appt.statut_atelier || "a_venir")) || WORKSHOP_STAGES[0];
+  const estAujourdhui = appt.date_debut ? isToday(appt.date_debut) : false;
   return (
     <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
@@ -437,12 +439,20 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
         </div>
         <div className="text-lg font-semibold text-slate-900 mt-3">{client}</div>
-        <div className="mt-3 flex items-center gap-3 bg-slate-50 rounded-xl p-3">
-          <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`https://nexora-uig6.vercel.app/atelier/${appt.id}`)}`} alt="QR code atelier" className="w-[70px] h-[70px] rounded-lg bg-white p-1" />
-          <div className="text-[12px] text-slate-500">Scannez pour mettre à jour l'étape depuis un téléphone, sans se connecter au dashboard.</div>
-        </div>
+        <div className="text-sm text-slate-500">{vehicule} · {appt.immatriculation}</div>
+        {onUpdateStatutAtelier && (
+          <label className="block mt-3">
+            <select
+              value={appt.statut_atelier || "a_venir"}
+              onChange={(e) => onUpdateStatutAtelier(appt.id, e.target.value)}
+              className="w-full rounded-xl border-2 px-3 py-2.5 text-sm font-semibold outline-none"
+              style={{ borderColor: currentStage.color, color: currentStage.color, backgroundColor: `${currentStage.color}14` }}
+            >
+              {WORKSHOP_STAGES.map((stage) => <option key={stage.key} value={stage.key}>{stage.label}</option>)}
+            </select>
+          </label>
+        )}
         <div className="mt-4 space-y-2.5">
-          <div className="flex items-center gap-2 text-sm text-slate-700"><Car size={15} className="text-slate-400" /> {vehicule} · {appt.immatriculation}</div>
           <div className="flex items-center gap-2 text-sm text-slate-700"><Clock size={15} className="text-slate-400" /> {appt.debut} – {appt.fin}</div>
           <div className="flex items-center gap-2 text-sm">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: colors.bar }} />
@@ -453,8 +463,13 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
           <Phone size={15} className="text-slate-400" /> {formatPhone(appt.telephone)}
           </div>
           {onAssignMecanicien && <label className="block pt-2"><span className="text-[12.5px] font-medium text-slate-500">Mécanicien</span><select value={appt.mecanicien_id || ""} onChange={(e) => onAssignMecanicien(appt.id, e.target.value || null)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"><option value="">Non assigné</option>{mecaniciens.filter((m) => m.actif !== false).map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}</select></label>}
-          {onUpdateStatutAtelier && <label className="block pt-2"><span className="text-[12.5px] font-medium text-slate-500">Étape atelier</span><select value={appt.statut_atelier || "a_venir"} onChange={(e) => onUpdateStatutAtelier(appt.id, e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500">{WORKSHOP_STAGES.map((stage) => <option key={stage.key} value={stage.key}>{stage.label}</option>)}</select></label>}
         </div>
+        {estAujourdhui && (
+          <div className="mt-4 flex items-center gap-3 bg-slate-50 rounded-xl p-3">
+            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`https://nexora-uig6.vercel.app/atelier/${appt.id}`)}`} alt="QR code atelier" className="w-[70px] h-[70px] rounded-lg bg-white p-1" />
+            <div className="text-[12px] text-slate-500">QR à imprimer et coller sur le véhicule pour que le mécanicien mette à jour l'étape sans passer par le dashboard.</div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -466,9 +481,26 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] })
   const resourceAppointments = (resourceId) => todayAppts.filter((appt) => (resourceId === null ? !appt.mecanicien_id : appt.mecanicien_id === resourceId));
   const ressources = [...mecaniciensActifs.map((m) => ({ id: m.id, name: m.nom, role: "Mécanicien", color: m.couleur || "#3D6BE0" })), { id: null, name: "Non assigné", role: "", color: "#94A3B8" }];
   return <div className="space-y-5">
-    <div className="rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}><div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" /><div className="relative flex items-start justify-between flex-wrap gap-4"><div><div className="flex items-center gap-2"><Wrench size={18} color="#8FB0FF" /><span className="font-semibold">Atelier en direct</span></div><div className="text-2xl font-semibold mt-3">Votre équipe sait quoi faire, maintenant.</div><div className="text-[13px] mt-1 text-blue-200">Répartissez les véhicules, suivez les retards et gardez le client informé.</div></div><div className="grid grid-cols-2 gap-2"><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Véhicules aujourd’hui</div><div className="text-xl font-semibold mt-1">{todayAppts.length}</div></div><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Équipe disponible</div><div className="text-xl font-semibold mt-1">{garageData.nb_mecaniciens || 0}</div></div></div></div></div>
+    <div className="rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}><div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" /><div className="relative flex items-start justify-between flex-wrap gap-4"><div><div className="flex items-center gap-2"><Wrench size={18} color="#8FB0FF" /><span className="font-semibold">Atelier en direct</span></div><div className="text-2xl font-semibold mt-3">Votre équipe sait quoi faire, maintenant.</div><div className="text-[13px] mt-1 text-blue-200">Répartissez les véhicules, suivez les retards et gardez le client informé.</div><button onClick={() => window.print()} className="mt-3 inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl px-3 py-2 text-[12.5px] font-medium">🖨️ Imprimer les étiquettes du jour</button></div><div className="grid grid-cols-2 gap-2"><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Véhicules aujourd’hui</div><div className="text-xl font-semibold mt-1">{todayAppts.length}</div></div><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Équipe disponible</div><div className="text-xl font-semibold mt-1">{garageData.nb_mecaniciens || 0}</div></div></div></div></div>
     <WorkshopTimeline rendezVous={rendezVous} onSelectAppt={onSelectAppt} />
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"><div className="px-5 py-4 border-b border-slate-100"><div className="font-semibold text-slate-900 text-[15px]">Planning des ressources</div><div className="text-[12.5px] text-slate-500 mt-0.5">Cliquez un rendez-vous pour l’affecter à un mécanicien.</div></div><div className="overflow-x-auto"><div className="min-w-[850px]"><div className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] border-b border-slate-100">{["Ressource", ...heuresGrille].map((hour) => <div key={hour} className="px-3 py-2 text-[11px] font-medium text-slate-400 border-r border-slate-100">{hour}</div>)}</div>{mecaniciensActifs.length === 0 && <div className="px-5 py-6 text-[13px] text-slate-500">Ajoutez vos mécaniciens dans Paramètres pour affecter les rendez-vous.</div>}{ressources.map((resource) => { const assigned = resourceAppointments(resource.id); return <div key={resource.id ?? "non_assigne"} className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] min-h-[74px] border-b border-slate-100 last:border-0"><div className="px-3 py-3 border-r border-slate-100"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resource.color }} /><div><div className="text-[12.5px] font-medium text-slate-800">{resource.name}</div><div className="text-[11px] text-slate-400">{resource.role}</div></div></div></div><div className="col-span-10 relative p-1.5 flex gap-1.5">{assigned.map((appt) => <button key={appt.id} onClick={() => onSelectAppt(appt)} className="h-[58px] max-w-[180px] px-2 rounded-lg text-left overflow-hidden" style={{ backgroundColor: `${resource.color}1A`, borderLeft: `3px solid ${resource.color}`, width: `${Math.max(76, durationRows(appt.debut, appt.fin) * 66)}px` }}><div className="text-[11px] font-semibold truncate" style={{ color: resource.color }}>{appt.client}</div><div className="text-[10.5px] text-slate-500 truncate">{appt.prestation}</div></button>)}</div></div>; })}</div></div></div>
+    <style>{`
+      @media print {
+        body * { visibility: hidden; }
+        #nexora-print-labels, #nexora-print-labels * { visibility: visible; }
+        #nexora-print-labels { position: absolute; left: 0; top: 0; width: 100%; }
+      }
+    `}</style>
+    <div id="nexora-print-labels" className="hidden">
+      {todayAppts.map((appt) => (
+        <div key={appt.id} style={{ pageBreakAfter: "always", padding: 24, border: `3px solid ${catColor(appt.categorie).bar}`, borderRadius: 16, marginBottom: 16 }}>
+          <div style={{ fontSize: 28, fontWeight: 700 }}>{appt.client}</div>
+          <div style={{ fontSize: 20, marginTop: 8 }}>{appt.vehicule} · {appt.immatriculation}</div>
+          <div style={{ fontSize: 16, color: "#64748B", marginTop: 4 }}>{appt.debut} – {appt.fin} · {appt.prestation}</div>
+          <img src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(`https://nexora-uig6.vercel.app/atelier/${appt.id}`)}`} style={{ marginTop: 16 }} />
+        </div>
+      ))}
+    </div>
   </div>;
 }
 
