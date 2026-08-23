@@ -1096,6 +1096,75 @@ function RescheduleModal({ proposition, garageId, onClose, onConfirm }) {
   );
 }
 
+function CreerRdvModal({ clients, prestations, date, heure, onClose, onCreate }) {
+  const [query, setQuery] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [prestationId, setPrestationId] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const clientChoisi = clients.find((c) => c.id === clientId) || null;
+  const vehiculesClient = Array.isArray(clientChoisi?.vehicules) ? clientChoisi.vehicules : clientChoisi?.vehicules ? [clientChoisi.vehicules] : [];
+  const vehiculeChoisi = vehiculesClient[0] || null;
+  const clientsFiltres = clients.filter((c) => !query || c.nom?.toLowerCase().includes(query.toLowerCase()));
+  const prestationChoisie = prestations.find((p) => p.id === prestationId) || null;
+
+  const creer = async () => {
+    if (!clientChoisi) return;
+    setCreating(true);
+    await onCreate({
+      client_id: clientChoisi.id,
+      vehicule_id: vehiculeChoisi?.id || null,
+      prestation_id: prestationId || null,
+      date,
+      heure,
+      duree: prestationChoisie?.duree_minutes || prestationChoisie?.duree_min || 60,
+    });
+    setCreating(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold text-slate-900">Nouveau rendez-vous</h2>
+        <div className="text-[13px] text-slate-500 mt-1">{date} à {heure}</div>
+
+        <div className="mt-4">
+          <label className="text-[12px] font-medium text-slate-500">Client</label>
+          {clientChoisi ? (
+            <div className="mt-1 flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-sm">
+              <span>{clientChoisi.nom}</span>
+              <button onClick={() => setClientId("")} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
+            </div>
+          ) : (
+            <>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Chercher un client..." className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              <div className="mt-1 max-h-[140px] overflow-y-auto">
+                {clientsFiltres.slice(0, 20).map((c) => (
+                  <button key={c.id} onClick={() => setClientId(c.id)} className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-slate-50">{c.nom}</button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        <label className="block mt-4">
+          <span className="text-[12.5px] font-medium text-slate-500">Prestation</span>
+          <select value={prestationId} onChange={(e) => setPrestationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500">
+            <option value="">Sélectionner...</option>
+            {prestations.map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
+          </select>
+        </label>
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600">Annuler</button>
+          <button onClick={creer} disabled={!clientChoisi || creating} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: ACCENT }}>{creating ? "Création..." : "Créer le rendez-vous"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose, onCreate }) {
   const [query, setQuery] = useState("");
   const [clientId, setClientId] = useState(clientPreselectionne?.id || "");
@@ -1301,8 +1370,15 @@ function DevisCard({ d, onAccept, onRefuse, onUpdateMontant }) {
   );
 }
 
-function AgendaView({ onSelectAppt, rendezVous, garageData, onConnectCalendar }) {
+function AgendaView({ onSelectAppt, rendezVous: rendezVousToutes, garageData, onConnectCalendar, clients = [], prestations = [], onCreerRdv }) {
   const [mode, setMode] = useState("jour");
+  const [recherche, setRecherche] = useState("");
+  const [nouveauCreneau, setNouveauCreneau] = useState(null);
+  const rendezVous = rendezVousToutes.filter((r) => {
+    const q = recherche.trim().toLowerCase();
+    if (!q) return true;
+    return r.client?.toLowerCase().includes(q) || r.vehicule?.toLowerCase().includes(q);
+  });
 
 const [currentDate, setCurrentDate] = useState(new Date());
 const changeDate = (direction) => {
@@ -1399,6 +1475,18 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
         </div>
       </div>
 
+      <div className="px-5 py-3 border-b border-slate-100">
+        <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2 border border-slate-200 max-w-xs">
+          <Search size={14} className="text-slate-400" />
+          <input
+            value={recherche}
+            onChange={(e) => setRecherche(e.target.value)}
+            placeholder="Chercher un client, un véhicule..."
+            className="bg-transparent text-[12.5px] outline-none w-full text-slate-800 placeholder:text-slate-400"
+          />
+        </div>
+      </div>
+
       <div className="flex flex-wrap gap-3 px-5 py-3 border-b border-slate-100">
         {Object.values(CATEGORY_COLORS).map((c) => (
           <div key={c.label} className="flex items-center gap-1.5 text-[12px] text-slate-500">
@@ -1416,7 +1504,13 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
                 <div className="text-[12px] text-slate-400 px-3 py-3 border-t border-slate-100">{h}</div>
                 <div className="border-t border-l border-slate-100 py-1.5 px-2 min-h-[52px] relative">
                   {slotAppts.length === 0 && (
-                    <div className="text-[11.5px] text-slate-300 px-1 py-1.5">Créneau disponible</div>
+                    <button
+                      type="button"
+                      onClick={() => onCreerRdv && setNouveauCreneau({ date: selectedDateKey, heure: `${h}` })}
+                      className="w-full text-left text-[11.5px] text-slate-300 hover:text-blue-500 hover:bg-blue-50/40 rounded-lg px-1 py-1.5"
+                    >
+                      Créneau disponible {onCreerRdv && <span className="text-blue-400">· + Ajouter</span>}
+                    </button>
                   )}
                   {slotAppts.map((a) => {
                     const c = catColor(a.categorie);
@@ -1439,7 +1533,7 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
           })}
         </div>
       ) : mode === "semaine" ? (
-        <div className="grid grid-cols-5 divide-x divide-slate-100">
+        <div className="grid grid-cols-7 divide-x divide-slate-100">
           {weekDays.map((day) => {
             const appts = rendezVous.filter((a) => a.date_key === day.key);
             return (
@@ -1465,6 +1559,16 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
         <div className="grid grid-cols-7 divide-x divide-y divide-slate-100 border-t border-slate-100">{["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map((day) => <div key={day} className="px-2 py-2 text-center text-[11px] font-medium text-slate-400 bg-slate-50">{day}</div>)}{monthDays.map((day) => { const appts = rendezVous.filter((appt) => appt.date_key === day.key); return <div key={day.key} className={`min-h-[105px] p-2 ${day.inMonth ? "bg-white" : "bg-slate-50/70"}`}><div className={`text-[11px] font-medium mb-1 ${day.inMonth ? "text-slate-600" : "text-slate-300"}`}>{day.date.getDate()}</div><div className="space-y-1">{appts.slice(0, 3).map((appt) => <button key={appt.id} onClick={() => onSelectAppt(appt)} className="w-full truncate text-left text-[10.5px] px-1.5 py-1 rounded" style={{ color: catColor(appt.categorie).text, backgroundColor: catColor(appt.categorie).bg }}>{appt.debut} · {appt.client}</button>)}{appts.length > 3 && <div className="text-[10px] text-slate-400">+{appts.length - 3} RDV</div>}</div></div>; })}</div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 p-5">{Array.from({ length: 12 }, (_, month) => { const label = new Date(currentDate.getFullYear(), month, 1).toLocaleDateString("fr-FR", { month: "long" }); const count = rendezVous.filter((appt) => { const date = new Date(appt.date_debut); return date.getFullYear() === currentDate.getFullYear() && date.getMonth() === month; }).length; return <button key={month} onClick={() => { setCurrentDate(new Date(currentDate.getFullYear(), month, 1)); setMode("mois"); }} className="rounded-xl border border-slate-200 p-4 text-left hover:border-blue-300 hover:bg-blue-50/30"><div className="capitalize text-sm font-semibold text-slate-800">{label}</div><div className="text-[12px] text-slate-500 mt-1">{count} rendez-vous</div><div className="mt-3 h-1.5 rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${Math.min(100, count * 12)}%`, backgroundColor: ACCENT }} /></div></button>; })}</div>
+      )}
+      {nouveauCreneau && (
+        <CreerRdvModal
+          clients={clients}
+          prestations={prestations}
+          date={nouveauCreneau.date}
+          heure={nouveauCreneau.heure}
+          onClose={() => setNouveauCreneau(null)}
+          onCreate={onCreerRdv}
+        />
       )}
     </div>
   );
@@ -3427,6 +3531,62 @@ if (updateError) {
         flashToast("Mécanicien affecté");
   };
 
+  const handleCreerRdvManuel = async ({ client_id, vehicule_id, prestation_id, date, heure, duree }) => {
+    const start = new Date(`${date}T${heure}:00`);
+    const end = new Date(start.getTime() + Number(duree || 60) * 60_000);
+    const { data: conflicts, error: conflictError } = await supabase
+      .from("rendez_vous")
+      .select("id")
+      .eq("garage_id", ACTIVE_GARAGE_ID)
+      .lt("date_debut", end.toISOString())
+      .gt("date_fin", start.toISOString());
+    if (conflictError) {
+      console.error("Erreur vérification créneau :", conflictError);
+      flashToast("Impossible de vérifier le créneau", "error");
+      return;
+    }
+    const capacite = Number(garageData.nb_mecaniciens) > 0 ? Number(garageData.nb_mecaniciens) : 1;
+    if ((conflicts?.length || 0) >= capacite) {
+      flashToast("Tous vos mécaniciens sont déjà occupés sur ce créneau", "error");
+      return;
+    }
+    const { data: createdRdv, error } = await supabase
+      .from("rendez_vous")
+      .insert({
+        garage_id: ACTIVE_GARAGE_ID,
+        client_id,
+        vehicule_id: vehicule_id || null,
+        prestation_id: prestation_id || null,
+        date_debut: start.toISOString(),
+        date_fin: end.toISOString(),
+        statut: "confirme",
+        source: "manuel",
+      })
+      .select("*, prestations (nom, categorie), clients (nom, telephone, email), vehicules (marque, modele, immatriculation)")
+      .single();
+    if (error) {
+      console.error("Erreur création RDV :", error);
+      flashToast("Impossible de créer le rendez-vous", "error");
+      return;
+    }
+    setRendezVous((prev) => [...prev, {
+      ...createdRdv,
+      date_key: dateKey(createdRdv.date_debut),
+      jour: dayLabel(createdRdv.date_debut),
+      debut: timeLabel(createdRdv.date_debut),
+      fin: timeLabel(createdRdv.date_fin),
+      prestation: createdRdv.prestations?.nom || "Prestation",
+      categorie: createdRdv.prestations?.categorie || "",
+      statut: RDV_STATUS_LABEL[createdRdv.statut] || createdRdv.statut,
+      client: createdRdv.clients?.nom || "Client inconnu",
+      telephone: createdRdv.clients?.telephone || "",
+      email: createdRdv.clients?.email || "",
+      vehicule: `${createdRdv.vehicules?.marque || ""} ${createdRdv.vehicules?.modele || ""}`.trim(),
+      immatriculation: createdRdv.vehicules?.immatriculation || "",
+    }]);
+    flashToast("Rendez-vous créé");
+  };
+
   const updateStatutAtelier = async (rdvId, statutAtelier) => {
     const { error } = await supabase.from("rendez_vous").update({ statut_atelier: statutAtelier }).eq("id", rdvId).eq("garage_id", ACTIVE_GARAGE_ID);
     if (error) {
@@ -3583,7 +3743,7 @@ if (updateError) {
           {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} onAccept={handleAcceptDevis} onRefuse={handleRefuseDevis} onUpdateMontant={handleUpdateDevisMontant} onCreer={handleCreerDevis} />}
           {view === "verifier" && <ErreursView erreurs={erreurs} onResoudre={handleResoudreErreur} />}
           {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={handleGenererFacture} onMarquerPayee={handleMarquerFacturePayee} onSauvegarder={handleSauvegarderFacture} />}
-          {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} garageData={garageData} onConnectCalendar={connectGoogleCalendar} />}
+          {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} garageData={garageData} onConnectCalendar={connectGoogleCalendar} clients={clients} prestations={prestations} onCreerRdv={handleCreerRdvManuel} />}
           {view === "demandes" && (
             <DemandesView
               demandes={demandes}
