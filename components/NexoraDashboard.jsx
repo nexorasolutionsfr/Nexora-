@@ -2087,6 +2087,53 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], onCreerD
   );
 }
 
+function StripeKeyField() {
+  const [value, setValue] = useState("");
+  const [configured, setConfigured] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    supabase.rpc("stripe_configure_pour_mon_garage").then(({ data, error }) => {
+      if (!error) setConfigured(!!data);
+    });
+  }, []);
+
+  const save = async () => {
+    if (!value.trim()) return;
+    setSaving(true);
+    const { error } = await supabase.rpc("set_stripe_secret_key", { p_key: value.trim() });
+    setSaving(false);
+    if (error) {
+      console.error("Erreur enregistrement clé Stripe :", error);
+      return;
+    }
+    setConfigured(true);
+    setValue("");
+  };
+
+  return (
+    <div className="space-y-3">
+      <Badge tone={configured ? "green" : "slate"}>{configured ? "Configuré" : "Non configuré"}</Badge>
+      <label className="block">
+        <span className="text-[12.5px] font-medium text-slate-500">Clé secrète Stripe</span>
+        <div className="mt-1.5 flex gap-2">
+          <input
+            type="password"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="sk_live_..."
+            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"
+          />
+          <button type="button" onClick={save} disabled={saving} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}>
+            Enregistrer
+          </button>
+        </div>
+      </label>
+      <div className="text-[12.5px] text-slate-500">Génère automatiquement un lien de paiement dans l'email « véhicule prêt » dès qu'un devis accepté existe pour ce rendez-vous. La clé n'est jamais réaffichée une fois enregistrée.</div>
+    </div>
+  );
+}
+
 function SettingsSection({ title, children }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
@@ -2147,6 +2194,9 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
           {field("Lien vers votre fiche d'avis Google", "lien_avis_google")}
           <div className="text-[12.5px] text-slate-500">Utilisé automatiquement dans l'email de demande d'avis envoyé après chaque rendez-vous terminé.</div>
         </div>
+      </SettingsSection>
+      <SettingsSection title="Paiement en ligne (Stripe)">
+        <StripeKeyField />
       </SettingsSection>
       <SettingsSection title="Notifications"><button onClick={() => onGarageChange("notifications_email", !garageData.notifications_email)} className="w-full flex items-center justify-between py-2.5 border-b border-slate-100"><span className="text-sm text-slate-600">Notifications par email</span><Toggle checked={garageData.notifications_email} /></button><button onClick={() => onGarageChange("notifications_sms", !garageData.notifications_sms)} className="w-full flex items-center justify-between py-2.5"><span className="text-sm text-slate-600">Notifications par SMS</span><Toggle checked={garageData.notifications_sms} /></button></SettingsSection>
     </div>
