@@ -401,10 +401,12 @@ function GarageIdentityCard({ garageData = garage }) {
 }
 
 // Centre de contrôle Nexora IA — carte ROI + timeline des actions automatisées
-function WorkshopTimeline({ rendezVous, onSelectAppt, compact = false }) {
+function WorkshopTimeline({ rendezVous, onSelectAppt, mecaniciens = [], compact = false }) {
   const grouped = WORKSHOP_STAGES.map((stage) => ({
     ...stage,
-    appointments: rendezVous.filter((r) => (r.statut_atelier || "a_venir") === stage.key && isToday(r.date_debut)),
+    appointments: rendezVous
+      .filter((r) => (r.statut_atelier || "a_venir") === stage.key && isToday(r.date_debut))
+      .sort((a, b) => (a.debut || "").localeCompare(b.debut || "")),
   }));
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
@@ -412,7 +414,20 @@ function WorkshopTimeline({ rendezVous, onSelectAppt, compact = false }) {
           <div className={`grid grid-cols-1 ${compact ? "md:grid-cols-3" : "xl:grid-cols-8"} gap-px bg-slate-200`}>
         {grouped.map((stage, index) => <div key={stage.key} className="bg-white min-h-[150px] p-3">
           <div className="flex items-center justify-between gap-2 mb-3"><div className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: stage.color }}><span className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }} />{stage.label}</div><span className="text-[11px] text-slate-400">{stage.appointments.length}</span></div>
-          <div className="space-y-2">{stage.appointments.length === 0 ? <div className="text-[11.5px] text-slate-300 pt-3">Aucun véhicule</div> : stage.appointments.map((appt) => <button key={appt.id} onClick={() => onSelectAppt(appt)} className="w-full text-left rounded-lg p-2 hover:bg-slate-50 border border-slate-100"><div className="text-[12px] font-medium text-slate-800 truncate">{appt.client}</div><div className="text-[11px] text-slate-500 truncate">{appt.vehicule}</div><div className="text-[11px] font-medium mt-1" style={{ color: stage.color }}>{appt.debut}</div></button>)}</div>
+          <div className="space-y-2">{stage.appointments.length === 0 ? <div className="text-[11.5px] text-slate-300 pt-3">Aucun véhicule</div> : stage.appointments.map((appt) => {
+            const mecanicien = mecaniciens.find((m) => m.id === appt.mecanicien_id);
+            return <button key={appt.id} onClick={() => onSelectAppt(appt)} className="w-full text-left rounded-lg p-2 hover:bg-slate-50 border border-slate-100">
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: mecanicien?.couleur || "#CBD5E1" }} />
+                <div className="text-[12px] font-medium text-slate-800 truncate">{appt.client}</div>
+              </div>
+              <div className="text-[11px] text-slate-500 truncate">{appt.vehicule}</div>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[11px] font-medium" style={{ color: stage.color }}>{appt.debut}</span>
+                <span className="text-[10px] text-slate-400 truncate max-w-[70px]">{mecanicien?.nom || "Non assigné"}</span>
+              </div>
+            </button>;
+          })}</div>
           {index < grouped.length - 1 && !compact && <ArrowRight size={14} className="hidden xl:block absolute" />}
         </div>)}
       </div>
@@ -510,8 +525,23 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] })
     return <div className="space-y-5">
     <div className="print:hidden rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}><div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" /><div className="relative flex items-start justify-between flex-wrap gap-4"><div><div className="flex items-center gap-2"><Wrench size={18} color="#8FB0FF" /><span className="font-semibold">Atelier en direct</span></div><div className="text-2xl font-semibold mt-3">Votre équipe sait quoi faire, maintenant.</div><div className="text-[13px] mt-1 text-blue-200">Répartissez les véhicules, suivez les retards et gardez le client informé.</div><button onClick={() => setTimeout(() => window.print(), 600)} className="mt-3 inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl px-3 py-2 text-[12.5px] font-medium">🖨️ Imprimer les étiquettes du jour</button></div><div className="grid grid-cols-2 gap-2"><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Véhicules aujourd’hui</div><div className="text-xl font-semibold mt-1">{todayAppts.length}</div></div><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Équipe disponible</div><div className="text-xl font-semibold mt-1">{garageData.nb_mecaniciens || 0}</div></div></div></div></div>
         <div className="print:hidden">
-    <WorkshopTimeline rendezVous={rendezVous} onSelectAppt={onSelectAppt} />
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"><div className="px-5 py-4 border-b border-slate-100"><div className="font-semibold text-slate-900 text-[15px]">Planning des ressources</div><div className="text-[12.5px] text-slate-500 mt-0.5">Cliquez un rendez-vous pour l’affecter à un mécanicien.</div></div><div className="overflow-x-auto"><div className="min-w-[850px]"><div className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] border-b border-slate-100">{["Ressource", ...heuresGrille].map((hour) => <div key={hour} className="px-3 py-2 text-[11px] font-medium text-slate-400 border-r border-slate-100">{hour}</div>)}</div>{mecaniciensActifs.length === 0 && <div className="px-5 py-6 text-[13px] text-slate-500">Ajoutez vos mécaniciens dans Paramètres pour affecter les rendez-vous.</div>}{ressources.map((resource) => { const assigned = resourceAppointments(resource.id); return <div key={resource.id ?? "non_assigne"} className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] min-h-[74px] border-b border-slate-100 last:border-0"><div className="px-3 py-3 border-r border-slate-100"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resource.color }} /><div><div className="text-[12.5px] font-medium text-slate-800">{resource.name}</div><div className="text-[11px] text-slate-400">{resource.role}</div></div></div></div><div className="col-span-10 relative p-1.5 flex gap-1.5">{assigned.map((appt) => <button key={appt.id} onClick={() => onSelectAppt(appt)} className="h-[58px] max-w-[180px] px-2 rounded-lg text-left overflow-hidden" style={{ backgroundColor: `${resource.color}1A`, borderLeft: `3px solid ${resource.color}`, width: `${Math.max(76, durationRows(appt.debut, appt.fin) * 66)}px` }}><div className="text-[11px] font-semibold truncate" style={{ color: resource.color }}>{appt.client}</div><div className="text-[10.5px] text-slate-500 truncate">{appt.prestation}</div></button>)}</div></div>; })}</div></div></div>
+    <WorkshopTimeline rendezVous={rendezVous} onSelectAppt={onSelectAppt} mecaniciens={mecaniciensActifs} />
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"><div className="px-5 py-4 border-b border-slate-100"><div className="font-semibold text-slate-900 text-[15px]">Planning des ressources</div><div className="text-[12.5px] text-slate-500 mt-0.5">Cliquez un rendez-vous pour l’affecter à un mécanicien.</div></div><div className="overflow-x-auto"><div className="min-w-[850px]"><div className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] border-b border-slate-100">{["Ressource", ...heuresGrille].map((hour) => <div key={hour} className="px-3 py-2 text-[11px] font-medium text-slate-400 border-r border-slate-100">{hour}</div>)}</div>{mecaniciensActifs.length === 0 && <div className="px-5 py-6 text-[13px] text-slate-500">Ajoutez vos mécaniciens dans Paramètres pour affecter les rendez-vous.</div>}{ressources.map((resource) => { const assigned = resourceAppointments(resource.id); return <div key={resource.id ?? "non_assigne"} className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] min-h-[74px] border-b border-slate-100 last:border-0"><div className="px-3 py-3 border-r border-slate-100"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resource.color }} /><div><div className="text-[12.5px] font-medium text-slate-800">{resource.name}</div><div className="text-[11px] text-slate-400">{resource.role}</div></div></div></div><div className="col-span-10 relative p-1.5" style={{ minHeight: 58 }}>{assigned.map((appt) => {
+              const stage = WORKSHOP_STAGES.find((s) => s.key === (appt.statut_atelier || "a_venir")) || WORKSHOP_STAGES[0];
+              const [h1, m1] = (appt.debut || "08:00").split(":").map(Number);
+              const [h2, m2] = (appt.fin || appt.debut || "09:00").split(":").map(Number);
+              const debutPct = Math.min(100, Math.max(0, ((h1 * 60 + m1) - 8 * 60) / (10 * 60) * 100));
+              const finPct = Math.min(100, Math.max(0, ((h2 * 60 + m2) - 8 * 60) / (10 * 60) * 100));
+              const largeurPct = Math.max(6, finPct - debutPct);
+              return <button key={appt.id} onClick={() => onSelectAppt(appt)} className="absolute top-1.5 h-[58px] px-2 rounded-lg text-left overflow-hidden" style={{ left: `${debutPct}%`, width: `${largeurPct}%`, backgroundColor: `${resource.color}1A`, borderLeft: `3px solid ${resource.color}` }}>
+                <div className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: stage.color }} />
+                  <div className="text-[11px] font-semibold truncate" style={{ color: resource.color }}>{appt.client}</div>
+                </div>
+                <div className="text-[10.5px] text-slate-500 truncate">{appt.prestation}</div>
+                <div className="text-[9.5px] truncate" style={{ color: stage.color }}>{stage.label}</div>
+              </button>;
+            })}</div></div>; })}</div></div></div>
     </div>
     <style>{`
       @media print {
