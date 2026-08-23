@@ -437,6 +437,10 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
         </div>
         <div className="text-lg font-semibold text-slate-900 mt-3">{client}</div>
+        <div className="mt-3 flex items-center gap-3 bg-slate-50 rounded-xl p-3">
+          <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`https://nexora-uig6.vercel.app/atelier/${appt.id}`)}`} alt="QR code atelier" className="w-[70px] h-[70px] rounded-lg bg-white p-1" />
+          <div className="text-[12px] text-slate-500">Scannez pour mettre à jour l'étape depuis un téléphone, sans se connecter au dashboard.</div>
+        </div>
         <div className="mt-4 space-y-2.5">
           <div className="flex items-center gap-2 text-sm text-slate-700"><Car size={15} className="text-slate-400" /> {vehicule} · {appt.immatriculation}</div>
           <div className="flex items-center gap-2 text-sm text-slate-700"><Clock size={15} className="text-slate-400" /> {appt.debut} – {appt.fin}</div>
