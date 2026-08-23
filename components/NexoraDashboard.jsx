@@ -418,6 +418,41 @@ function WorkshopTimeline({ rendezVous, onSelectAppt, compact = false }) {
   );
 }
 
+function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien }) {
+  if (!appt) return null;
+
+  const client = appt.client;
+  const vehicule = appt.vehicule;
+  const colors = catColor(appt.categorie);
+  return (
+    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge tone={STATUT_TONE[appt.statut] || "slate"}>{appt.statut}</Badge>
+            <SourceBadge source={appt.source} />
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+        </div>
+        <div className="text-lg font-semibold text-slate-900 mt-3">{client}</div>
+        <div className="mt-4 space-y-2.5">
+          <div className="flex items-center gap-2 text-sm text-slate-700"><Car size={15} className="text-slate-400" /> {vehicule} · {appt.immatriculation}</div>
+          <div className="flex items-center gap-2 text-sm text-slate-700"><Clock size={15} className="text-slate-400" /> {appt.debut} – {appt.fin}</div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: colors.bar }} />
+            <span style={{ color: colors.text }} className="font-medium">{appt.prestation}</span>
+            <span className="text-slate-400">· {colors.label}</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-slate-700">
+          <Phone size={15} className="text-slate-400" /> {formatPhone(appt.telephone)}
+          </div>
+          {onAssignMecanicien && <label className="block pt-2"><span className="text-[12.5px] font-medium text-slate-500">Mécanicien</span><select value={appt.mecanicien_id || ""} onChange={(e) => onAssignMecanicien(appt.id, e.target.value || null)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"><option value="">Non assigné</option>{mecaniciens.filter((m) => m.actif !== false).map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}</select></label>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] }) {
   const todayAppts = rendezVous.filter((r) => isToday(r.date_debut));
   const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
