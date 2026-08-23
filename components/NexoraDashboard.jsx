@@ -2771,17 +2771,17 @@ if (existingRDV) {
   return;
 }
 
-// Vérifier qu'aucun autre RDV confirmé ne chevauche ce créneau (évite le double-booking)
+    // Vérifier que la capacité du garage (nombre de mécaniciens) n'est pas dépassée sur ce créneau
 const { data: overlapping } = await supabase
   .from("rendez_vous")
   .select("id")
   .eq("garage_id", proposition.garage_id)
   .lt("date_debut", proposition.date_fin_proposee)
-  .gt("date_fin", proposition.date_debut_proposee)
-  .limit(1);
+  .gt("date_fin", proposition.date_debut_proposee);
 
-if (overlapping?.length) {
-  flashToast("Ce créneau est déjà occupé par un autre rendez-vous confirmé", "error");
+const capacite = Number(garageData.nb_mecaniciens) > 0 ? Number(garageData.nb_mecaniciens) : 1;
+if ((overlapping?.length || 0) >= capacite) {
+  flashToast("Tous vos mécaniciens sont déjà occupés sur ce créneau", "error");
   return;
 }
 
@@ -3119,16 +3119,16 @@ if (updateError) {
     const end = new Date(start.getTime() + duration * 60_000);
     setSubmittingProposal(true);
     try {
-      const { data: conflicts, error: conflictError } = await supabase
+            const { data: conflicts, error: conflictError } = await supabase
         .from("rendez_vous")
         .select("id")
         .eq("garage_id", ACTIVE_GARAGE_ID)
         .lt("date_debut", end.toISOString())
-        .gt("date_fin", start.toISOString())
-        .limit(1);
+        .gt("date_fin", start.toISOString());
       if (conflictError) throw conflictError;
-      if (conflicts?.length) {
-        flashToast("Ce créneau est déjà occupé. Choisissez une autre heure.", "error");
+      const capacite = Number(garageData.nb_mecaniciens) > 0 ? Number(garageData.nb_mecaniciens) : 1;
+      if ((conflicts?.length || 0) >= capacite) {
+        flashToast("Tous vos mécaniciens sont déjà occupés sur ce créneau. Choisissez une autre heure.", "error");
         return;
       }
 
