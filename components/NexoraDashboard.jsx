@@ -508,7 +508,7 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
         </div>
         {estAujourdhui && (
           <div className="mt-4 flex items-center gap-3 bg-slate-50 rounded-xl p-3">
-            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`https://nexora-uig6.vercel.app/atelier/${appt.id}`)}`} alt="QR code atelier" className="w-[70px] h-[70px] rounded-lg bg-white p-1" />
+            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`https://nexora-garage.vercel.app/atelier/${appt.id}`)}`} alt="QR code atelier" className="w-[70px] h-[70px] rounded-lg bg-white p-1" />
             <div className="text-[12px] text-slate-500">QR à imprimer et coller sur le véhicule pour que le mécanicien mette à jour l'étape sans passer par le dashboard.</div>
           </div>
         )}
@@ -556,7 +556,7 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] })
           <div style={{ fontSize: 28, fontWeight: 700 }}>{appt.client}</div>
           <div style={{ fontSize: 20, marginTop: 8 }}>{appt.vehicule} · {appt.immatriculation}</div>
           <div style={{ fontSize: 16, color: "#64748B", marginTop: 4 }}>{appt.debut} – {appt.fin} · {appt.prestation}</div>
-          <img src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(`https://nexora-uig6.vercel.app/atelier/${appt.id}`)}`} style={{ marginTop: 16 }} />
+          <img src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(`https://nexora-garage.vercel.app/atelier/${appt.id}`)}`} style={{ marginTop: 16 }} />
         </div>
       ))}
     </div>
