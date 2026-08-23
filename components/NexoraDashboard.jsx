@@ -420,7 +420,33 @@ function WorkshopTimeline({ rendezVous, onSelectAppt, compact = false }) {
   );
 }
 
-function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, onUpdateStatutAtelier }) {
+function LienPaiementField({ appt, onSave }) {
+  const [value, setValue] = useState(appt.lien_paiement || "");
+  return (
+    <label className="block mt-3">
+      <span className="text-[12.5px] font-medium text-slate-500">Lien de paiement</span>
+      <div className="mt-1.5 flex gap-2">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="https://..."
+          className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"
+        />
+        <button
+          type="button"
+          onClick={() => onSave(appt.id, value.trim() || null)}
+          className="px-3 py-2 rounded-xl text-sm font-semibold text-white"
+          style={{ backgroundColor: ACCENT }}
+        >
+          Enregistrer
+        </button>
+      </div>
+    </label>
+  );
+}
+
+function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, onUpdateStatutAtelier, onUpdateLienPaiement }) {
   if (!appt) return null;
 
   const client = appt.client;
@@ -452,6 +478,7 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
             </select>
           </label>
         )}
+        {onUpdateLienPaiement && <LienPaiementField key={appt.id} appt={appt} onSave={onUpdateLienPaiement} />}
         <div className="mt-4 space-y-2.5">
           <div className="flex items-center gap-2 text-sm text-slate-700"><Clock size={15} className="text-slate-400" /> {appt.debut} – {appt.fin}</div>
           <div className="flex items-center gap-2 text-sm">
@@ -2115,6 +2142,12 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
           <div className="text-[12.5px] text-slate-500">Sert de repere de progression sur le tableau de bord. Laissez vide pour ne rien afficher.</div>
         </div>
       </SettingsSection>
+      <SettingsSection title="Avis Google">
+        <div className="space-y-3">
+          {field("Lien vers votre fiche d'avis Google", "lien_avis_google")}
+          <div className="text-[12.5px] text-slate-500">Utilisé automatiquement dans l'email de demande d'avis envoyé après chaque rendez-vous terminé.</div>
+        </div>
+      </SettingsSection>
       <SettingsSection title="Notifications"><button onClick={() => onGarageChange("notifications_email", !garageData.notifications_email)} className="w-full flex items-center justify-between py-2.5 border-b border-slate-100"><span className="text-sm text-slate-600">Notifications par email</span><Toggle checked={garageData.notifications_email} /></button><button onClick={() => onGarageChange("notifications_sms", !garageData.notifications_sms)} className="w-full flex items-center justify-between py-2.5"><span className="text-sm text-slate-600">Notifications par SMS</span><Toggle checked={garageData.notifications_sms} /></button></SettingsSection>
     </div>
   </div>;
@@ -3242,6 +3275,7 @@ if (updateError) {
       horaires: garageData.horaires,
       nb_mecaniciens: garageData.nb_mecaniciens,
       objectif_ca_mensuel: garageData.objectif_ca_mensuel || null,
+      lien_avis_google: garageData.lien_avis_google || null,
       notifications_email: garageData.notifications_email,
       notifications_sms: garageData.notifications_sms,
     };
@@ -3323,6 +3357,18 @@ if (updateError) {
     setRendezVous((previous) => previous.map((r) => (r.id === rdvId ? { ...r, statut_atelier: statutAtelier } : r)));
     setSelectedAppt((previous) => (previous && previous.id === rdvId ? { ...previous, statut_atelier: statutAtelier } : previous));
     flashToast("Étape mise à jour");
+  };
+
+  const updateLienPaiement = async (rdvId, lienPaiement) => {
+    const { error } = await supabase.from("rendez_vous").update({ lien_paiement: lienPaiement }).eq("id", rdvId).eq("garage_id", ACTIVE_GARAGE_ID);
+    if (error) {
+      console.error("Erreur mise à jour lien de paiement :", error);
+      flashToast("Impossible d'enregistrer le lien de paiement", "error");
+      return;
+    }
+    setRendezVous((previous) => previous.map((r) => (r.id === rdvId ? { ...r, lien_paiement: lienPaiement } : r)));
+    setSelectedAppt((previous) => (previous && previous.id === rdvId ? { ...previous, lien_paiement: lienPaiement } : previous));
+    flashToast("Lien de paiement enregistré");
   };
 
   const connectGoogleCalendar = () => {
@@ -3471,7 +3517,7 @@ if (updateError) {
       </main>
 
       <Toast toast={toast} />
-      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} onUpdateStatutAtelier={updateStatutAtelier} />
+      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} onUpdateStatutAtelier={updateStatutAtelier} onUpdateLienPaiement={updateLienPaiement} />
     </div>
   );
 }
