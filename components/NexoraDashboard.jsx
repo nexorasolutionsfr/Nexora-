@@ -488,7 +488,7 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] })
       @media print {
         body * { visibility: hidden; }
         #nexora-print-labels, #nexora-print-labels * { visibility: visible; }
-        #nexora-print-labels { position: absolute; left: 0; top: 0; width: 100%; }
+        #nexora-print-labels { display: block !important; position: absolute; left: 0; top: 0; width: 100%; }
       }
     `}</style>
     <div id="nexora-print-labels" className="hidden">
