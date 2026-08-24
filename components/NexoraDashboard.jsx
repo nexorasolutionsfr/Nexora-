@@ -54,7 +54,7 @@ const NAVY_SOFT = "#16264A";
 const ACCENT = "#3D6BE0";
 const ACCENT_SOFT = "#EAF0FF";
 const BG = "#F5F7FA";
-let ACTIVE_GARAGE_ID = "bcd7f692-1c28-435c-87d1-92f84aa0e6bb";
+const DEFAULT_GARAGE_ID = "bcd7f692-1c28-435c-87d1-92f84aa0e6bb";
 const APP_TIME_ZONE = "Europe/Paris";
 const WORKSHOP_STAGES = [
   { key: "a_venir", label: "À venir", color: "#64748B" },
@@ -1356,24 +1356,26 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
   );
 }
 
-function HistoriqueView({ devisList }) {
+function HistoriqueView({ devisList, garageId }) {
   const [rdvHistory, setRdvHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filtreType, setFiltreType] = useState("tous");
   const [filtreStatut, setFiltreStatut] = useState("tous");
   const [tri, setTri] = useState("recent");
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     async function loadHistorique() {
       const { data, error } = await supabase
         .from("propositions_rdv")
         .select(`*, clients ( nom ), vehicules ( marque, modele ), prestations ( nom )`)
-        .eq("garage_id", ACTIVE_GARAGE_ID)
+        .eq("garage_id", garageId)
         .in("statut", ["accepte", "refuse"])
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) {
         console.error("Erreur chargement historique RDV :", JSON.stringify(error, null, 2));
+        setLoadError(true);
         setLoading(false);
         return;
       }
@@ -1407,18 +1409,12 @@ function HistoriqueView({ devisList }) {
     })),
   ];
 
-  const frequenceParClient = items.reduce((acc, it) => {
-    acc[it.client] = (acc[it.client] || 0) + 1;
-    return acc;
-  }, {});
-
   const itemsFiltres = items
     .filter((it) => filtreType === "tous" || filtreType === "clients" || it.type === filtreType)
     .filter((it) => filtreStatut === "tous" || it.statut === filtreStatut);
 
   const triFn = (a, b) => {
     if (tri === "ancien") return new Date(a.date) - new Date(b.date);
-    if (tri === "fidele") return frequenceParClient[b.client] - frequenceParClient[a.client];
     return new Date(b.date) - new Date(a.date);
   };
 
@@ -1432,7 +1428,6 @@ function HistoriqueView({ devisList }) {
         }, {})
       ).sort((a, b) => {
         if (tri === "ancien") return new Date(a.derniere) - new Date(b.derniere);
-        if (tri === "fidele") return b.count - a.count;
         return new Date(b.derniere) - new Date(a.derniere);
       })
     : [];
@@ -1440,6 +1435,7 @@ function HistoriqueView({ devisList }) {
   const formatDateHeure = (d) => d ? new Date(d).toLocaleString("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
 
   if (loading) return <div className="text-sm text-slate-500">Chargement...</div>;
+  if (loadError) return <EmptyState icon={AlertTriangle} title="Historique indisponible" subtitle="Impossible de charger l'historique des rendez-vous. Réessayez dans quelques instants." />;
 
   return (
     <div className="space-y-4">
@@ -1468,7 +1464,6 @@ function HistoriqueView({ devisList }) {
         <select value={tri} onChange={(e) => setTri(e.target.value)} className="ml-auto text-[13px] font-medium border border-slate-200 rounded-full px-3 py-1.5 text-slate-600 outline-none focus:border-blue-500">
           <option value="recent">Plus récent → plus ancien</option>
           <option value="ancien">Plus ancien → plus récent</option>
-          <option value="fidele">Plus fidèle → moins fidèle</option>
         </select>
       </div>
 
@@ -2462,7 +2457,13 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], onCreerD
   const [selectedId, setSelectedId] = useState(null);
   const [devisModalOpen, setDevisModalOpen] = useState(false);
   const [nouveauClientOuvert, setNouveauClientOuvert] = useState(false);
-  const filtered = clients.filter((c) => c.nom?.toLowerCase().includes(query.toLowerCase()));
+  const [tri, setTri] = useState("nom");
+  const filtered = clients
+    .filter((c) => c.nom?.toLowerCase().includes(query.toLowerCase()))
+    .sort((a, b) => {
+      if (tri === "fidele") return (b.fidele ? 1 : 0) - (a.fidele ? 1 : 0);
+      return (a.nom || "").localeCompare(b.nom || "");
+    });
   const selected = clients.find((c) => c.id === selectedId) || filtered[0] || null;
   const selectedVehicles = Array.isArray(selected?.vehicules) ? selected.vehicules : selected?.vehicules ? [selected.vehicules] : [];
   const historique = rendezVous
@@ -2480,6 +2481,10 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], onCreerD
             <Search size={15} className="text-slate-400" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher un client..." className="bg-transparent text-sm text-slate-900 outline-none w-full placeholder:text-slate-400" />
           </div>
+          <select value={tri} onChange={(e) => setTri(e.target.value)} className="shrink-0 text-[12.5px] font-medium border border-slate-200 rounded-xl px-2.5 py-2 text-slate-600 outline-none focus:border-blue-500">
+            <option value="nom">Nom (A→Z)</option>
+            <option value="fidele">Plus fidèle → moins fidèle</option>
+          </select>
           <button onClick={() => setNouveauClientOuvert(true)} className="shrink-0 p-2 rounded-xl text-white" style={{ backgroundColor: ACCENT }} title="Nouveau client">
             <Plus size={16} />
           </button>
@@ -2577,20 +2582,28 @@ function StripeKeyField() {
   const [value, setValue] = useState("");
   const [configured, setConfigured] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     supabase.rpc("stripe_configure_pour_mon_garage").then(({ data, error }) => {
-      if (!error) setConfigured(!!data);
+      if (error) {
+        console.error("Erreur vérification clé Stripe :", error);
+        setError("Impossible de vérifier l'état de la clé Stripe.");
+        return;
+      }
+      setConfigured(!!data);
     });
   }, []);
 
   const save = async () => {
     if (!value.trim()) return;
     setSaving(true);
-    const { error } = await supabase.rpc("set_stripe_secret_key", { p_key: value.trim() });
+    setError("");
+    const { error: saveError } = await supabase.rpc("set_stripe_secret_key", { p_key: value.trim() });
     setSaving(false);
-    if (error) {
-      console.error("Erreur enregistrement clé Stripe :", error);
+    if (saveError) {
+      console.error("Erreur enregistrement clé Stripe :", saveError);
+      setError("Impossible d'enregistrer la clé Stripe.");
       return;
     }
     setConfigured(true);
@@ -2615,6 +2628,7 @@ function StripeKeyField() {
           </button>
         </div>
       </label>
+      {error && <div className="text-[12.5px] text-red-600">{error}</div>}
       <div className="text-[12.5px] text-slate-500">Génère automatiquement un lien de paiement dans l'email « véhicule prêt » dès qu'un devis accepté existe pour ce rendez-vous. La clé n'est jamais réaffichée une fois enregistrée.</div>
     </div>
   );
@@ -2852,7 +2866,7 @@ function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting,
 // =====================================================================================
 // APP SHELL
 // =====================================================================================
-function NexoraDashboardInner() {
+function NexoraDashboardInner({ garageId }) {
   const [view, setView] = useState("dashboard");
   const [stats, setStats] = useState({
   pending: 0,
@@ -2905,11 +2919,12 @@ function NexoraDashboardInner() {
 `)
   .eq(
     "garage_id",
-    ACTIVE_GARAGE_ID
+    garageId
   );
 
     if (error) {
       console.error("Erreur chargement RDV :", error);
+      flashToast("Impossible de charger les rendez-vous", "error");
       setLoading(false);
       return;
     }
@@ -2945,8 +2960,13 @@ setLoading(false);
 
   useEffect(() => {
     async function loadGarage() {
-      const { data, error } = await supabase.from("garages").select("*").eq("id", ACTIVE_GARAGE_ID).maybeSingle();
-      if (!error && data) setGarageData((previous) => ({ ...previous, ...data }));
+      const { data, error } = await supabase.from("garages").select("*").eq("id", garageId).maybeSingle();
+      if (error) {
+        console.error("Erreur chargement garage :", error);
+        flashToast("Impossible de charger les informations du garage", "error");
+        return;
+      }
+      if (data) setGarageData((previous) => ({ ...previous, ...data }));
     }
     loadGarage();
   }, []);
@@ -2956,10 +2976,11 @@ setLoading(false);
       const { data, error } = await supabase
         .from("clients")
         .select("*, vehicules (id, marque, modele, annee, immatriculation)")
-        .eq("garage_id", ACTIVE_GARAGE_ID)
+        .eq("garage_id", garageId)
         .order("nom");
       if (error) {
         console.error("Erreur chargement clients :", error);
+        flashToast("Impossible de charger les clients", "error");
         return;
       }
       setClients(data || []);
@@ -2991,7 +3012,7 @@ useEffect(() => {
      `)
       .eq(
         "garage_id",
-        ACTIVE_GARAGE_ID
+        garageId
       )
       .order("created_at", { ascending: false });
 
@@ -3001,6 +3022,7 @@ useEffect(() => {
         "Erreur chargement demandes :",
         error
       );
+      flashToast("Impossible de charger les demandes clients", "error");
       return;
     }
 
@@ -3023,12 +3045,13 @@ useEffect(() => {
       .select("*")
       .eq(
         "garage_id",
-        ACTIVE_GARAGE_ID
+        garageId
       );
 
 
     if (error) {
       console.error("Erreur prestations :", error);
+      flashToast("Impossible de charger les prestations", "error");
       return;
     }
 
@@ -3047,9 +3070,10 @@ useEffect(() => {
     const { data, error } = await supabase
       .from("mecaniciens")
       .select("*")
-      .eq("garage_id", ACTIVE_GARAGE_ID);
+      .eq("garage_id", garageId);
     if (error) {
       console.error("Erreur mécaniciens :", error);
+      flashToast("Impossible de charger les mécaniciens", "error");
       return;
     }
     setMecaniciens(data || []);
@@ -3080,7 +3104,7 @@ useEffect(() => {
         .select("id", { count: "exact", head: true })
         .eq(
           "garage_id",
-          ACTIVE_GARAGE_ID
+          garageId
         ),
 
       supabase
@@ -3088,7 +3112,7 @@ useEffect(() => {
         .select("id", { count: "exact", head: true })
         .eq(
           "garage_id",
-          ACTIVE_GARAGE_ID
+          garageId
         )
         .eq("statut", "en_attente"),
 
@@ -3097,7 +3121,7 @@ useEffect(() => {
         .select("id", { count: "exact", head: true })
         .eq(
           "garage_id",
-          ACTIVE_GARAGE_ID
+          garageId
         )
         .neq("statut", "rendez_vous_confirme"),
 
@@ -3106,7 +3130,7 @@ useEffect(() => {
         .select("id", { count: "exact", head: true })
         .eq(
           "garage_id",
-          ACTIVE_GARAGE_ID
+          garageId
         )
         .gte("date_debut", startOfToday)
         .lt("date_debut", startOfTomorrow),
@@ -3114,7 +3138,7 @@ useEffect(() => {
       supabase
         .from("demandes")
         .select("id", { count: "exact", head: true })
-        .eq("garage_id", ACTIVE_GARAGE_ID)
+        .eq("garage_id", garageId)
         .eq("urgence", "Élevée")
         .neq("statut", "rendez_vous_confirme")
     ]);
@@ -3162,7 +3186,7 @@ useEffect(() => {
 `)
   .eq(
     "garage_id",
-    ACTIVE_GARAGE_ID
+    garageId
   )
   .eq("statut", "en_attente");
 
@@ -3172,6 +3196,7 @@ useEffect(() => {
    "Erreur chargement propositions :",
    JSON.stringify(error, null, 2)
  );
+ flashToast("Impossible de charger les propositions de rendez-vous", "error");
  return;
 }
 
@@ -3260,11 +3285,12 @@ setPropositions(formattedPropositions);
           vehicules ( marque, modele, annee, immatriculation ),
           prestations ( nom, categorie )
         `)
-        .eq("garage_id", ACTIVE_GARAGE_ID)
+        .eq("garage_id", garageId)
         .order("created_at", { ascending: false });
 
       if (error) {
         console.error("Erreur chargement devis :", JSON.stringify(error, null, 2));
+        flashToast("Impossible de charger les devis", "error");
         return;
       }
 
@@ -3289,11 +3315,12 @@ setPropositions(formattedPropositions);
       const { data, error } = await supabase
         .from("erreurs_automatisation")
         .select("*")
-        .eq("garage_id", ACTIVE_GARAGE_ID)
+        .eq("garage_id", garageId)
         .eq("resolu", false)
         .order("created_at", { ascending: false });
       if (error) {
         console.error("Erreur chargement erreurs_automatisation :", JSON.stringify(error, null, 2));
+        flashToast("Impossible de charger le journal des erreurs", "error");
         return;
       }
       setErreurs(data || []);
@@ -3306,10 +3333,11 @@ setPropositions(formattedPropositions);
       const { data, error } = await supabase
         .from("factures")
         .select(`*, clients (nom, telephone, email), vehicules (marque, modele, immatriculation)`)
-        .eq("garage_id", ACTIVE_GARAGE_ID)
+        .eq("garage_id", garageId)
         .order("created_at", { ascending: false });
       if (error) {
         console.error("Erreur chargement factures :", JSON.stringify(error, null, 2));
+        flashToast("Impossible de charger les factures", "error");
         return;
       }
       setFactures(data || []);
@@ -3332,9 +3360,9 @@ setPropositions(formattedPropositions);
       tarifHoraireAdmin: 38,
     });
     const activities = [
-      ...demandes.map((demande) => ({ id: `demande-${demande.id}`, at: demande.created_at, type: "reception", texte: `Demande reçue — ${demande.clients?.nom || "Client"}` })),
-      ...propositions.map((proposition) => ({ id: `proposition-${proposition.id}`, at: proposition.created_at || proposition.date_debut_proposee, type: "proposition", texte: `Créneau proposé — ${proposition.client || "Client"}` })),
-      ...rendezVous.map((rdv) => ({ id: `rdv-${rdv.id}`, at: rdv.created_at || rdv.date_debut, type: "confirmation", texte: `Rendez-vous confirmé — ${rdv.client || "Client"}` })),
+      ...todayDemandes.map((demande) => ({ id: `demande-${demande.id}`, at: demande.created_at, type: "reception", texte: `Demande reçue — ${demande.clients?.nom || "Client"}` })),
+      ...todayPropositions.map((proposition) => ({ id: `proposition-${proposition.id}`, at: proposition.created_at || proposition.date_debut_proposee, type: "proposition", texte: `Créneau proposé — ${proposition.client || "Client"}` })),
+      ...todayConfirmed.map((rdv) => ({ id: `rdv-${rdv.id}`, at: rdv.created_at || rdv.date_debut, type: "confirmation", texte: `Rendez-vous confirmé — ${rdv.client || "Client"}` })),
     ].filter((activity) => activity.at).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 5).map((activity) => ({ ...activity, heure: timeLabel(activity.at) }));
     setActivityTimeline(activities);
   }, [demandes, propositions, rendezVous]);
@@ -3344,10 +3372,15 @@ setPropositions(formattedPropositions);
       const { data, error } = await supabase
         .from("actions_ia")
         .select("*")
-        .eq("garage_id", ACTIVE_GARAGE_ID)
+        .eq("garage_id", garageId)
         .order("created_at", { ascending: false })
         .limit(50);
-      if (!error) setAutomationEvents(data || []);
+      if (error) {
+        console.error("Erreur chargement automatisations :", error);
+        flashToast("Impossible de charger l'activité des automatisations", "error");
+        return;
+      }
+      setAutomationEvents(data || []);
     }
     loadAutomationEvents();
   }, []);
@@ -3419,6 +3452,7 @@ if ((overlapping?.length || 0) >= capacite) {
     "Erreur création rendez-vous :",
     JSON.stringify(insertError, null, 2)
   );
+  flashToast("Impossible de créer le rendez-vous", "error");
   return;
 }
 
@@ -3442,6 +3476,7 @@ if (updateError) {
     "Erreur validation proposition :",
     JSON.stringify(updateError, null, 2)
   );
+  flashToast("Impossible de valider la proposition", "error");
   return;
 }
 
@@ -3592,7 +3627,7 @@ if (updateError) {
     const { data, error } = await supabase
       .from("devis")
       .insert({
-        garage_id: ACTIVE_GARAGE_ID,
+        garage_id: garageId,
         client_id,
         vehicule_id: vehicule_id || null,
         prestation_id: prestation_id || null,
@@ -3639,23 +3674,33 @@ if (updateError) {
 
   const handleGenererFacture = async (rdv) => {
     const prestation = prestations.find((p) => p.id === rdv.prestation_id);
-    const prixMainOeuvre = Number(prestation?.prix_ht || 0);
-    const lignesInitiales = [
-      { type: "main_oeuvre", description: prestation?.nom || "Main d'œuvre", quantite: 1, prix_unitaire_ht: prixMainOeuvre },
-    ];
+    let lignesInitiales;
+
+    if (rdv.devis_id) {
+      const { data: devisAccepte } = await supabase.from("devis").select("montant_ht, statut").eq("id", rdv.devis_id).single();
+      if (devisAccepte?.statut === "accepte") {
+        lignesInitiales = [
+          { type: "main_oeuvre", description: prestation?.nom || "Prestation (devis accepté)", quantite: 1, prix_unitaire_ht: Number(devisAccepte.montant_ht || 0) },
+        ];
+      }
+    }
+    if (!lignesInitiales) {
+      lignesInitiales = [
+        { type: "main_oeuvre", description: prestation?.nom || "Main d'œuvre", quantite: 1, prix_unitaire_ht: Number(prestation?.prix_ht || 0) },
+      ];
+    }
+
     const montantHt = lignesInitiales.reduce((sum, l) => sum + l.quantite * l.prix_unitaire_ht, 0);
     const montantTtc = Math.round(montantHt * 1.2 * 100) / 100;
-    const numero = `F-${new Date().getFullYear()}-${String(factures.length + 1).padStart(4, "0")}`;
 
     const { data, error } = await supabase
       .from("factures")
       .insert({
-        garage_id: ACTIVE_GARAGE_ID,
+        garage_id: garageId,
         client_id: rdv.client_id,
         vehicule_id: rdv.vehicule_id,
         rendez_vous_id: rdv.id,
         devis_id: rdv.devis_id || null,
-        numero,
         motif: rdv.notes || rdv.prestation || "",
         lignes: lignesInitiales,
         montant_ht: montantHt,
@@ -3712,7 +3757,7 @@ if (updateError) {
             const { data: conflicts, error: conflictError } = await supabase
         .from("rendez_vous")
         .select("id")
-        .eq("garage_id", ACTIVE_GARAGE_ID)
+        .eq("garage_id", garageId)
         .lt("date_debut", end.toISOString())
         .gt("date_fin", start.toISOString());
       if (conflictError) throw conflictError;
@@ -3725,7 +3770,7 @@ if (updateError) {
       const { data, error } = await supabase
         .from("propositions_rdv")
         .insert({
-          garage_id: ACTIVE_GARAGE_ID,
+          garage_id: garageId,
           demande_id: demande.id,
           client_id: demande.client_id,
           vehicule_id: demande.vehicule_id,
@@ -3795,7 +3840,7 @@ if (updateError) {
       notifications_email: garageData.notifications_email,
       notifications_sms: garageData.notifications_sms,
     };
-    const { error } = await supabase.from("garages").update(update).eq("id", ACTIVE_GARAGE_ID);
+    const { error } = await supabase.from("garages").update(update).eq("id", garageId);
     setSavingSettings(false);
     if (error) {
       console.error("Erreur enregistrement garage :", error);
@@ -3806,7 +3851,7 @@ if (updateError) {
   };
 
   const addPrestation = async (prestation) => {
-    const { data, error } = await supabase.from("prestations").insert({ ...prestation, garage_id: ACTIVE_GARAGE_ID }).select().single();
+    const { data, error } = await supabase.from("prestations").insert({ ...prestation, garage_id: garageId }).select().single();
     if (error) {
       console.error("Erreur ajout prestation :", error);
       flashToast("Impossible d’ajouter la prestation", "error");
@@ -3818,7 +3863,7 @@ if (updateError) {
 
   const deletePrestation = async (id) => {
     if (!window.confirm("Supprimer cette prestation du catalogue ?")) return;
-    const { error } = await supabase.from("prestations").delete().eq("id", id).eq("garage_id", ACTIVE_GARAGE_ID);
+    const { error } = await supabase.from("prestations").delete().eq("id", id).eq("garage_id", garageId);
     if (error) {
       console.error("Erreur suppression prestation :", error);
       flashToast("Impossible de supprimer la prestation", "error");
@@ -3831,7 +3876,7 @@ if (updateError) {
   const addMecanicien = async (nom) => {
     const couleurs = ["#3D6BE0", "#7C3AED", "#0F766E", "#D97706", "#DC2626", "#16A34A"];
     const couleur = couleurs[mecaniciens.length % couleurs.length];
-    const { data, error } = await supabase.from("mecaniciens").insert({ nom, couleur, garage_id: ACTIVE_GARAGE_ID }).select().single();
+    const { data, error } = await supabase.from("mecaniciens").insert({ nom, couleur, garage_id: garageId }).select().single();
     if (error) {
       console.error("Erreur ajout mécanicien :", error);
       flashToast("Impossible d’ajouter le mécanicien", "error");
@@ -3842,7 +3887,7 @@ if (updateError) {
   };
 
   const toggleMecanicienActif = async (id, actif) => {
-    const { error } = await supabase.from("mecaniciens").update({ actif }).eq("id", id).eq("garage_id", ACTIVE_GARAGE_ID);
+    const { error } = await supabase.from("mecaniciens").update({ actif }).eq("id", id).eq("garage_id", garageId);
     if (error) {
       console.error("Erreur mise à jour mécanicien :", error);
       flashToast("Impossible de mettre à jour le mécanicien", "error");
@@ -3852,7 +3897,7 @@ if (updateError) {
   };
 
   const assignMecanicien = async (rdvId, mecanicienId) => {
-    const { error } = await supabase.from("rendez_vous").update({ mecanicien_id: mecanicienId }).eq("id", rdvId).eq("garage_id", ACTIVE_GARAGE_ID);
+    const { error } = await supabase.from("rendez_vous").update({ mecanicien_id: mecanicienId }).eq("id", rdvId).eq("garage_id", garageId);
     if (error) {
       console.error("Erreur affectation mécanicien :", error);
       flashToast("Impossible d’affecter le mécanicien", "error");
@@ -3865,7 +3910,7 @@ if (updateError) {
   const handleCreerClient = async ({ nom, telephone, email }) => {
     const { data, error } = await supabase
       .from("clients")
-      .insert({ garage_id: ACTIVE_GARAGE_ID, nom, telephone: telephone || null, email: email || null })
+      .insert({ garage_id: garageId, nom, telephone: telephone || null, email: email || null })
       .select("*, vehicules (id, marque, modele, annee, immatriculation)")
       .single();
     if (error) {
@@ -3885,7 +3930,7 @@ if (updateError) {
     const { data: conflicts, error: conflictError } = await supabase
       .from("rendez_vous")
       .select("id")
-      .eq("garage_id", ACTIVE_GARAGE_ID)
+      .eq("garage_id", garageId)
       .lt("date_debut", end.toISOString())
       .gt("date_fin", start.toISOString());
     if (conflictError) {
@@ -3901,7 +3946,7 @@ if (updateError) {
     const { data: createdRdv, error } = await supabase
       .from("rendez_vous")
       .insert({
-        garage_id: ACTIVE_GARAGE_ID,
+        garage_id: garageId,
         client_id,
         vehicule_id: vehicule_id || null,
         prestation_id: prestation_id || null,
@@ -3936,7 +3981,7 @@ if (updateError) {
   };
 
   const updateStatutAtelier = async (rdvId, statutAtelier) => {
-    const { error } = await supabase.from("rendez_vous").update({ statut_atelier: statutAtelier }).eq("id", rdvId).eq("garage_id", ACTIVE_GARAGE_ID);
+    const { error } = await supabase.from("rendez_vous").update({ statut_atelier: statutAtelier }).eq("id", rdvId).eq("garage_id", garageId);
     if (error) {
       console.error("Erreur mise à jour étape atelier :", error);
       flashToast("Impossible de mettre à jour l'étape", "error");
@@ -3948,7 +3993,7 @@ if (updateError) {
   };
 
   const updateLienPaiement = async (rdvId, lienPaiement) => {
-    const { error } = await supabase.from("rendez_vous").update({ lien_paiement: lienPaiement }).eq("id", rdvId).eq("garage_id", ACTIVE_GARAGE_ID);
+    const { error } = await supabase.from("rendez_vous").update({ lien_paiement: lienPaiement }).eq("id", rdvId).eq("garage_id", garageId);
     if (error) {
       console.error("Erreur mise à jour lien de paiement :", error);
       flashToast("Impossible d'enregistrer le lien de paiement", "error");
@@ -4088,9 +4133,9 @@ if (updateError) {
         <div className="p-5 md:p-8">
           {view === "dashboard" && <DashboardView stats={stats} propositions={propositions} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} demandes={demandes} clients={clients} garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} prestations={prestations} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
-          {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={ACTIVE_GARAGE_ID} />}
+          {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
           {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={handleAcceptDevis} onRefuse={handleRefuseDevis} onUpdateMontant={handleUpdateDevisMontant} onCreer={handleCreerDevis} onCreerClient={handleCreerClient} />}
-          {view === "historique" && <HistoriqueView devisList={devisList} />}
+          {view === "historique" && <HistoriqueView devisList={devisList} garageId={garageId} />}
           {view === "verifier" && <ErreursView erreurs={erreurs} onResoudre={handleResoudreErreur} />}
           {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={handleGenererFacture} onMarquerPayee={handleMarquerFacturePayee} onSauvegarder={handleSauvegarderFacture} />}
           {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} garageData={garageData} onConnectCalendar={connectGoogleCalendar} clients={clients} prestations={prestations} onCreerRdv={handleCreerRdvManuel} onCreerClient={handleCreerClient} />}
@@ -4112,11 +4157,150 @@ if (updateError) {
   );
 }
 
+function ForgotPasswordScreen({ onBack }) {
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
+  const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+    setLoading(false);
+    if (error) {
+      setError("Impossible d'envoyer le lien de réinitialisation.");
+      return;
+    }
+    setSent(true);
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG }}>
+      <div style={{ background: "#fff", padding: 32, borderRadius: 12, width: 320, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: NAVY, marginBottom: 4 }}>Mot de passe oublié</h1>
+        {sent ? (
+          <>
+            <p style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Si un compte existe pour cet email, un lien de réinitialisation vient de vous être envoyé.</p>
+            <button type="button" onClick={onBack} style={{ width: "100%", padding: "10px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" }}>
+              Retour à la connexion
+            </button>
+          </>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <p style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Recevez un lien pour réinitialiser votre mot de passe.</p>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Email</label>
+            <input
+              type="email"
+              placeholder="vous@exemple.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+              className="nexora-login-field"
+              style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
+            />
+            {error && <p style={{ color: "#DC2626", fontSize: 13, marginBottom: 10 }}>{error}</p>}
+            <button
+              type="submit"
+              disabled={loading}
+              style={{ width: "100%", padding: "10px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" }}
+            >
+              {loading ? "Envoi..." : "Envoyer le lien"}
+            </button>
+            <button type="button" onClick={onBack} style={{ width: "100%", padding: "10px 12px", background: "none", color: "#64748B", border: "none", fontSize: 13, cursor: "pointer", marginTop: 10 }}>
+              Retour à la connexion
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UpdatePasswordScreen() {
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+    if (password.length < 8) {
+      setError("Le mot de passe doit contenir au moins 8 caractères.");
+      return;
+    }
+    if (password !== confirmation) {
+      setError("Les deux mots de passe ne correspondent pas.");
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.auth.updateUser({ password });
+    setLoading(false);
+    if (error) {
+      setError("Impossible de mettre à jour le mot de passe.");
+      return;
+    }
+    setDone(true);
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG }}>
+      <div style={{ background: "#fff", padding: 32, borderRadius: 12, width: 320, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: NAVY, marginBottom: 4 }}>Nouveau mot de passe</h1>
+        {done ? (
+          <p style={{ fontSize: 13, color: "#64748B", marginBottom: 4 }}>Mot de passe mis à jour. Vous pouvez fermer cette page et vous reconnecter.</p>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <p style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Choisissez un nouveau mot de passe pour votre compte.</p>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Nouveau mot de passe</label>
+            <input
+              type="password"
+              placeholder="********"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+              className="nexora-login-field"
+              style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
+            />
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Confirmer le mot de passe</label>
+            <input
+              type="password"
+              placeholder="********"
+              value={confirmation}
+              onChange={(e) => setConfirmation(e.target.value)}
+              required
+              autoComplete="new-password"
+              className="nexora-login-field"
+              style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
+            />
+            {error && <p style={{ color: "#DC2626", fontSize: 13, marginBottom: 10 }}>{error}</p>}
+            <button
+              type="submit"
+              disabled={loading}
+              style={{ width: "100%", padding: "10px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" }}
+            >
+              {loading ? "Enregistrement..." : "Enregistrer"}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [forgotPassword, setForgotPassword] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -4129,6 +4313,8 @@ function LoginScreen() {
       return;
     }
   }
+
+  if (forgotPassword) return <ForgotPasswordScreen onBack={() => setForgotPassword(false)} />;
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG }}>
@@ -4170,6 +4356,9 @@ function LoginScreen() {
         >
           {loading ? "Connexion..." : "Se connecter"}
         </button>
+        <button type="button" onClick={() => setForgotPassword(true)} style={{ width: "100%", padding: "10px 12px", background: "none", color: "#64748B", border: "none", fontSize: 13, cursor: "pointer", marginTop: 6 }}>
+          Mot de passe oublié ?
+        </button>
       </form>
     </div>
   );
@@ -4179,10 +4368,13 @@ export default function NexoraDashboard() {
   const [session, setSession] = useState(undefined);
   const [garageReady, setGarageReady] = useState(false);
   const [garageError, setGarageError] = useState("");
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [garageId, setGarageId] = useState(DEFAULT_GARAGE_ID);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
       setSession(s);
       setGarageReady(false);
       setGarageError("");
@@ -4204,7 +4396,7 @@ export default function NexoraDashboard() {
           setGarageError("Aucun garage n'est associe a ce compte. Contactez le support Nexora.");
           return;
         }
-        ACTIVE_GARAGE_ID = data.id;
+        setGarageId(data.id);
         setGarageReady(true);
       });
     return () => {
@@ -4212,6 +4404,9 @@ export default function NexoraDashboard() {
     };
   }, [session]);
 
+  if (passwordRecovery) {
+    return <UpdatePasswordScreen />;
+  }
   if (session === undefined) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748B" }}>
@@ -4236,5 +4431,5 @@ export default function NexoraDashboard() {
       </div>
     );
   }
-  return <NexoraDashboardInner />;
+  return <NexoraDashboardInner garageId={garageId} />;
 }
