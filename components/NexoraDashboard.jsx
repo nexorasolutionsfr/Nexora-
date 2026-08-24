@@ -228,6 +228,7 @@ const navGroups = [
     items: [
       { key: "clients", label: "Clients", icon: Users },
       { key: "factures", label: "Factures", icon: CircleDollarSign },
+      { key: "historique", label: "Historique", icon: CalendarClock },
     ],
   },
   {
@@ -1351,6 +1352,114 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
           <button onClick={onClose} className="text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">Annuler</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function HistoriqueView({ devisList }) {
+  const [rdvHistory, setRdvHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filtreType, setFiltreType] = useState("tous");
+  const [filtreStatut, setFiltreStatut] = useState("tous");
+
+  useEffect(() => {
+    async function loadHistorique() {
+      const { data, error } = await supabase
+        .from("propositions_rdv")
+        .select(`*, clients ( nom ), vehicules ( marque, modele ), prestations ( nom )`)
+        .eq("garage_id", ACTIVE_GARAGE_ID)
+        .in("statut", ["accepte", "refuse"])
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (error) {
+        console.error("Erreur chargement historique RDV :", JSON.stringify(error, null, 2));
+        setLoading(false);
+        return;
+      }
+      setRdvHistory(data || []);
+      setLoading(false);
+    }
+    loadHistorique();
+  }, []);
+
+  const devisHistory = devisList.filter((d) => d.statut === "accepte" || d.statut === "refuse");
+
+  const items = [
+    ...rdvHistory.map((r) => ({
+      type: "rdv",
+      id: r.id,
+      date: r.created_at,
+      statut: r.statut,
+      client: r.clients?.nom || "Client inconnu",
+      detail: `${r.vehicules?.marque || ""} ${r.vehicules?.modele || ""}`.trim(),
+      prestation: r.prestations?.nom || "",
+    })),
+    ...devisHistory.map((d) => ({
+      type: "devis",
+      id: d.id,
+      date: d.date_validation || d.created_at,
+      statut: d.statut,
+      client: d.client,
+      detail: [d.vehicule, d.immatriculation].filter(Boolean).join(" · "),
+      prestation: d.prestation,
+      montant: d.montant_ttc,
+    })),
+  ]
+    .filter((it) => filtreType === "tous" || it.type === filtreType)
+    .filter((it) => filtreStatut === "tous" || it.statut === filtreStatut)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  if (loading) return <div className="text-sm text-slate-500">Chargement...</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {[["tous", "Tous"], ["rdv", "Rendez-vous"], ["devis", "Devis"]].map(([k, l]) => (
+          <button
+            key={k}
+            onClick={() => setFiltreType(k)}
+            className="text-[13px] font-medium px-3 py-1.5 rounded-full border"
+            style={filtreType === k ? { backgroundColor: ACCENT, borderColor: ACCENT, color: "white" } : { borderColor: "#E2E8F0", color: "#475569" }}
+          >
+            {l}
+          </button>
+        ))}
+        <span className="w-px h-5 bg-slate-200 mx-1" />
+        {[["tous", "Tous statuts"], ["accepte", "Acceptés"], ["refuse", "Refusés"]].map(([k, l]) => (
+          <button
+            key={k}
+            onClick={() => setFiltreStatut(k)}
+            className="text-[13px] font-medium px-3 py-1.5 rounded-full border"
+            style={filtreStatut === k ? { backgroundColor: ACCENT, borderColor: ACCENT, color: "white" } : { borderColor: "#E2E8F0", color: "#475569" }}
+          >
+            {l}
+          </button>
+        ))}
+      </div>
+      {items.length === 0 ? (
+        <EmptyState icon={CalendarClock} title="Aucun historique" subtitle="Les rendez-vous et devis traités apparaîtront ici." />
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100 shadow-sm">
+          {items.map((it) => (
+            <div key={`${it.type}-${it.id}`} className="p-4 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{it.type === "rdv" ? "RDV" : "Devis"}</span>
+                  <span className="font-semibold text-slate-900 text-[14.5px]">{it.client}</span>
+                  <Badge tone={it.statut === "accepte" ? "green" : "red"}>{it.statut === "accepte" ? "Accepté" : "Refusé"}</Badge>
+                </div>
+                <div className="text-[13px] text-slate-500 mt-0.5">
+                  {[it.detail, it.prestation].filter(Boolean).join(" · ")}
+                  {it.montant ? ` · ${Number(it.montant).toFixed(2)} €` : ""}
+                </div>
+              </div>
+              <div className="text-[12.5px] text-slate-400">
+                {it.date ? new Date(it.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : ""}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -3776,6 +3885,7 @@ if (updateError) {
     devis: "Devis",
     verifier: "Erreurs à vérifier",
     factures: "Factures",
+    historique: "Historique",
     parametres: "Paramètres",
   };
 
@@ -3887,6 +3997,7 @@ if (updateError) {
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={ACTIVE_GARAGE_ID} />}
           {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={handleAcceptDevis} onRefuse={handleRefuseDevis} onUpdateMontant={handleUpdateDevisMontant} onCreer={handleCreerDevis} onCreerClient={handleCreerClient} />}
+          {view === "historique" && <HistoriqueView devisList={devisList} />}
           {view === "verifier" && <ErreursView erreurs={erreurs} onResoudre={handleResoudreErreur} />}
           {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={handleGenererFacture} onMarquerPayee={handleMarquerFacturePayee} onSauvegarder={handleSauvegarderFacture} />}
           {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} garageData={garageData} onConnectCalendar={connectGoogleCalendar} clients={clients} prestations={prestations} onCreerRdv={handleCreerRdvManuel} onCreerClient={handleCreerClient} />}
