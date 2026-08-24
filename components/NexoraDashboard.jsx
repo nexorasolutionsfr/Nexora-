@@ -1361,6 +1361,7 @@ function HistoriqueView({ devisList }) {
   const [loading, setLoading] = useState(true);
   const [filtreType, setFiltreType] = useState("tous");
   const [filtreStatut, setFiltreStatut] = useState("tous");
+  const [tri, setTri] = useState("recent");
 
   useEffect(() => {
     async function loadHistorique() {
@@ -1404,17 +1405,46 @@ function HistoriqueView({ devisList }) {
       prestation: d.prestation,
       montant: d.montant_ttc,
     })),
-  ]
-    .filter((it) => filtreType === "tous" || it.type === filtreType)
-    .filter((it) => filtreStatut === "tous" || it.statut === filtreStatut)
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
+  ];
+
+  const frequenceParClient = items.reduce((acc, it) => {
+    acc[it.client] = (acc[it.client] || 0) + 1;
+    return acc;
+  }, {});
+
+  const itemsFiltres = items
+    .filter((it) => filtreType === "tous" || filtreType === "clients" || it.type === filtreType)
+    .filter((it) => filtreStatut === "tous" || it.statut === filtreStatut);
+
+  const triFn = (a, b) => {
+    if (tri === "ancien") return new Date(a.date) - new Date(b.date);
+    if (tri === "fidele") return frequenceParClient[b.client] - frequenceParClient[a.client];
+    return new Date(b.date) - new Date(a.date);
+  };
+
+  const clientsGroupes = filtreType === "clients"
+    ? Object.values(
+        itemsFiltres.reduce((acc, it) => {
+          if (!acc[it.client]) acc[it.client] = { client: it.client, count: 0, derniere: it.date };
+          acc[it.client].count += 1;
+          if (new Date(it.date) > new Date(acc[it.client].derniere)) acc[it.client].derniere = it.date;
+          return acc;
+        }, {})
+      ).sort((a, b) => {
+        if (tri === "ancien") return new Date(a.derniere) - new Date(b.derniere);
+        if (tri === "fidele") return b.count - a.count;
+        return new Date(b.derniere) - new Date(a.derniere);
+      })
+    : [];
+
+  const formatDateHeure = (d) => d ? new Date(d).toLocaleString("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
 
   if (loading) return <div className="text-sm text-slate-500">Chargement...</div>;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        {[["tous", "Tous"], ["rdv", "Rendez-vous"], ["devis", "Devis"]].map(([k, l]) => (
+        {[["tous", "Tous"], ["rdv", "Rendez-vous"], ["devis", "Devis"], ["clients", "Clients"]].map(([k, l]) => (
           <button
             key={k}
             onClick={() => setFiltreType(k)}
@@ -1435,12 +1465,34 @@ function HistoriqueView({ devisList }) {
             {l}
           </button>
         ))}
+        <select value={tri} onChange={(e) => setTri(e.target.value)} className="ml-auto text-[13px] font-medium border border-slate-200 rounded-full px-3 py-1.5 text-slate-600 outline-none focus:border-blue-500">
+          <option value="recent">Plus récent → plus ancien</option>
+          <option value="ancien">Plus ancien → plus récent</option>
+          <option value="fidele">Plus fidèle → moins fidèle</option>
+        </select>
       </div>
-      {items.length === 0 ? (
+
+      {filtreType === "clients" ? (
+        clientsGroupes.length === 0 ? (
+          <EmptyState icon={CalendarClock} title="Aucun client" subtitle="Les clients avec un historique traité apparaîtront ici." />
+        ) : (
+          <div className="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100 shadow-sm">
+            {clientsGroupes.map((c) => (
+              <div key={c.client} className="p-4 flex items-center justify-between gap-3 flex-wrap">
+                <div className="font-semibold text-slate-900 text-[14.5px]">{c.client}</div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[12.5px] text-slate-500">{c.count} interaction{c.count > 1 ? "s" : ""}</span>
+                  <span className="text-[12.5px] text-slate-400">Dernière activité : {formatDateHeure(c.derniere)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : itemsFiltres.length === 0 ? (
         <EmptyState icon={CalendarClock} title="Aucun historique" subtitle="Les rendez-vous et devis traités apparaîtront ici." />
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100 shadow-sm">
-          {items.map((it) => (
+          {itemsFiltres.sort(triFn).map((it) => (
             <div key={`${it.type}-${it.id}`} className="p-4 flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1453,9 +1505,7 @@ function HistoriqueView({ devisList }) {
                   {it.montant ? ` · ${Number(it.montant).toFixed(2)} €` : ""}
                 </div>
               </div>
-              <div className="text-[12.5px] text-slate-400">
-                {it.date ? new Date(it.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : ""}
-              </div>
+              <div className="text-[12.5px] text-slate-400">{formatDateHeure(it.date)}</div>
             </div>
           ))}
         </div>
