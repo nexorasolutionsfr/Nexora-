@@ -2636,9 +2636,39 @@ function SettingsRow({ label, value, right }) {
   );
 }
 
+const PARAMETRES_ONGLETS = [
+  ["garage", "Mon garage"],
+  ["notifications", "Notifications"],
+  ["integrations", "Intégrations"],
+  ["apparence", "Apparence"],
+];
+
+const TYPES_NOTIFICATIONS = [
+  { key: "confirmation_rdv", label: "Confirmation de rendez-vous" },
+  { key: "devis", label: "Devis (envoi et réponse)" },
+  { key: "facture", label: "Facture" },
+  { key: "vehicule_pret", label: "Véhicule prêt" },
+];
+
+const CANAUX_NOTIFICATIONS = [
+  { key: "email", label: "Email" },
+  { key: "sms", label: "SMS" },
+  { key: "whatsapp", label: "WhatsApp" },
+];
+
+const THEMES_DASHBOARD = [
+  { key: "clair", label: "Clair", description: "Fond clair, toujours." },
+  { key: "sombre", label: "Sombre", description: "Fond sombre, toujours." },
+  { key: "automatique", label: "Automatique", description: "S'adapte aux réglages de l'appareil." },
+];
+
 function ParametresView({ garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif }) {
+  const [onglet, setOnglet] = useState("garage");
   const [newPrestation, setNewPrestation] = useState({ nom: "", categorie: "entretien", duree_minutes: 60 });
   const [newMecanicienNom, setNewMecanicienNom] = useState("");
+  const canauxNotifications = garageData.canaux_notifications && typeof garageData.canaux_notifications === "object" ? garageData.canaux_notifications : {};
+  const choisirCanal = (typeKey, canalKey) => onGarageChange("canaux_notifications", { ...canauxNotifications, [typeKey]: canalKey });
+  const themeActuel = garageData.theme || "clair";
   const catalogue = prestations.length ? prestations : prestationsCatalogue;
   const field = (label, name, type = "text") => <label className="block"><span className="text-[12.5px] font-medium text-slate-500">{label}</span><input type={type} value={garageData[name] ?? ""} onChange={(event) => onGarageChange(name, type === "number" ? Number(event.target.value) : event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" /></label>;
   const JOURS_SEMAINE = [["1", "Lundi"], ["2", "Mardi"], ["3", "Mercredi"], ["4", "Jeudi"], ["5", "Vendredi"], ["6", "Samedi"], ["7", "Dimanche"]];
@@ -2662,28 +2692,82 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
   };
   return <div className="space-y-5">
     <div className="flex items-center justify-between flex-wrap gap-3"><div><div className="text-lg font-semibold text-slate-900">Paramètres du garage</div><div className="text-[13px] text-slate-500">Vos changements alimentent directement le dashboard et les automatisations.</div></div><button onClick={onSave} disabled={saving} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: ACCENT }}><Save size={15} />{saving ? "Enregistrement…" : "Enregistrer"}</button></div>
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-      <SettingsSection title="Informations garage"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{field("Nom du garage", "nom")} {field("Ville", "ville")} {field("Logo (URL)", "logo_url")} {field("Mécaniciens disponibles", "nb_mecaniciens", "number")}</div></SettingsSection>
-      <SettingsSection title="Horaires d’ouverture"><div className="space-y-2">{JOURS_SEMAINE.map(([jour, libelle]) => { const plages = plagesDuJour(jour); const ouvert = plages.length > 0; return <div key={jour} className="flex flex-wrap items-center gap-2 py-1.5 border-b border-slate-100 last:border-0"><label className="flex items-center gap-2 w-[132px] shrink-0"><input type="checkbox" checked={ouvert} onChange={(e) => basculerJour(jour, e.target.checked)} className="accent-blue-600" /><span className="text-[13px] font-medium text-slate-700">{libelle}</span></label>{ouvert ? <div className="flex flex-wrap items-center gap-1.5">{champHeure(jour, 0, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 0, 1)}{plages.length > 1 ? <><span className="text-slate-300 px-1">|</span>{champHeure(jour, 1, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 1, 1)}<button type="button" onClick={() => retirerApresMidi(jour)} className="text-[11px] text-slate-400 hover:text-red-500 px-1">retirer</button></> : <button type="button" onClick={() => ajouterApresMidi(jour)} className="text-[11px] text-blue-600 hover:underline px-1">+ après-midi</button>}</div> : <span className="text-[13px] text-slate-400">Fermé</span>}</div>; })}</div><div className="mt-4 rounded-xl bg-slate-50 p-3 text-[12.5px] text-slate-600">Ces horaires servent au calcul des créneaux proposés aux clients. Laissez un jour décoché pour le déclarer fermé.</div></SettingsSection><SettingsSection title="Mécaniciens"><div className="space-y-2">{mecaniciens.length === 0 && <div className="text-[13px] text-slate-400">Aucun mécanicien pour l’instant.</div>}{mecaniciens.map((m) => <div key={m.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-slate-100 last:border-0"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: m.couleur || "#3D6BE0" }} /><span className="text-[13px] font-medium text-slate-700">{m.nom}</span></div><label className="flex items-center gap-1.5 text-[12px] text-slate-500"><input type="checkbox" checked={m.actif !== false} onChange={(e) => onToggleMecanicienActif(m.id, e.target.checked)} className="accent-blue-600" />Actif</label></div>)}</div><div className="mt-3 flex gap-2"><input type="text" value={newMecanicienNom} onChange={(e) => setNewMecanicienNom(e.target.value)} placeholder="Nom du mécanicien" className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" /><button type="button" onClick={() => { if (newMecanicienNom.trim()) { onAddMecanicien(newMecanicienNom.trim()); setNewMecanicienNom(""); } }} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}>Ajouter</button></div></SettingsSection>
-      <SettingsSection title="Prestations disponibles"><div className="space-y-1.5 max-h-[230px] overflow-y-auto">{catalogue.map((p) => <div key={p.id || p.nom} className="flex items-center gap-2 text-sm py-2 border-b border-slate-100 last:border-0"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(p.categorie).bar }} /><span className="flex-1 text-slate-700">{p.nom}</span><span className="text-slate-500 text-[12px]">{p.duree_minutes || p.duree_min || p.duree} min</span>{p.id && <button onClick={() => onDeletePrestation(p.id)} className="ml-1 text-slate-400 hover:text-red-600" title="Supprimer"><Trash2 size={14} /></button>}</div>)}</div><div className="grid grid-cols-[1fr_110px_74px] gap-2 mt-4"><input value={newPrestation.nom} onChange={(event) => setNewPrestation((prev) => ({ ...prev, nom: event.target.value }))} className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900" placeholder="Nouvelle prestation" /><input type="number" min="15" step="15" value={newPrestation.duree_minutes} onChange={(event) => setNewPrestation((prev) => ({ ...prev, duree_minutes: Number(event.target.value) }))} className="rounded-xl border border-slate-200 px-2 py-2 text-sm text-slate-900" /><button onClick={createPrestation} className="rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}><Plus size={15} className="inline" /> Ajouter</button></div></SettingsSection>
-      <SettingsSection title="Connexions"><SettingsRow label="Boîte Gmail" right={<Badge tone={garageData.gmail_connecte ? "green" : "slate"}>{garageData.gmail_connecte ? "Connectée" : "Non connectée"}</Badge>} /><SettingsRow label="Google Agenda" right={<Badge tone={garageData.google_agenda_connecte ? "green" : "amber"}>{garageData.google_agenda_connecte ? "Connecté" : "À connecter dans n8n"}</Badge>} /><div className="mt-3 text-[12px] text-slate-500">La connexion Google Calendar doit être autorisée dans le workflow n8n, puis son état peut être enregistré ici.</div></SettingsSection>
-      <SettingsSection title="Objectif">
-        <div className="space-y-3">
-          {field("Objectif de chiffre d'affaires mensuel (€)", "objectif_ca_mensuel", "number")}
-          <div className="text-[12.5px] text-slate-500">Sert de repere de progression sur le tableau de bord. Laissez vide pour ne rien afficher.</div>
-        </div>
-      </SettingsSection>
-      <SettingsSection title="Avis Google">
-        <div className="space-y-3">
-          {field("Lien vers votre fiche d'avis Google", "lien_avis_google")}
-          <div className="text-[12.5px] text-slate-500">Utilisé automatiquement dans l'email de demande d'avis envoyé après chaque rendez-vous terminé.</div>
-        </div>
-      </SettingsSection>
-      <SettingsSection title="Paiement en ligne (Stripe)">
-        <StripeKeyField />
-      </SettingsSection>
-      <SettingsSection title="Notifications"><button onClick={() => onGarageChange("notifications_email", !garageData.notifications_email)} className="w-full flex items-center justify-between py-2.5 border-b border-slate-100"><span className="text-sm text-slate-600">Notifications par email</span><Toggle checked={garageData.notifications_email} /></button><button onClick={() => onGarageChange("notifications_sms", !garageData.notifications_sms)} className="w-full flex items-center justify-between py-2.5"><span className="text-sm text-slate-600">Notifications par SMS</span><Toggle checked={garageData.notifications_sms} /></button></SettingsSection>
+
+    <div className="flex flex-wrap gap-1.5 bg-slate-100 rounded-[10px] p-[3px] w-fit">
+      {PARAMETRES_ONGLETS.map(([key, label]) => (
+        <button key={key} type="button" onClick={() => setOnglet(key)} className="text-[13px] font-medium px-3.5 py-1.5 rounded-lg" style={onglet === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>{label}</button>
+      ))}
     </div>
+
+    {onglet === "garage" && (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <SettingsSection title="Informations garage"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{field("Nom du garage", "nom")} {field("Ville", "ville")} {field("Logo (URL)", "logo_url")} {field("Mécaniciens disponibles", "nb_mecaniciens", "number")}</div></SettingsSection>
+        <SettingsSection title="Objectif & avis">
+          <div className="space-y-3">
+            {field("Objectif de chiffre d'affaires mensuel (€)", "objectif_ca_mensuel", "number")}
+            <div className="text-[12.5px] text-slate-500 -mt-2">Sert de repere de progression sur le tableau de bord. Laissez vide pour ne rien afficher.</div>
+            {field("Lien vers votre fiche d'avis Google", "lien_avis_google")}
+            <div className="text-[12.5px] text-slate-500 -mt-2">Utilisé automatiquement dans l'email de demande d'avis envoyé après chaque rendez-vous terminé.</div>
+          </div>
+        </SettingsSection>
+        <SettingsSection title="Horaires d’ouverture"><div className="space-y-2">{JOURS_SEMAINE.map(([jour, libelle]) => { const plages = plagesDuJour(jour); const ouvert = plages.length > 0; return <div key={jour} className="flex flex-wrap items-center gap-2 py-1.5 border-b border-slate-100 last:border-0"><label className="flex items-center gap-2 w-[132px] shrink-0"><input type="checkbox" checked={ouvert} onChange={(e) => basculerJour(jour, e.target.checked)} className="accent-blue-600" /><span className="text-[13px] font-medium text-slate-700">{libelle}</span></label>{ouvert ? <div className="flex flex-wrap items-center gap-1.5">{champHeure(jour, 0, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 0, 1)}{plages.length > 1 ? <><span className="text-slate-300 px-1">|</span>{champHeure(jour, 1, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 1, 1)}<button type="button" onClick={() => retirerApresMidi(jour)} className="text-[11px] text-slate-400 hover:text-red-500 px-1">retirer</button></> : <button type="button" onClick={() => ajouterApresMidi(jour)} className="text-[11px] text-blue-600 hover:underline px-1">+ après-midi</button>}</div> : <span className="text-[13px] text-slate-400">Fermé</span>}</div>; })}</div><div className="mt-4 rounded-xl bg-slate-50 p-3 text-[12.5px] text-slate-600">Ces horaires servent au calcul des créneaux proposés aux clients. Laissez un jour décoché pour le déclarer fermé.</div></SettingsSection>
+        <SettingsSection title="Mécaniciens"><div className="space-y-2">{mecaniciens.length === 0 && <div className="text-[13px] text-slate-400">Aucun mécanicien pour l’instant.</div>}{mecaniciens.map((m) => <div key={m.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-slate-100 last:border-0"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: m.couleur || "#3D6BE0" }} /><span className="text-[13px] font-medium text-slate-700">{m.nom}</span></div><label className="flex items-center gap-1.5 text-[12px] text-slate-500"><input type="checkbox" checked={m.actif !== false} onChange={(e) => onToggleMecanicienActif(m.id, e.target.checked)} className="accent-blue-600" />Actif</label></div>)}</div><div className="mt-3 flex gap-2"><input type="text" value={newMecanicienNom} onChange={(e) => setNewMecanicienNom(e.target.value)} placeholder="Nom du mécanicien" className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" /><button type="button" onClick={() => { if (newMecanicienNom.trim()) { onAddMecanicien(newMecanicienNom.trim()); setNewMecanicienNom(""); } }} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}>Ajouter</button></div></SettingsSection>
+        <SettingsSection title="Prestations disponibles"><div className="space-y-1.5 max-h-[230px] overflow-y-auto">{catalogue.map((p) => <div key={p.id || p.nom} className="flex items-center gap-2 text-sm py-2 border-b border-slate-100 last:border-0"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(p.categorie).bar }} /><span className="flex-1 text-slate-700">{p.nom}</span><span className="text-slate-500 text-[12px]">{p.duree_minutes || p.duree_min || p.duree} min</span>{p.id && <button onClick={() => onDeletePrestation(p.id)} className="ml-1 text-slate-400 hover:text-red-600" title="Supprimer"><Trash2 size={14} /></button>}</div>)}</div><div className="grid grid-cols-[1fr_110px_74px] gap-2 mt-4"><input value={newPrestation.nom} onChange={(event) => setNewPrestation((prev) => ({ ...prev, nom: event.target.value }))} className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900" placeholder="Nouvelle prestation" /><input type="number" min="15" step="15" value={newPrestation.duree_minutes} onChange={(event) => setNewPrestation((prev) => ({ ...prev, duree_minutes: Number(event.target.value) }))} className="rounded-xl border border-slate-200 px-2 py-2 text-sm text-slate-900" /><button onClick={createPrestation} className="rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}><Plus size={15} className="inline" /> Ajouter</button></div></SettingsSection>
+      </div>
+    )}
+
+    {onglet === "notifications" && (
+      <div className="grid grid-cols-1 gap-5">
+        <SettingsSection title="Canal d'envoi par type de notification">
+          <div className="text-[12.5px] text-slate-500 mb-4">Choisissez comment chaque notification est envoyée à vos clients. SMS et WhatsApp seront actifs dès que votre fournisseur (Twilio) sera configuré côté Nexora — vous pouvez déjà définir vos préférences.</div>
+          <div className="space-y-3">
+            {TYPES_NOTIFICATIONS.map((type) => (
+              <div key={type.key} className="flex items-center justify-between flex-wrap gap-2 py-2 border-b border-slate-100 last:border-0">
+                <span className="text-sm text-slate-700 font-medium">{type.label}</span>
+                <div className="flex gap-1.5">
+                  {CANAUX_NOTIFICATIONS.map((canal) => {
+                    const actif = (canauxNotifications[type.key] || "email") === canal.key;
+                    return (
+                      <button key={canal.key} type="button" onClick={() => choisirCanal(type.key, canal.key)} className="text-[12.5px] font-medium px-3 py-1.5 rounded-full border" style={actif ? { backgroundColor: ACCENT, borderColor: ACCENT, color: "white" } : { borderColor: "#E2E8F0", color: "#475569" }}>
+                        {canal.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </SettingsSection>
+      </div>
+    )}
+
+    {onglet === "integrations" && (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <SettingsSection title="Connexions"><SettingsRow label="Boîte Gmail" right={<Badge tone={garageData.gmail_connecte ? "green" : "slate"}>{garageData.gmail_connecte ? "Connectée" : "Non connectée"}</Badge>} /><SettingsRow label="Google Agenda" right={<Badge tone={garageData.google_agenda_connecte ? "green" : "amber"}>{garageData.google_agenda_connecte ? "Connecté" : "À connecter dans n8n"}</Badge>} /><div className="mt-3 text-[12px] text-slate-500">La connexion Google Calendar doit être autorisée dans le workflow n8n, puis son état peut être enregistré ici.</div></SettingsSection>
+        <SettingsSection title="Paiement en ligne (Stripe)">
+          <StripeKeyField />
+        </SettingsSection>
+      </div>
+    )}
+
+    {onglet === "apparence" && (
+      <div className="grid grid-cols-1 gap-5">
+        <SettingsSection title="Thème du dashboard">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {THEMES_DASHBOARD.map((theme) => {
+              const actif = themeActuel === theme.key;
+              return (
+                <button key={theme.key} type="button" onClick={() => onGarageChange("theme", theme.key)} className="text-left rounded-xl border p-3.5" style={actif ? { borderColor: ACCENT, backgroundColor: ACCENT_SOFT } : { borderColor: "#E2E8F0" }}>
+                  <div className="text-sm font-semibold text-slate-900">{theme.label}</div>
+                  <div className="text-[12px] text-slate-500 mt-0.5">{theme.description}</div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-4 rounded-xl bg-slate-50 p-3 text-[12.5px] text-slate-600">Votre choix est enregistré dès maintenant. L'habillage visuel complet du thème sombre sur l'ensemble du dashboard est encore en cours de développement.</div>
+        </SettingsSection>
+      </div>
+    )}
   </div>;
 }
 function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting, garageData = garage }) {
@@ -3823,6 +3907,8 @@ if (updateError) {
       lien_avis_google: garageData.lien_avis_google || null,
       notifications_email: garageData.notifications_email,
       notifications_sms: garageData.notifications_sms,
+      canaux_notifications: garageData.canaux_notifications || null,
+      theme: garageData.theme || "clair",
     };
     const { error } = await supabase.from("garages").update(update).eq("id", garageId);
     setSavingSettings(false);
