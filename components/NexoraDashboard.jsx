@@ -43,6 +43,7 @@ import {
   CalendarRange,
   ArrowRight,
   ReceiptText,
+  Eye,
 } from "lucide-react";
 // Vercel rebuild trigger
 // =====================================================================================
@@ -1315,7 +1316,7 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
   );
 }
 
-function DevisView({ devisList: devisListToutesSources, clients, prestations, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient }) {
+function DevisView({ devisList: devisListToutesSources, clients, prestations, garageData, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient }) {
   const devisList = devisListToutesSources.filter((d) => d.statut === "en_attente");
   const [modalOuvert, setModalOuvert] = useState(false);
   return (
@@ -1329,7 +1330,7 @@ function DevisView({ devisList: devisListToutesSources, clients, prestations, on
         <EmptyState icon={ReceiptText} title="Aucun devis en attente" subtitle="Les demandes de devis apparaîtront ici, prêtes à valider ou ajuster." />
       ) : (
         devisList.map((d) => (
-          <DevisCard key={d.id} d={d} onAccept={onAccept} onRefuse={onRefuse} onUpdateMontant={onUpdateMontant} />
+          <DevisCard key={d.id} d={d} garageData={garageData} onAccept={onAccept} onRefuse={onRefuse} onUpdateMontant={onUpdateMontant} />
         ))
       )}
       {modalOuvert && (
@@ -1339,10 +1340,41 @@ function DevisView({ devisList: devisListToutesSources, clients, prestations, on
   );
 }
 
-function DevisCard({ d, onAccept, onRefuse, onUpdateMontant }) {
+function DevisApercuModal({ d, garageData, onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md text-slate-900" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-semibold text-slate-900">Aperçu client</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+        </div>
+        <p className="text-[12.5px] text-slate-500 mb-4">Voici exactement ce que le client verra en ouvrant le lien reçu par email.</p>
+        <div style={{ minHeight: "100vh", margin: "-1px", padding: 0 }}>
+          <div style={{ background: "#F5F7FA", padding: 20, borderRadius: 16, fontFamily: "-apple-system, sans-serif" }}>
+            <div style={{ background: "#0F1B33", color: "white", borderRadius: 16, padding: 20, marginBottom: 20 }}>
+              <div style={{ fontSize: 13, opacity: 0.7 }}>{garageData?.nom_garage || "Votre garage"}</div>
+              <div style={{ fontSize: 18, fontWeight: 600, marginTop: 4 }}>{[d.vehicule, d.immatriculation].filter(Boolean).join(" · ")}</div>
+              <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>{d.prestation}</div>
+              <div style={{ fontSize: 28, fontWeight: 700, marginTop: 12 }}>{Number(d.montant_ttc || 0).toFixed(2)} €</div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ flex: 1, padding: "14px 16px", borderRadius: 12, background: "#16A34A", color: "white", fontSize: 15, fontWeight: 600, textAlign: "center", opacity: 0.6 }}>Accepter</div>
+              <div style={{ flex: 1, padding: "14px 16px", borderRadius: 12, border: "1px solid #DC2626", background: "white", color: "#DC2626", fontSize: 15, fontWeight: 600, textAlign: "center", opacity: 0.6 }}>Refuser</div>
+            </div>
+          </div>
+        </div>
+        <p className="text-[11.5px] text-slate-400 mt-3">Boutons désactivés ici (aperçu uniquement) — le client, lui, peut cliquer.</p>
+        <button onClick={onClose} className="mt-4 w-full text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">Fermer</button>
+      </div>
+    </div>
+  );
+}
+
+function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant }) {
   const [editing, setEditing] = useState(false);
   const [montant, setMontant] = useState(d.montant_ht ?? 0);
   const [showMessage, setShowMessage] = useState(false);
+  const [apercuOuvert, setApercuOuvert] = useState(false);
   const attenteJours = d.created_at ? Math.floor((Date.now() - new Date(d.created_at).getTime()) / 86_400_000) : 0;
 
   const saveMontant = () => {
@@ -1428,7 +1460,11 @@ function DevisCard({ d, onAccept, onRefuse, onUpdateMontant }) {
         <button onClick={() => onRefuse(d.id)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
           <X size={15} /> Refuser
         </button>
+        <button onClick={() => setApercuOuvert(true)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
+          <Eye size={15} /> Aperçu client
+        </button>
       </div>
+      {apercuOuvert && <DevisApercuModal d={d} garageData={garageData} onClose={() => setApercuOuvert(false)} />}
     </div>
   );
 }
@@ -3811,7 +3847,7 @@ if (updateError) {
           {view === "dashboard" && <DashboardView stats={stats} propositions={propositions} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} demandes={demandes} clients={clients} garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} prestations={prestations} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={ACTIVE_GARAGE_ID} />}
-          {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} onAccept={handleAcceptDevis} onRefuse={handleRefuseDevis} onUpdateMontant={handleUpdateDevisMontant} onCreer={handleCreerDevis} onCreerClient={handleCreerClient} />}
+          {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={handleAcceptDevis} onRefuse={handleRefuseDevis} onUpdateMontant={handleUpdateDevisMontant} onCreer={handleCreerDevis} onCreerClient={handleCreerClient} />}
           {view === "verifier" && <ErreursView erreurs={erreurs} onResoudre={handleResoudreErreur} />}
           {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={handleGenererFacture} onMarquerPayee={handleMarquerFacturePayee} onSauvegarder={handleSauvegarderFacture} />}
           {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} garageData={garageData} onConnectCalendar={connectGoogleCalendar} clients={clients} prestations={prestations} onCreerRdv={handleCreerRdvManuel} onCreerClient={handleCreerClient} />}
