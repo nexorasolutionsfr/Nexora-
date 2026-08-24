@@ -598,7 +598,7 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
   oneYearAgo.setFullYear(now.getFullYear() - 1);
   const dormantClients = clients.filter((client) => {
     if (!client.fidele) return false;
-    const last = rendezVous.filter((rdv) => rdv.client_id === client.id && rdv.statut === "Terminé").sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut))[0];
+    const last = rendezVous.filter((rdv) => rdv.client_id === client.id && rdv.statut_atelier === "restitue").sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut))[0];
     return !last || new Date(last.date_debut) < oneYearAgo;
   });
   const technicalControl = clients.filter((client) => {
@@ -2194,7 +2194,7 @@ function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer
   const [periode, setPeriode] = useState("toutes");
   const [categorie, setCategorie] = useState("toutes");
   const aFacturer = rendezVous.filter(
-    (r) => r.statut === "Terminé" && !factures.some((f) => f.rendez_vous_id === r.id)
+    (r) => r.statut_atelier === "restitue" && !factures.some((f) => f.rendez_vous_id === r.id)
   );
 
   const facturesEnrichies = factures.map((f) => {
@@ -2425,30 +2425,68 @@ function FactureDetailModal({ facture, garageData, onClose, onSauvegarder }) {
   );
 }
 
-function ClientsView({ clients = [], rendezVous = [], prestations = [], onCreerDevis, onToast }) {
+function NouveauClientModal({ onClose, onCreerClient }) {
+  const [nom, setNom] = useState("");
+  const [telephone, setTelephone] = useState("");
+  const [email, setEmail] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const creer = async () => {
+    if (!nom.trim()) return;
+    setCreating(true);
+    const cree = await onCreerClient({ nom: nom.trim(), telephone: telephone.trim() || null, email: email.trim() || null });
+    setCreating(false);
+    if (cree) onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold text-slate-900">Nouveau client</h2>
+        <div className="mt-4 space-y-2.5">
+          <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom du client" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+          <input value={telephone} onChange={(e) => setTelephone(e.target.value)} placeholder="Téléphone (optionnel)" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (optionnel)" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600">Annuler</button>
+          <button onClick={creer} disabled={!nom.trim() || creating} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: ACCENT }}>{creating ? "Création..." : "Créer le client"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ClientsView({ clients = [], rendezVous = [], prestations = [], onCreerDevis, onCreerClient, onToast }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [devisModalOpen, setDevisModalOpen] = useState(false);
+  const [nouveauClientOuvert, setNouveauClientOuvert] = useState(false);
   const filtered = clients.filter((c) => c.nom?.toLowerCase().includes(query.toLowerCase()));
   const selected = clients.find((c) => c.id === selectedId) || filtered[0] || null;
   const selectedVehicles = Array.isArray(selected?.vehicules) ? selected.vehicules : selected?.vehicules ? [selected.vehicules] : [];
-  const vehicule = selectedVehicles[0];
   const historique = rendezVous
     .filter((r) => r.client_id === selected?.id)
     .sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut))
-    .map((r) => ({ prestation: r.prestation, date: new Date(r.date_debut).toLocaleDateString("fr-FR"), statut: r.statut, note: r.notes }));
-  const derniereVisite = historique.find((h) => h.statut === "termine" || h.statut === "Terminé")?.date || null;
-  const totalCA = rendezVous.filter((r) => r.client_id === selected?.id && r.statut === "Terminé").reduce((sum, r) => sum + Number(r.montant_ttc || r.montant || 0), 0);
+    .map((r) => ({ prestation: r.prestation, date: new Date(r.date_debut).toLocaleDateString("fr-FR"), statut: r.statut, statutLabel: RDV_STATUS_LABEL[r.statut] || r.statut, terminee: r.statut_atelier === "restitue", note: r.notes, montant: r.montant_ttc || r.montant }));
+  const derniereVisite = historique.find((h) => h.terminee)?.date || null;
+  const totalCA = historique.filter((h) => h.terminee).reduce((sum, h) => sum + Number(h.montant || 0), 0);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
       <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-3 border-b border-slate-100">
-          <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2">
+        <div className="p-3 border-b border-slate-100 flex items-center gap-2">
+          <div className="flex-1 flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2">
             <Search size={15} className="text-slate-400" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher un client..." className="bg-transparent text-sm text-slate-900 outline-none w-full placeholder:text-slate-400" />
           </div>
+          <button onClick={() => setNouveauClientOuvert(true)} className="shrink-0 p-2 rounded-xl text-white" style={{ backgroundColor: ACCENT }} title="Nouveau client">
+            <Plus size={16} />
+          </button>
         </div>
+        {nouveauClientOuvert && (
+          <NouveauClientModal onClose={() => setNouveauClientOuvert(false)} onCreerClient={onCreerClient} />
+        )}
         {filtered.length === 0 ? (
           <div className="px-4 py-8 text-center text-slate-400 text-[13px]">Aucun client ne correspond à cette recherche.</div>
         ) : (
@@ -2500,10 +2538,15 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], onCreerD
         </div>
 
         <div className="mt-6">
-          <div className="text-[13px] font-medium text-slate-500 mb-2">Véhicule</div>
-          <div className="bg-slate-50 rounded-xl p-3.5 flex items-center gap-3">
-            <Car size={16} className="text-slate-400" />
-            <div className="text-sm text-slate-800">{vehicule?.marque} {vehicule?.modele} ({vehicule?.annee}) · <span className="text-slate-500">{vehicule?.immatriculation}</span></div>
+          <div className="text-[13px] font-medium text-slate-500 mb-2">Véhicule{selectedVehicles.length > 1 ? "s" : ""}</div>
+          <div className="space-y-2">
+            {selectedVehicles.length === 0 && <div className="text-[13px] text-slate-400">Aucun véhicule enregistré.</div>}
+            {selectedVehicles.map((v, i) => (
+              <div key={v.id || i} className="bg-slate-50 rounded-xl p-3.5 flex items-center gap-3">
+                <Car size={16} className="text-slate-400" />
+                <div className="text-sm text-slate-800">{v.marque} {v.modele} ({v.annee}) · <span className="text-slate-500">{v.immatriculation}</span></div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -2516,7 +2559,7 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], onCreerD
                 <div className="flex items-center justify-between text-sm text-slate-700">
                   <span className="flex items-center gap-2"><Clock size={14} className="text-slate-400" /> {h.prestation}</span>
                   <div className="flex items-center gap-2">
-                    <Badge tone={STATUT_TONE[h.statut] || "slate"}>{h.statut}</Badge>
+                    <Badge tone={h.terminee ? "green" : STATUT_TONE[h.statutLabel] || "slate"}>{h.terminee ? "Terminé" : h.statutLabel}</Badge>
                     <span className="text-slate-500 text-[13px]">{h.date}</span>
                   </div>
                 </div>
@@ -4058,7 +4101,7 @@ if (updateError) {
               onRecommend={handleRecommendedAppointment}
             />
           )}
-          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} onCreerDevis={handleCreerDevis} onToast={flashToast} />}
+          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onToast={flashToast} />}
           {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} />}
         </div>
       </main>
