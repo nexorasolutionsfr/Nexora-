@@ -1410,27 +1410,13 @@ function HistoriqueView({ devisList, garageId }) {
   ];
 
   const itemsFiltres = items
-    .filter((it) => filtreType === "tous" || filtreType === "clients" || it.type === filtreType)
+    .filter((it) => filtreType === "tous" || it.type === filtreType)
     .filter((it) => filtreStatut === "tous" || it.statut === filtreStatut);
 
   const triFn = (a, b) => {
     if (tri === "ancien") return new Date(a.date) - new Date(b.date);
     return new Date(b.date) - new Date(a.date);
   };
-
-  const clientsGroupes = filtreType === "clients"
-    ? Object.values(
-        itemsFiltres.reduce((acc, it) => {
-          if (!acc[it.client]) acc[it.client] = { client: it.client, count: 0, derniere: it.date };
-          acc[it.client].count += 1;
-          if (new Date(it.date) > new Date(acc[it.client].derniere)) acc[it.client].derniere = it.date;
-          return acc;
-        }, {})
-      ).sort((a, b) => {
-        if (tri === "ancien") return new Date(a.derniere) - new Date(b.derniere);
-        return new Date(b.derniere) - new Date(a.derniere);
-      })
-    : [];
 
   const formatDateHeure = (d) => d ? new Date(d).toLocaleString("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
 
@@ -1440,7 +1426,7 @@ function HistoriqueView({ devisList, garageId }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        {[["tous", "Tous"], ["rdv", "Rendez-vous"], ["devis", "Devis"], ["clients", "Clients"]].map(([k, l]) => (
+        {[["tous", "Tous"], ["rdv", "Rendez-vous"], ["devis", "Devis"]].map(([k, l]) => (
           <button
             key={k}
             onClick={() => setFiltreType(k)}
@@ -1467,23 +1453,7 @@ function HistoriqueView({ devisList, garageId }) {
         </select>
       </div>
 
-      {filtreType === "clients" ? (
-        clientsGroupes.length === 0 ? (
-          <EmptyState icon={CalendarClock} title="Aucun client" subtitle="Les clients avec un historique traité apparaîtront ici." />
-        ) : (
-          <div className="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100 shadow-sm">
-            {clientsGroupes.map((c) => (
-              <div key={c.client} className="p-4 flex items-center justify-between gap-3 flex-wrap">
-                <div className="font-semibold text-slate-900 text-[14.5px]">{c.client}</div>
-                <div className="flex items-center gap-3">
-                  <span className="text-[12.5px] text-slate-500">{c.count} interaction{c.count > 1 ? "s" : ""}</span>
-                  <span className="text-[12.5px] text-slate-400">Dernière activité : {formatDateHeure(c.derniere)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )
-      ) : itemsFiltres.length === 0 ? (
+      {itemsFiltres.length === 0 ? (
         <EmptyState icon={CalendarClock} title="Aucun historique" subtitle="Les rendez-vous et devis traités apparaîtront ici." />
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100 shadow-sm">
@@ -2089,6 +2059,12 @@ L'équipe du garage`)}`
   );
 }
 
+function humanizeWorkflowName(nom = "") {
+  const sansNumero = nom.replace(/^\s*\d+\s*-\s*/, "");
+  const sansPrefixe = sansNumero.replace(/^Notif\s*:\s*/i, "");
+  return sansPrefixe || nom || "Automatisation";
+}
+
 function ErreursView({ erreurs, onResoudre }) {
   if (erreurs.length === 0) {
     return <EmptyState icon={Check} title="Tout fonctionne normalement" subtitle="Aucune erreur automatique détectée. Nexora vous préviendra ici dès qu'un problème survient." />;
@@ -2096,29 +2072,33 @@ function ErreursView({ erreurs, onResoudre }) {
   return (
     <div className="space-y-4">
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-[13px] text-amber-800">
-        Ces automatisations n'ont pas pu se terminer correctement. Rien n'est perdu côté client, mais une action manuelle ou une vérification peut être nécessaire.
+        Une automatisation Nexora n'a pas pu aller jusqu'au bout pour les éléments ci-dessous. Rien n'est perdu côté client, mais vérifiez manuellement si l'action a bien eu lieu (email envoyé, RDV créé...), puis marquez comme vu.
       </div>
       {erreurs.map((e) => (
         <div key={e.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
           <div className="flex items-start justify-between flex-wrap gap-2">
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
-                <Badge tone="red">Erreur</Badge>
-                <div className="font-semibold text-slate-900 text-[14px]">{e.workflow_nom}</div>
+                <Badge tone="red">À vérifier</Badge>
+                <div className="font-semibold text-slate-900 text-[14px]">{humanizeWorkflowName(e.workflow_nom)}</div>
               </div>
-              <div className="text-[13px] text-slate-500 mt-1">Étape : {e.noeud}</div>
+              <div className="text-[13px] text-slate-500 mt-1">Bloqué à l'étape « {e.noeud} »</div>
             </div>
             <div className="text-[12.5px] text-slate-400">
               {new Date(e.created_at).toLocaleString("fr-FR", { timeZone: APP_TIME_ZONE })}
             </div>
           </div>
-          <div className="mt-3 bg-slate-50 rounded-xl p-3 text-[13px] text-slate-700 font-mono">
-            {e.message}
-          </div>
-          <div className="flex gap-2.5 mt-4">
+          <details className="mt-3">
+            <summary className="text-[12.5px] text-slate-500 cursor-pointer select-none">Détails techniques</summary>
+            <div className="mt-2 bg-slate-50 rounded-xl p-3 text-[13px] text-slate-700 font-mono">
+              {e.message}
+            </div>
+          </details>
+          <div className="flex items-center gap-2.5 mt-4 flex-wrap">
             <button onClick={() => onResoudre(e.id)} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl" style={{ backgroundColor: ACCENT }}>
-              <Check size={15} /> Marquer comme résolu
+              <Check size={15} /> Marquer comme vu
             </button>
+            <span className="text-[12px] text-slate-400">Ceci retire l'alerte de cette liste, sans corriger automatiquement le problème.</span>
           </div>
         </div>
       ))}
@@ -2462,6 +2442,8 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], onCreerD
     .filter((c) => c.nom?.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => {
       if (tri === "fidele") return (b.fidele ? 1 : 0) - (a.fidele ? 1 : 0);
+      if (tri === "recent") return new Date(b.created_at) - new Date(a.created_at);
+      if (tri === "ancien") return new Date(a.created_at) - new Date(b.created_at);
       return (a.nom || "").localeCompare(b.nom || "");
     });
   const selected = clients.find((c) => c.id === selectedId) || filtered[0] || null;
@@ -2484,6 +2466,8 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], onCreerD
           <select value={tri} onChange={(e) => setTri(e.target.value)} className="shrink-0 text-[12.5px] font-medium border border-slate-200 rounded-xl px-2.5 py-2 text-slate-600 outline-none focus:border-blue-500">
             <option value="nom">Nom (A→Z)</option>
             <option value="fidele">Plus fidèle → moins fidèle</option>
+            <option value="recent">Plus récent → moins récent</option>
+            <option value="ancien">Moins récent → plus récent</option>
           </select>
           <button onClick={() => setNouveauClientOuvert(true)} className="shrink-0 p-2 rounded-xl text-white" style={{ backgroundColor: ACCENT }} title="Nouveau client">
             <Plus size={16} />
