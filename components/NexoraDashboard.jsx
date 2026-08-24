@@ -951,8 +951,18 @@ function ValiderView({ propositions, onAccept, onRefuse, onReschedule, garageId 
     </div>
   );
 }
+function depuisLabel(dateStr) {
+  if (!dateStr) return "";
+  const ms = Date.now() - new Date(dateStr).getTime();
+  const heures = Math.floor(ms / 3_600_000);
+  if (heures < 1) return "reçu à l'instant";
+  if (heures < 24) return `reçu il y a ${heures}h`;
+  const jours = Math.floor(heures / 24);
+  return `reçu il y a ${jours} jour${jours > 1 ? "s" : ""}`;
+}
 function PropositionCard({ p, onAccept, onRefuse, onOpenReschedule }) {
   const [showMessage, setShowMessage] = useState(false);
+  const attenteJours = p.created_at ? Math.floor((Date.now() - new Date(p.created_at).getTime()) / 86_400_000) : 0;
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
       <div className="flex items-start justify-between flex-wrap gap-2">
@@ -961,8 +971,9 @@ function PropositionCard({ p, onAccept, onRefuse, onOpenReschedule }) {
             <div className="font-semibold text-slate-900 text-[15px]">{p.client}</div>
             <Badge tone="amber">En attente de validation</Badge>
             <SourceBadge source={p.source} />
+            {attenteJours >= 1 && <Badge tone="red">{depuisLabel(p.created_at)}</Badge>}
           </div>
-          <div className="text-[13px] text-slate-500 mt-1">{formatPhone(p.telephone)}</div>
+          <a href={`tel:${(p.telephone || "").replace(/\s/g, "")}`} className="text-[13px] text-blue-600 hover:underline mt-1 inline-block">{formatPhone(p.telephone)}</a>
         </div>
         <div className="text-right">
           <div className="text-sm font-medium text-slate-900">{p.jour}</div>
@@ -1192,12 +1203,16 @@ function CreerRdvModal({ clients, prestations, date, heure, onClose, onCreate, o
 
 
 
-function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose, onCreate }) {
+function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose, onCreate, onCreerClient }) {
   const [query, setQuery] = useState("");
   const [clientId, setClientId] = useState(clientPreselectionne?.id || "");
   const [prestationId, setPrestationId] = useState("");
   const [montantHt, setMontantHt] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [nouveauClient, setNouveauClient] = useState(false);
+  const [nomNouveau, setNomNouveau] = useState("");
+  const [telNouveau, setTelNouveau] = useState("");
+  const [emailNouveau, setEmailNouveau] = useState("");
 
   const clientChoisi = clientPreselectionne || clients.find((c) => c.id === clientId) || null;
   const vehiculesClient = Array.isArray(clientChoisi?.vehicules) ? clientChoisi.vehicules : clientChoisi?.vehicules ? [clientChoisi.vehicules] : [];
@@ -1211,11 +1226,20 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
   };
 
   const creer = async () => {
-    if (!clientChoisi) return;
     setCreating(true);
+    let idClient = clientChoisi?.id || null;
+    let idVehicule = vehiculeChoisi?.id || null;
+    if (nouveauClient) {
+      if (!nomNouveau.trim()) { setCreating(false); return; }
+      const cree = await onCreerClient({ nom: nomNouveau.trim(), telephone: telNouveau.trim() || null, email: emailNouveau.trim() || null });
+      if (!cree) { setCreating(false); return; }
+      idClient = cree.id;
+      idVehicule = null;
+    }
+    if (!idClient) { setCreating(false); return; }
     await onCreate({
-      client_id: clientChoisi.id,
-      vehicule_id: vehiculeChoisi?.id || null,
+      client_id: idClient,
+      vehicule_id: idVehicule,
       prestation_id: prestationId || null,
       montant_ht: montantHt,
     });
@@ -1230,8 +1254,18 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
 
         {!clientPreselectionne && (
           <div className="mt-4">
-            <label className="text-[12px] font-medium text-slate-500">Client</label>
-            {clientChoisi ? (
+            <div className="flex items-center justify-between">
+              <label className="text-[12px] font-medium text-slate-500">Client</label>
+              {!nouveauClient && !clientChoisi && <button type="button" onClick={() => setNouveauClient(true)} className="text-[12px] font-medium text-blue-600 hover:underline">+ Nouveau client</button>}
+            </div>
+            {nouveauClient ? (
+              <div className="mt-1.5 space-y-2">
+                <input value={nomNouveau} onChange={(e) => setNomNouveau(e.target.value)} placeholder="Nom du client" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                <input value={telNouveau} onChange={(e) => setTelNouveau(e.target.value)} placeholder="Téléphone (optionnel)" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                <input value={emailNouveau} onChange={(e) => setEmailNouveau(e.target.value)} placeholder="Email (optionnel)" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                <button type="button" onClick={() => setNouveauClient(false)} className="text-[12px] text-slate-400 hover:underline">Annuler, chercher un client existant</button>
+              </div>
+            ) : clientChoisi ? (
               <div className="mt-1 flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-sm">
                 <span>{clientChoisi.nom}</span>
                 <button onClick={() => setClientId("")} className="text-[12px] text-slate-500">Changer</button>
@@ -1271,7 +1305,7 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
         </div>
 
         <div className="flex gap-2.5 mt-6">
-          <button onClick={creer} disabled={!clientChoisi || creating} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl disabled:opacity-50" style={{ backgroundColor: ACCENT }}>
+          <button onClick={creer} disabled={(!nouveauClient && !clientChoisi) || (nouveauClient && !nomNouveau.trim()) || creating} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl disabled:opacity-50" style={{ backgroundColor: ACCENT }}>
             <ReceiptText size={15} /> {creating ? "Création..." : "Créer le devis"}
           </button>
           <button onClick={onClose} className="text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">Annuler</button>
@@ -1281,7 +1315,7 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
   );
 }
 
-function DevisView({ devisList: devisListToutesSources, clients, prestations, onAccept, onRefuse, onUpdateMontant, onCreer }) {
+function DevisView({ devisList: devisListToutesSources, clients, prestations, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient }) {
   const devisList = devisListToutesSources.filter((d) => d.statut === "en_attente");
   const [modalOuvert, setModalOuvert] = useState(false);
   return (
@@ -1299,7 +1333,7 @@ function DevisView({ devisList: devisListToutesSources, clients, prestations, on
         ))
       )}
       {modalOuvert && (
-        <GenererDevisModal clients={clients} prestations={prestations} onClose={() => setModalOuvert(false)} onCreate={onCreer} />
+        <GenererDevisModal clients={clients} prestations={prestations} onClose={() => setModalOuvert(false)} onCreate={onCreer} onCreerClient={onCreerClient} />
       )}
     </div>
   );
@@ -1309,6 +1343,7 @@ function DevisCard({ d, onAccept, onRefuse, onUpdateMontant }) {
   const [editing, setEditing] = useState(false);
   const [montant, setMontant] = useState(d.montant_ht ?? 0);
   const [showMessage, setShowMessage] = useState(false);
+  const attenteJours = d.created_at ? Math.floor((Date.now() - new Date(d.created_at).getTime()) / 86_400_000) : 0;
 
   const saveMontant = () => {
     const value = Number(montant);
@@ -1324,8 +1359,9 @@ function DevisCard({ d, onAccept, onRefuse, onUpdateMontant }) {
           <div className="flex items-center gap-2.5 flex-wrap">
             <div className="font-semibold text-slate-900 text-[15px]">{d.client}</div>
             <Badge tone="amber">Devis en attente</Badge>
+            {attenteJours >= 1 && <Badge tone="red">{depuisLabel(d.created_at)}</Badge>}
           </div>
-          <div className="text-[13px] text-slate-500 mt-1">{formatPhone(d.telephone)}</div>
+          <a href={`tel:${(d.telephone || "").replace(/\s/g, "")}`} className="text-[13px] text-blue-600 hover:underline mt-1 inline-block">{formatPhone(d.telephone)}</a>
         </div>
         <div className="text-right">
           <div className="text-sm font-medium text-slate-900">{d.date}</div>
@@ -3237,16 +3273,6 @@ if (updateError) {
     }
     setDevisList((prev) => prev.filter((d) => d.id !== id));
     flashToast("Devis accepté");
-    const n8nBaseUrl = process.env.NEXT_PUBLIC_N8N_WEBHOOK_BASE_URL;
-    if (n8nBaseUrl) {
-      fetch(`${n8nBaseUrl}/webhook/devis-accepte`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ devis_id: id }),
-      }).catch(() => console.warn("n8n injoignable — email de confirmation non envoyé au client."));
-    } else {
-      console.warn("NEXT_PUBLIC_N8N_WEBHOOK_BASE_URL non configurée — email de confirmation non envoyé au client.");
-    }
   };
 
   const handleRefuseDevis = async (id) => {
@@ -3262,16 +3288,6 @@ if (updateError) {
     }
     setDevisList((prev) => prev.filter((d) => d.id !== id));
     flashToast("Devis refusé");
-    const n8nBaseUrl = process.env.NEXT_PUBLIC_N8N_WEBHOOK_BASE_URL;
-    if (n8nBaseUrl) {
-      fetch(`${n8nBaseUrl}/webhook/devis-refuse`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ devis_id: id }),
-      }).catch(() => console.warn("n8n injoignable — email de refus non envoyé au client."));
-    } else {
-      console.warn("NEXT_PUBLIC_N8N_WEBHOOK_BASE_URL non configurée — email de refus non envoyé au client.");
-    }
   };
 
   const handleUpdateDevisMontant = async (id, montantHt) => {
@@ -3795,7 +3811,7 @@ if (updateError) {
           {view === "dashboard" && <DashboardView stats={stats} propositions={propositions} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} demandes={demandes} clients={clients} garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} prestations={prestations} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={ACTIVE_GARAGE_ID} />}
-          {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} onAccept={handleAcceptDevis} onRefuse={handleRefuseDevis} onUpdateMontant={handleUpdateDevisMontant} onCreer={handleCreerDevis} />}
+          {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} onAccept={handleAcceptDevis} onRefuse={handleRefuseDevis} onUpdateMontant={handleUpdateDevisMontant} onCreer={handleCreerDevis} onCreerClient={handleCreerClient} />}
           {view === "verifier" && <ErreursView erreurs={erreurs} onResoudre={handleResoudreErreur} />}
           {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={handleGenererFacture} onMarquerPayee={handleMarquerFacturePayee} onSauvegarder={handleSauvegarderFacture} />}
           {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} garageData={garageData} onConnectCalendar={connectGoogleCalendar} clients={clients} prestations={prestations} onCreerRdv={handleCreerRdvManuel} onCreerClient={handleCreerClient} />}
