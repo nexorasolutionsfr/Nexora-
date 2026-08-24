@@ -961,9 +961,38 @@ function depuisLabel(dateStr) {
   const jours = Math.floor(heures / 24);
   return `reçu il y a ${jours} jour${jours > 1 ? "s" : ""}`;
 }
+function RefuseConfirmModal({ onClose, onConfirm }) {
+  const [neReplusDemander, setNeReplusDemander] = useState(false);
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold text-slate-900">Refuser ce créneau ?</h2>
+        <p className="text-[13.5px] text-slate-600 mt-2">Le client recevra un message l'informant que ce créneau n'est pas possible, sans nouvelle proposition. Si le client n'est simplement pas disponible à cette heure, utilisez plutôt "Modifier la date".</p>
+        <label className="flex items-center gap-2 mt-4 text-[13px] text-slate-600">
+          <input type="checkbox" checked={neReplusDemander} onChange={(e) => setNeReplusDemander(e.target.checked)} className="rounded border-slate-300" />
+          Ne plus demander
+        </label>
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600">Annuler</button>
+          <button onClick={() => onConfirm(neReplusDemander)} className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-red-600 hover:bg-red-700">Refuser le créneau</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PropositionCard({ p, onAccept, onRefuse, onOpenReschedule }) {
   const [showMessage, setShowMessage] = useState(false);
+  const [confirmingRefuse, setConfirmingRefuse] = useState(false);
   const attenteJours = p.created_at ? Math.floor((Date.now() - new Date(p.created_at).getTime()) / 86_400_000) : 0;
+
+  const demanderRefus = () => {
+    if (localStorage.getItem("nexora_skip_refuse_confirm") === "true") {
+      onRefuse(p.id);
+    } else {
+      setConfirmingRefuse(true);
+    }
+  };
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
       <div className="flex items-start justify-between flex-wrap gap-2">
@@ -1015,10 +1044,20 @@ function PropositionCard({ p, onAccept, onRefuse, onOpenReschedule }) {
         <button onClick={onOpenReschedule} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
           <Pencil size={15} /> Modifier la date
         </button>
-        <button onClick={() => onRefuse(p.id)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
+        <button onClick={demanderRefus} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
           <X size={15} /> Refuser
         </button>
       </div>
+      {confirmingRefuse && (
+        <RefuseConfirmModal
+          onClose={() => setConfirmingRefuse(false)}
+          onConfirm={(neReplusDemander) => {
+            if (neReplusDemander) localStorage.setItem("nexora_skip_refuse_confirm", "true");
+            setConfirmingRefuse(false);
+            onRefuse(p.id);
+          }}
+        />
+      )}
     </div>
   );
 }
