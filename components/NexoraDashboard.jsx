@@ -1068,18 +1068,26 @@ function RescheduleModal({ proposition, garageId, onClose, onConfirm }) {
   const [time, setTime] = useState(proposition.debut || "09:00");
   const [dayBookings, setDayBookings] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   useEffect(() => {
     async function loadDay() {
       setLoading(true);
+      setLoadError(false);
       const start = `${date}T00:00:00`;
       const end = `${date}T23:59:59`;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("rendez_vous")
         .select("date_debut, date_fin, clients(nom)")
         .eq("garage_id", garageId)
         .gte("date_debut", start)
         .lte("date_debut", end)
         .order("date_debut");
+      if (error) {
+        console.error("Erreur chargement disponibilités :", error);
+        setLoadError(true);
+        setLoading(false);
+        return;
+      }
       setDayBookings(data || []);
       setLoading(false);
     }
@@ -1119,6 +1127,8 @@ function RescheduleModal({ proposition, garageId, onClose, onConfirm }) {
           <div className="text-[12px] font-medium text-slate-500 mb-2">Disponibilités du garage ce jour-là</div>
           {loading ? (
             <div className="text-[13px] text-slate-400">Chargement…</div>
+          ) : loadError ? (
+            <div className="text-[13px] text-red-600">Impossible de vérifier les disponibilités — vérifiez manuellement avant de confirmer.</div>
           ) : dayBookings.length === 0 ? (
             <div className="text-[13px] text-emerald-600">Aucun rendez-vous ce jour — journée libre</div>
           ) : (
@@ -1515,7 +1525,7 @@ function DevisApercuModal({ d, garageData, onClose }) {
         <div style={{ minHeight: "100vh", margin: "-1px", padding: 0 }}>
           <div style={{ background: "#F5F7FA", padding: 20, borderRadius: 16, fontFamily: "-apple-system, sans-serif" }}>
             <div style={{ background: "#0F1B33", color: "white", borderRadius: 16, padding: 20, marginBottom: 20 }}>
-              <div style={{ fontSize: 13, opacity: 0.7 }}>{garageData?.nom_garage || "Votre garage"}</div>
+              <div style={{ fontSize: 13, opacity: 0.7 }}>{garageData?.nom || "Votre garage"}</div>
               <div style={{ fontSize: 18, fontWeight: 600, marginTop: 4 }}>{[d.vehicule, d.immatriculation].filter(Boolean).join(" · ")}</div>
               <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>{d.prestation}</div>
               <div style={{ fontSize: 28, fontWeight: 700, marginTop: 12 }}>{Number(d.montant_ttc || 0).toFixed(2)} €</div>
