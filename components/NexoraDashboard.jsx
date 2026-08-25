@@ -156,12 +156,10 @@ const SOURCE_META = {
 // Table: garages
 const garage = {
   id: "garage_1",
-  nom: "Garage Demo Nexora",
-  ville: "Saint-Dizier",
-  logo_url: null,
+  nom_garage: "Garage Demo Nexora",
+  adresse: "Saint-Dizier",
   horaire_ouverture: "08:00",
   horaire_fermeture: "18:00",
-  nb_mecaniciens: 3,
   ouvert_aujourdhui: true,
   gmail_connecte: true,
   google_agenda_connecte: false,
@@ -385,15 +383,14 @@ function GarageIdentityCard({ garageData = garage }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="text-lg font-semibold text-slate-900">{garageData.nom}</div>
+          <div className="text-lg font-semibold text-slate-900">{garageData.nom_garage}</div>
           <Badge tone={openState.open ? "green" : "red"}>
             {openState.open ? "🟢 Ouvert maintenant" : "🔴 Fermé actuellement"}
           </Badge>
         </div>
         <div className="flex items-center gap-4 mt-1.5 flex-wrap">
-          <span className="flex items-center gap-1.5 text-[13px] text-slate-500"><MapPin size={13} /> {garageData.ville}</span>
-          <span className="flex items-center gap-1.5 text-[13px] text-slate-500"><Clock size={13} /> {garageData.horaire_ouverture}–{garageData.horaire_fermeture}</span>
-          <span className="flex items-center gap-1.5 text-[13px] text-slate-500"><Users size={13} /> {garageData.nb_mecaniciens} mécaniciens disponibles · {openState.label}</span>
+          <span className="flex items-center gap-1.5 text-[13px] text-slate-500"><MapPin size={13} /> {garageData.adresse}</span>
+          <span className="flex items-center gap-1.5 text-[13px] text-slate-500"><Clock size={13} /> {openState.label}</span>
         </div>
       </div>
     </div>
@@ -523,7 +520,7 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] })
   const resourceAppointments = (resourceId) => todayAppts.filter((appt) => (resourceId === null ? !appt.mecanicien_id : appt.mecanicien_id === resourceId));
   const ressources = [...mecaniciensActifs.map((m) => ({ id: m.id, name: m.nom, role: "Mécanicien", color: m.couleur || "#3D6BE0" })), { id: null, name: "Non assigné", role: "", color: "#94A3B8" }];
     return <div className="space-y-5">
-    <div className="print:hidden rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}><div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" /><div className="relative flex items-start justify-between flex-wrap gap-4"><div><div className="flex items-center gap-2"><Wrench size={18} color="#8FB0FF" /><span className="font-semibold">Atelier en direct</span></div><div className="text-2xl font-semibold mt-3">Votre équipe sait quoi faire, maintenant.</div><div className="text-[13px] mt-1 text-blue-200">Répartissez les véhicules, suivez les retards et gardez le client informé.</div><button onClick={() => setTimeout(() => window.print(), 600)} className="mt-3 inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl px-3 py-2 text-[12.5px] font-medium">🖨️ Imprimer les étiquettes du jour</button></div><div className="grid grid-cols-2 gap-2"><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Véhicules aujourd’hui</div><div className="text-xl font-semibold mt-1">{todayAppts.length}</div></div><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Équipe disponible</div><div className="text-xl font-semibold mt-1">{garageData.nb_mecaniciens || 0}</div></div></div></div></div>
+    <div className="print:hidden rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}><div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" /><div className="relative flex items-start justify-between flex-wrap gap-4"><div><div className="flex items-center gap-2"><Wrench size={18} color="#8FB0FF" /><span className="font-semibold">Atelier en direct</span></div><div className="text-2xl font-semibold mt-3">Votre équipe sait quoi faire, maintenant.</div><div className="text-[13px] mt-1 text-blue-200">Répartissez les véhicules, suivez les retards et gardez le client informé.</div><button onClick={() => setTimeout(() => window.print(), 600)} className="mt-3 inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl px-3 py-2 text-[12.5px] font-medium">🖨️ Imprimer les étiquettes du jour</button></div><div className="grid grid-cols-2 gap-2"><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Véhicules aujourd’hui</div><div className="text-xl font-semibold mt-1">{todayAppts.length}</div></div><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Équipe disponible</div><div className="text-xl font-semibold mt-1">{mecaniciensActifs.length}</div></div></div></div></div>
         <div className="print:hidden">
     <WorkshopTimeline rendezVous={rendezVous} onSelectAppt={onSelectAppt} mecaniciens={mecaniciensActifs} />
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"><div className="px-5 py-4 border-b border-slate-100"><div className="font-semibold text-slate-900 text-[15px]">Planning des ressources</div><div className="text-[12.5px] text-slate-500 mt-0.5">Cliquez un rendez-vous pour l’affecter à un mécanicien.</div></div><div className="overflow-x-auto"><div className="min-w-[850px]"><div className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] border-b border-slate-100">{["Ressource", ...heuresGrille].map((hour) => <div key={hour} className="px-3 py-2 text-[11px] font-medium text-slate-400 border-r border-slate-100">{hour}</div>)}</div>{mecaniciensActifs.length === 0 && <div className="px-5 py-6 text-[13px] text-slate-500">Ajoutez vos mécaniciens dans Paramètres pour affecter les rendez-vous.</div>}{ressources.map((resource) => { const assigned = resourceAppointments(resource.id); return <div key={resource.id ?? "non_assigne"} className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] min-h-[74px] border-b border-slate-100 last:border-0"><div className="px-3 py-3 border-r border-slate-100"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resource.color }} /><div><div className="text-[12.5px] font-medium text-slate-800">{resource.name}</div><div className="text-[11px] text-slate-400">{resource.role}</div></div></div></div><div className="col-span-10 relative p-1.5" style={{ minHeight: 58 }}>{assigned.map((appt) => {
@@ -1525,7 +1522,7 @@ function DevisApercuModal({ d, garageData, onClose }) {
         <div style={{ minHeight: "100vh", margin: "-1px", padding: 0 }}>
           <div style={{ background: "#F5F7FA", padding: 20, borderRadius: 16, fontFamily: "-apple-system, sans-serif" }}>
             <div style={{ background: "#0F1B33", color: "white", borderRadius: 16, padding: 20, marginBottom: 20 }}>
-              <div style={{ fontSize: 13, opacity: 0.7 }}>{garageData?.nom || "Votre garage"}</div>
+              <div style={{ fontSize: 13, opacity: 0.7 }}>{garageData?.nom_garage || "Votre garage"}</div>
               <div style={{ fontSize: 18, fontWeight: 600, marginTop: 4 }}>{[d.vehicule, d.immatriculation].filter(Boolean).join(" · ")}</div>
               <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>{d.prestation}</div>
               <div style={{ fontSize: 28, fontWeight: 700, marginTop: 12 }}>{Number(d.montant_ttc || 0).toFixed(2)} €</div>
@@ -2147,7 +2144,7 @@ function imprimerFacture(facture, garageData) {
     </head>
     <body>
       <div class="header">
-        <div><h1>${escapeHtml(garageData?.nom || "Garage")}</h1><div>${escapeHtml(garageData?.ville)}</div></div>
+        <div><h1>${escapeHtml(garageData?.nom_garage || "Garage")}</h1><div>${escapeHtml(garageData?.adresse)}</div></div>
         <div><strong>Facture ${escapeHtml(facture.numero)}</strong><br/>${new Date(facture.created_at).toLocaleDateString("fr-FR")}</div>
       </div>
       <div class="box">
@@ -2711,7 +2708,7 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
 
     {onglet === "garage" && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <SettingsSection title="Informations garage"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{field("Nom du garage", "nom")} {field("Ville", "ville")} {field("Logo (URL)", "logo_url")} {field("Mécaniciens disponibles", "nb_mecaniciens", "number")}</div></SettingsSection>
+        <SettingsSection title="Informations garage"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{field("Nom du garage", "nom_garage")} {field("Adresse", "adresse")} {field("Téléphone", "telephone")} {field("Email", "email")}</div></SettingsSection>
         <SettingsSection title="Objectif & avis">
           <div className="space-y-3">
             {field("Objectif de chiffre d'affaires mensuel (€)", "objectif_ca_mensuel", "number")}
@@ -2728,6 +2725,15 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
 
     {onglet === "notifications" && (
       <div className="grid grid-cols-1 gap-5">
+        <SettingsSection title="Automatisation IA">
+          <button type="button" onClick={() => onGarageChange("automatisation_active", !garageData.automatisation_active)} className="w-full flex items-center justify-between py-1">
+            <div className="text-left pr-4">
+              <span className="text-sm text-slate-700 font-medium block">Réponse automatique aux demandes (email, WhatsApp)</span>
+              <span className="text-[12.5px] text-slate-500 block mt-0.5">Désactivé : rien n'est envoyé automatiquement, vous utilisez le dashboard à la main comme un carnet de RDV. Activé : l'IA répond et propose des créneaux, vous validez toujours avant l'envoi final.</span>
+            </div>
+            <Toggle checked={!!garageData.automatisation_active} />
+          </button>
+        </SettingsSection>
         <SettingsSection title="Canal d'envoi par type de notification">
           <div className="text-[12.5px] text-slate-500 mb-4">Choisissez comment chaque notification est envoyée à vos clients. SMS et WhatsApp seront actifs dès que votre fournisseur (Twilio) sera configuré côté Nexora — vous pouvez déjà définir vos préférences.</div>
           <div className="space-y-3">
@@ -2784,7 +2790,7 @@ function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting,
   const [prestationId, setPrestationId] = useState(demande.suggested_prestation_id || "");
   const [date, setDate] = useState(demande.suggested_date || dateKey(new Date()));
   const [time, setTime] = useState(demande.suggested_time || "09:00");
-  const [message, setMessage] = useState(`Bonjour ${demande.clients?.nom || ""},\n\nNous pouvons vous proposer un rendez-vous pour votre véhicule.\n\nCordialement,\n${garageData.nom}`);
+  const [message, setMessage] = useState(`Bonjour ${demande.clients?.nom || ""},\n\nNous pouvons vous proposer un rendez-vous pour votre véhicule.\n\nCordialement,\n${garageData.nom_garage}`);
   const selectedPrestation = prestations.find((p) => p.id === prestationId);
   const canSubmit = prestationId && date && time && !submitting;
 
@@ -3500,7 +3506,7 @@ const { data: overlapping } = await supabase
   .lt("date_debut", proposition.date_fin_proposee)
   .gt("date_fin", proposition.date_debut_proposee);
 
-const capacite = Number(garageData.nb_mecaniciens) > 0 ? Number(garageData.nb_mecaniciens) : 1;
+const capacite = mecaniciens.filter((m) => m.actif !== false).length || 1;
 if ((overlapping?.length || 0) >= capacite) {
   flashToast("Tous vos mécaniciens sont déjà occupés sur ce créneau", "error");
   return;
@@ -3839,7 +3845,7 @@ if (updateError) {
         .lt("date_debut", end.toISOString())
         .gt("date_fin", start.toISOString());
       if (conflictError) throw conflictError;
-      const capacite = Number(garageData.nb_mecaniciens) > 0 ? Number(garageData.nb_mecaniciens) : 1;
+      const capacite = mecaniciens.filter((m) => m.actif !== false).length || 1;
       if ((conflicts?.length || 0) >= capacite) {
         flashToast("Tous vos mécaniciens sont déjà occupés sur ce créneau. Choisissez une autre heure.", "error");
         return;
@@ -3906,19 +3912,17 @@ if (updateError) {
   const saveGarageSettings = async () => {
     setSavingSettings(true);
     const update = {
-      nom: garageData.nom,
-      ville: garageData.ville,
-      logo_url: garageData.logo_url || null,
-      horaire_ouverture: garageData.horaire_ouverture,
-      horaire_fermeture: garageData.horaire_fermeture,
+      nom_garage: garageData.nom_garage,
+      adresse: garageData.adresse || null,
+      telephone: garageData.telephone || null,
+      email: garageData.email || null,
       horaires: garageData.horaires,
-      nb_mecaniciens: garageData.nb_mecaniciens,
       objectif_ca_mensuel: garageData.objectif_ca_mensuel || null,
       lien_avis_google: garageData.lien_avis_google || null,
-      notifications_email: garageData.notifications_email,
-      notifications_sms: garageData.notifications_sms,
+      numero_whatsapp: garageData.numero_whatsapp || null,
       canaux_notifications: garageData.canaux_notifications || null,
       theme: garageData.theme || "clair",
+      automatisation_active: !!garageData.automatisation_active,
     };
     const { error } = await supabase.from("garages").update(update).eq("id", garageId);
     setSavingSettings(false);
@@ -4018,7 +4022,7 @@ if (updateError) {
       flashToast("Impossible de vérifier le créneau", "error");
       return;
     }
-    const capacite = Number(garageData.nb_mecaniciens) > 0 ? Number(garageData.nb_mecaniciens) : 1;
+    const capacite = mecaniciens.filter((m) => m.actif !== false).length || 1;
     if ((conflicts?.length || 0) >= capacite) {
       flashToast("Tous vos mécaniciens sont déjà occupés sur ce créneau", "error");
       return;
@@ -4134,8 +4138,8 @@ if (updateError) {
           <div className="flex items-center gap-2.5 px-2 py-2">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-[12.5px] font-semibold text-white shrink-0" style={{ backgroundColor: ACCENT }}>GD</div>
             <div className="leading-tight">
-              <div className="text-[13px] font-medium text-white">{garageData.nom}</div>
-              <div className="text-[11.5px]" style={{ color: "#8CA0C9" }}>{garageData.ville}</div>
+              <div className="text-[13px] font-medium text-white">{garageData.nom_garage}</div>
+              <div className="text-[11.5px]" style={{ color: "#8CA0C9" }}>{garageData.adresse}</div>
             </div>
           </div>
         </div>
@@ -4158,7 +4162,7 @@ if (updateError) {
             </button>
             <div>
               <div className="text-lg font-semibold text-slate-900">{titles[view]}</div>
-              <div className="text-[13px] text-slate-500">{garageData.nom}</div>
+              <div className="text-[13px] text-slate-500">{garageData.nom_garage}</div>
             </div>
           </div>
         </div>
@@ -4201,8 +4205,8 @@ if (updateError) {
                 <div className="flex items-center gap-2.5 px-2 py-2">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-[12.5px] font-semibold text-white shrink-0" style={{ backgroundColor: ACCENT }}>GD</div>
                   <div className="leading-tight">
-                    <div className="text-[13px] font-medium text-white">{garageData.nom}</div>
-                    <div className="text-[11.5px]" style={{ color: "#8CA0C9" }}>{garageData.ville}</div>
+                    <div className="text-[13px] font-medium text-white">{garageData.nom_garage}</div>
+                    <div className="text-[11.5px]" style={{ color: "#8CA0C9" }}>{garageData.adresse}</div>
                   </div>
                 </div>
               </div>
