@@ -2439,7 +2439,7 @@ function NouveauClientModal({ onClose, onCreerClient }) {
   );
 }
 
-function ClientsView({ clients = [], rendezVous = [], prestations = [], onCreerDevis, onCreerClient, onToast }) {
+function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], onCreerDevis, onCreerClient, onToast }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [devisModalOpen, setDevisModalOpen] = useState(false);
@@ -2455,10 +2455,11 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], onCreerD
     });
   const selected = clients.find((c) => c.id === selectedId) || filtered[0] || null;
   const selectedVehicles = Array.isArray(selected?.vehicules) ? selected.vehicules : selected?.vehicules ? [selected.vehicules] : [];
+  const factureParRdv = new Map(factures.map((f) => [f.rendez_vous_id, f]));
   const historique = rendezVous
     .filter((r) => r.client_id === selected?.id)
     .sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut))
-    .map((r) => ({ prestation: r.prestation, date: new Date(r.date_debut).toLocaleDateString("fr-FR"), statut: r.statut, statutLabel: RDV_STATUS_LABEL[r.statut] || r.statut, terminee: r.statut_atelier === "restitue", note: r.notes, montant: r.montant_ttc || r.montant }));
+    .map((r) => ({ prestation: r.prestation, date: new Date(r.date_debut).toLocaleDateString("fr-FR"), statut: r.statut, statutLabel: RDV_STATUS_LABEL[r.statut] || r.statut, terminee: r.statut_atelier === "restitue", note: r.notes, montant: factureParRdv.get(r.id)?.montant_ttc || 0 }));
   const derniereVisite = historique.find((h) => h.terminee)?.date || null;
   const totalCA = historique.filter((h) => h.terminee).reduce((sum, h) => sum + Number(h.montant || 0), 0);
 
@@ -4230,7 +4231,7 @@ if (updateError) {
               onRecommend={handleRecommendedAppointment}
             />
           )}
-          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onToast={flashToast} />}
+          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onToast={flashToast} />}
           {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} />}
         </div>
       </main>
