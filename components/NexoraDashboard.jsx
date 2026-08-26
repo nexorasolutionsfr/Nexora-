@@ -706,19 +706,34 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
           {todayAppts.length === 0 ? (
             <div className="px-5 py-8 text-center text-slate-400 text-[13px]">Aucun rendez-vous prévu aujourd'hui.</div>
           ) : (
-            <div className="divide-y divide-slate-100">
-              {todayAppts.slice(0, 6).map((a) => {
-                const colors = catColor(a.categorie);
+            <div className="py-2">
+              {heuresGrille.map((h) => {
+                const apptsAtHour = todayAppts.filter((a) => a.debut?.slice(0, 2) === h.slice(0, 2));
+                const currentHour = String(new Date().getHours()).padStart(2, "0");
+                const isNow = h.slice(0, 2) === currentHour;
                 return (
-                  <button key={a.id} onClick={() => onSelectAppt(a)} className="w-full px-5 py-3.5 flex items-center gap-4 hover:bg-slate-50/70 text-left">
-                    <div className="text-[13px] font-medium text-slate-500 w-24 shrink-0">{a.debut} - {a.fin}</div>
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colors.bar }} />
-                    <div className="text-sm text-slate-800">{a.vehicule}</div>
-                    <div className="text-sm text-slate-500">{a.client}</div>
-                    <div className="text-[13px] text-slate-400">·</div>
-                    <div className="text-sm text-slate-500 flex-1">{a.prestation}</div>
-                    <Badge tone={STATUT_TONE[a.statut] || "slate"}>{a.statut}</Badge>
-                  </button>
+                  <div key={h} className="flex gap-3 px-5">
+                    <div className="w-12 shrink-0 text-[11.5px] text-slate-400 pt-3">{h}</div>
+                    <div className="flex-1 border-l-2 pl-4 pb-3 relative" style={{ borderColor: "#EEF1F6" }}>
+                      <span className="absolute -left-[5px] top-[15px] w-2 h-2 rounded-full" style={{ backgroundColor: isNow ? ACCENT : "#E2E8F0", boxShadow: isNow ? `0 0 0 4px ${ACCENT_SOFT}` : "none" }} />
+                      {apptsAtHour.length === 0 ? (
+                        <div className="text-[12px] text-slate-300 py-2.5">Créneau libre</div>
+                      ) : (
+                        <div className="space-y-1.5 py-0.5">
+                          {apptsAtHour.map((a) => {
+                            const colors = catColor(a.categorie);
+                            return (
+                              <button key={a.id} onClick={() => onSelectAppt(a)} className="w-full text-left rounded-xl px-3 py-2 flex items-center gap-3 flex-wrap" style={{ backgroundColor: colors.bg, borderLeft: `3px solid ${colors.bar}` }}>
+                                <div className="text-[13px] font-semibold" style={{ color: colors.text }}>{a.client}</div>
+                                <div className="text-[12.5px] text-slate-500">{a.vehicule} · {a.prestation}</div>
+                                <Badge tone={STATUT_TONE[a.statut] || "slate"}>{a.statut}</Badge>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 );
               })}
             </div>
