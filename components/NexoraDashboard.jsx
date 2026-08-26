@@ -44,6 +44,7 @@ import {
   ArrowRight,
   ReceiptText,
   Eye,
+  LogOut,
 } from "lucide-react";
 // Vercel rebuild trigger
 // =====================================================================================
@@ -4138,10 +4139,13 @@ if (updateError) {
         <div className="mt-auto pt-4 border-t" style={{ borderColor: "#22335C" }}>
           <div className="flex items-center gap-2.5 px-2 py-2">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-[12.5px] font-semibold text-white shrink-0" style={{ backgroundColor: ACCENT }}>GD</div>
-            <div className="leading-tight">
-              <div className="text-[13px] font-medium text-white">{garageData.nom_garage}</div>
-              <div className="text-[11.5px]" style={{ color: "#8CA0C9" }}>{garageData.adresse}</div>
+            <div className="leading-tight flex-1 min-w-0">
+              <div className="text-[13px] font-medium text-white truncate">{garageData.nom_garage}</div>
+              <div className="text-[11.5px] truncate" style={{ color: "#8CA0C9" }}>{garageData.adresse}</div>
             </div>
+            <button onClick={() => supabase.auth.signOut()} className="shrink-0 p-1.5 rounded-lg text-[#8CA0C9] hover:text-white hover:bg-white/10" title="Se déconnecter">
+              <LogOut size={16} />
+            </button>
           </div>
         </div>
       </aside>
@@ -4205,10 +4209,13 @@ if (updateError) {
               <div className="mt-auto pt-4 border-t" style={{ borderColor: "#22335C" }}>
                 <div className="flex items-center gap-2.5 px-2 py-2">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-[12.5px] font-semibold text-white shrink-0" style={{ backgroundColor: ACCENT }}>GD</div>
-                  <div className="leading-tight">
-                    <div className="text-[13px] font-medium text-white">{garageData.nom_garage}</div>
-                    <div className="text-[11.5px]" style={{ color: "#8CA0C9" }}>{garageData.adresse}</div>
+                  <div className="leading-tight flex-1 min-w-0">
+                    <div className="text-[13px] font-medium text-white truncate">{garageData.nom_garage}</div>
+                    <div className="text-[11.5px] truncate" style={{ color: "#8CA0C9" }}>{garageData.adresse}</div>
                   </div>
+                  <button onClick={() => supabase.auth.signOut()} className="shrink-0 p-1.5 rounded-lg text-[#8CA0C9] hover:text-white hover:bg-white/10" title="Se déconnecter">
+                    <LogOut size={16} />
+                  </button>
                 </div>
               </div>
             </div>
