@@ -588,8 +588,9 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
       key: "demandes_nouvelles",
       weight: 5,
       count: demandesNouvelles.length,
-      shortLabel: "Nouvelle demande",
+      shortLabel: demandesNouvelles.length > 1 ? "Nouvelles demandes" : "Nouvelle demande",
       target: "demandes",
+      tone: { stripe: "#DC2626", badgeBg: "#FDECEC", badgeText: "#B91C1C" },
     });
   }
   if (propositions.length) {
@@ -599,6 +600,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
       count: propositions.length,
       shortLabel: "RDV à valider",
       target: "valider",
+      tone: { stripe: ACCENT, badgeBg: ACCENT_SOFT, badgeText: ACCENT },
     });
   }
   if (devisEnAttente.length) {
@@ -608,6 +610,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
       count: devisEnAttente.length,
       shortLabel: "Devis en attente",
       target: "devis",
+      tone: { stripe: "#D97706", badgeBg: "#FEF3E2", badgeText: "#B45309" },
     });
   }
   if (technicalControl.length) {
@@ -617,6 +620,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
       count: technicalControl.length,
       shortLabel: "Contrôle technique proche",
       target: "clients",
+      tone: { stripe: "#7C3AED", badgeBg: "#F3E8FF", badgeText: "#7C3AED" },
     });
   }
   if (dormantClients.length) {
@@ -626,6 +630,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
       count: dormantClients.length,
       shortLabel: "Client fidèle à rappeler",
       target: "clients",
+      tone: { stripe: "#475569", badgeBg: "#F1F5F9", badgeText: "#475569" },
     });
   }
   priorityItems.sort((a, b) => b.weight - a.weight);
@@ -655,18 +660,18 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
       <GarageIdentityCard garageData={garageData} />
 
       {priorityItems.length > 0 ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 flex items-center gap-4 flex-wrap">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 flex items-center gap-4 flex-wrap" style={{ borderLeft: `4px solid ${priorityItems[0].tone.stripe}` }}>
           <div className="flex-1 min-w-[220px]">
             <div className="flex items-center gap-2">
-              <AlertTriangle size={17} className="text-amber-700" />
-              <div className="text-sm font-semibold text-amber-950">{priorityItems.length} chose{priorityItems.length > 1 ? "s" : ""} à traiter</div>
+              <AlertTriangle size={17} style={{ color: priorityItems[0].tone.stripe }} />
+              <div className="text-sm font-semibold text-slate-900">{priorityItems.length} chose{priorityItems.length > 1 ? "s" : ""} à traiter</div>
             </div>
-            <div className="text-[12.5px] text-amber-800 mt-1">Tout est regroupé ici — plus besoin de vérifier plusieurs onglets.</div>
+            <div className="text-[12.5px] text-slate-500 mt-1">Tout est regroupé ici — plus besoin de vérifier plusieurs onglets.</div>
           </div>
           <div className="flex gap-2 flex-wrap">
             {priorityItems.map((item) => (
-              <div key={item.key} className="flex items-center gap-1.5 bg-white border border-amber-200 rounded-xl px-3 py-1.5 text-[12.5px] font-semibold text-amber-900">
-                <span className="bg-amber-100 text-amber-700 rounded-full min-w-[18px] h-[18px] flex items-center justify-center text-[11px] font-bold">{item.count}</span>
+              <div key={item.key} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-[12.5px] font-semibold text-slate-700">
+                <span className="rounded-full min-w-[19px] h-[19px] flex items-center justify-center text-[11px] font-bold" style={{ backgroundColor: item.tone.badgeBg, color: item.tone.badgeText }}>{item.count}</span>
                 {item.shortLabel}
               </div>
             ))}
@@ -4207,6 +4212,10 @@ if (updateError) {
     parametres: "Paramètres",
   };
 
+  const navBadgeCounts = {
+    aujourdhui: demandes.filter((d) => d.statut === "nouveau").length + propositions.length + devisList.filter((d) => d.statut === "en_attente").length,
+  };
+
   return (
     <div className="flex min-h-[800px] w-full font-sans" style={{ backgroundColor: BG }}>
       <aside className="w-60 shrink-0 py-5 px-3.5 hidden md:flex flex-col" style={{ backgroundColor: NAVY }}>
@@ -4219,10 +4228,14 @@ if (updateError) {
                 {group.items.map((item) => {
                   const Icon = item.icon;
                   const active = item.match ? item.match.includes(view) : view === item.key;
+                  const badgeCount = navBadgeCounts[item.key] || 0;
                   return (
                     <button key={item.key} onClick={() => setView(item.match ? item.match[0] : item.key)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium transition-colors" style={active ? { backgroundColor: NAVY_SOFT, color: "#fff" } : { color: "#93A4C7" }}>
                       <Icon size={16} />
                       {item.label}
+                      {badgeCount > 0 && (
+                        <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10.5px] font-bold flex items-center justify-center">{badgeCount}</span>
+                      )}
                     </button>
                   );
                 })}
@@ -4284,6 +4297,7 @@ if (updateError) {
                       {group.items.map((item) => {
                         const Icon = item.icon;
                         const active = item.match ? item.match.includes(view) : view === item.key;
+                        const badgeCount = navBadgeCounts[item.key] || 0;
                         return (
                           <button
                             key={item.key}
@@ -4293,6 +4307,9 @@ if (updateError) {
                           >
                             <Icon size={16} />
                             {item.label}
+                            {badgeCount > 0 && (
+                              <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10.5px] font-bold flex items-center justify-center">{badgeCount}</span>
+                            )}
                           </button>
                         );
                       })}
