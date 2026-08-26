@@ -544,7 +544,7 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] })
 // =====================================================================================
 // VIEWS
 // =====================================================================================
-function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [] }) {
+function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats }) {
   if (loading) {
     return (
       <div className="space-y-6">
@@ -587,9 +587,8 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
     priorityItems.push({
       key: "demandes_nouvelles",
       weight: 5,
-      label: `${demandesNouvelles.length} nouvelle${demandesNouvelles.length > 1 ? "s" : ""} demande${demandesNouvelles.length > 1 ? "s" : ""} client`,
-      note: urgentRequests ? `dont ${urgentRequests} urgente${urgentRequests > 1 ? "s" : ""}` : "À qualifier",
-      action: "Traiter",
+      count: demandesNouvelles.length,
+      shortLabel: "Nouvelle demande",
       target: "demandes",
     });
   }
@@ -597,9 +596,8 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
     priorityItems.push({
       key: "propositions",
       weight: 4,
-      label: `${propositions.length} proposition${propositions.length > 1 ? "s" : ""} de rendez-vous à valider`,
-      note: potentielPropositions ? `${potentielPropositions.toFixed(0)}€ potentiels` : "En attente de validation",
-      action: "Traiter",
+      count: propositions.length,
+      shortLabel: "RDV à valider",
       target: "valider",
     });
   }
@@ -607,9 +605,8 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
     priorityItems.push({
       key: "devis_attente",
       weight: 3,
-      label: `${devisEnAttente.length} devis en attente`,
-      note: "À valider ou ajuster",
-      action: "Traiter",
+      count: devisEnAttente.length,
+      shortLabel: "Devis en attente",
       target: "devis",
     });
   }
@@ -617,9 +614,8 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
     priorityItems.push({
       key: "controle_technique",
       weight: 2,
-      label: `${technicalControl.length} contrôle${technicalControl.length > 1 ? "s" : ""} technique${technicalControl.length > 1 ? "s" : ""} proche${technicalControl.length > 1 ? "s" : ""}`,
-      note: "Échéance dans les 45 jours",
-      action: "Voir",
+      count: technicalControl.length,
+      shortLabel: "Contrôle technique proche",
       target: "clients",
     });
   }
@@ -627,9 +623,8 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
     priorityItems.push({
       key: "clients_fideles",
       weight: 1,
-      label: `${dormantClients.length} client${dormantClients.length > 1 ? "s" : ""} fidèle${dormantClients.length > 1 ? "s" : ""} à rappeler`,
-      note: "Aucune visite depuis 12 mois",
-      action: "Voir",
+      count: dormantClients.length,
+      shortLabel: "Client fidèle à rappeler",
       target: "clients",
     });
   }
@@ -637,36 +632,48 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
 
   // ---- Aperçu atelier du jour ------------------------------------------------------
   const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
+  const stagesEnCours = ["diagnostic", "intervention"];
+  const stagesPrets = ["pret", "restitue"];
   const stageCounts = WORKSHOP_STAGES.map((stage) => ({
     ...stage,
+    glanceColor: stagesEnCours.includes(stage.key) ? "#D97706" : stagesPrets.includes(stage.key) ? "#16A34A" : "#1E293B",
     count: todayAppts.filter((a) => (a.statut_atelier || "a_venir") === stage.key).length,
   }));
 
-  // ---- Aperçu chiffre d'affaires (glance, le détail est dans Statistiques) --------
+  // ---- Aperçu "Ce mois-ci" (glance, le détail complet est dans Statistiques) ------
   const debutMoisCourant = new Date(now.getFullYear(), now.getMonth(), 1);
-  const caMoisCourant = factures.filter((f) => new Date(f.created_at) >= debutMoisCourant).reduce((s, f) => s + Number(f.montant_ttc || 0), 0);
+  const facturesMoisCourant = factures.filter((f) => new Date(f.created_at) >= debutMoisCourant);
+  const caMoisCourant = facturesMoisCourant.reduce((s, f) => s + Number(f.montant_ttc || 0), 0);
+  const rdvFactures = facturesMoisCourant.length;
+  const panierMoyen = rdvFactures ? Math.round(caMoisCourant / rdvFactures) : 0;
+  const heuresEconomisees = Math.floor((aiStats?.tempsEconomiseMin || 0) / 60);
+  const minutesEconomisees = (aiStats?.tempsEconomiseMin || 0) % 60;
+  const valeurRecuperee = Math.round(((aiStats?.tempsEconomiseMin || 0) / 60) * (aiStats?.tarifHoraireAdmin || 0));
 
   return (
     <div className="space-y-5">
       <GarageIdentityCard garageData={garageData} />
 
       {priorityItems.length > 0 ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 overflow-hidden">
-          <div className="px-5 pt-4 pb-2 flex items-center gap-2.5">
-            <AlertTriangle size={17} className="text-amber-700" />
-            <div className="text-sm font-semibold text-amber-950">{priorityItems.length} chose{priorityItems.length > 1 ? "s" : ""} à traiter</div>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 flex items-center gap-4 flex-wrap">
+          <div className="flex-1 min-w-[220px]">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={17} className="text-amber-700" />
+              <div className="text-sm font-semibold text-amber-950">{priorityItems.length} chose{priorityItems.length > 1 ? "s" : ""} à traiter</div>
+            </div>
+            <div className="text-[12.5px] text-amber-800 mt-1">Tout est regroupé ici — plus besoin de vérifier plusieurs onglets.</div>
           </div>
-          <div>
+          <div className="flex gap-2 flex-wrap">
             {priorityItems.map((item) => (
-              <div key={item.key} className="flex items-center justify-between gap-4 px-5 py-3 border-t border-amber-200/60">
-                <div className="min-w-0">
-                  <div className="text-[13.5px] font-medium text-amber-950">{item.label}</div>
-                  <div className="text-[12.5px] text-amber-800">{item.note}</div>
-                </div>
-                <button onClick={() => setView(item.target)} className="shrink-0 text-[13px] font-semibold px-4 py-2 rounded-xl bg-white border border-amber-200 text-amber-800">{item.action}</button>
+              <div key={item.key} className="flex items-center gap-1.5 bg-white border border-amber-200 rounded-xl px-3 py-1.5 text-[12.5px] font-semibold text-amber-900">
+                <span className="bg-amber-100 text-amber-700 rounded-full min-w-[18px] h-[18px] flex items-center justify-center text-[11px] font-bold">{item.count}</span>
+                {item.shortLabel}
               </div>
             ))}
           </div>
+          <button onClick={() => setView(priorityItems[0].target)} className="shrink-0 text-[13px] font-semibold px-4 py-2.5 rounded-xl text-white" style={{ backgroundColor: ACCENT }}>
+            Traiter maintenant →
+          </button>
         </div>
       ) : (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 flex items-center gap-2.5">
@@ -685,7 +692,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
         <div className="flex divide-x divide-slate-100 -mx-1 overflow-x-auto">
           {stageCounts.map((stage) => (
             <div key={stage.key} className="flex-1 min-w-[86px] text-center px-2 py-1.5">
-              <div className="text-[19px] font-bold tabular-nums" style={{ color: stage.count > 0 ? stage.color : "#CBD5E1" }}>{stage.count}</div>
+              <div className="text-[19px] font-bold tabular-nums" style={{ color: stage.count > 0 ? stage.glanceColor : "#CBD5E1" }}>{stage.count}</div>
               <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-0.5">{stage.label}</div>
             </div>
           ))}
@@ -703,10 +710,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
               Voir l'agenda complet <ChevronRight size={14} />
             </button>
           </div>
-          {todayAppts.length === 0 ? (
-            <div className="px-5 py-8 text-center text-slate-400 text-[13px]">Aucun rendez-vous prévu aujourd'hui.</div>
-          ) : (
-            <div className="py-2">
+          <div className="py-2">
               {heuresGrille.map((h) => {
                 const apptsAtHour = todayAppts.filter((a) => a.debut?.slice(0, 2) === h.slice(0, 2));
                 const currentHour = String(new Date().getHours()).padStart(2, "0");
@@ -721,10 +725,9 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
                       ) : (
                         <div className="space-y-1.5 py-0.5">
                           {apptsAtHour.map((a) => {
-                            const colors = catColor(a.categorie);
                             return (
-                              <button key={a.id} onClick={() => onSelectAppt(a)} className="w-full text-left rounded-xl px-3 py-2 flex items-center gap-3 flex-wrap" style={{ backgroundColor: colors.bg, borderLeft: `3px solid ${colors.bar}` }}>
-                                <div className="text-[13px] font-semibold" style={{ color: colors.text }}>{a.client}</div>
+                              <button key={a.id} onClick={() => onSelectAppt(a)} className="w-full text-left rounded-xl px-3 py-2 flex items-center gap-3 flex-wrap" style={{ backgroundColor: ACCENT_SOFT, borderLeft: `3px solid ${ACCENT}` }}>
+                                <div className="text-[13px] font-semibold" style={{ color: NAVY }}>{a.client}</div>
                                 <div className="text-[12.5px] text-slate-500">{a.vehicule} · {a.prestation}</div>
                                 <Badge tone={STATUT_TONE[a.statut] || "slate"}>{a.statut}</Badge>
                               </button>
@@ -736,14 +739,25 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
                   </div>
                 );
               })}
-            </div>
-          )}
+          </div>
         </div>
 
-        <div className="flex flex-col gap-4">
-          <StatCard label="Chiffre d'affaires du mois" value={`${caMoisCourant.toLocaleString("fr-FR")} €`} icon={CircleDollarSign} />
-          <StatCard label="RDV aujourd'hui" value={todayAppts.length} icon={Calendar} />
-          <StatCard label="Clients" value={stats.clients} icon={Users} />
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+          <div className="font-semibold text-slate-900 text-[14.5px] mb-3">Ce mois-ci</div>
+          <div className="text-[26px] font-bold text-slate-900 tracking-tight tabular-nums">{caMoisCourant.toLocaleString("fr-FR")} €</div>
+          <div className="text-[12px] text-slate-500 mt-0.5 mb-3">Chiffre d'affaires</div>
+          <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
+            <span className="text-slate-500">Temps gagné aujourd'hui</span>
+            <span className="font-semibold text-slate-900">{valeurRecuperee} € <span className="text-slate-400 font-normal">({heuresEconomisees}h{minutesEconomisees ? minutesEconomisees : ""})</span></span>
+          </div>
+          <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
+            <span className="text-slate-500">RDV facturés</span>
+            <span className="font-semibold text-slate-900">{rdvFactures}</span>
+          </div>
+          <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
+            <span className="text-slate-500">Panier moyen</span>
+            <span className="font-semibold text-slate-900">{panierMoyen ? `${panierMoyen} €` : "—"}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -4303,7 +4317,7 @@ if (updateError) {
         )}
 
         <div className="p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} />}
+          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
