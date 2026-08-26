@@ -55,6 +55,16 @@ const NAVY_SOFT = "#16264A";
 const ACCENT = "#3D6BE0";
 const ACCENT_SOFT = "#EAF0FF";
 const BG = "#F5F7FA";
+// Thème sombre navy — appliqué pour l'instant à Aujourd'hui + bandeau
+const DARK_BG = "#0B1120";
+const DARK_PANEL = "#141C2E";
+const DARK_PANEL_SOFT = "#101827";
+const DARK_LINE = "#263043";
+const DARK_TEXT = "#EEF2F8";
+const DARK_TEXT_SOFT = "#97A3BE";
+const DARK_TEXT_FAINT = "#6B7690";
+const DARK_ACCENT = "#7C9CF0";
+const DARK_ACCENT_SOFT = "#1B2740";
 const DEFAULT_GARAGE_ID = "bcd7f692-1c28-435c-87d1-92f84aa0e6bb";
 const APP_TIME_ZONE = "Europe/Paris";
 const WORKSHOP_STAGES = [
@@ -358,20 +368,20 @@ function Toggle({ checked }) {
 function GarageIdentityCard({ garageData = garage }) {
   const openState = getGarageOpenState(garageData);
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col sm:flex-row sm:items-center gap-5">
-      <div className="w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 border-2 border-dashed" style={{ borderColor: "#CBD5E1", backgroundColor: "#F8FAFC" }} title="Emplacement du logo du garage">
-        <Wrench size={22} className="text-slate-400" />
+    <div className="rounded-2xl border shadow-sm p-5 flex flex-col sm:flex-row sm:items-center gap-5" style={{ backgroundColor: DARK_PANEL, borderColor: DARK_LINE }}>
+      <div className="w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 border-2 border-dashed" style={{ borderColor: DARK_LINE, backgroundColor: DARK_PANEL_SOFT }} title="Emplacement du logo du garage">
+        <Wrench size={22} style={{ color: DARK_TEXT_FAINT }} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="text-lg font-semibold text-slate-900">{garageData.nom_garage}</div>
+          <div className="text-lg font-semibold" style={{ color: DARK_TEXT }}>{garageData.nom_garage}</div>
           <Badge tone={openState.open ? "green" : "red"}>
             {openState.open ? "🟢 Ouvert maintenant" : "🔴 Fermé actuellement"}
           </Badge>
         </div>
         <div className="flex items-center gap-4 mt-1.5 flex-wrap">
-          <span className="flex items-center gap-1.5 text-[13px] text-slate-500"><MapPin size={13} /> {garageData.adresse}</span>
-          <span className="flex items-center gap-1.5 text-[13px] text-slate-500"><Clock size={13} /> {openState.label}</span>
+          <span className="flex items-center gap-1.5 text-[13px]" style={{ color: DARK_TEXT_SOFT }}><MapPin size={13} /> {garageData.adresse}</span>
+          <span className="flex items-center gap-1.5 text-[13px]" style={{ color: DARK_TEXT_SOFT }}><Clock size={13} /> {openState.label}</span>
         </div>
       </div>
     </div>
@@ -655,18 +665,18 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
       <GarageIdentityCard garageData={garageData} />
 
       {priorityItems.length > 0 ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 flex items-center gap-4 flex-wrap">
+        <div className="rounded-2xl border p-5 flex items-center gap-4 flex-wrap" style={{ borderColor: "#3D3316", backgroundColor: "#241D0C" }}>
           <div className="flex-1 min-w-[220px]">
             <div className="flex items-center gap-2">
-              <AlertTriangle size={17} className="text-amber-700" />
-              <div className="text-sm font-semibold text-amber-950">{priorityItems.length} chose{priorityItems.length > 1 ? "s" : ""} à traiter</div>
+              <AlertTriangle size={17} style={{ color: "#F5B84E" }} />
+              <div className="text-sm font-semibold" style={{ color: "#FCEBC8" }}>{priorityItems.length} chose{priorityItems.length > 1 ? "s" : ""} à traiter</div>
             </div>
-            <div className="text-[12.5px] text-amber-800 mt-1">Tout est regroupé ici — plus besoin de vérifier plusieurs onglets.</div>
+            <div className="text-[12.5px] mt-1" style={{ color: "#D9B77B" }}>Tout est regroupé ici — plus besoin de vérifier plusieurs onglets.</div>
           </div>
           <div className="flex gap-2 flex-wrap">
             {priorityItems.map((item) => (
-              <div key={item.key} className="flex items-center gap-1.5 bg-white border border-amber-200 rounded-xl px-3 py-1.5 text-[12.5px] font-semibold text-amber-900">
-                <span className="bg-amber-100 text-amber-700 rounded-full min-w-[18px] h-[18px] flex items-center justify-center text-[11px] font-bold">{item.count}</span>
+              <div key={item.key} className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12.5px] font-semibold" style={{ backgroundColor: "#2E2610", border: "1px solid #3D3316", color: "#FCEBC8" }}>
+                <span className="rounded-full min-w-[18px] h-[18px] flex items-center justify-center text-[11px] font-bold" style={{ backgroundColor: "#3D3316", color: "#F5B84E" }}>{item.count}</span>
                 {item.shortLabel}
               </div>
             ))}
@@ -676,37 +686,37 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
           </button>
         </div>
       ) : (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 flex items-center gap-2.5">
-          <Check size={17} className="text-emerald-700" />
-          <div className="text-sm font-medium text-emerald-900">Rien à traiter pour l'instant — tout est à jour.</div>
+        <div className="rounded-2xl border px-5 py-4 flex items-center gap-2.5" style={{ borderColor: "#1D3A2B", backgroundColor: "#10241A" }}>
+          <Check size={17} style={{ color: "#4ADE80" }} />
+          <div className="text-sm font-medium" style={{ color: "#BBF7D0" }}>Rien à traiter pour l'instant — tout est à jour.</div>
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+      <div className="rounded-2xl border shadow-sm p-5" style={{ backgroundColor: DARK_PANEL, borderColor: DARK_LINE }}>
         <div className="flex items-center justify-between mb-3.5">
-          <div className="font-semibold text-slate-900 text-[14.5px]">Flux atelier — en ce moment</div>
-          <button onClick={() => setView("atelier")} className="text-[13px] font-medium flex items-center gap-1" style={{ color: ACCENT }}>
+          <div className="font-semibold text-[14.5px]" style={{ color: DARK_TEXT }}>Flux atelier — en ce moment</div>
+          <button onClick={() => setView("atelier")} className="text-[13px] font-medium flex items-center gap-1" style={{ color: DARK_ACCENT }}>
             Ouvrir l'atelier <ChevronRight size={14} />
           </button>
         </div>
-        <div className="flex divide-x divide-slate-100 -mx-1 overflow-x-auto">
-          {stageCounts.map((stage) => (
-            <div key={stage.key} className="flex-1 min-w-[86px] text-center px-2 py-1.5">
-              <div className="text-[19px] font-bold tabular-nums" style={{ color: stage.count > 0 ? stage.glanceColor : "#CBD5E1" }}>{stage.count}</div>
-              <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-0.5">{stage.label}</div>
+        <div className="flex -mx-1 overflow-x-auto" style={{ borderColor: DARK_LINE }}>
+          {stageCounts.map((stage, idx) => (
+            <div key={stage.key} className="flex-1 min-w-[86px] text-center px-2 py-1.5" style={{ borderLeft: idx > 0 ? `1px solid ${DARK_LINE}` : "none" }}>
+              <div className="text-[19px] font-bold tabular-nums" style={{ color: stage.count > 0 ? stage.glanceColor : DARK_TEXT_FAINT }}>{stage.count}</div>
+              <div className="text-[10px] uppercase tracking-wide mt-0.5" style={{ color: DARK_TEXT_FAINT }}>{stage.label}</div>
             </div>
           ))}
         </div>
         {mecaniciensActifs.length === 0 && (
-          <div className="mt-3 text-[12px] text-slate-400">Ajoutez vos mécaniciens dans Paramètres pour suivre leur charge de travail.</div>
+          <div className="mt-3 text-[12px]" style={{ color: DARK_TEXT_FAINT }}>Ajoutez vos mécaniciens dans Paramètres pour suivre leur charge de travail.</div>
         )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-            <div className="font-semibold text-slate-900 text-[15px]">Votre journée</div>
-            <button onClick={() => setView("agenda")} className="text-[13px] font-medium flex items-center gap-1" style={{ color: ACCENT }}>
+        <div className="lg:col-span-2 rounded-2xl border shadow-sm overflow-hidden" style={{ backgroundColor: DARK_PANEL, borderColor: DARK_LINE }}>
+          <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: DARK_LINE }}>
+            <div className="font-semibold text-[15px]" style={{ color: DARK_TEXT }}>Votre journée</div>
+            <button onClick={() => setView("agenda")} className="text-[13px] font-medium flex items-center gap-1" style={{ color: DARK_ACCENT }}>
               Voir l'agenda complet <ChevronRight size={14} />
             </button>
           </div>
@@ -717,18 +727,18 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
                 const isNow = h.slice(0, 2) === currentHour;
                 return (
                   <div key={h} className="flex gap-3 px-5">
-                    <div className="w-12 shrink-0 text-[11.5px] text-slate-400 pt-3">{h}</div>
-                    <div className="flex-1 border-l-2 pl-4 pb-3 relative" style={{ borderColor: "#EEF1F6" }}>
-                      <span className="absolute -left-[5px] top-[15px] w-2 h-2 rounded-full" style={{ backgroundColor: isNow ? ACCENT : "#E2E8F0", boxShadow: isNow ? `0 0 0 4px ${ACCENT_SOFT}` : "none" }} />
+                    <div className="w-12 shrink-0 text-[11.5px] pt-3" style={{ color: DARK_TEXT_FAINT }}>{h}</div>
+                    <div className="flex-1 border-l-2 pl-4 pb-3 relative" style={{ borderColor: DARK_LINE }}>
+                      <span className="absolute -left-[5px] top-[15px] w-2 h-2 rounded-full" style={{ backgroundColor: isNow ? DARK_ACCENT : DARK_LINE, boxShadow: isNow ? `0 0 0 4px ${DARK_ACCENT_SOFT}` : "none" }} />
                       {apptsAtHour.length === 0 ? (
-                        <div className="text-[12px] text-slate-300 py-2.5">Créneau libre</div>
+                        <div className="text-[12px] py-2.5" style={{ color: DARK_TEXT_FAINT }}>Créneau libre</div>
                       ) : (
                         <div className="space-y-1.5 py-0.5">
                           {apptsAtHour.map((a) => {
                             return (
-                              <button key={a.id} onClick={() => onSelectAppt(a)} className="w-full text-left rounded-xl px-3 py-2 flex items-center gap-3 flex-wrap" style={{ backgroundColor: ACCENT_SOFT, borderLeft: `3px solid ${ACCENT}` }}>
-                                <div className="text-[13px] font-semibold" style={{ color: NAVY }}>{a.client}</div>
-                                <div className="text-[12.5px] text-slate-500">{a.vehicule} · {a.prestation}</div>
+                              <button key={a.id} onClick={() => onSelectAppt(a)} className="w-full text-left rounded-xl px-3 py-2 flex items-center gap-3 flex-wrap" style={{ backgroundColor: DARK_ACCENT_SOFT, borderLeft: `3px solid ${DARK_ACCENT}` }}>
+                                <div className="text-[13px] font-semibold" style={{ color: DARK_TEXT }}>{a.client}</div>
+                                <div className="text-[12.5px]" style={{ color: DARK_TEXT_SOFT }}>{a.vehicule} · {a.prestation}</div>
                                 <Badge tone={STATUT_TONE[a.statut] || "slate"}>{a.statut}</Badge>
                               </button>
                             );
@@ -742,21 +752,21 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-          <div className="font-semibold text-slate-900 text-[14.5px] mb-3">Ce mois-ci</div>
-          <div className="text-[26px] font-bold text-slate-900 tracking-tight tabular-nums">{caMoisCourant.toLocaleString("fr-FR")} €</div>
-          <div className="text-[12px] text-slate-500 mt-0.5 mb-3">Chiffre d'affaires</div>
-          <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
-            <span className="text-slate-500">Temps gagné aujourd'hui</span>
-            <span className="font-semibold text-slate-900">{valeurRecuperee} € <span className="text-slate-400 font-normal">({heuresEconomisees}h{minutesEconomisees ? minutesEconomisees : ""})</span></span>
+        <div className="rounded-2xl border shadow-sm p-5" style={{ backgroundColor: DARK_PANEL, borderColor: DARK_LINE }}>
+          <div className="font-semibold text-[14.5px] mb-3" style={{ color: DARK_TEXT }}>Ce mois-ci</div>
+          <div className="text-[26px] font-bold tracking-tight tabular-nums" style={{ color: DARK_TEXT }}>{caMoisCourant.toLocaleString("fr-FR")} €</div>
+          <div className="text-[12px] mt-0.5 mb-3" style={{ color: DARK_TEXT_SOFT }}>Chiffre d'affaires</div>
+          <div className="flex items-center justify-between text-[13px] py-2 border-t" style={{ borderColor: DARK_LINE }}>
+            <span style={{ color: DARK_TEXT_SOFT }}>Temps gagné aujourd'hui</span>
+            <span className="font-semibold" style={{ color: DARK_TEXT }}>{valeurRecuperee} € <span className="font-normal" style={{ color: DARK_TEXT_FAINT }}>({heuresEconomisees}h{minutesEconomisees ? minutesEconomisees : ""})</span></span>
           </div>
-          <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
-            <span className="text-slate-500">RDV facturés</span>
-            <span className="font-semibold text-slate-900">{rdvFactures}</span>
+          <div className="flex items-center justify-between text-[13px] py-2 border-t" style={{ borderColor: DARK_LINE }}>
+            <span style={{ color: DARK_TEXT_SOFT }}>RDV facturés</span>
+            <span className="font-semibold" style={{ color: DARK_TEXT }}>{rdvFactures}</span>
           </div>
-          <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
-            <span className="text-slate-500">Panier moyen</span>
-            <span className="font-semibold text-slate-900">{panierMoyen ? `${panierMoyen} €` : "—"}</span>
+          <div className="flex items-center justify-between text-[13px] py-2 border-t" style={{ borderColor: DARK_LINE }}>
+            <span style={{ color: DARK_TEXT_SOFT }}>Panier moyen</span>
+            <span className="font-semibold" style={{ color: DARK_TEXT }}>{panierMoyen ? `${panierMoyen} €` : "—"}</span>
           </div>
         </div>
       </div>
@@ -4208,7 +4218,7 @@ if (updateError) {
   };
 
   return (
-    <div className="flex min-h-[800px] w-full font-sans" style={{ backgroundColor: BG }}>
+    <div className="flex min-h-[800px] w-full font-sans" style={{ backgroundColor: view === "aujourdhui" ? DARK_BG : BG }}>
       <aside className="w-60 shrink-0 py-5 px-3.5 hidden md:flex flex-col border-r border-slate-200" style={{ backgroundColor: "#fff" }}>
         <Logo />
         <nav className="mt-8 flex flex-col gap-4">
@@ -4254,14 +4264,14 @@ if (updateError) {
 />
 )}
       <main className="flex-1 min-w-0">
-        <div className="flex items-center justify-between px-5 md:px-8 py-5 border-b border-slate-200 bg-white">
+        <div className="flex items-center justify-between px-5 md:px-8 py-5 border-b" style={view === "aujourdhui" ? { backgroundColor: DARK_PANEL, borderColor: DARK_LINE } : { backgroundColor: "#fff", borderColor: "#E2E8F0" }}>
           <div className="flex items-center gap-3">
-            <button onClick={() => setMobileMenuOpen(true)} className="md:hidden -ml-1 p-1.5 rounded-lg text-slate-500 hover:bg-slate-100">
+            <button onClick={() => setMobileMenuOpen(true)} className="md:hidden -ml-1 p-1.5 rounded-lg" style={view === "aujourdhui" ? { color: DARK_TEXT_SOFT } : { color: "#64748B" }}>
               <Menu size={22} />
             </button>
             <div>
-              <div className="text-lg font-semibold text-slate-900">{titles[view]}</div>
-              <div className="text-[13px] text-slate-500">{garageData.nom_garage}</div>
+              <div className="text-lg font-semibold" style={view === "aujourdhui" ? { color: DARK_TEXT } : { color: "#0F172A" }}>{titles[view]}</div>
+              <div className="text-[13px]" style={view === "aujourdhui" ? { color: DARK_TEXT_SOFT } : { color: "#64748B" }}>{garageData.nom_garage}</div>
             </div>
           </div>
         </div>
