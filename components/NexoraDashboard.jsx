@@ -207,33 +207,13 @@ const aiStatsToday = {
 
 const navGroups = [
   {
-    label: "Vue d'ensemble",
+    label: "",
     items: [
-      { key: "dashboard", label: "Dashboard", icon: Home },
-      { key: "atelier", label: "Atelier en direct", icon: Wrench },
-      { key: "agenda", label: "Agenda", icon: Calendar },
-    ],
-  },
-  {
-    label: "À traiter",
-    items: [
-      { key: "valider", label: "Rendez-vous à valider", icon: Clock },
-      { key: "devis", label: "Devis", icon: ReceiptText },
-      { key: "demandes", label: "Demandes clients", icon: Inbox },
-    ],
-  },
-  {
-    label: "Gestion",
-    items: [
+      { key: "aujourdhui", label: "Aujourd'hui", icon: Home },
+      { key: "atelier", label: "Atelier", icon: Wrench },
       { key: "clients", label: "Clients", icon: Users },
-      { key: "factures", label: "Factures", icon: CircleDollarSign },
-      { key: "historique", label: "Historique", icon: CalendarClock },
-    ],
-  },
-  {
-    label: "Système",
-    items: [
-      { key: "verifier", label: "À vérifier", icon: AlertTriangle },
+      { key: "facturation", label: "Facturation", icon: ReceiptText, match: ["devis", "factures", "historique"] },
+      { key: "statistiques", label: "Statistiques", icon: TrendingUp },
       { key: "parametres", label: "Paramètres", icon: Settings },
     ],
   },
@@ -289,8 +269,8 @@ function Logo() {
     <div className="flex items-center gap-2.5 px-1">
       <img src="data:image/png;base64,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" alt="Nexora" className="w-9 h-9 object-contain shrink-0" />
       <div className="leading-tight">
-        <div className="text-white font-semibold text-[15px] tracking-tight">Nexora</div>
-        <div className="text-[11px]" style={{ color: "#8CA0C9" }}>Solutions</div>
+        <div className="font-semibold text-[15px] tracking-tight" style={{ color: NAVY }}>Nexora</div>
+        <div className="text-[11px] text-slate-400">Solutions</div>
       </div>
     </div>
   );
@@ -564,19 +544,14 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] })
 // =====================================================================================
 // VIEWS
 // =====================================================================================
-function DashboardView({ stats, propositions, setView, onSelectAppt, loading, rendezVous, demandes, clients, garageData, aiStats, timeline, automationEvents, factures = [], devisList = [], prestations = [] }) {
-  const [periode, setPeriode] = useState("30j");
-
+function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [] }) {
   if (loading) {
     return (
       <div className="space-y-6">
         <SkeletonCard h="h-24" />
         <SkeletonCard h="h-28" />
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <SkeletonCard h="h-24" /><SkeletonCard h="h-24" /><SkeletonCard h="h-24" /><SkeletonCard h="h-24" />
-        </div>
+        <SkeletonCard h="h-24" />
         <SkeletonCard h="h-72" />
-        <SkeletonCard h="h-32" />
       </div>
     );
   }
@@ -589,9 +564,8 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
   const todayAppts = upcomingAppts.filter((r) => r.date_key === todayKey);
 
   const prestationById = Object.fromEntries(prestations.map((p) => [p.id, p]));
-  const rdvById = Object.fromEntries(rendezVous.map((r) => [r.id, r]));
 
-  // ---- File de priorites unifiee -------------------------------------------------
+  // ---- File de priorites unifiee (Doctolib/Planity : tout au meme endroit) -------
   const oneYearAgo = new Date(now);
   oneYearAgo.setFullYear(now.getFullYear() - 1);
   const dormantClients = clients.filter((client) => {
@@ -605,8 +579,20 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
   });
   const potentielPropositions = propositions.reduce((sum, p) => sum + Number(prestationById[p.prestation_id]?.prix_ht || 0), 0);
   const urgentRequests = stats.urgent || 0;
+  const demandesNouvelles = demandes.filter((d) => d.statut === "nouveau");
+  const devisEnAttente = devisList.filter((d) => d.statut === "en_attente");
 
   const priorityItems = [];
+  if (demandesNouvelles.length) {
+    priorityItems.push({
+      key: "demandes_nouvelles",
+      weight: 5,
+      label: `${demandesNouvelles.length} nouvelle${demandesNouvelles.length > 1 ? "s" : ""} demande${demandesNouvelles.length > 1 ? "s" : ""} client`,
+      note: urgentRequests ? `dont ${urgentRequests} urgente${urgentRequests > 1 ? "s" : ""}` : "À qualifier",
+      action: "Traiter",
+      target: "demandes",
+    });
+  }
   if (propositions.length) {
     priorityItems.push({
       key: "propositions",
@@ -617,14 +603,14 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
       target: "valider",
     });
   }
-  if (urgentRequests) {
+  if (devisEnAttente.length) {
     priorityItems.push({
-      key: "urgentes",
-      weight: 5,
-      label: `${urgentRequests} demande${urgentRequests > 1 ? "s" : ""} urgente${urgentRequests > 1 ? "s" : ""}`,
-      note: "À traiter en priorité",
-      action: "Voir",
-      target: "demandes",
+      key: "devis_attente",
+      weight: 3,
+      label: `${devisEnAttente.length} devis en attente`,
+      note: "À valider ou ajuster",
+      action: "Traiter",
+      target: "devis",
     });
   }
   if (technicalControl.length) {
@@ -648,6 +634,111 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
     });
   }
   priorityItems.sort((a, b) => b.weight - a.weight);
+
+  // ---- Aperçu atelier du jour ------------------------------------------------------
+  const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
+  const stageCounts = WORKSHOP_STAGES.map((stage) => ({
+    ...stage,
+    count: todayAppts.filter((a) => (a.statut_atelier || "a_venir") === stage.key).length,
+  }));
+
+  // ---- Aperçu chiffre d'affaires (glance, le détail est dans Statistiques) --------
+  const debutMoisCourant = new Date(now.getFullYear(), now.getMonth(), 1);
+  const caMoisCourant = factures.filter((f) => new Date(f.created_at) >= debutMoisCourant).reduce((s, f) => s + Number(f.montant_ttc || 0), 0);
+
+  return (
+    <div className="space-y-5">
+      <GarageIdentityCard garageData={garageData} />
+
+      {priorityItems.length > 0 ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 overflow-hidden">
+          <div className="px-5 pt-4 pb-2 flex items-center gap-2.5">
+            <AlertTriangle size={17} className="text-amber-700" />
+            <div className="text-sm font-semibold text-amber-950">{priorityItems.length} chose{priorityItems.length > 1 ? "s" : ""} à traiter</div>
+          </div>
+          <div>
+            {priorityItems.map((item) => (
+              <div key={item.key} className="flex items-center justify-between gap-4 px-5 py-3 border-t border-amber-200/60">
+                <div className="min-w-0">
+                  <div className="text-[13.5px] font-medium text-amber-950">{item.label}</div>
+                  <div className="text-[12.5px] text-amber-800">{item.note}</div>
+                </div>
+                <button onClick={() => setView(item.target)} className="shrink-0 text-[13px] font-semibold px-4 py-2 rounded-xl bg-white border border-amber-200 text-amber-800">{item.action}</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 flex items-center gap-2.5">
+          <Check size={17} className="text-emerald-700" />
+          <div className="text-sm font-medium text-emerald-900">Rien à traiter pour l'instant — tout est à jour.</div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+        <div className="flex items-center justify-between mb-3.5">
+          <div className="font-semibold text-slate-900 text-[14.5px]">Flux atelier — en ce moment</div>
+          <button onClick={() => setView("atelier")} className="text-[13px] font-medium flex items-center gap-1" style={{ color: ACCENT }}>
+            Ouvrir l'atelier <ChevronRight size={14} />
+          </button>
+        </div>
+        <div className="flex divide-x divide-slate-100 -mx-1 overflow-x-auto">
+          {stageCounts.map((stage) => (
+            <div key={stage.key} className="flex-1 min-w-[86px] text-center px-2 py-1.5">
+              <div className="text-[19px] font-bold tabular-nums" style={{ color: stage.count > 0 ? stage.color : "#CBD5E1" }}>{stage.count}</div>
+              <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-0.5">{stage.label}</div>
+            </div>
+          ))}
+        </div>
+        {mecaniciensActifs.length === 0 && (
+          <div className="mt-3 text-[12px] text-slate-400">Ajoutez vos mécaniciens dans Paramètres pour suivre leur charge de travail.</div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+            <div className="font-semibold text-slate-900 text-[15px]">Votre journée</div>
+            <button onClick={() => setView("agenda")} className="text-[13px] font-medium flex items-center gap-1" style={{ color: ACCENT }}>
+              Voir l'agenda complet <ChevronRight size={14} />
+            </button>
+          </div>
+          {todayAppts.length === 0 ? (
+            <div className="px-5 py-8 text-center text-slate-400 text-[13px]">Aucun rendez-vous prévu aujourd'hui.</div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {todayAppts.slice(0, 6).map((a) => {
+                const colors = catColor(a.categorie);
+                return (
+                  <button key={a.id} onClick={() => onSelectAppt(a)} className="w-full px-5 py-3.5 flex items-center gap-4 hover:bg-slate-50/70 text-left">
+                    <div className="text-[13px] font-medium text-slate-500 w-24 shrink-0">{a.debut} - {a.fin}</div>
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colors.bar }} />
+                    <div className="text-sm text-slate-800">{a.vehicule}</div>
+                    <div className="text-sm text-slate-500">{a.client}</div>
+                    <div className="text-[13px] text-slate-400">·</div>
+                    <div className="text-sm text-slate-500 flex-1">{a.prestation}</div>
+                    <Badge tone={STATUT_TONE[a.statut] || "slate"}>{a.statut}</Badge>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-4">
+          <StatCard label="Chiffre d'affaires du mois" value={`${caMoisCourant.toLocaleString("fr-FR")} €`} icon={CircleDollarSign} />
+          <StatCard label="RDV aujourd'hui" value={todayAppts.length} icon={Calendar} />
+          <StatCard label="Clients" value={stats.clients} icon={Users} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatistiquesView({ garageData, aiStats, timeline, automationEvents, factures = [], devisList = [], rendezVous = [] }) {
+  const [periode, setPeriode] = useState("30j");
+  const now = new Date();
+  const rdvById = Object.fromEntries(rendezVous.map((r) => [r.id, r]));
 
   // ---- Revenus & Performance -----------------------------------------------------
   const periodeDays = { "7j": 7, "30j": 30, "12mois": 365 }[periode];
@@ -727,35 +818,6 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
 
   return (
     <div className="space-y-6">
-      <GarageIdentityCard garageData={garageData} />
-
-      {priorityItems.length > 0 && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 overflow-hidden">
-          <div className="px-5 pt-4 pb-2 flex items-center gap-2.5">
-            <AlertTriangle size={17} className="text-amber-700" />
-            <div className="text-sm font-semibold text-amber-950">À traiter en priorité</div>
-          </div>
-          <div>
-            {priorityItems.map((item) => (
-              <div key={item.key} className="flex items-center justify-between gap-4 px-5 py-3 border-t border-amber-200/60">
-                <div className="min-w-0">
-                  <div className="text-[13.5px] font-medium text-amber-950">{item.label}</div>
-                  <div className="text-[12.5px] text-amber-800">{item.note}</div>
-                </div>
-                <button onClick={() => setView(item.target)} className="shrink-0 text-[13px] font-semibold px-4 py-2 rounded-xl bg-white border border-amber-200 text-amber-800">{item.action}</button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <StatCard label="Demandes en attente" value={stats.pending} icon={Inbox} />
-        <StatCard label="RDV à valider" value={stats.toValidate} icon={Clock} note={potentielPropositions ? `${potentielPropositions.toFixed(0)}€ potentiels` : null} />
-        <StatCard label="RDV aujourd'hui" value={todayAppts.length} icon={Calendar} />
-        <StatCard label="Clients" value={stats.clients} icon={Users} />
-      </div>
-
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
@@ -886,35 +948,6 @@ function DashboardView({ stats, propositions, setView, onSelectAppt, loading, re
                 </div>
               ))}
             </div>
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <div className="font-semibold text-slate-900 text-[15px]">Aperçu du jour</div>
-          <button onClick={() => setView("agenda")} className="text-[13px] font-medium flex items-center gap-1" style={{ color: ACCENT }}>
-            Voir l'agenda complet <ChevronRight size={14} />
-          </button>
-        </div>
-        {todayAppts.length === 0 ? (
-          <div className="px-5 py-8 text-center text-slate-400 text-[13px]">Aucun rendez-vous prévu aujourd'hui.</div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {todayAppts.slice(0, 4).map((a) => {
-              const colors = catColor(a.categorie);
-              return (
-                <button key={a.id} onClick={() => onSelectAppt(a)} className="w-full px-5 py-3.5 flex items-center gap-4 hover:bg-slate-50/70 text-left">
-                  <div className="text-[13px] font-medium text-slate-500 w-24 shrink-0">{a.debut} - {a.fin}</div>
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colors.bar }} />
-                  <div className="text-sm text-slate-800">{a.vehicule}</div>
-                  <div className="text-sm text-slate-500">{a.client}</div>
-                  <div className="text-[13px] text-slate-400">·</div>
-                  <div className="text-sm text-slate-500 flex-1">{a.prestation}</div>
-                  <Badge tone={STATUT_TONE[a.statut] || "slate"}>{a.statut}</Badge>
-                </button>
-              );
-            })}
           </div>
         )}
       </div>
@@ -1360,6 +1393,26 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
           <button onClick={onClose} className="text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">Annuler</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function FacturationView({ view, setView, devisList, clients, prestations, garageData, onAcceptDevis, onRefuseDevis, onUpdateMontant, onCreerDevis, onCreerClient, rendezVous, factures, onGenererFacture, onMarquerPayee, onSauvegarderFacture, garageId }) {
+  const tabs = [
+    ["devis", "Devis"],
+    ["factures", "Factures"],
+    ["historique", "Historique"],
+  ];
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1.5 bg-slate-100 rounded-[10px] p-[3px] w-fit">
+        {tabs.map(([key, label]) => (
+          <button key={key} onClick={() => setView(key)} className="text-[13px] font-medium px-4 py-1.5 rounded-lg" style={view === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>{label}</button>
+        ))}
+      </div>
+      {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} />}
+      {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={onGenererFacture} onMarquerPayee={onMarquerPayee} onSauvegarder={onSauvegarderFacture} />}
+      {view === "historique" && <HistoriqueView devisList={devisList} garageId={garageId} />}
     </div>
   );
 }
@@ -2650,6 +2703,7 @@ const PARAMETRES_ONGLETS = [
   ["notifications", "Notifications"],
   ["integrations", "Intégrations"],
   ["apparence", "Apparence"],
+  ["alertes", "Alertes"],
 ];
 
 const TYPES_NOTIFICATIONS = [
@@ -2671,7 +2725,7 @@ const THEMES_DASHBOARD = [
   { key: "automatique", label: "Automatique", description: "S'adapte aux réglages de l'appareil." },
 ];
 
-function ParametresView({ garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif }) {
+function ParametresView({ garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, erreurs = [], onResoudre }) {
   const [onglet, setOnglet] = useState("garage");
   const [newPrestation, setNewPrestation] = useState({ nom: "", categorie: "entretien", duree_minutes: 60 });
   const [newMecanicienNom, setNewMecanicienNom] = useState("");
@@ -2704,7 +2758,10 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
 
     <div className="flex flex-wrap gap-1.5 bg-slate-100 rounded-[10px] p-[3px] w-fit">
       {PARAMETRES_ONGLETS.map(([key, label]) => (
-        <button key={key} type="button" onClick={() => setOnglet(key)} className="text-[13px] font-medium px-3.5 py-1.5 rounded-lg" style={onglet === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>{label}</button>
+        <button key={key} type="button" onClick={() => setOnglet(key)} className="flex items-center gap-1.5 text-[13px] font-medium px-3.5 py-1.5 rounded-lg" style={onglet === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>
+          {label}
+          {key === "alertes" && erreurs.length > 0 && <span className="text-[10.5px] font-bold text-white rounded-full min-w-[16px] h-4 flex items-center justify-center px-1" style={{ backgroundColor: "#DC2626" }}>{erreurs.length}</span>}
+        </button>
       ))}
     </div>
 
@@ -2784,6 +2841,12 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
           </div>
           <div className="mt-4 rounded-xl bg-slate-50 p-3 text-[12.5px] text-slate-600">Votre choix est enregistré dès maintenant. L'habillage visuel complet du thème sombre sur l'ensemble du dashboard est encore en cours de développement.</div>
         </SettingsSection>
+      </div>
+    )}
+
+    {onglet === "alertes" && (
+      <div className="grid grid-cols-1 gap-5">
+        <ErreursView erreurs={erreurs} onResoudre={onResoudre} />
       </div>
     )}
   </div>;
@@ -2953,7 +3016,7 @@ function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting,
 // APP SHELL
 // =====================================================================================
 function NexoraDashboardInner({ garageId }) {
-  const [view, setView] = useState("dashboard");
+  const [view, setView] = useState("aujourdhui");
   const [stats, setStats] = useState({
   pending: 0,
   toValidate: 0,
@@ -4100,7 +4163,7 @@ if (updateError) {
   };
 
   const titles = {
-    dashboard: "Dashboard",
+    aujourdhui: "Aujourd'hui",
     atelier: "Atelier en direct",
     agenda: "Agenda",
     valider: "Rendez-vous à valider",
@@ -4109,24 +4172,26 @@ if (updateError) {
     devis: "Devis",
     verifier: "Erreurs à vérifier",
     factures: "Factures",
+    facturation: "Facturation",
+    statistiques: "Statistiques",
     historique: "Historique",
     parametres: "Paramètres",
   };
 
   return (
     <div className="flex min-h-[800px] w-full font-sans" style={{ backgroundColor: BG }}>
-      <aside className="w-60 shrink-0 py-5 px-3.5 hidden md:flex flex-col" style={{ backgroundColor: NAVY }}>
+      <aside className="w-60 shrink-0 py-5 px-3.5 hidden md:flex flex-col border-r border-slate-200" style={{ backgroundColor: "#fff" }}>
         <Logo />
         <nav className="mt-8 flex flex-col gap-4">
           {navGroups.map((group) => (
-            <div key={group.label}>
-              <div className="px-3 mb-1 text-[10.5px] font-semibold tracking-wide uppercase" style={{ color: "#5C6D96" }}>{group.label}</div>
+            <div key={group.label || "main"}>
+              {group.label && <div className="px-3 mb-1 text-[10.5px] font-semibold tracking-wide uppercase text-slate-400">{group.label}</div>}
               <div className="flex flex-col gap-1">
                 {group.items.map((item) => {
                   const Icon = item.icon;
-                  const active = view === item.key;
+                  const active = item.match ? item.match.includes(view) : view === item.key;
                   return (
-                    <button key={item.key} onClick={() => setView(item.key)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium transition-colors" style={active ? { backgroundColor: NAVY_SOFT, color: "#fff" } : { color: "#93A4C7" }}>
+                    <button key={item.key} onClick={() => setView(item.match ? item.match[0] : item.key)} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium transition-colors" style={active ? { backgroundColor: ACCENT_SOFT, color: ACCENT } : { color: "#64748B" }}>
                       <Icon size={16} />
                       {item.label}
                     </button>
@@ -4136,14 +4201,14 @@ if (updateError) {
             </div>
           ))}
         </nav>
-        <div className="mt-auto pt-4 border-t" style={{ borderColor: "#22335C" }}>
+        <div className="mt-auto pt-4 border-t border-slate-200">
           <div className="flex items-center gap-2.5 px-2 py-2">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-[12.5px] font-semibold text-white shrink-0" style={{ backgroundColor: ACCENT }}>GD</div>
             <div className="leading-tight flex-1 min-w-0">
-              <div className="text-[13px] font-medium text-white truncate">{garageData.nom_garage}</div>
-              <div className="text-[11.5px] truncate" style={{ color: "#8CA0C9" }}>{garageData.adresse}</div>
+              <div className="text-[13px] font-medium truncate" style={{ color: NAVY }}>{garageData.nom_garage}</div>
+              <div className="text-[11.5px] truncate text-slate-400">{garageData.adresse}</div>
             </div>
-            <button onClick={() => supabase.auth.signOut()} className="shrink-0 p-1.5 rounded-lg text-[#8CA0C9] hover:text-white hover:bg-white/10" title="Se déconnecter">
+            <button onClick={() => supabase.auth.signOut()} className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100" title="Se déconnecter">
               <LogOut size={16} />
             </button>
           </div>
@@ -4175,27 +4240,27 @@ if (updateError) {
         {mobileMenuOpen && (
           <div className="fixed inset-0 z-50 md:hidden">
             <div className="absolute inset-0 bg-black/40" onClick={() => setMobileMenuOpen(false)} />
-            <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw] py-5 px-3.5 flex flex-col overflow-y-auto" style={{ backgroundColor: NAVY }}>
+            <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw] py-5 px-3.5 flex flex-col overflow-y-auto bg-white">
               <div className="flex items-center justify-between px-1">
                 <Logo />
-                <button onClick={() => setMobileMenuOpen(false)} className="p-1.5 rounded-lg text-white/70 hover:bg-white/10">
+                <button onClick={() => setMobileMenuOpen(false)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
                   <X size={20} />
                 </button>
               </div>
               <nav className="mt-8 flex flex-col gap-4">
                 {navGroups.map((group) => (
-                  <div key={group.label}>
-                    <div className="px-3 mb-1 text-[10.5px] font-semibold tracking-wide uppercase" style={{ color: "#5C6D96" }}>{group.label}</div>
+                  <div key={group.label || "main"}>
+                    {group.label && <div className="px-3 mb-1 text-[10.5px] font-semibold tracking-wide uppercase text-slate-400">{group.label}</div>}
                     <div className="flex flex-col gap-1">
                       {group.items.map((item) => {
                         const Icon = item.icon;
-                        const active = view === item.key;
+                        const active = item.match ? item.match.includes(view) : view === item.key;
                         return (
                           <button
                             key={item.key}
-                            onClick={() => { setView(item.key); setMobileMenuOpen(false); }}
+                            onClick={() => { setView(item.match ? item.match[0] : item.key); setMobileMenuOpen(false); }}
                             className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium transition-colors"
-                            style={active ? { backgroundColor: NAVY_SOFT, color: "#fff" } : { color: "#93A4C7" }}
+                            style={active ? { backgroundColor: ACCENT_SOFT, color: ACCENT } : { color: "#64748B" }}
                           >
                             <Icon size={16} />
                             {item.label}
@@ -4206,14 +4271,14 @@ if (updateError) {
                   </div>
                 ))}
               </nav>
-              <div className="mt-auto pt-4 border-t" style={{ borderColor: "#22335C" }}>
+              <div className="mt-auto pt-4 border-t border-slate-200">
                 <div className="flex items-center gap-2.5 px-2 py-2">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-[12.5px] font-semibold text-white shrink-0" style={{ backgroundColor: ACCENT }}>GD</div>
                   <div className="leading-tight flex-1 min-w-0">
-                    <div className="text-[13px] font-medium text-white truncate">{garageData.nom_garage}</div>
-                    <div className="text-[11.5px] truncate" style={{ color: "#8CA0C9" }}>{garageData.adresse}</div>
+                    <div className="text-[13px] font-medium truncate" style={{ color: NAVY }}>{garageData.nom_garage}</div>
+                    <div className="text-[11.5px] truncate text-slate-400">{garageData.adresse}</div>
                   </div>
-                  <button onClick={() => supabase.auth.signOut()} className="shrink-0 p-1.5 rounded-lg text-[#8CA0C9] hover:text-white hover:bg-white/10" title="Se déconnecter">
+                  <button onClick={() => supabase.auth.signOut()} className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100" title="Se déconnecter">
                     <LogOut size={16} />
                   </button>
                 </div>
@@ -4223,13 +4288,31 @@ if (updateError) {
         )}
 
         <div className="p-5 md:p-8">
-          {view === "dashboard" && <DashboardView stats={stats} propositions={propositions} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} demandes={demandes} clients={clients} garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} prestations={prestations} />}
+          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} />}
+          {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
-          {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={handleAcceptDevis} onRefuse={handleRefuseDevis} onUpdateMontant={handleUpdateDevisMontant} onCreer={handleCreerDevis} onCreerClient={handleCreerClient} />}
-          {view === "historique" && <HistoriqueView devisList={devisList} garageId={garageId} />}
-          {view === "verifier" && <ErreursView erreurs={erreurs} onResoudre={handleResoudreErreur} />}
-          {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={handleGenererFacture} onMarquerPayee={handleMarquerFacturePayee} onSauvegarder={handleSauvegarderFacture} />}
+          {["devis", "factures", "historique"].includes(view) && (
+            <FacturationView
+              view={view}
+              setView={setView}
+              devisList={devisList}
+              clients={clients}
+              prestations={prestations}
+              garageData={garageData}
+              onAcceptDevis={handleAcceptDevis}
+              onRefuseDevis={handleRefuseDevis}
+              onUpdateMontant={handleUpdateDevisMontant}
+              onCreerDevis={handleCreerDevis}
+              onCreerClient={handleCreerClient}
+              rendezVous={rendezVous}
+              factures={factures}
+              onGenererFacture={handleGenererFacture}
+              onMarquerPayee={handleMarquerFacturePayee}
+              onSauvegarderFacture={handleSauvegarderFacture}
+              garageId={garageId}
+            />
+          )}
           {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} garageData={garageData} onConnectCalendar={connectGoogleCalendar} clients={clients} prestations={prestations} onCreerRdv={handleCreerRdvManuel} onCreerClient={handleCreerClient} />}
           {view === "demandes" && (
             <DemandesView
@@ -4239,7 +4322,7 @@ if (updateError) {
             />
           )}
           {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onToast={flashToast} />}
-          {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} />}
+          {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
         </div>
       </main>
 
