@@ -2852,7 +2852,22 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
 
     {onglet === "integrations" && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <SettingsSection title="Connexions"><SettingsRow label="Boîte Gmail" right={<Badge tone={garageData.gmail_connecte ? "green" : "slate"}>{garageData.gmail_connecte ? "Connectée" : "Non connectée"}</Badge>} /><SettingsRow label="Google Agenda" right={<Badge tone={garageData.google_agenda_connecte ? "green" : "amber"}>{garageData.google_agenda_connecte ? "Connecté" : "À connecter dans n8n"}</Badge>} /><div className="mt-3 text-[12px] text-slate-500">La connexion Google Calendar doit être autorisée dans le workflow n8n, puis son état peut être enregistré ici.</div></SettingsSection>
+        <SettingsSection title="Connexions">
+          <SettingsRow
+            label="Boîte Gmail"
+            right={
+              garageData.gmail_connecte ? (
+                <Badge tone="green">Connectée{garageData.gmail_adresse ? ` · ${garageData.gmail_adresse}` : ""}</Badge>
+              ) : (
+                <a href={`/api/auth/google/connect?garage_id=${garageData.id}`} className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg text-white inline-block" style={{ backgroundColor: ACCENT }}>
+                  Connecter ma boîte mail
+                </a>
+              )
+            }
+          />
+          <SettingsRow label="Google Agenda" right={<Badge tone={garageData.google_agenda_connecte ? "green" : "amber"}>{garageData.google_agenda_connecte ? "Connecté" : "À connecter dans n8n"}</Badge>} />
+          <div className="mt-3 text-[12px] text-slate-500">La connexion Gmail permet à Nexora de lire automatiquement les demandes de vos clients — aucune configuration technique de votre côté. La connexion Google Calendar doit encore être autorisée dans le workflow n8n.</div>
+        </SettingsSection>
         <SettingsSection title="Paiement en ligne (Stripe)">
           <StripeKeyField />
         </SettingsSection>
@@ -3571,6 +3586,17 @@ setPropositions(formattedPropositions);
     setToast({ message, tone });
     setTimeout(() => setToast(null), 2800);
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("email_connect");
+    if (!status) return;
+    if (status === "success") flashToast("Boîte mail connectée avec succès");
+    if (status === "error") flashToast("La connexion de la boîte mail a échoué, réessayez", "error");
+    params.delete("email_connect");
+    const query = params.toString();
+    window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
+  }, []);
 
   // Remplacer par : fetch(N8N_WEBHOOK_URL + '/rdv-accepte', { method: 'POST', body: JSON.stringify({ proposition_id: id, garage_id: garage.id }) })
   const handleAccept = async (id) => {
