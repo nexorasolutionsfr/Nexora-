@@ -28,7 +28,7 @@ create table if not exists public.garage_entitlements (
 alter table public.garage_entitlements enable row level security;
 revoke all on table public.garage_entitlements from anon;
 revoke insert, update, delete on table public.garage_entitlements from authenticated;
-grant select on table public.garage_entitlements to authenticated;
+grant select on table public.garage_entitlements to authenticated, service_role;
 
 -- A garage can see its purchased options, but never grant itself more options.
 create policy "Garage owner reads its entitlements"
