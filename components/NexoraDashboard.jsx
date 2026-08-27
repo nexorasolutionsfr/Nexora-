@@ -2763,6 +2763,8 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
   const [onglet, setOnglet] = useState("garage");
   const [newPrestation, setNewPrestation] = useState({ nom: "", categorie: "entretien", duree_minutes: 60 });
   const [newMecanicienNom, setNewMecanicienNom] = useState("");
+  const [gmailConnecting, setGmailConnecting] = useState(false);
+  const [gmailConnectError, setGmailConnectError] = useState("");
   const canauxNotifications = garageData.canaux_notifications && typeof garageData.canaux_notifications === "object" ? garageData.canaux_notifications : {};
   const choisirCanal = (typeKey, canalKey) => onGarageChange("canaux_notifications", { ...canauxNotifications, [typeKey]: canalKey });
   const themeActuel = garageData.theme || "clair";
@@ -2786,6 +2788,25 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
     if (!newPrestation.nom.trim()) return;
     onAddPrestation({ ...newPrestation, nom: newPrestation.nom.trim() });
     setNewPrestation({ nom: "", categorie: "entretien", duree_minutes: 60 });
+  };
+  const connecterGmail = async () => {
+    setGmailConnectError("");
+    setGmailConnecting(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const accessToken = data.session?.access_token;
+      if (!accessToken) throw new Error("Session expirée. Reconnectez-vous.");
+
+      const response = await fetch(`/api/auth/google/connect?garage_id=${encodeURIComponent(garageData.id)}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.url) throw new Error(payload.error || "Connexion Google indisponible");
+      window.location.assign(payload.url);
+    } catch (error) {
+      setGmailConnectError(error instanceof Error ? error.message : "Connexion Google indisponible");
+      setGmailConnecting(false);
+    }
   };
   return <div className="space-y-5">
     <div className="flex items-center justify-between flex-wrap gap-3"><div><div className="text-lg font-semibold text-slate-900">Paramètres du garage</div><div className="text-[13px] text-slate-500">Vos changements alimentent directement le dashboard et les automatisations.</div></div><button onClick={onSave} disabled={saving} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: ACCENT }}><Save size={15} />{saving ? "Enregistrement…" : "Enregistrer"}</button></div>
@@ -2859,12 +2880,13 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
               garageData.gmail_connecte ? (
                 <Badge tone="green">Connectée{garageData.gmail_adresse ? ` · ${garageData.gmail_adresse}` : ""}</Badge>
               ) : (
-                <a href={`/api/auth/google/connect?garage_id=${garageData.id}`} className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg text-white inline-block" style={{ backgroundColor: ACCENT }}>
-                  Connecter ma boîte mail
-                </a>
+                <button type="button" onClick={connecterGmail} disabled={gmailConnecting} className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg text-white inline-block disabled:opacity-60" style={{ backgroundColor: ACCENT }}>
+                  {gmailConnecting ? "Connexion…" : "Connecter ma boîte mail"}
+                </button>
               )
             }
           />
+          {gmailConnectError && <div className="mt-2 text-[12px] text-red-600">{gmailConnectError}</div>}
           <SettingsRow label="Google Agenda" right={<Badge tone={garageData.google_agenda_connecte ? "green" : "amber"}>{garageData.google_agenda_connecte ? "Connecté" : "À connecter dans n8n"}</Badge>} />
           <div className="mt-3 text-[12px] text-slate-500">La connexion Gmail permet à Nexora de lire automatiquement les demandes de vos clients — aucune configuration technique de votre côté. La connexion Google Calendar doit encore être autorisée dans le workflow n8n.</div>
         </SettingsSection>
