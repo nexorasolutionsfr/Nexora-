@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createGoogleOAuthState } from "@/lib/google-oauth-state";
+import { hasActiveGarageFeature } from "@/lib/garage-features";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 const SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
@@ -35,6 +36,19 @@ export async function GET(request: Request) {
 
   if (garageError || !garage) {
     return NextResponse.json({ error: "Garage non autorisé" }, { status: 403 });
+  }
+
+  const { data: entitlements, error: entitlementsError } = await supabaseAdmin
+    .from("garage_entitlements")
+    .select("active, trial_ends_at, enabled_features")
+    .eq("garage_id", garage.id)
+    .maybeSingle();
+
+  if (entitlementsError) {
+    return NextResponse.json({ error: "Droits du garage indisponibles" }, { status: 503 });
+  }
+  if (!hasActiveGarageFeature(entitlements, "gmail")) {
+    return NextResponse.json({ error: "Gmail n'est pas inclus dans votre offre Nexora" }, { status: 403 });
   }
 
   const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || "https://nexora-garage.vercel.app"}/api/auth/google/callback`;

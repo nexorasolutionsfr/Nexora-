@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyGoogleOAuthState } from "@/lib/google-oauth-state";
+import { hasActiveGarageFeature } from "@/lib/garage-features";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://nexora-garage.vercel.app";
@@ -40,6 +41,16 @@ export async function GET(request: Request) {
 
     if (garageError || !garage) {
       return errorRedirect(redirectBase, "authorization");
+    }
+
+    const { data: entitlements, error: entitlementsError } = await supabaseAdmin
+      .from("garage_entitlements")
+      .select("active, trial_ends_at, enabled_features")
+      .eq("garage_id", garage.id)
+      .maybeSingle();
+
+    if (entitlementsError || !hasActiveGarageFeature(entitlements, "gmail")) {
+      return errorRedirect(redirectBase, "gmail_entitlement");
     }
 
     const redirectUri = `${APP_URL}/api/auth/google/callback`;

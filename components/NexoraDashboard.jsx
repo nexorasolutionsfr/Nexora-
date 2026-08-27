@@ -1,5 +1,6 @@
 
 "use client"; import { supabase } from "@/lib/supabase";
+import { hasActiveGarageFeature } from "@/lib/garage-features";
 
 import React, { useState, useEffect } from "react";
 import {
@@ -212,8 +213,8 @@ const navGroups = [
       { key: "aujourdhui", label: "Aujourd'hui", icon: Home },
       { key: "atelier", label: "Atelier", icon: Wrench },
       { key: "clients", label: "Clients", icon: Users },
-      { key: "facturation", label: "Facturation", icon: ReceiptText, match: ["devis", "factures", "historique"] },
-      { key: "statistiques", label: "Statistiques", icon: TrendingUp },
+      { key: "facturation", label: "Facturation", icon: ReceiptText, match: ["devis", "factures", "historique"], requiredFeature: "invoicing" },
+      { key: "statistiques", label: "Statistiques", icon: TrendingUp, requiredFeature: "analytics" },
       { key: "parametres", label: "Paramètres", icon: Settings },
     ],
   },
@@ -295,6 +296,7 @@ function Badge({ children, tone = "amber" }) {
   const tones = {
     amber: { bg: "#FEF3E2", text: "#B45309" },
     green: { bg: "#E7F6EC", text: "#15803D" },
+    blue: { bg: "#EAF0FF", text: "#2748A6" },
     slate: { bg: "#F1F5F9", text: "#475569" },
     red: { bg: "#FDECEC", text: "#B91C1C" },
   };
@@ -2759,12 +2761,18 @@ const THEMES_DASHBOARD = [
   { key: "automatique", label: "Automatique", description: "S'adapte aux réglages de l'appareil." },
 ];
 
-function ParametresView({ garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, erreurs = [], onResoudre }) {
+function ParametresView({ garageData, entitlements, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, erreurs = [], onResoudre }) {
   const [onglet, setOnglet] = useState("garage");
   const [newPrestation, setNewPrestation] = useState({ nom: "", categorie: "entretien", duree_minutes: 60 });
   const [newMecanicienNom, setNewMecanicienNom] = useState("");
   const [gmailConnecting, setGmailConnecting] = useState(false);
   const [gmailConnectError, setGmailConnectError] = useState("");
+  const canUse = (feature) => hasActiveGarageFeature(entitlements, feature);
+  const canUseGmail = canUse("gmail");
+  const canUseCalendar = canUse("google_calendar");
+  const canUsePayment = canUse("online_payment");
+  const canUseAutomations = canUse("automations");
+  const availableNotificationChannels = CANAUX_NOTIFICATIONS.filter((channel) => channel.key === "email" || canUse(channel.key));
   const canauxNotifications = garageData.canaux_notifications && typeof garageData.canaux_notifications === "object" ? garageData.canaux_notifications : {};
   const choisirCanal = (typeKey, canalKey) => onGarageChange("canaux_notifications", { ...canauxNotifications, [typeKey]: canalKey });
   const themeActuel = garageData.theme || "clair";
@@ -2840,22 +2848,26 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
     {onglet === "notifications" && (
       <div className="grid grid-cols-1 gap-5">
         <SettingsSection title="Automatisation IA">
-          <button type="button" onClick={() => onGarageChange("automatisation_active", !garageData.automatisation_active)} className="w-full flex items-center justify-between py-1">
-            <div className="text-left pr-4">
-              <span className="text-sm text-slate-700 font-medium block">Réponse automatique aux demandes (email, WhatsApp)</span>
-              <span className="text-[12.5px] text-slate-500 block mt-0.5">Désactivé : rien n'est envoyé automatiquement, vous utilisez le dashboard à la main comme un carnet de RDV. Activé : l'IA répond et propose des créneaux, vous validez toujours avant l'envoi final.</span>
-            </div>
-            <Toggle checked={!!garageData.automatisation_active} />
-          </button>
+          {canUseAutomations ? (
+            <button type="button" onClick={() => onGarageChange("automatisation_active", !garageData.automatisation_active)} className="w-full flex items-center justify-between py-1">
+              <div className="text-left pr-4">
+                <span className="text-sm text-slate-700 font-medium block">Réponse automatique aux demandes</span>
+                <span className="text-[12.5px] text-slate-500 block mt-0.5">L'option est incluse dans votre offre. Vous pouvez la désactiver à tout moment.</span>
+              </div>
+              <Toggle checked={!!garageData.automatisation_active} />
+            </button>
+          ) : (
+            <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-[12.5px] text-slate-600">Mode pilote sécurisé : aucune réponse ni confirmation n'est envoyée automatiquement. Le garage garde la validation finale.</div>
+          )}
         </SettingsSection>
         <SettingsSection title="Canal d'envoi par type de notification">
-          <div className="text-[12.5px] text-slate-500 mb-4">Choisissez comment chaque notification est envoyée à vos clients. SMS et WhatsApp seront actifs dès que votre fournisseur (Twilio) sera configuré côté Nexora — vous pouvez déjà définir vos préférences.</div>
+          <div className="text-[12.5px] text-slate-500 mb-4">Seuls les canaux inclus dans votre offre sont disponibles. En mode pilote, l'email reste soumis à une validation humaine.</div>
           <div className="space-y-3">
             {TYPES_NOTIFICATIONS.map((type) => (
               <div key={type.key} className="flex items-center justify-between flex-wrap gap-2 py-2 border-b border-slate-100 last:border-0">
                 <span className="text-sm text-slate-700 font-medium">{type.label}</span>
                 <div className="flex gap-1.5">
-                  {CANAUX_NOTIFICATIONS.map((canal) => {
+                  {availableNotificationChannels.map((canal) => {
                     const actif = (canauxNotifications[type.key] || "email") === canal.key;
                     return (
                       <button key={canal.key} type="button" onClick={() => choisirCanal(type.key, canal.key)} className="text-[12.5px] font-medium px-3 py-1.5 rounded-full border" style={actif ? { backgroundColor: ACCENT, borderColor: ACCENT, color: "white" } : { borderColor: "#E2E8F0", color: "#475569" }}>
@@ -2873,8 +2885,8 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
 
     {onglet === "integrations" && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <SettingsSection title="Connexions">
-          <SettingsRow
+        {(canUseGmail || canUseCalendar) && <SettingsSection title="Connexions incluses">
+          {canUseGmail && <SettingsRow
             label="Boîte Gmail"
             right={
               garageData.gmail_connecte ? (
@@ -2885,14 +2897,15 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
                 </button>
               )
             }
-          />
+          />}
           {gmailConnectError && <div className="mt-2 text-[12px] text-red-600">{gmailConnectError}</div>}
-          <SettingsRow label="Google Agenda" right={<Badge tone={garageData.google_agenda_connecte ? "green" : "amber"}>{garageData.google_agenda_connecte ? "Connecté" : "À connecter dans n8n"}</Badge>} />
-          <div className="mt-3 text-[12px] text-slate-500">La connexion Gmail permet à Nexora de lire automatiquement les demandes de vos clients — aucune configuration technique de votre côté. La connexion Google Calendar doit encore être autorisée dans le workflow n8n.</div>
-        </SettingsSection>
-        <SettingsSection title="Paiement en ligne (Stripe)">
+          {canUseCalendar && <SettingsRow label="Google Agenda" right={<Badge tone={garageData.google_agenda_connecte ? "green" : "amber"}>{garageData.google_agenda_connecte ? "Connecté" : "À connecter"}</Badge>} />}
+          {canUseGmail && <div className="mt-3 text-[12px] text-slate-500">Connectez votre propre boîte Google sans communiquer votre mot de passe à Nexora.</div>}
+        </SettingsSection>}
+        {canUsePayment && <SettingsSection title="Paiement en ligne (Stripe)">
           <StripeKeyField />
-        </SettingsSection>
+        </SettingsSection>}
+        {!canUseGmail && !canUseCalendar && !canUsePayment && <div className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-500">Aucune connexion externe n'est incluse dans cette offre.</div>}
       </div>
     )}
 
@@ -3114,6 +3127,37 @@ function NexoraDashboardInner({ garageId }) {
   const [aiStats, setAiStats] = useState(aiStatsToday);
   const [activityTimeline, setActivityTimeline] = useState([]);
   const [automationEvents, setAutomationEvents] = useState([]);
+  const [entitlements, setEntitlements] = useState({ active: false, trial_ends_at: null, enabled_features: [], plan_code: null, loaded: false });
+
+  const canUse = (feature) => hasActiveGarageFeature(entitlements, feature);
+  const visibleNavGroups = navGroups
+    .map((group) => ({ ...group, items: group.items.filter((item) => !item.requiredFeature || canUse(item.requiredFeature)) }))
+    .filter((group) => group.items.length > 0);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from("garage_entitlements")
+      .select("plan_code, enabled_features, trial_ends_at, active")
+      .eq("garage_id", garageId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || !data) {
+          console.error("Droits Nexora indisponibles", error ? { code: error.code } : undefined);
+          setEntitlements({ active: false, trial_ends_at: null, enabled_features: [], plan_code: null, loaded: true });
+          return;
+        }
+        setEntitlements({ ...data, enabled_features: data.enabled_features || [], loaded: true });
+      });
+    return () => { cancelled = true; };
+  }, [garageId]);
+
+  useEffect(() => {
+    if (!entitlements.loaded) return;
+    if (["devis", "factures", "historique"].includes(view) && !canUse("invoicing")) setView("aujourdhui");
+    if (view === "statistiques" && !canUse("analytics")) setView("aujourdhui");
+  }, [entitlements, view]);
   
   useEffect(() => {
   async function loadRendezVous() {
@@ -4059,6 +4103,14 @@ if (updateError) {
 
   const saveGarageSettings = async () => {
     setSavingSettings(true);
+    const allowedNotificationChannels = new Set([
+      "email",
+      ...(canUse("sms") ? ["sms"] : []),
+      ...(canUse("whatsapp") ? ["whatsapp"] : []),
+    ]);
+    const safeNotificationChannels = Object.fromEntries(
+      Object.entries(garageData.canaux_notifications || {}).map(([type, channel]) => [type, allowedNotificationChannels.has(channel) ? channel : "email"])
+    );
     const update = {
       nom_garage: garageData.nom_garage,
       adresse: garageData.adresse || null,
@@ -4067,10 +4119,10 @@ if (updateError) {
       horaires: garageData.horaires,
       objectif_ca_mensuel: garageData.objectif_ca_mensuel || null,
       lien_avis_google: garageData.lien_avis_google || null,
-      numero_whatsapp: garageData.numero_whatsapp || null,
-      canaux_notifications: garageData.canaux_notifications || null,
+      numero_whatsapp: canUse("whatsapp") ? garageData.numero_whatsapp || null : null,
+      canaux_notifications: safeNotificationChannels,
       theme: garageData.theme || "clair",
-      automatisation_active: !!garageData.automatisation_active,
+      automatisation_active: canUse("automations") ? !!garageData.automatisation_active : false,
     };
     const { error } = await supabase.from("garages").update(update).eq("id", garageId);
     setSavingSettings(false);
@@ -4270,7 +4322,7 @@ if (updateError) {
       <aside className="w-60 shrink-0 py-5 px-3.5 hidden md:flex flex-col" style={{ backgroundColor: NAVY }}>
         <Logo dark />
         <nav className="mt-8 flex flex-col gap-4">
-          {navGroups.map((group) => (
+          {visibleNavGroups.map((group) => (
             <div key={group.label || "main"}>
               {group.label && <div className="px-3 mb-1 text-[10.5px] font-semibold tracking-wide uppercase" style={{ color: "#5C6B92" }}>{group.label}</div>}
               <div className="flex flex-col gap-1">
@@ -4326,6 +4378,7 @@ if (updateError) {
               <div className="text-[13px] text-slate-500">{garageData.nom_garage}</div>
             </div>
           </div>
+          {entitlements.loaded && entitlements.plan_code === "pilot" && <Badge tone="blue">Pilote Nexora</Badge>}
         </div>
 
         {mobileMenuOpen && (
@@ -4339,7 +4392,7 @@ if (updateError) {
                 </button>
               </div>
               <nav className="mt-8 flex flex-col gap-4">
-                {navGroups.map((group) => (
+                {visibleNavGroups.map((group) => (
                   <div key={group.label || "main"}>
                     {group.label && <div className="px-3 mb-1 text-[10.5px] font-semibold tracking-wide uppercase text-slate-400">{group.label}</div>}
                     <div className="flex flex-col gap-1">
@@ -4417,12 +4470,12 @@ if (updateError) {
             />
           )}
           {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onToast={flashToast} />}
-          {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
+          {view === "parametres" && <ParametresView garageData={garageData} entitlements={entitlements} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
         </div>
       </main>
 
       <Toast toast={toast} />
-      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} onUpdateStatutAtelier={updateStatutAtelier} onUpdateLienPaiement={updateLienPaiement} />
+      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} onUpdateStatutAtelier={updateStatutAtelier} onUpdateLienPaiement={canUse("online_payment") ? updateLienPaiement : undefined} />
     </div>
   );
 }
