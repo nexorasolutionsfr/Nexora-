@@ -22,6 +22,10 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Gmail OAuth (staging)
+
+La configuration et la vérification de la connexion Gmail d'un garage pilote sont documentées dans [docs/google-oauth-staging.md](docs/google-oauth-staging.md). Les secrets OAuth et les clés Supabase ne doivent jamais être versionnés.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 ## Learn More
