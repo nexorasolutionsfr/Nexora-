@@ -771,7 +771,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   );
 }
 
-function StatistiquesView({ garageData, aiStats, timeline, automationEvents, factures = [], devisList = [], rendezVous = [] }) {
+function StatistiquesView({ garageData, aiStats, timeline, automationEvents, factures = [], devisList = [], rendezVous = [], canUseAutomations = false }) {
   const [periode, setPeriode] = useState("30j");
   const now = new Date();
   const rdvById = Object.fromEntries(rendezVous.map((r) => [r.id, r]));
@@ -955,7 +955,7 @@ function StatistiquesView({ garageData, aiStats, timeline, automationEvents, fac
             </div>
             <div className="text-[12px] mt-0.5" style={{ color: "#6B87BE" }}>soit {heuresEconomisees}h{minutesEconomisees ? minutesEconomisees : ""} rendues à votre équipe</div>
           </div>
-          <div className="flex flex-col gap-1.5 min-w-[220px]">
+          {canUseAutomations && <div className="flex flex-col gap-1.5 min-w-[220px]">
             <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#6B87BE" }}>Automatisations</span>
             <div className="flex items-center justify-between text-[12.5px]">
               <span className="flex items-center gap-1.5" style={{ color: "#C3D0EA" }}><span className="w-1.5 h-1.5 rounded-full bg-green-400" />SMS actif</span>
@@ -969,7 +969,7 @@ function StatistiquesView({ garageData, aiStats, timeline, automationEvents, fac
               <span className="flex items-center gap-1.5" style={{ color: "#C3D0EA" }}><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: garageData.google_agenda_connecte ? "#4ADE80" : "#FBBF6B" }} />Google Calendar</span>
               <span className="font-semibold" style={{ color: garageData.google_agenda_connecte ? "#fff" : "#FBBF6B" }}>{garageData.google_agenda_connecte ? "connecté" : "non connecté"}</span>
             </div>
-          </div>
+          </div>}
         </div>
 
         {recentActivities.length > 0 && (
@@ -2529,7 +2529,7 @@ function NouveauClientModal({ onClose, onCreerClient }) {
   );
 }
 
-function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], onCreerDevis, onCreerClient, onToast }) {
+function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], onCreerDevis, onCreerClient, onToast, canUseSms = false }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [devisModalOpen, setDevisModalOpen] = useState(false);
@@ -2602,7 +2602,7 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
             <div><div className="text-lg font-semibold text-slate-900">{selected?.nom}</div><div className="text-[12.5px] text-slate-500">Dossier client et véhicule</div></div>
             {selected?.fidele && <Badge tone="amber">⭐ Client fidèle</Badge>}
           </div>
-          <div className="flex items-center gap-2 flex-wrap"><a href={selected?.telephone ? `tel:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><Phone size={13} />Appeler</a><a href={selected?.telephone ? `sms:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><MessageSquare size={13} />SMS</a><button onClick={() => setDevisModalOpen(true)} className="px-3 py-2 rounded-xl text-[12.5px] font-medium text-white flex items-center gap-1.5" style={{ backgroundColor: ACCENT }}><ReceiptText size={13} />Devis</button></div>
+          <div className="flex items-center gap-2 flex-wrap"><a href={selected?.telephone ? `tel:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><Phone size={13} />Appeler</a>{canUseSms && <a href={selected?.telephone ? `sms:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><MessageSquare size={13} />SMS</a>}<button onClick={() => setDevisModalOpen(true)} className="px-3 py-2 rounded-xl text-[12.5px] font-medium text-white flex items-center gap-1.5" style={{ backgroundColor: ACCENT }}><ReceiptText size={13} />Devis</button></div>
           {devisModalOpen && selected && (
             <GenererDevisModal
               clients={clients}
@@ -4437,7 +4437,7 @@ if (updateError) {
 
         <div className="p-5 md:p-8">
           {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} />}
-          {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
+          {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} canUseAutomations={canUse("automations")} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
           {["devis", "factures", "historique"].includes(view) && (
@@ -4469,7 +4469,7 @@ if (updateError) {
               onRecommend={handleRecommendedAppointment}
             />
           )}
-          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onToast={flashToast} />}
+          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onToast={flashToast} canUseSms={canUse("sms")} />}
           {view === "parametres" && <ParametresView garageData={garageData} entitlements={entitlements} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
         </div>
       </main>
