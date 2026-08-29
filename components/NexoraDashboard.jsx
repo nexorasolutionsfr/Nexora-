@@ -544,7 +544,79 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] })
 // =====================================================================================
 // VIEWS
 // =====================================================================================
-function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [] }) {
+const CANAL_COLOR = { email: ACCENT, sms: "#7C3AED", whatsapp: "#16A34A" };
+
+function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHeaderInfo, headerAction, countBg, countColor, rows, emptyLabel }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? rows : rows.slice(0, 3);
+
+  if (rows.length === 0) {
+    return (
+      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-2.5 flex items-center gap-2.5 flex-wrap">
+        <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: iconBg, color: iconColor }}>
+          <Icon size={13} />
+        </div>
+        <span className="text-[13px] font-semibold text-slate-900">{title}</span>
+        <span className="text-[12.5px] text-slate-400">— {emptyLabel}</span>
+        {headerAction && <div className="ml-auto">{headerAction}</div>}
+      </section>
+    );
+  }
+
+  return (
+    <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="flex items-center gap-2.5 px-5 py-4 border-b border-slate-100 flex-wrap">
+        <div className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center shrink-0" style={{ backgroundColor: iconBg, color: iconColor }}>
+          <Icon size={16} />
+        </div>
+        <div className="flex-1 min-w-[180px]">
+          <div className="font-semibold text-slate-900 text-[14.5px]">{title}</div>
+          <div className="text-[12px] text-slate-500 mt-0.5">{subtitle}</div>
+          {extraHeaderInfo}
+        </div>
+        {headerAction}
+        <div className="text-[12px] font-bold px-2.5 py-0.5 rounded-full" style={{ backgroundColor: countBg, color: countColor }}>{rows.length}</div>
+      </div>
+          <div className="px-2.5 py-1">
+            {visible.map((row) => (
+              <div key={row.key} className="flex items-center gap-3 py-3 px-2.5 border-b border-slate-50 last:border-0 flex-wrap">
+                <span className="w-[3px] self-stretch rounded-full shrink-0" style={{ backgroundColor: row.stripe }} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13.5px] font-semibold text-slate-900 flex items-center gap-2 flex-wrap">
+                    {row.title}
+                    {"amount" in row && (row.amount ? (
+                      <span className="text-[13px] font-bold" style={{ color: "#B45309" }}>{row.amount.toLocaleString("fr-FR")} € TTC</span>
+                    ) : (
+                      <span className="text-[12px] font-semibold text-slate-400">montant non estimé</span>
+                    ))}
+                  </div>
+                  <div className="text-[12px] text-slate-500 mt-0.5">{row.meta}</div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {row.canal && (
+                    <span className="text-[11px] font-semibold text-slate-500 inline-flex items-center gap-1.5 whitespace-nowrap">
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: CANAL_COLOR[row.canal] || CANAL_COLOR.email }} />
+                      {CANAUX_NOTIFICATIONS.find((c) => c.key === row.canal)?.label || "Email"}
+                    </span>
+                  )}
+                  <button onClick={row.onAction} className="text-[12.5px] font-semibold px-3.5 py-2 rounded-[10px] text-white whitespace-nowrap" style={{ backgroundColor: row.urgent ? "#DC2626" : ACCENT }}>
+                    {row.action}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          {rows.length > 3 && (
+            <button onClick={() => setExpanded((v) => !v)} className="w-full text-left px-5 py-2.5 border-t border-slate-100 text-[12.5px] font-semibold flex items-center gap-1.5" style={{ color: "#64748B" }}>
+              {expanded ? "Réduire" : `Voir toutes les actions (${rows.length})`}
+              <ChevronRight size={12} style={{ transform: expanded ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform .15s" }} />
+            </button>
+          )}
+    </section>
+  );
+}
+
+function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   if (loading) {
     return (
@@ -564,9 +636,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
     .sort((a, b) => new Date(a.date_debut) - new Date(b.date_debut));
   const todayAppts = upcomingAppts.filter((r) => r.date_key === todayKey);
 
-  const prestationById = Object.fromEntries(prestations.map((p) => [p.id, p]));
-
-  // ---- File de priorites unifiee (Doctolib/Planity : tout au meme endroit) -------
+  // ---- Client fidèle dormant (utilisé par "Argent à risque") -----------------------
   const oneYearAgo = new Date(now);
   oneYearAgo.setFullYear(now.getFullYear() - 1);
   const dormantClients = clients.filter((client) => {
@@ -574,69 +644,123 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
     const last = rendezVous.filter((rdv) => rdv.client_id === client.id && rdv.statut_atelier === "restitue").sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut))[0];
     return !last || new Date(last.date_debut) < oneYearAgo;
   });
-  const technicalControl = clients.filter((client) => {
-    const vehicles = Array.isArray(client.vehicules) ? client.vehicules : client.vehicules ? [client.vehicules] : [];
-    return vehicles.some((vehicle) => vehicle.controle_technique_echeance && new Date(vehicle.controle_technique_echeance) <= new Date(now.getTime() + 45 * 86_400_000));
-  });
-  const potentielPropositions = propositions.reduce((sum, p) => sum + Number(prestationById[p.prestation_id]?.prix_ht || 0), 0);
-  const urgentRequests = stats.urgent || 0;
-  const demandesNouvelles = demandes.filter((d) => d.statut === "nouveau" || d.statut === "infos_manquantes");
-  const devisEnAttente = devisList.filter((d) => d.statut === "en_attente");
 
-  const priorityItems = [];
-  if (demandesNouvelles.length) {
-    priorityItems.push({
-      key: "demandes_nouvelles",
-      weight: 5,
-      count: demandesNouvelles.length,
-      shortLabel: demandesNouvelles.length > 1 ? "Nouvelles demandes" : "Nouvelle demande",
-      target: "demandes",
-      tone: { stripe: "#DC2626", badgeBg: "#FDECEC", badgeText: "#B91C1C" },
-    });
-  }
-  if (propositions.length) {
-    priorityItems.push({
-      key: "propositions",
-      weight: 4,
-      count: propositions.length,
-      shortLabel: "RDV à valider",
-      target: "valider",
-      tone: { stripe: ACCENT, badgeBg: ACCENT_SOFT, badgeText: ACCENT },
-    });
-  }
-  if (devisEnAttente.length) {
-    priorityItems.push({
-      key: "devis_attente",
-      weight: 3,
-      count: devisEnAttente.length,
-      shortLabel: "Devis en attente",
-      target: "devis",
-      tone: { stripe: "#D97706", badgeBg: "#FEF3E2", badgeText: "#B45309" },
-    });
-  }
-  if (technicalControl.length) {
-    priorityItems.push({
-      key: "controle_technique",
-      weight: 2,
-      count: technicalControl.length,
-      shortLabel: "Contrôle technique proche",
-      target: "clients",
-      tone: { stripe: "#7C3AED", badgeBg: "#F3E8FF", badgeText: "#7C3AED" },
-    });
-  }
-  if (dormantClients.length) {
-    priorityItems.push({
-      key: "clients_fideles",
-      weight: 1,
-      count: dormantClients.length,
-      shortLabel: "Client fidèle à rappeler",
-      target: "clients",
-      tone: { stripe: "#475569", badgeBg: "#F1F5F9", badgeText: "#475569" },
-    });
-  }
-  priorityItems.sort((a, b) => b.weight - a.weight);
+  // ---- Répartition réelle des demandes / propositions / devis ----------------------
+  const joursDepuis = (dateStr) => (dateStr ? Math.floor((Date.now() - new Date(dateStr).getTime()) / 86_400_000) : 0);
+  const heuresDepuis = (dateStr) => (dateStr ? Math.floor((Date.now() - new Date(dateStr).getTime()) / 3_600_000) : 0);
+  const canauxChoisis = garageData?.canaux_notifications && typeof garageData.canaux_notifications === "object" ? garageData.canaux_notifications : {};
+  const canalPour = (typeKey) => canauxChoisis[typeKey] || "email";
 
-  // ---- Aperçu atelier du jour ------------------------------------------------------
+  const demandesOuvertes = demandes.filter((d) => d.statut === "nouveau" || d.statut === "infos_manquantes");
+  const demandesUrgentes = demandesOuvertes.filter((d) => d.urgence === "Élevée");
+  const demandesNonUrgentesRecentes = demandesOuvertes.filter((d) => d.urgence !== "Élevée" && heuresDepuis(d.created_at) < 4);
+  const demandesEnRisque = demandesOuvertes.filter((d) => d.urgence !== "Élevée" && heuresDepuis(d.created_at) >= 4);
+
+  const propositionsEnRetard = propositions.filter((p) => joursDepuis(p.created_at) >= 1);
+  const propositionsRecentes = propositions.filter((p) => joursDepuis(p.created_at) < 1);
+
+  const devisEnAttenteTous = devisList.filter((d) => d.statut === "en_attente");
+  const devisAges = devisEnAttenteTous.filter((d) => joursDepuis(d.created_at) >= 3);
+  const devisRecents = devisEnAttenteTous.filter((d) => joursDepuis(d.created_at) < 3);
+
+  // ---- Zone 1 — À traiter maintenant (rouge = urgence réelle ou délai dépassé) -----
+  const zone1Rows = [
+    ...demandesUrgentes.map((d) => ({
+      key: `du-${d.id}`,
+      stripe: "#DC2626",
+      urgent: true,
+      title: `Demande urgente — ${d.clients?.nom || "Client"}`,
+      meta: `${depuisLabel(d.created_at)} · ${d.motif || d.type_demande || "motif non précisé"}`,
+      action: "Répondre",
+      onAction: () => setView("demandes"),
+    })),
+    ...propositionsEnRetard.map((p) => ({
+      key: `pr-${p.id}`,
+      stripe: "#DC2626",
+      urgent: true,
+      title: `Créneau en attente — ${p.client}`,
+      meta: `${depuisLabel(p.created_at)} · ${p.prestation || "prestation non précisée"}`,
+      action: "Valider",
+      onAction: () => setView("valider"),
+    })),
+    ...demandesNonUrgentesRecentes.map((d) => ({
+      key: `dn-${d.id}`,
+      stripe: ACCENT,
+      urgent: false,
+      title: `Nouvelle demande — ${d.clients?.nom || "Client"}`,
+      meta: `${depuisLabel(d.created_at)} · ${d.motif || d.type_demande || "motif non précisé"}`,
+      action: "Répondre",
+      onAction: () => setView("demandes"),
+    })),
+  ];
+
+  // ---- Zone 2 — Nexora a préparé (toujours bleu, actions habituelles) --------------
+  const zone2Rows = [
+    ...propositionsRecentes.map((p) => ({
+      key: `p2-${p.id}`,
+      stripe: ACCENT,
+      urgent: false,
+      title: `Créneau proposé — ${p.client}`,
+      meta: `${p.jour || ""} ${p.debut || ""}${p.fin ? `–${p.fin}` : ""} · ${p.prestation || "—"}`.trim(),
+      action: "Valider",
+      onAction: () => setView("valider"),
+    })),
+    ...devisRecents.map((d) => ({
+      key: `d2-${d.id}`,
+      stripe: ACCENT,
+      urgent: false,
+      title: `Devis prêt — ${d.client}`,
+      meta: `${d.prestation || "—"} · ${Number(d.montant_ttc || 0).toFixed(0)} € TTC`,
+      canal: canalPour("devis"),
+      action: "Prévisualiser et envoyer",
+      onAction: () => setView("devis"),
+    })),
+  ];
+
+  // ---- Zone 3 — Argent à risque (montant réel si connu, sinon "non estimé") -------
+  const zone3Rows = [
+    ...devisAges.map((d) => ({
+      key: `da-${d.id}`,
+      stripe: "#B45309",
+      urgent: false,
+      title: `Devis sans réponse depuis ${joursDepuis(d.created_at)} jour${joursDepuis(d.created_at) > 1 ? "s" : ""}`,
+      meta: `${d.client} · ${d.prestation || "—"}`,
+      amount: Number(d.montant_ttc || 0),
+      canal: canalPour("devis"),
+      action: "Prévisualiser et envoyer",
+      onAction: () => setView("devis"),
+    })),
+    ...demandesEnRisque.map((d) => ({
+      key: `dr-${d.id}`,
+      stripe: "#B45309",
+      urgent: false,
+      title: `Demande sans réponse depuis ${heuresDepuis(d.created_at)} h`,
+      meta: `${d.clients?.nom || "Client"} · ${d.motif || d.type_demande || "motif non précisé"}`,
+      amount: 0,
+      action: "Répondre",
+      onAction: () => setView("demandes"),
+    })),
+    ...dormantClients.map((c) => ({
+      key: `cf-${c.id}`,
+      stripe: "#B45309",
+      urgent: false,
+      title: "Client fidèle silencieux",
+      meta: c.nom || "Client",
+      amount: 0,
+      action: "Voir la fiche",
+      onAction: () => setView("clients"),
+    })),
+  ];
+  const zone3TotalConnu = zone3Rows.reduce((s, r) => s + (r.amount || 0), 0);
+  const zone3NonChiffrees = zone3Rows.filter((r) => !r.amount).length;
+  const zone3TotalLine = zone3Rows.length > 0 ? (
+    <div className="text-[12px] text-slate-500 mt-0.5">
+      <b className="text-slate-900 font-bold">{zone3TotalConnu.toLocaleString("fr-FR")} €</b> identifiés à risque
+      {zone3NonChiffrees > 0 ? ` · ${zone3NonChiffrees} opportunité${zone3NonChiffrees > 1 ? "s" : ""} non chiffrée${zone3NonChiffrees > 1 ? "s" : ""}` : ""}
+    </div>
+  ) : null;
+
+  // ---- Aperçu atelier du jour — un seul état à la fois, piloté par les vraies données
   const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
   const stagesEnCours = ["diagnostic", "intervention"];
   const stagesPrets = ["pret", "restitue"];
@@ -652,9 +776,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   const caMoisCourant = facturesMoisCourant.reduce((s, f) => s + Number(f.montant_ttc || 0), 0);
   const rdvFactures = facturesMoisCourant.length;
   const panierMoyen = rdvFactures ? Math.round(caMoisCourant / rdvFactures) : 0;
-  const heuresEconomisees = Math.floor((aiStats?.tempsEconomiseMin || 0) / 60);
-  const minutesEconomisees = (aiStats?.tempsEconomiseMin || 0) % 60;
-  const valeurRecuperee = Math.round(((aiStats?.tempsEconomiseMin || 0) / 60) * (aiStats?.tarifHoraireAdmin || 0));
+  const tempsEconomiseMin = Math.round(aiStats?.tempsEconomiseMin || 0);
 
   // ---- Bilan Pilote : détectée / préparée / validée / refusée / en attente --------
   const piloteDebut = garageData?.pilote_debut ? new Date(garageData.pilote_debut) : null;
@@ -682,76 +804,71 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
     return `${Math.floor(h / 24)} j ${h % 24 ? `${h % 24} h` : ""}`.trim();
   };
 
+  // ---- Barre de statut des intégrations — dérivée des vraies données, rien en dur -
+  const automatisationActive = !!garageData?.automatisation_active;
+  const canalEstChoisi = (key) => Object.values(canauxChoisis).includes(key);
+
+  // ---- Ligne compacte d'identité — remplace la grande carte pour laisser "À traiter
+  // maintenant" apparaître le plus haut possible, surtout sur mobile -----------------
+  const openState = getGarageOpenState(garageData || {});
+
   return (
     <div className="space-y-5">
-      <GarageIdentityCard garageData={garageData} />
-
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
-        <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-          <div className="text-sm font-semibold text-slate-900">Bilan Pilote</div>
-          <div className="flex items-center gap-1 text-xs">
-            {piloteDebut && (
-              <button onClick={() => setPeriodePilote("pilote")} className={`px-2.5 py-1 rounded-lg font-medium ${periodePilote === "pilote" ? "text-white" : "text-slate-500 hover:bg-slate-100"}`} style={periodePilote === "pilote" ? { backgroundColor: ACCENT } : {}}>Depuis le début</button>
-            )}
-            {["7j", "14j", "30j"].map((p) => (
-              <button key={p} onClick={() => setPeriodePilote(p)} className={`px-2.5 py-1 rounded-lg font-medium ${periodePilote === p ? "text-white" : "text-slate-500 hover:bg-slate-100"}`} style={periodePilote === p ? { backgroundColor: ACCENT } : {}}>{p.replace("j", " j")}</button>
-            ))}
-          </div>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <div className="rounded-xl bg-slate-50 p-3">
-            <div className="text-2xl font-bold text-slate-900">{detecteesCount}</div>
-            <div className="text-xs text-slate-500 mt-0.5">Détectées</div>
-          </div>
-          <div className="rounded-xl bg-slate-50 p-3">
-            <div className="text-2xl font-bold text-slate-900">{parseesCount}</div>
-            <div className="text-xs text-slate-500 mt-0.5">Préparées</div>
-          </div>
-          <div className="rounded-xl p-3" style={{ backgroundColor: "#EEF9F0" }}>
-            <div className="text-2xl font-bold" style={{ color: "#16A34A" }}>{valideesCount}</div>
-            <div className="text-xs text-slate-500 mt-0.5">Validées</div>
-          </div>
-          <div className="rounded-xl p-3" style={{ backgroundColor: "#FDECEC" }}>
-            <div className="text-2xl font-bold" style={{ color: "#DC2626" }}>{refuseesCount}</div>
-            <div className="text-xs text-slate-500 mt-0.5">Refusées</div>
-          </div>
-          <div className="rounded-xl p-3" style={{ backgroundColor: "#FEF3E2" }}>
-            <div className="text-2xl font-bold" style={{ color: "#B45309" }}>{enAttenteCount}</div>
-            <div className="text-xs text-slate-500 mt-0.5">En attente</div>
-          </div>
-        </div>
-        <div className="mt-3 text-xs text-slate-500">
-          Délai moyen détection → décision : <span className="font-semibold text-slate-700">{formatDelai(delaiMoyenMin)}</span>
-        </div>
+      <div className="flex items-center gap-2 flex-wrap text-[13px] text-slate-500 px-1">
+        <span className="font-semibold text-slate-900">{garageData?.nom_garage || "Votre garage"}</span>
+        <span className="text-slate-300">·</span>
+        <span className="font-medium" style={{ color: openState.open ? "#16A34A" : "#DC2626" }}>
+          {openState.open ? "Ouvert maintenant" : "Fermé actuellement"}
+        </span>
+        <span className="text-slate-300">·</span>
+        <span>{openState.label}</span>
       </div>
 
-      {priorityItems.length > 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 flex items-center gap-4 flex-wrap" style={{ borderLeft: `4px solid ${priorityItems[0].tone.stripe}` }}>
-          <div className="flex-1 min-w-[220px]">
-            <div className="flex items-center gap-2">
-              <AlertTriangle size={17} style={{ color: priorityItems[0].tone.stripe }} />
-              <div className="text-sm font-semibold text-slate-900">{priorityItems.length} chose{priorityItems.length > 1 ? "s" : ""} à traiter</div>
-            </div>
-            <div className="text-[12.5px] text-slate-500 mt-1">Tout est regroupé ici — plus besoin de vérifier plusieurs onglets.</div>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {priorityItems.map((item) => (
-              <div key={item.key} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-[12.5px] font-semibold text-slate-700">
-                <span className="rounded-full min-w-[19px] h-[19px] flex items-center justify-center text-[11px] font-bold" style={{ backgroundColor: item.tone.badgeBg, color: item.tone.badgeText }}>{item.count}</span>
-                {item.shortLabel}
-              </div>
-            ))}
-          </div>
-          <button onClick={() => setView(priorityItems[0].target)} className="shrink-0 text-[13px] font-semibold px-4 py-2.5 rounded-xl text-white" style={{ backgroundColor: ACCENT }}>
-            Traiter maintenant →
+      <CommandZone
+        icon={AlertTriangle}
+        iconBg="#FDECEC"
+        iconColor="#DC2626"
+        title="À traiter maintenant"
+        subtitle="Ça attend une décision de votre part"
+        countBg="#FDECEC"
+        countColor="#B91C1C"
+        rows={zone1Rows}
+        emptyLabel="Rien à traiter pour l'instant."
+        headerAction={
+          <button
+            onClick={() => onToast && onToast("Fonctionnalité à venir — aucune tâche n'a été créée.")}
+            className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
+            style={{ color: ACCENT }}
+          >
+            <Phone size={12} /> Ajouter un appel à rappeler
           </button>
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 flex items-center gap-2.5">
-          <Check size={17} className="text-emerald-700" />
-          <div className="text-sm font-medium text-emerald-900">Rien à traiter pour l'instant — tout est à jour.</div>
-        </div>
-      )}
+        }
+      />
+
+      <CommandZone
+        icon={Bot}
+        iconBg={ACCENT_SOFT}
+        iconColor={ACCENT}
+        title="Nexora a préparé"
+        subtitle="Prêt pour votre validation"
+        countBg={ACCENT_SOFT}
+        countColor={ACCENT}
+        rows={zone2Rows}
+        emptyLabel="Rien de préparé pour l'instant."
+      />
+
+      <CommandZone
+        icon={CircleDollarSign}
+        iconBg="#FEF3E2"
+        iconColor="#B45309"
+        title="Argent à risque"
+        subtitle="Ce qui peut vous échapper si personne ne relance"
+        extraHeaderInfo={zone3TotalLine}
+        countBg="#FEF3E2"
+        countColor="#B45309"
+        rows={zone3Rows}
+        emptyLabel="Rien à risque actuellement."
+      />
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
         <div className="flex items-center justify-between mb-3.5">
@@ -760,16 +877,28 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
             Ouvrir l'atelier <ChevronRight size={14} />
           </button>
         </div>
-        <div className="flex divide-x divide-slate-100 -mx-1 overflow-x-auto">
-          {stageCounts.map((stage) => (
-            <div key={stage.key} className="flex-1 min-w-[86px] text-center px-2 py-1.5">
-              <div className="text-[19px] font-bold tabular-nums" style={{ color: stage.count > 0 ? stage.glanceColor : "#CBD5E1" }}>{stage.count}</div>
-              <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-0.5">{stage.label}</div>
+        {todayAppts.length === 0 ? (
+          <div className="flex flex-col items-center text-center gap-1.5 py-6 text-slate-500">
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-1" style={{ backgroundColor: "#F1F5F9" }}>
+              <Wrench size={18} className="text-slate-400" />
             </div>
-          ))}
-        </div>
-        {mecaniciensActifs.length === 0 && (
-          <div className="mt-3 text-[12px] text-slate-400">Ajoutez vos mécaniciens dans Paramètres pour suivre leur charge de travail.</div>
+            <div className="text-[13.5px] font-medium text-slate-700">Rien en atelier pour l'instant</div>
+            <div className="text-[12.5px] max-w-[320px]">Les véhicules du jour apparaîtront ici dès qu'un rendez-vous sera confirmé.</div>
+          </div>
+        ) : (
+          <>
+            <div className="flex divide-x divide-slate-100 -mx-1 overflow-x-auto">
+              {stageCounts.map((stage) => (
+                <div key={stage.key} className="flex-1 min-w-[86px] text-center px-2 py-1.5">
+                  <div className="text-[19px] font-bold tabular-nums" style={{ color: stage.count > 0 ? stage.glanceColor : "#CBD5E1" }}>{stage.count}</div>
+                  <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-0.5">{stage.label}</div>
+                </div>
+              ))}
+            </div>
+            {mecaniciensActifs.length === 0 && (
+              <div className="mt-3 text-[12px] text-slate-400">Ajoutez vos mécaniciens dans Paramètres pour suivre leur charge de travail.</div>
+            )}
+          </>
         )}
       </div>
 
@@ -819,7 +948,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
           <div className="text-[12px] text-slate-500 mt-0.5 mb-3">Chiffre d'affaires</div>
           <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
             <span className="text-slate-500">Temps gagné aujourd'hui</span>
-            <span className="font-semibold text-slate-900">{valeurRecuperee} € <span className="text-slate-400 font-normal">({heuresEconomisees}h{minutesEconomisees ? minutesEconomisees : ""})</span></span>
+            <span className="font-semibold text-slate-900">{tempsEconomiseMin} min</span>
           </div>
           <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
             <span className="text-slate-500">RDV facturés</span>
@@ -829,6 +958,59 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
             <span className="text-slate-500">Panier moyen</span>
             <span className="font-semibold text-slate-900">{panierMoyen ? `${panierMoyen} €` : "—"}</span>
           </div>
+        </div>
+      </div>
+
+      <details className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3">
+        <summary className="flex items-center gap-3 flex-wrap cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+          <span className="text-[12.5px] font-semibold text-slate-700">Bilan Pilote — {periodePilote === "pilote" ? "depuis le début" : periodePilote.replace("j", " derniers jours")}</span>
+          <div className="flex items-center gap-4 flex-wrap ml-auto text-[12px] text-slate-500">
+            <span><b className="text-slate-900 font-bold">{detecteesCount}</b> détectées</span>
+            <span><b className="text-slate-900 font-bold">{parseesCount}</b> préparées</span>
+            <span style={{ color: "#16A34A" }}><b className="font-bold">{valideesCount}</b> validées</span>
+            <span style={{ color: "#DC2626" }}><b className="font-bold">{refuseesCount}</b> refusée{refuseesCount > 1 ? "s" : ""}</span>
+            <span style={{ color: "#B45309" }}><b className="font-bold">{enAttenteCount}</b> en attente</span>
+          </div>
+          <ChevronRight size={16} className="text-slate-400" />
+        </summary>
+        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+          <div className="text-[12.5px] text-slate-500">
+            Délai moyen détection → décision : <span className="font-semibold text-slate-700">{formatDelai(delaiMoyenMin)}</span>
+          </div>
+          <div className="flex items-center gap-1 text-xs">
+            {piloteDebut && (
+              <button onClick={() => setPeriodePilote("pilote")} className={`px-2.5 py-1 rounded-lg font-medium ${periodePilote === "pilote" ? "text-white" : "text-slate-500 hover:bg-slate-100"}`} style={periodePilote === "pilote" ? { backgroundColor: ACCENT } : {}}>Depuis le début</button>
+            )}
+            {["7j", "14j", "30j"].map((p) => (
+              <button key={p} onClick={() => setPeriodePilote(p)} className={`px-2.5 py-1 rounded-lg font-medium ${periodePilote === p ? "text-white" : "text-slate-500 hover:bg-slate-100"}`} style={periodePilote === p ? { backgroundColor: ACCENT } : {}}>{p.replace("j", " j")}</button>
+            ))}
+          </div>
+        </div>
+      </details>
+
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+        <div className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: automatisationActive ? "#16A34A" : "#CBD5E1" }} />
+          Email — <b className="text-slate-900">{automatisationActive ? "actif" : "réponses manuelles"}</b>
+        </div>
+        {canalEstChoisi("sms") && (
+          <div className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#B45309" }} />
+            SMS — <b className="text-slate-900">canal choisi, activation à finaliser</b>
+          </div>
+        )}
+        {canalEstChoisi("whatsapp") && (
+          <div className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#B45309" }} />
+            WhatsApp — <b className="text-slate-900">canal choisi, activation à finaliser</b>
+          </div>
+        )}
+        <div className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: garageData?.google_agenda_connecte ? "#16A34A" : "#CBD5E1" }} />
+          Google Calendar — <b className="text-slate-900">{garageData?.google_agenda_connecte ? "connecté" : "non connecté"}</b>
+        </div>
+        <div className="text-[12.5px] text-slate-500 ml-auto">
+          <b className="text-slate-900">{tempsEconomiseMin} min</b> gagnées aujourd'hui grâce à Nexora
         </div>
       </div>
     </div>
@@ -4456,7 +4638,7 @@ if (updateError) {
         )}
 
         <div className="p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} />}
+          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
