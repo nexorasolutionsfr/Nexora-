@@ -599,9 +599,26 @@ function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHead
                       {CANAUX_NOTIFICATIONS.find((c) => c.key === row.canal)?.label || "Email"}
                     </span>
                   )}
-                  <button onClick={row.onAction} className="text-[12.5px] font-semibold px-3.5 py-2 rounded-[10px] text-white whitespace-nowrap" style={{ backgroundColor: row.urgent ? "#DC2626" : ACCENT }}>
-                    {row.action}
-                  </button>
+                  {row.statusControl && (
+                    <select
+                      value={row.statusControl.value}
+                      onChange={(e) => row.statusControl.onChange(e.target.value)}
+                      className="text-[12px] rounded-[10px] border border-slate-200 px-2 py-2 text-slate-600 bg-white outline-none"
+                    >
+                      {row.statusControl.options.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  )}
+                  {row.telHref ? (
+                    <a href={row.telHref} className="text-[12.5px] font-semibold px-3.5 py-2 rounded-[10px] text-white whitespace-nowrap inline-flex items-center gap-1.5" style={{ backgroundColor: row.urgent ? "#DC2626" : ACCENT }}>
+                      <Phone size={12} /> {row.action}
+                    </a>
+                  ) : (
+                    <button onClick={row.onAction} className="text-[12.5px] font-semibold px-3.5 py-2 rounded-[10px] text-white whitespace-nowrap" style={{ backgroundColor: row.urgent ? "#DC2626" : ACCENT }}>
+                      {row.action}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -616,7 +633,64 @@ function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHead
   );
 }
 
-function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast }) {
+// Nexora Relais Appels V1 — reconnaissance très simple d'un numéro, uniquement pour
+// décider d'afficher un lien d'appel tel:. Aucune validation stricte, aucun envoi.
+function isLikelyPhone(value) {
+  if (!value) return false;
+  const cleaned = value.replace(/[\s.\-()]/g, "");
+  return /^\+?\d{6,15}$/.test(cleaned);
+}
+
+const RAPPEL_STATUT_OPTIONS = [
+  { value: "a_rappeler", label: "À rappeler" },
+  { value: "tentative_sans_reponse", label: "Tentative sans réponse" },
+  { value: "rdv_a_creer", label: "RDV à créer" },
+  { value: "rdv_cree", label: "RDV créé" },
+  { value: "demande_traitee", label: "Demande traitée" },
+  { value: "perdu", label: "Perdu / non pertinent" },
+];
+
+function AjouterRappelModal({ onClose, onSubmit, submitting }) {
+  const [telephone, setTelephone] = useState("");
+  const [motif, setMotif] = useState("");
+  const [urgent, setUrgent] = useState(false);
+
+  const submit = () => {
+    if (!telephone.trim()) return;
+    onSubmit({ telephone: telephone.trim(), motif: motif.trim(), urgent });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold text-slate-900">Ajouter un appel à rappeler</h2>
+        <div className="text-[12.5px] text-slate-500 mt-1">Un pense-bête manuel — rien n'est envoyé ni appelé automatiquement.</div>
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="text-[12px] font-medium text-slate-500">Téléphone</label>
+            <input autoFocus value={telephone} onChange={(e) => setTelephone(e.target.value)} placeholder="Ex. 06 12 34 56 78" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[12px] font-medium text-slate-500">Motif</label>
+            <input value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Ex. bruit au freinage" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+          </div>
+          <label className="flex items-center gap-2 text-[13px] text-slate-700">
+            <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} className="rounded border-slate-300" />
+            Urgent
+          </label>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600">Annuler</button>
+          <button onClick={submit} disabled={submitting || !telephone.trim()} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: ACCENT }}>
+            {submitting ? "Ajout…" : "Ajouter"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   if (loading) {
     return (
@@ -692,6 +766,40 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
       action: "Répondre",
       onAction: () => setView("demandes"),
     })),
+    // Nexora Relais Appels V1 — rappels saisis manuellement, statuts actifs uniquement
+    ...rappelsManques
+      .filter((r) => ["a_rappeler", "tentative_sans_reponse", "rdv_a_creer"].includes(r.statut))
+      .map((r) => {
+        const telHref = isLikelyPhone(r.telephone) ? `tel:${r.telephone.replace(/[\s.\-()]/g, "")}` : null;
+        const statusControl = {
+          value: r.statut,
+          options: RAPPEL_STATUT_OPTIONS,
+          onChange: (statut) => onChangerStatutRappel && onChangerStatutRappel(r.id, statut),
+        };
+        if (r.statut === "rdv_a_creer") {
+          return {
+            key: `rp-${r.id}`,
+            stripe: r.urgent ? "#DC2626" : ACCENT,
+            urgent: !!r.urgent,
+            title: `RDV à créer — ${r.telephone || "numéro non renseigné"}`,
+            meta: `${depuisLabel(r.created_at)}${r.motif ? ` · ${r.motif}` : ""}`,
+            action: "Créer le rendez-vous →",
+            onAction: () => setView("agenda"),
+            statusControl,
+          };
+        }
+        return {
+          key: `rp-${r.id}`,
+          stripe: r.urgent ? "#DC2626" : ACCENT,
+          urgent: !!r.urgent,
+          title: `${r.statut === "tentative_sans_reponse" ? "Rappel — sans réponse" : "Rappel à faire"} — ${r.telephone || "numéro non renseigné"}`,
+          meta: `${depuisLabel(r.created_at)}${r.motif ? ` · ${r.motif}` : ""}`,
+          action: r.statut === "tentative_sans_reponse" ? "Réessayer" : "Rappeler",
+          telHref,
+          onAction: telHref ? undefined : () => onToast && onToast("Aucun numéro reconnu pour cet appel."),
+          statusControl,
+        };
+      }),
   ];
 
   // ---- Zone 2 — Nexora a préparé (toujours bleu, actions habituelles) --------------
@@ -836,7 +944,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
         emptyLabel="Rien à traiter pour l'instant."
         headerAction={
           <button
-            onClick={() => onToast && onToast("Fonctionnalité à venir — aucune tâche n'a été créée.")}
+            onClick={() => onAjouterRappel && onAjouterRappel()}
             className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
             style={{ color: ACCENT }}
           >
@@ -3341,6 +3449,9 @@ function NexoraDashboardInner({ garageId }) {
   const [activityTimeline, setActivityTimeline] = useState([]);
   const [automationEvents, setAutomationEvents] = useState([]);
   const [preparedDemandeIds, setPreparedDemandeIds] = useState([]);
+  const [rappelsManques, setRappelsManques] = useState([]);
+  const [showAjouterRappel, setShowAjouterRappel] = useState(false);
+  const [submittingRappel, setSubmittingRappel] = useState(false);
 
   useEffect(() => {
     async function loadPreparedDemandeIds() {
@@ -3541,6 +3652,22 @@ useEffect(() => {
     setMecaniciens(data || []);
   }
   loadMecaniciens();
+}, []);
+
+useEffect(() => {
+  async function loadRappelsManques() {
+    const { data, error } = await supabase
+      .from("rappels_manques")
+      .select("*")
+      .eq("garage_id", garageId)
+      .order("created_at", { ascending: true });
+    if (error) {
+      console.error("Erreur rappels manqués :", error);
+      return;
+    }
+    setRappelsManques(data || []);
+  }
+  loadRappelsManques();
 }, []);
 
 useEffect(() => {
@@ -4089,6 +4216,46 @@ if (updateError) {
     flashToast("Devis refusé");
   };
 
+  // Nexora Relais Appels V1 — saisie manuelle uniquement, aucun lien avec le pipeline IA,
+  // aucun envoi externe, isolé du reste par garage_id.
+  const handleAjouterRappel = async ({ telephone, motif, urgent }) => {
+    setSubmittingRappel(true);
+    const { data, error } = await supabase
+      .from("rappels_manques")
+      .insert({
+        garage_id: garageId,
+        telephone: telephone || null,
+        motif: motif || null,
+        urgent: !!urgent,
+        statut: "a_rappeler",
+      })
+      .select()
+      .single();
+    setSubmittingRappel(false);
+    if (error) {
+      console.error("Erreur création rappel :", error);
+      flashToast("Impossible d'ajouter ce rappel", "error");
+      return;
+    }
+    setRappelsManques((prev) => [...prev, data]);
+    setShowAjouterRappel(false);
+    flashToast("Rappel ajouté");
+  };
+
+  const handleChangerStatutRappel = async (id, statut) => {
+    const { error } = await supabase
+      .from("rappels_manques")
+      .update({ statut, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("garage_id", garageId);
+    if (error) {
+      console.error("Erreur mise à jour rappel :", error);
+      flashToast("Impossible de mettre à jour ce rappel", "error");
+      return;
+    }
+    setRappelsManques((prev) => prev.map((r) => (r.id === id ? { ...r, statut } : r)));
+  };
+
   const handleUpdateDevisMontant = async (id, montantHt) => {
     const montantTtc = Math.round(montantHt * 1.2 * 100) / 100;
     const { error } = await supabase
@@ -4570,6 +4737,13 @@ if (updateError) {
   garageData={garageData}
 />
 )}
+{showAjouterRappel && (
+  <AjouterRappelModal
+    onClose={() => setShowAjouterRappel(false)}
+    onSubmit={handleAjouterRappel}
+    submitting={submittingRappel}
+  />
+)}
       <main className="flex-1 min-w-0">
         <div className="flex items-center justify-between px-5 md:px-8 py-5 border-b border-slate-200 bg-white">
           <div className="flex items-center gap-3">
@@ -4638,7 +4812,7 @@ if (updateError) {
         )}
 
         <div className="p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} />}
+          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
