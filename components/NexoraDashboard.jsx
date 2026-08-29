@@ -580,7 +580,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   });
   const potentielPropositions = propositions.reduce((sum, p) => sum + Number(prestationById[p.prestation_id]?.prix_ht || 0), 0);
   const urgentRequests = stats.urgent || 0;
-  const demandesNouvelles = demandes.filter((d) => d.statut === "nouveau");
+  const demandesNouvelles = demandes.filter((d) => d.statut === "nouveau" || d.statut === "infos_manquantes");
   const devisEnAttente = devisList.filter((d) => d.statut === "en_attente");
 
   const priorityItems = [];
@@ -4404,17 +4404,17 @@ if (updateError) {
         {mobileMenuOpen && (
           <div className="fixed inset-0 z-50 md:hidden">
             <div className="absolute inset-0 bg-black/40" onClick={() => setMobileMenuOpen(false)} />
-            <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw] py-5 px-3.5 flex flex-col overflow-y-auto bg-white">
+            <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw] py-5 px-3.5 flex flex-col overflow-y-auto" style={{ backgroundColor: NAVY }}>
               <div className="flex items-center justify-between px-1">
-                <Logo />
-                <button onClick={() => setMobileMenuOpen(false)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+                <Logo dark />
+                <button onClick={() => setMobileMenuOpen(false)} className="p-1.5 rounded-lg text-blue-200 hover:bg-white/10">
                   <X size={20} />
                 </button>
               </div>
               <nav className="mt-8 flex flex-col gap-4">
                 {navGroups.map((group) => (
                   <div key={group.label || "main"}>
-                    {group.label && <div className="px-3 mb-1 text-[10.5px] font-semibold tracking-wide uppercase text-slate-400">{group.label}</div>}
+                    {group.label && <div className="px-3 mb-1 text-[10.5px] font-semibold tracking-wide uppercase" style={{ color: "#5C6B92" }}>{group.label}</div>}
                     <div className="flex flex-col gap-1">
                       {group.items.map((item) => {
                         const Icon = item.icon;
@@ -4425,7 +4425,7 @@ if (updateError) {
                             key={item.key}
                             onClick={() => { setView(item.match ? item.match[0] : item.key); setMobileMenuOpen(false); }}
                             className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium transition-colors"
-                            style={active ? { backgroundColor: ACCENT_SOFT, color: ACCENT } : { color: "#64748B" }}
+                            style={active ? { backgroundColor: NAVY_SOFT, color: "#fff" } : { color: "#93A4C7" }}
                           >
                             <Icon size={16} />
                             {item.label}
@@ -4439,12 +4439,12 @@ if (updateError) {
                   </div>
                 ))}
               </nav>
-              <div className="mt-auto pt-4 border-t border-slate-200">
+              <div className="mt-auto pt-4 border-t" style={{ borderColor: "#22335C" }}>
                 <div className="flex items-center gap-2.5 px-2 py-2">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-[12.5px] font-semibold text-white shrink-0" style={{ backgroundColor: ACCENT }}>GD</div>
                   <div className="leading-tight flex-1 min-w-0">
-                    <div className="text-[13px] font-medium truncate" style={{ color: NAVY }}>{garageData.nom_garage}</div>
-                    <div className="text-[11.5px] truncate text-slate-400">{garageData.adresse}</div>
+                    <div className="text-[13px] font-medium truncate text-white">{garageData.nom_garage}</div>
+                    <div className="text-[11.5px] truncate" style={{ color: "#8CA0C9" }}>{garageData.adresse}</div>
                   </div>
                   <button onClick={() => supabase.auth.signOut()} className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100" title="Se déconnecter">
                     <LogOut size={16} />
