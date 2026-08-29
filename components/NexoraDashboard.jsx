@@ -544,7 +544,8 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] })
 // =====================================================================================
 // VIEWS
 // =====================================================================================
-function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats }) {
+function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [] }) {
+  const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   if (loading) {
     return (
       <div className="space-y-6">
@@ -655,9 +656,74 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   const minutesEconomisees = (aiStats?.tempsEconomiseMin || 0) % 60;
   const valeurRecuperee = Math.round(((aiStats?.tempsEconomiseMin || 0) / 60) * (aiStats?.tarifHoraireAdmin || 0));
 
+  // ---- Bilan Pilote : détectée / préparée / validée / refusée / en attente --------
+  const piloteDebut = garageData?.pilote_debut ? new Date(garageData.pilote_debut) : null;
+  const periodeStartPilote = (() => {
+    if (periodePilote === "pilote" && piloteDebut) return piloteDebut;
+    const jours = periodePilote === "14j" ? 14 : periodePilote === "30j" ? 30 : 7;
+    return new Date(now.getTime() - jours * 86_400_000);
+  })();
+  const preparedSet = new Set(preparedDemandeIds);
+  const demandesPeriode = demandes.filter((d) => d.created_at && new Date(d.created_at) >= periodeStartPilote);
+  const detecteesCount = demandesPeriode.length;
+  const valideesCount = demandesPeriode.filter((d) => d.decision === "validee").length;
+  const refuseesCount = demandesPeriode.filter((d) => d.decision === "refusee").length;
+  const parseesCount = demandesPeriode.filter((d) => preparedSet.has(d.id)).length;
+  const enAttenteCount = Math.max(0, detecteesCount - valideesCount - refuseesCount);
+  const delaisDecision = demandesPeriode
+    .filter((d) => d.decided_at && d.created_at)
+    .map((d) => (new Date(d.decided_at) - new Date(d.created_at)) / 60_000);
+  const delaiMoyenMin = delaisDecision.length ? Math.round(delaisDecision.reduce((s, v) => s + v, 0) / delaisDecision.length) : null;
+  const formatDelai = (min) => {
+    if (min == null) return "—";
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h} h ${min % 60 ? `${min % 60} min` : ""}`.trim();
+    return `${Math.floor(h / 24)} j ${h % 24 ? `${h % 24} h` : ""}`.trim();
+  };
+
   return (
     <div className="space-y-5">
       <GarageIdentityCard garageData={garageData} />
+
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+          <div className="text-sm font-semibold text-slate-900">Bilan Pilote</div>
+          <div className="flex items-center gap-1 text-xs">
+            {piloteDebut && (
+              <button onClick={() => setPeriodePilote("pilote")} className={`px-2.5 py-1 rounded-lg font-medium ${periodePilote === "pilote" ? "text-white" : "text-slate-500 hover:bg-slate-100"}`} style={periodePilote === "pilote" ? { backgroundColor: ACCENT } : {}}>Depuis le début</button>
+            )}
+            {["7j", "14j", "30j"].map((p) => (
+              <button key={p} onClick={() => setPeriodePilote(p)} className={`px-2.5 py-1 rounded-lg font-medium ${periodePilote === p ? "text-white" : "text-slate-500 hover:bg-slate-100"}`} style={periodePilote === p ? { backgroundColor: ACCENT } : {}}>{p.replace("j", " j")}</button>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="rounded-xl bg-slate-50 p-3">
+            <div className="text-2xl font-bold text-slate-900">{detecteesCount}</div>
+            <div className="text-xs text-slate-500 mt-0.5">Détectées</div>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-3">
+            <div className="text-2xl font-bold text-slate-900">{parseesCount}</div>
+            <div className="text-xs text-slate-500 mt-0.5">Préparées</div>
+          </div>
+          <div className="rounded-xl p-3" style={{ backgroundColor: "#EEF9F0" }}>
+            <div className="text-2xl font-bold" style={{ color: "#16A34A" }}>{valideesCount}</div>
+            <div className="text-xs text-slate-500 mt-0.5">Validées</div>
+          </div>
+          <div className="rounded-xl p-3" style={{ backgroundColor: "#FDECEC" }}>
+            <div className="text-2xl font-bold" style={{ color: "#DC2626" }}>{refuseesCount}</div>
+            <div className="text-xs text-slate-500 mt-0.5">Refusées</div>
+          </div>
+          <div className="rounded-xl p-3" style={{ backgroundColor: "#FEF3E2" }}>
+            <div className="text-2xl font-bold" style={{ color: "#B45309" }}>{enAttenteCount}</div>
+            <div className="text-xs text-slate-500 mt-0.5">En attente</div>
+          </div>
+        </div>
+        <div className="mt-3 text-xs text-slate-500">
+          Délai moyen détection → décision : <span className="font-semibold text-slate-700">{formatDelai(delaiMoyenMin)}</span>
+        </div>
+      </div>
 
       {priorityItems.length > 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 flex items-center gap-4 flex-wrap" style={{ borderLeft: `4px solid ${priorityItems[0].tone.stripe}` }}>
@@ -3092,7 +3158,23 @@ function NexoraDashboardInner({ garageId }) {
   const [aiStats, setAiStats] = useState(aiStatsToday);
   const [activityTimeline, setActivityTimeline] = useState([]);
   const [automationEvents, setAutomationEvents] = useState([]);
-  
+  const [preparedDemandeIds, setPreparedDemandeIds] = useState([]);
+
+  useEffect(() => {
+    async function loadPreparedDemandeIds() {
+      const { data, error } = await supabase
+        .from("propositions_rdv")
+        .select("demande_id")
+        .eq("garage_id", garageId);
+      if (error) {
+        console.error("Erreur chargement demandes préparées :", error);
+        return;
+      }
+      setPreparedDemandeIds((data || []).map((row) => row.demande_id).filter(Boolean));
+    }
+    loadPreparedDemandeIds();
+  }, []);
+
   useEffect(() => {
   async function loadRendezVous() {
     const { data, error } = await supabase
@@ -3690,13 +3772,14 @@ if (updateError) {
   return;
 }
 
+  const decisionAt = new Date().toISOString();
   const { error: demandeUpdateError } = await supabase
     .from("demandes")
-    .update({ statut: "rendez_vous_confirme" })
+    .update({ statut: "rendez_vous_confirme", decision: "validee", decided_at: decisionAt })
     .eq("id", proposition.demande_id);
   if (demandeUpdateError) console.error("Erreur mise à jour demande :", demandeUpdateError);
   setDemandes((prev) => prev.map((demande) => (
-    demande.id === proposition.demande_id ? { ...demande, statut: "rendez_vous_confirme" } : demande
+    demande.id === proposition.demande_id ? { ...demande, statut: "rendez_vous_confirme", decision: "validee", decided_at: decisionAt } : demande
   )));
 
   // 3 - rafraîchir l'écran
@@ -3767,6 +3850,7 @@ if (updateError) {
   };
 
   const handleRefuse = async (id) => {
+    const proposition = propositions.find((p) => p.id === id);
     const { error } = await supabase
       .from("propositions_rdv")
       .update({ statut: "refuse", date_validation: new Date().toISOString() })
@@ -3776,6 +3860,17 @@ if (updateError) {
       console.error("Erreur refus proposition :", error);
       flashToast("Impossible de refuser la proposition", "error");
       return;
+    }
+    if (proposition?.demande_id) {
+      const decisionAt = new Date().toISOString();
+      const { error: demandeUpdateError } = await supabase
+        .from("demandes")
+        .update({ decision: "refusee", decided_at: decisionAt })
+        .eq("id", proposition.demande_id);
+      if (demandeUpdateError) console.error("Erreur mise à jour demande :", demandeUpdateError);
+      setDemandes((prev) => prev.map((demande) => (
+        demande.id === proposition.demande_id ? { ...demande, decision: "refusee", decided_at: decisionAt } : demande
+      )));
     }
     setPropositions((prev) => prev.filter((p) => p.id !== id));
     setStats((s) => ({ ...s, toValidate: Math.max(0, s.toValidate - 1) }));
@@ -4361,7 +4456,7 @@ if (updateError) {
         )}
 
         <div className="p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} />}
+          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
