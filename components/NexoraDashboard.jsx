@@ -549,6 +549,20 @@ const CANAL_COLOR = { email: ACCENT, sms: "#7C3AED", whatsapp: "#16A34A" };
 function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHeaderInfo, headerAction, countBg, countColor, rows, emptyLabel }) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? rows : rows.slice(0, 3);
+
+  if (rows.length === 0) {
+    return (
+      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-2.5 flex items-center gap-2.5 flex-wrap">
+        <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: iconBg, color: iconColor }}>
+          <Icon size={13} />
+        </div>
+        <span className="text-[13px] font-semibold text-slate-900">{title}</span>
+        <span className="text-[12.5px] text-slate-400">— {emptyLabel}</span>
+        {headerAction && <div className="ml-auto">{headerAction}</div>}
+      </section>
+    );
+  }
+
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="flex items-center gap-2.5 px-5 py-4 border-b border-slate-100 flex-wrap">
@@ -561,14 +575,8 @@ function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHead
           {extraHeaderInfo}
         </div>
         {headerAction}
-        {rows.length > 0 && (
-          <div className="text-[12px] font-bold px-2.5 py-0.5 rounded-full" style={{ backgroundColor: countBg, color: countColor }}>{rows.length}</div>
-        )}
+        <div className="text-[12px] font-bold px-2.5 py-0.5 rounded-full" style={{ backgroundColor: countBg, color: countColor }}>{rows.length}</div>
       </div>
-      {rows.length === 0 ? (
-        <div className="px-5 py-4 text-[12.5px] text-slate-400">{emptyLabel}</div>
-      ) : (
-        <>
           <div className="px-2.5 py-1">
             {visible.map((row) => (
               <div key={row.key} className="flex items-center gap-3 py-3 px-2.5 border-b border-slate-50 last:border-0 flex-wrap">
@@ -604,8 +612,6 @@ function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHead
               <ChevronRight size={12} style={{ transform: expanded ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform .15s" }} />
             </button>
           )}
-        </>
-      )}
     </section>
   );
 }
@@ -802,9 +808,21 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   const automatisationActive = !!garageData?.automatisation_active;
   const canalEstChoisi = (key) => Object.values(canauxChoisis).includes(key);
 
+  // ---- Ligne compacte d'identité — remplace la grande carte pour laisser "À traiter
+  // maintenant" apparaître le plus haut possible, surtout sur mobile -----------------
+  const openState = getGarageOpenState(garageData || {});
+
   return (
     <div className="space-y-5">
-      <GarageIdentityCard garageData={garageData} />
+      <div className="flex items-center gap-2 flex-wrap text-[13px] text-slate-500 px-1">
+        <span className="font-semibold text-slate-900">{garageData?.nom_garage || "Votre garage"}</span>
+        <span className="text-slate-300">·</span>
+        <span className="font-medium" style={{ color: openState.open ? "#16A34A" : "#DC2626" }}>
+          {openState.open ? "Ouvert maintenant" : "Fermé actuellement"}
+        </span>
+        <span className="text-slate-300">·</span>
+        <span>{openState.label}</span>
+      </div>
 
       <CommandZone
         icon={AlertTriangle}
