@@ -1,6 +1,10 @@
 -- Nexora Confirmation RDV — fermeture de l'ancien parcours par UUID + jeton opaque
 -- Idempotent, non destructif (aucun DROP).
 
+-- 0) pgcrypto (digest, gen_random_bytes) — schéma "extensions", convention Supabase.
+-- Idempotent : ne recrée rien si déjà installée manuellement ou par une autre migration.
+create extension if not exists pgcrypto with schema extensions;
+
 -- 1) Fermeture de l'ancien parcours (UUID brut) : révoque l'accès anonyme,
 --    et neutralise le corps des fonctions (retour vide / erreur) en défense en profondeur.
 revoke execute on function public.lire_confirmation_rdv_public(uuid) from anon;
@@ -55,7 +59,7 @@ begin
   end if;
   v_token := encode(extensions.gen_random_bytes(32), 'hex');
   insert into confirmations_jetons (rendez_vous_id, garage_id, jeton_hash, expires_at)
-  values (p_rdv_id, v_garage_id, encode(digest(v_token, 'sha256'), 'hex'), v_expires);
+  values (p_rdv_id, v_garage_id, encode(extensions.digest(v_token, 'sha256'), 'hex'), v_expires);
   return v_token;
 end;
 $$;
@@ -78,7 +82,7 @@ language sql security definer set search_path = public as $$
   join garages g on g.id = j.garage_id
   left join vehicules v on v.id = rv.vehicule_id
   left join prestations p on p.id = rv.prestation_id
-  where j.jeton_hash = encode(digest(p_token, 'sha256'), 'hex')
+  where j.jeton_hash = encode(extensions.digest(p_token, 'sha256'), 'hex')
     and j.revoked_at is null
     and j.used_at is null
     and j.expires_at > now();
@@ -90,7 +94,7 @@ create or replace function public.repondre_confirmation_par_jeton(p_token text, 
 returns boolean
 language plpgsql security definer set search_path = public as $$
 declare
-  v_hash text := encode(digest(p_token, 'sha256'), 'hex');
+  v_hash text := encode(extensions.digest(p_token, 'sha256'), 'hex');
   v_jeton confirmations_jetons%rowtype;
 begin
   if p_reponse not in ('confirme_par_client', 'report_demande', 'annule_par_client') then
