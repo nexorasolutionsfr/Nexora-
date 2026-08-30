@@ -56,7 +56,7 @@ export function construireCandidats(ctx) {
       section: urgente ? "maintenant" : "aujourdhui",
       stripe: urgente ? "#DC2626" : "#3D6BE0",
       urgent: urgente,
-      titre: `${urgente ? "Demande urgente" : "Nouvelle demande"} — ${d.clients?.nom || "Client"}`,
+      titre: `${d.statut === "infos_manquantes" ? "Informations à compléter" : "Nouvelle demande Gmail"} — ${d.clients?.nom || "Client"}`,
       meta: `${depuisLabel(d.created_at, now)} · ${d.motif || d.type_demande || "motif non précisé"}`,
       action: "Ouvrir la demande",
       onAction: () => onSelectDemande && onSelectDemande(d),
