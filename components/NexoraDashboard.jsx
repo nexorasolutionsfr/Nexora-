@@ -4187,8 +4187,7 @@ setPropositions(formattedPropositions);
       .select(`
         *,
         clients ( nom, telephone, email ),
-        vehicules ( marque, modele, immatriculation ),
-        devis ( id, prestation, montant_ttc )
+        vehicules ( marque, modele, immatriculation )
       `)
       .eq("garage_id", garageId)
       .order("date_relance", { ascending: true });
@@ -4590,7 +4589,7 @@ if (updateError) {
         motif: motif?.trim() || null,
         statut: "planifie",
       })
-      .select(`*, clients ( nom, telephone, email ), vehicules ( marque, modele, immatriculation ), devis ( id, prestation, montant_ttc )`)
+      .select(`*, clients ( nom, telephone, email ), vehicules ( marque, modele, immatriculation )`)
       .single();
     setSubmittingTravailDiffere(false);
     if (error) {
