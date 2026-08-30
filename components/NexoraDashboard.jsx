@@ -564,9 +564,10 @@ function ReprogrammerDateControl({ onReprogrammer }) {
   const [value, setValue] = useState("");
   const [erreur, setErreur] = useState("");
   const [confirme, setConfirme] = useState(false);
+  const [enregistrement, setEnregistrement] = useState(false);
 
-  const confirmer = () => {
-    if (!value) return;
+  const confirmer = async () => {
+    if (!value || enregistrement) return;
     const saisie = new Date(`${value}T00:00:00`);
     if (Number.isNaN(saisie.getTime())) {
       setErreur("Date invalide");
@@ -579,7 +580,13 @@ function ReprogrammerDateControl({ onReprogrammer }) {
       return;
     }
     setErreur("");
-    onReprogrammer(value);
+    setEnregistrement(true);
+    const succes = await onReprogrammer(value);
+    setEnregistrement(false);
+    if (!succes) {
+      setErreur("Échec de l'enregistrement, réessayez");
+      return; // la date saisie reste dans le champ
+    }
     setValue("");
     setConfirme(true);
     setTimeout(() => setConfirme(false), 2500);
@@ -593,16 +600,17 @@ function ReprogrammerDateControl({ onReprogrammer }) {
         value={value}
         onChange={(e) => { setValue(e.target.value); setErreur(""); }}
         onKeyDown={(e) => { if (e.key === "Enter") confirmer(); }}
-        className="text-[12px] rounded-[10px] border border-slate-200 px-2 py-2 text-slate-600 bg-white outline-none"
+        disabled={enregistrement}
+        className="text-[12px] rounded-[10px] border border-slate-200 px-2 py-2 text-slate-600 bg-white outline-none disabled:opacity-60"
       />
       <button
         type="button"
         onClick={confirmer}
-        disabled={!value}
+        disabled={!value || enregistrement}
         title="Confirmer la nouvelle date de relance"
         className="text-[12px] font-semibold px-2.5 py-2 rounded-[10px] border border-slate-200 text-slate-600 disabled:opacity-40 whitespace-nowrap"
       >
-        Programmer
+        {enregistrement ? "Enregistrement…" : "Programmer"}
       </button>
       {erreur && <span className="text-[11px] font-medium text-red-600 whitespace-nowrap">{erreur}</span>}
       {confirme && <span className="text-[11px] font-medium text-green-600 whitespace-nowrap">Reprogrammé ✓</span>}
@@ -4661,16 +4669,17 @@ if (updateError) {
     if (error) {
       console.error("Erreur mise à jour travail différé :", error);
       flashToast("Impossible de mettre à jour ce travail différé", "error");
-      return;
+      return false;
     }
     setTravauxDifferes((prev) => prev.map((t) => (t.id === id ? { ...t, ...changes } : t)));
+    return true;
   };
 
   const handleMarquerContacteTravail = (id) => handleMettreAJourTravailDiffere(id, { statut: "contacte_en_attente" });
 
   const handleReprogrammerTravail = (id, nouvelleDate) => {
-    if (!nouvelleDate) return;
-    handleMettreAJourTravailDiffere(id, { statut: "planifie", date_relance: nouvelleDate });
+    if (!nouvelleDate) return Promise.resolve(false);
+    return handleMettreAJourTravailDiffere(id, { statut: "planifie", date_relance: nouvelleDate });
   };
 
   const handleMarquerRecupereTravail = (id) =>
