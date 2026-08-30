@@ -184,11 +184,11 @@ function OpportuniteRow({ item, onTraiter, onOuvrirReporter }) {
             {item.action}
           </button>
         )}
-        <button onClick={() => onTraiter(item)} title="Marquer traité" className="w-8 h-8 rounded-[10px] border border-slate-200 flex items-center justify-center text-slate-400 hover:text-green-600 hover:border-green-200 shrink-0">
-          <CheckCircle2 size={15} />
+        <button onClick={() => onTraiter(item)} title="Marque cette ligne traitée dans le Cockpit — n'envoie et ne valide rien" className="h-8 px-2.5 rounded-[10px] border border-slate-200 flex items-center gap-1 text-[12px] font-semibold text-slate-500 hover:text-green-600 hover:border-green-200 shrink-0 whitespace-nowrap">
+          <CheckCircle2 size={14} /> Traiter
         </button>
-        <button onClick={() => onOuvrirReporter(item)} title="Reporter" className="w-8 h-8 rounded-[10px] border border-slate-200 flex items-center justify-center text-slate-400 hover:text-amber-600 hover:border-amber-200 shrink-0">
-          <Clock size={15} />
+        <button onClick={() => onOuvrirReporter(item)} title="Masque cette ligne jusqu'à l'échéance choisie — n'envoie et ne valide rien" className="h-8 px-2.5 rounded-[10px] border border-slate-200 flex items-center gap-1 text-[12px] font-semibold text-slate-500 hover:text-amber-600 hover:border-amber-200 shrink-0 whitespace-nowrap">
+          <Clock size={14} /> Reporter
         </button>
       </div>
     </div>
@@ -200,6 +200,15 @@ function SectionBlock({ section, items, onTraiter, onOuvrirReporter }) {
   const [expanded, setExpanded] = useState(section === "maintenant");
   const visible = expanded ? items : items.slice(0, 3);
 
+  if (items.length === 0) {
+    return (
+      <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-100 bg-slate-50/60 text-[12.5px]">
+        <span className="font-semibold" style={{ color: tone.text }}>{SECTION_LABEL[section]}</span>
+        <span className="text-slate-400">— rien ici pour l'instant</span>
+      </div>
+    );
+  }
+
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="flex items-center gap-2.5 px-5 py-4 border-b border-slate-100 flex-wrap">
@@ -209,22 +218,16 @@ function SectionBlock({ section, items, onTraiter, onOuvrirReporter }) {
         </div>
         <div className="text-[12px] font-bold px-2.5 py-0.5 rounded-full" style={{ backgroundColor: tone.bg, color: tone.text }}>{items.length}</div>
       </div>
-      {items.length === 0 ? (
-        <div className="px-5 py-4 text-[12.5px] text-slate-400">Rien ici pour l'instant.</div>
-      ) : (
-        <>
-          <div className="px-2.5 py-1">
-            {visible.map((item) => (
-              <OpportuniteRow key={item.key} item={item} onTraiter={onTraiter} onOuvrirReporter={onOuvrirReporter} />
-            ))}
-          </div>
-          {items.length > 3 && (
-            <button onClick={() => setExpanded((v) => !v)} className="w-full text-left px-5 py-2.5 border-t border-slate-100 text-[12.5px] font-semibold flex items-center gap-1.5" style={{ color: "#64748B" }}>
-              {expanded ? "Réduire" : `Voir tout (${items.length})`}
-              <ChevronRight size={12} style={{ transform: expanded ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform .15s" }} />
-            </button>
-          )}
-        </>
+      <div className="px-2.5 py-1">
+        {visible.map((item) => (
+          <OpportuniteRow key={item.key} item={item} onTraiter={onTraiter} onOuvrirReporter={onOuvrirReporter} />
+        ))}
+      </div>
+      {items.length > 3 && (
+        <button onClick={() => setExpanded((v) => !v)} className="w-full text-left px-5 py-2.5 border-t border-slate-100 text-[12.5px] font-semibold flex items-center gap-1.5" style={{ color: "#64748B" }}>
+          {expanded ? "Réduire" : `Voir tout (${items.length})`}
+          <ChevronRight size={12} style={{ transform: expanded ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform .15s" }} />
+        </button>
       )}
     </section>
   );
@@ -377,12 +380,16 @@ export default function CockpitOpportunites({
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => onAjouterRappel && onAjouterRappel()} className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap" style={{ color: ACCENT }}>
-            <Phone size={12} /> Ajouter un appel
+            <Phone size={12} /> Ajouter un rappel
           </button>
           <button onClick={() => onOuvrirTravailDiffereModal && onOuvrirTravailDiffereModal()} className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap" style={{ color: ACCENT }}>
-            <Calendar size={12} /> Travail différé
+            <Calendar size={12} /> Enregistrer un travail différé
           </button>
         </div>
+      </div>
+
+      <div className="px-1 text-[12px] text-slate-400">
+        Traiter et Reporter organisent uniquement ce Cockpit (avec une trace dans l'historique) — aucune de ces actions ne valide, ne refuse, ne confirme ou n'envoie quoi que ce soit au client.
       </div>
 
       {totalVisible === 0 ? (

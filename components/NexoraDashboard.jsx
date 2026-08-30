@@ -1191,10 +1191,8 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
         <span className="font-semibold text-slate-900">{garageData?.nom_garage || "Votre garage"}</span>
         <span className="text-slate-300">·</span>
         <span className="font-medium" style={{ color: openState.open ? "#16A34A" : "#DC2626" }}>
-          {openState.open ? "Ouvert maintenant" : "Fermé actuellement"}
+          {openState.label}
         </span>
-        <span className="text-slate-300">·</span>
-        <span>{openState.label}</span>
       </div>
 
       {COCKPIT_OPPORTUNITES_ACTIF ? (
@@ -1356,10 +1354,6 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
           <div className="text-[26px] font-bold text-slate-900 tracking-tight tabular-nums">{caMoisCourant.toLocaleString("fr-FR")} €</div>
           <div className="text-[12px] text-slate-500 mt-0.5 mb-3">Chiffre d'affaires</div>
           <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
-            <span className="text-slate-500">Temps gagné aujourd'hui</span>
-            <span className="font-semibold text-slate-900">{tempsEconomiseMin} min</span>
-          </div>
-          <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
             <span className="text-slate-500">RDV facturés</span>
             <span className="font-semibold text-slate-900">{rdvFactures}</span>
           </div>
@@ -1372,7 +1366,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
 
       <details className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3">
         <summary className="flex items-center gap-3 flex-wrap cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-          <span className="text-[12.5px] font-semibold text-slate-700">Bilan Pilote — {periodePilote === "pilote" ? "depuis le début" : periodePilote.replace("j", " derniers jours")}</span>
+          <span className="text-[12.5px] font-semibold text-slate-700">Confirmations de rendez-vous — {periodePilote === "pilote" ? "depuis le début" : periodePilote.replace("j", " derniers jours")}</span>
           <div className="flex items-center gap-4 flex-wrap ml-auto text-[12px] text-slate-500">
             <span><b className="text-slate-900 font-bold">{detecteesCount}</b> détectées</span>
             <span><b className="text-slate-900 font-bold">{parseesCount}</b> préparées</span>
