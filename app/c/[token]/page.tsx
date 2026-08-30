@@ -55,9 +55,9 @@ export default function ConfirmationTokenPage({ params }) {
           <div style={{ fontSize: 18, fontWeight: 600, marginTop: 4 }}>{info.vehicule || "Votre véhicule"}</div>
           <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>{info.prestation || "Rendez-vous"}</div>
           <div style={{ fontSize: 22, fontWeight: 700, marginTop: 12 }}>
-            {new Date(info.date_debut).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+            {new Date(info.date_debut).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Paris" })}
           </div>
-          <div style={{ fontSize: 15, opacity: 0.85, marginTop: 2 }}>{info.debut} – {info.fin}</div>
+          <div style={{ fontSize: 15, opacity: 0.85, marginTop: 2 }}>{info.debut} – {info.fin} (heure de Paris)</div>
         </div>
         {reponse ? (
           <div style={{ fontSize: 15, fontWeight: 600, color: REPONSES[reponse]?.color || "#0F1B33", lineHeight: 1.5 }}>
