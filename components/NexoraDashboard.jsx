@@ -139,6 +139,8 @@ function formatPhone(phone) {
 
 const RDV_STATUS_LABEL = { confirme: "Confirmé", en_attente: "En attente", termine: "Terminé", annule: "Annulé", absent: "Absent" };
 const STATUT_TONE = { "Confirmé": "green", "En attente": "amber", "Terminé": "slate", "Annulé": "red", "Absent": "red" };
+const CONFIRMATION_STATUT_LABEL = { en_attente_confirmation: "En attente de confirmation", confirme_par_client: "Confirmé par le client", report_demande: "Report demandé", annule_par_client: "Annulé par le client" };
+const CONFIRMATION_TONE = { en_attente_confirmation: "amber", confirme_par_client: "green", report_demande: "red", annule_par_client: "slate" };
 const URGENCE_TONE = { "Élevée": "red", "Moyenne": "amber", "Faible": "slate" };
 
 const SOURCE_META = {
@@ -490,6 +492,15 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
             <div className="text-[12px] text-slate-500">QR à imprimer et coller sur le véhicule pour que le mécanicien mette à jour l'étape sans passer par le dashboard.</div>
           </div>
         )}
+        {appt.statut_confirmation && (
+          <div className="mt-4 rounded-xl bg-slate-50 p-3">
+            <Badge tone={CONFIRMATION_TONE[appt.statut_confirmation] || "slate"}>{CONFIRMATION_STATUT_LABEL[appt.statut_confirmation] || appt.statut_confirmation}</Badge>
+            <div className="text-[12px] text-slate-500 mt-1.5">
+              {appt.confirmation_envoyee_at && <>Rappel envoyé le {new Date(appt.confirmation_envoyee_at).toLocaleString("fr-FR")}. </>}
+              {appt.confirmation_repondu_at && <>Réponse reçue le {new Date(appt.confirmation_repondu_at).toLocaleString("fr-FR")}.</>}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -800,6 +811,17 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
           statusControl,
         };
       }),
+    ...rendezVous
+      .filter((r) => r.statut_confirmation === "report_demande")
+      .map((r) => ({
+        key: `rc-${r.id}`,
+        stripe: "#DC2626",
+        urgent: true,
+        title: `Report demandé — ${r.client}`,
+        meta: `${r.jour || ""} ${r.debut || ""} · ${r.prestation || "—"}${r.confirmation_repondu_at ? ` · reçu ${depuisLabel(r.confirmation_repondu_at)}` : ""}`.trim(),
+        action: "Proposer un nouveau créneau",
+        onAction: () => setView("agenda"),
+      })),
   ];
 
   // ---- Zone 2 — Nexora a préparé (toujours bleu, actions habituelles) --------------
@@ -2246,6 +2268,9 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
                           <div className="text-[13px] font-medium" style={{ color: c.text }}>{client} — {vehicule}</div>
                           <Badge tone={STATUT_TONE[a.statut] || "slate"}>{a.statut}</Badge>
                         </div>
+                        {a.statut_confirmation && (
+                          <div className="mt-1"><Badge tone={CONFIRMATION_TONE[a.statut_confirmation] || "slate"}>{CONFIRMATION_STATUT_LABEL[a.statut_confirmation] || a.statut_confirmation}</Badge></div>
+                        )}
                         <div className="text-[12px] text-slate-500">{a.prestation} · {a.debut}-{a.fin} · {rows * 30} min</div>
                       </button>
                     );
@@ -3182,6 +3207,39 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
             </div>
             <Toggle checked={!!garageData.automatisation_active} />
           </button>
+        </SettingsSection>
+        <SettingsSection title="Rappel de confirmation de rendez-vous">
+          <button type="button" onClick={() => onGarageChange("rappel_confirmation_actif", !garageData.rappel_confirmation_actif)} className="w-full flex items-center justify-between py-1">
+            <div className="text-left pr-4">
+              <span className="text-sm text-slate-700 font-medium block">Envoyer un rappel de confirmation avant chaque rendez-vous</span>
+              <span className="text-[12.5px] text-slate-500 block mt-0.5">Le client reçoit un email pour confirmer, demander un report ou annuler. Différent du rappel d'entretien (relance envoyée 12 mois après un rendez-vous terminé).</span>
+            </div>
+            <Toggle checked={!!garageData.rappel_confirmation_actif} />
+          </button>
+          <div className="mt-3">
+            <span className="text-[12.5px] font-medium text-slate-500">Délai avant le rendez-vous</span>
+            <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+              {[24, 48].map((h) => (
+                <button key={h} type="button" onClick={() => onGarageChange("delai_confirmation_rdv_h", h)} className="text-[12.5px] font-medium px-3 py-1.5 rounded-full border" style={(garageData.delai_confirmation_rdv_h ?? 24) === h ? { backgroundColor: ACCENT, borderColor: ACCENT, color: "white" } : { borderColor: "#E2E8F0", color: "#475569" }}>
+                  {h} h
+                </button>
+              ))}
+              <button type="button" onClick={() => onGarageChange("delai_confirmation_rdv_h", ![24, 48].includes(garageData.delai_confirmation_rdv_h ?? 24) ? (garageData.delai_confirmation_rdv_h ?? 12) : 12)} className="text-[12.5px] font-medium px-3 py-1.5 rounded-full border" style={![24, 48].includes(garageData.delai_confirmation_rdv_h ?? 24) ? { backgroundColor: ACCENT, borderColor: ACCENT, color: "white" } : { borderColor: "#E2E8F0", color: "#475569" }}>
+                Personnalisé
+              </button>
+              {![24, 48].includes(garageData.delai_confirmation_rdv_h ?? 24) && (
+                <input type="number" min="1" max="168" value={garageData.delai_confirmation_rdv_h ?? 12} onChange={(e) => onGarageChange("delai_confirmation_rdv_h", Number(e.target.value))} className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-[13px] text-slate-900 outline-none focus:border-blue-500" />
+              )}
+              {![24, 48].includes(garageData.delai_confirmation_rdv_h ?? 24) && <span className="text-[12.5px] text-slate-500">heures</span>}
+            </div>
+          </div>
+          <div className="mt-4 rounded-xl p-3 text-[12.5px]" style={!garageData.rappel_confirmation_actif ? { backgroundColor: "#FEF3E2", color: "#B45309" } : (canauxNotifications.confirmation_rdv || "email") !== "email" ? { backgroundColor: "#FEF3E2", color: "#B45309" } : { backgroundColor: "#E7F6EC", color: "#15803D" }}>
+            {!garageData.rappel_confirmation_actif
+              ? "Rappels de confirmation désactivés — activez-les ci-dessus pour commencer à les envoyer."
+              : (canauxNotifications.confirmation_rdv || "email") !== "email"
+              ? "Rappels activés, mais le canal choisi (SMS/WhatsApp) n'est pas encore disponible. Passez sur Email ci-dessous pour que les rappels partent réellement."
+              : `Rappels actifs — envoyés par Email ${garageData.delai_confirmation_rdv_h ?? 24} h avant chaque rendez-vous.`}
+          </div>
         </SettingsSection>
         <SettingsSection title="Canal d'envoi par type de notification">
           <div className="text-[12.5px] text-slate-500 mb-4">Choisissez comment chaque notification est envoyée à vos clients. SMS et WhatsApp seront actifs dès que votre fournisseur (Twilio) sera configuré côté Nexora — vous pouvez déjà définir vos préférences.</div>
@@ -4493,6 +4551,8 @@ if (updateError) {
       canaux_notifications: garageData.canaux_notifications || null,
       theme: garageData.theme || "clair",
       automatisation_active: !!garageData.automatisation_active,
+      rappel_confirmation_actif: !!garageData.rappel_confirmation_actif,
+      delai_confirmation_rdv_h: Number(garageData.delai_confirmation_rdv_h) || 24,
     };
     const { error } = await supabase.from("garages").update(update).eq("id", garageId);
     setSavingSettings(false);
