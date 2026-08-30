@@ -60,7 +60,7 @@ const INSPECTIONS_MODULE_ACTIF = true;
 // d'Aujourd'hui par une liste unique priorisée. Faux par défaut le temps de
 // la recette complète (migration opportunites_actions à appliquer d'abord) ;
 // l'ancien affichage en 3 zones reste intact et actif tant que c'est à false.
-const COCKPIT_OPPORTUNITES_ACTIF = false;
+const COCKPIT_OPPORTUNITES_ACTIF = true; // TEMPORAIRE — recette visuelle sur preview uniquement, remis à false avant la fin
 // =====================================================================================
 // DESIGN TOKENS
 // =====================================================================================
