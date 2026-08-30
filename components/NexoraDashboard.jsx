@@ -603,7 +603,7 @@ function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHead
                   </div>
                   <div className="text-[12px] text-slate-500 mt-0.5">{row.meta}</div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto sm:flex-nowrap shrink-0">
                   {row.canal && (
                     <span className="text-[11px] font-semibold text-slate-500 inline-flex items-center gap-1.5 whitespace-nowrap">
                       <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: CANAL_COLOR[row.canal] || CANAL_COLOR.email }} />
