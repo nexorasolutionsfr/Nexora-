@@ -130,6 +130,15 @@ begin
     set revoked_at = now()
     where inspection_id = p_inspection_id and revoked_at is null;
 
+  -- Déverrouille D'ABORD l'inspection : les garde-fous de
+  -- 20260830000900_inspections_verrouillage.sql interdisent toute écriture
+  -- sur ses points tant que verrouille_le n'est pas nul (à l'exception de la
+  -- décision client elle-même). Réinitialiser les décisions ci-dessous doit
+  -- donc se faire après ce déverrouillage, pas avant.
+  update inspections
+    set statut = 'brouillon', verrouille_le = null
+    where id = p_inspection_id;
+
   -- Une décision client est immuable tant que l'inspection reste verrouillée
   -- (voir repondre_point_inspection_par_jeton). La réouverture est l'unique
   -- porte de sortie explicite : elle réinitialise les décisions des points
@@ -141,10 +150,6 @@ begin
 
   insert into inspections_historique (inspection_id, garage_id, action, ancien_statut, nouveau_statut, motif)
   values (p_inspection_id, v_garage_id, 'reouverture', v_ancien_statut, 'brouillon', trim(p_motif));
-
-  update inspections
-    set statut = 'brouillon', verrouille_le = null
-    where id = p_inspection_id;
 
   return true;
 end;

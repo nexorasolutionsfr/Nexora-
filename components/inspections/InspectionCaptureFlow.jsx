@@ -10,6 +10,7 @@ import {
   CATEGORIES_ORDRE,
   ETAT_POINT_LABEL,
   ETAT_POINT_TONE,
+  GARAGE_PHOTO_SIGNED_URL_TTL_SECONDES,
   MAX_PHOTOS_PAR_INSPECTION,
   MAX_PHOTOS_PAR_POINT,
   NIVEAU_CARBURANT_OPTIONS,
@@ -48,7 +49,7 @@ function EtatPicker({ value, onChange }) {
 }
 
 function PointCard({ point, photos, onUpdate, onDelete, onUploadPhoto, onDeletePhoto, uploading, totalPhotosCount }) {
-  const pointPhotos = photos.filter((p) => p.point_id === point.id);
+  const pointPhotos = photos.filter((p) => p.point_id === point.id && p.url);
   const atLimitPoint = pointPhotos.length >= MAX_PHOTOS_PAR_POINT;
   const atLimitTotal = totalPhotosCount >= MAX_PHOTOS_PAR_INSPECTION;
 
@@ -241,8 +242,15 @@ export default function InspectionCaptureFlow({ inspection, points, photos, gara
       onToast("Photo envoyée mais non enregistrée, réessayez", "error");
       return;
     }
-    const { data: pub } = supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(path);
-    onPhotosChange([...photos, { ...row, url: pub.publicUrl }]);
+    // Bucket privé : on signe immédiatement pour l'aperçu, avec la session
+    // authenticated du garage (RLS storage.objects scope déjà à son garage).
+    const { data: signedData, error: signError } = await supabase.storage
+      .from(PHOTOS_BUCKET)
+      .createSignedUrl(path, GARAGE_PHOTO_SIGNED_URL_TTL_SECONDES);
+    if (signError) {
+      console.error("Erreur génération URL photo :", signError);
+    }
+    onPhotosChange([...photos, { ...row, url: signedData?.signedUrl || null }]);
   };
 
   const deletePhoto = async (photo) => {

@@ -9,6 +9,7 @@ import {
   CATEGORIE_LABEL,
   ETAT_POINT_LABEL,
   ETAT_POINT_TONE,
+  GARAGE_PHOTO_SIGNED_URL_TTL_SECONDES,
   INSPECTION_STATUT_LABEL,
   INSPECTION_TONE,
   NIVEAU_CARBURANT_LABEL,
@@ -176,7 +177,7 @@ function ReouvrirModal({ onClose, onConfirm, submitting }) {
 }
 
 function PointReadRow({ point, photos }) {
-  const pointPhotos = photos.filter((p) => p.point_id === point.id);
+  const pointPhotos = photos.filter((p) => p.point_id === point.id && p.url);
   return (
     <div className="border border-slate-200 rounded-xl p-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -228,7 +229,23 @@ function InspectionDetail({ garageId, inspectionId, onClose, onToast, onChanged 
       onToast("Impossible de charger le détail de cette inspection", "error");
       return;
     }
-    const photos = (photosRows || []).map((p) => ({ ...p, url: supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(p.storage_path).data.publicUrl }));
+    // Bucket privé : URLs signées via la session authenticated du garage
+    // (RLS storage.objects limite déjà ces signatures aux photos de son garage).
+    let signedByPath = {};
+    if ((photosRows || []).length > 0) {
+      const { data: signed, error: signError } = await supabase.storage
+        .from(PHOTOS_BUCKET)
+        .createSignedUrls(photosRows.map((p) => p.storage_path), GARAGE_PHOTO_SIGNED_URL_TTL_SECONDES);
+      if (signError) {
+        console.error("Erreur génération des URLs photos :", signError);
+        onToast("Impossible de charger certaines photos", "error");
+      } else {
+        (signed || []).forEach((s) => {
+          if (s.signedUrl && !s.error) signedByPath[s.path] = s.signedUrl;
+        });
+      }
+    }
+    const photos = (photosRows || []).map((p) => ({ ...p, url: signedByPath[p.storage_path] || null }));
     setData({
       inspection: {
         ...inspection,

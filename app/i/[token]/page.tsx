@@ -2,16 +2,12 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { CATEGORIE_LABEL, ETAT_POINT_LABEL, NIVEAU_CARBURANT_LABEL, PHOTOS_BUCKET } from "@/components/inspections/inspectionsConstants";
+import { CATEGORIE_LABEL, ETAT_POINT_LABEL, NIVEAU_CARBURANT_LABEL } from "@/components/inspections/inspectionsConstants";
 
 const ETAT_COLOR = { ok: "#16A34A", a_surveiller: "#D97706", a_valider_client: "#D97706", dommage: "#DC2626" };
 
-function photoUrl(path) {
-  return supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(path).data.publicUrl;
-}
-
-function PointCard({ point, onDecider, pending, onConfirmer, onAnnuler, deciding }) {
-  const photos = point.photos || [];
+function PointCard({ point, photoUrls, onDecider, pending, onConfirmer, onAnnuler, deciding }) {
+  const photos = (point.photos || []).filter((p) => photoUrls[p]);
   return (
     <div style={{ background: "white", borderRadius: 14, padding: 14, marginBottom: 10, border: "1px solid #E7EAF0" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
@@ -24,7 +20,7 @@ function PointCard({ point, onDecider, pending, onConfirmer, onAnnuler, deciding
       {photos.length > 0 && (
         <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
           {photos.map((p) => (
-            <img key={p} src={photoUrl(p)} alt="" style={{ width: 64, height: 64, borderRadius: 10, objectFit: "cover", border: "1px solid #E7EAF0" }} />
+            <img key={p} src={photoUrls[p]} alt="" style={{ width: 64, height: 64, borderRadius: 10, objectFit: "cover", border: "1px solid #E7EAF0" }} />
           ))}
         </div>
       )}
@@ -71,15 +67,34 @@ export default function InspectionTokenPage({ params }) {
   const [error, setError] = useState("");
   const [pending, setPending] = useState({ id: null, choix: null });
   const [deciding, setDeciding] = useState(false);
+  const [photoUrls, setPhotoUrls] = useState({});
 
   const load = async () => {
     const { data, error } = await supabase.rpc("lire_inspection_par_jeton", { p_token: token });
     if (error || !data) {
       setError("Ce lien n'est plus valable. Il a peut-être expiré ou été révoqué par le garage. Contactez votre garage pour obtenir un nouveau lien.");
-    } else {
-      setInfo(data);
+      setLoading(false);
+      return;
     }
+    setInfo(data);
     setLoading(false);
+
+    // Bucket privé : les photos ne s'obtiennent que via des URLs signées de
+    // courte durée, générées côté serveur après revalidation du jeton.
+    const paths = Array.from(new Set((data.points || []).flatMap((p) => p.photos || [])));
+    if (paths.length > 0) {
+      try {
+        const res = await fetch("/api/inspections/photos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+        const json = await res.json();
+        if (res.ok) setPhotoUrls(json.urls || {});
+      } catch (fetchError) {
+        console.error("Erreur chargement des photos :", fetchError);
+      }
+    }
   };
 
   useEffect(() => {
@@ -136,6 +151,7 @@ export default function InspectionTokenPage({ params }) {
               <PointCard
                 key={p.id}
                 point={p}
+                photoUrls={photoUrls}
                 pending={pending.id}
                 deciding={deciding}
                 onDecider={(id, choix) => setPending({ id, choix })}
@@ -153,7 +169,7 @@ export default function InspectionTokenPage({ params }) {
               Ces points sont communiqués à titre d'information et ne demandent aucune décision de votre part.
             </div>
             {pointsInfo.map((p) => (
-              <PointCard key={p.id} point={p} pending={null} deciding={false} onDecider={() => {}} onConfirmer={() => {}} onAnnuler={() => {}} />
+              <PointCard key={p.id} point={p} photoUrls={photoUrls} pending={null} deciding={false} onDecider={() => {}} onConfirmer={() => {}} onAnnuler={() => {}} />
             ))}
           </>
         )}

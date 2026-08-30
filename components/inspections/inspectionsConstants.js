@@ -74,3 +74,12 @@ export const MAX_PHOTOS_PAR_POINT = 4;
 export const MAX_PHOTOS_PAR_INSPECTION = 24;
 
 export const PHOTOS_BUCKET = "inspections-photos";
+
+// Bucket privé (durcissement) : toute lecture passe par une URL signée de
+// courte durée, jamais par un accès public direct.
+// Portail client : signature faite côté serveur (service role) après
+// revalidation du jeton, donc plus courte (fenêtre d'exposition minimale).
+export const PORTAIL_PHOTO_SIGNED_URL_TTL_SECONDES = 600; // 10 minutes
+// Dashboard garage : signée directement par le navigateur du garagiste avec
+// sa session authenticated (RLS storage.objects), session de travail plus longue.
+export const GARAGE_PHOTO_SIGNED_URL_TTL_SECONDES = 3600; // 1 heure
