@@ -621,6 +621,15 @@ function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHead
                       ))}
                     </select>
                   )}
+                  {row.dateControl && (
+                    <input
+                      type="date"
+                      title="Programmer une nouvelle date de relance"
+                      defaultValue=""
+                      onChange={(e) => e.target.value && row.dateControl.onChange(e.target.value)}
+                      className="text-[12px] rounded-[10px] border border-slate-200 px-2 py-2 text-slate-600 bg-white outline-none"
+                    />
+                  )}
                   {row.telHref ? (
                     <a href={row.telHref} className="text-[12.5px] font-semibold px-3.5 py-2 rounded-[10px] text-white whitespace-nowrap inline-flex items-center gap-1.5" style={{ backgroundColor: row.urgent ? "#DC2626" : ACCENT }}>
                       <Phone size={12} /> {row.action}
@@ -701,7 +710,117 @@ function AjouterRappelModal({ onClose, onSubmit, submitting }) {
   );
 }
 
-function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel }) {
+const NIVEAU_TRAVAIL_DIFFERE = [
+  { value: "normal", label: "Normal" },
+  { value: "important", label: "Important" },
+  { value: "securite", label: "Sécurité" },
+];
+
+// Travaux différés V1 — enregistrement manuel uniquement, aucun envoi, aucun montant inventé.
+function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, defaultDevisId, onClose, onSubmit, submitting }) {
+  const [clientId, setClientId] = useState(defaultClientId || "");
+  const [vehiculeId, setVehiculeId] = useState("");
+  const [devisId, setDevisId] = useState(defaultDevisId || "");
+  const [intervention, setIntervention] = useState("");
+  const [montantTtc, setMontantTtc] = useState("");
+  const [dateRelance, setDateRelance] = useState("");
+  const [niveau, setNiveau] = useState("normal");
+  const [motif, setMotif] = useState("");
+
+  const clientSelectionne = clients.find((c) => c.id === clientId);
+  const vehiculesDuClient = clientSelectionne?.vehicules || [];
+  const devisDuClient = devisList.filter((d) => d.client_id === clientId);
+
+  const submit = () => {
+    if (!clientId || !intervention.trim() || !dateRelance) return;
+    onSubmit({
+      client_id: clientId,
+      vehicule_id: vehiculeId || null,
+      devis_id: devisId || null,
+      intervention: intervention.trim(),
+      montant_ttc: montantTtc ? Number(montantTtc) : null,
+      date_relance: dateRelance,
+      niveau,
+      motif: motif.trim(),
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md text-slate-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold text-slate-900">Enregistrer un travail différé</h2>
+        <div className="text-[12.5px] text-slate-500 mt-1">Une réparation refusée ou reportée, à relancer plus tard. Rien n'est envoyé.</div>
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="text-[12px] font-medium text-slate-500">Client</label>
+            <select disabled={!!defaultClientId} value={clientId} onChange={(e) => { setClientId(e.target.value); setVehiculeId(""); setDevisId(""); }} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 disabled:bg-slate-50">
+              <option value="">Sélectionner un client</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.nom}</option>
+              ))}
+            </select>
+          </div>
+          {vehiculesDuClient.length > 0 && (
+            <div>
+              <label className="text-[12px] font-medium text-slate-500">Véhicule (facultatif)</label>
+              <select value={vehiculeId} onChange={(e) => setVehiculeId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500">
+                <option value="">—</option>
+                {vehiculesDuClient.map((v) => (
+                  <option key={v.id} value={v.id}>{v.marque} {v.modele} · {v.immatriculation}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="text-[12px] font-medium text-slate-500">Intervention</label>
+            <input autoFocus={!!defaultClientId} value={intervention} onChange={(e) => setIntervention(e.target.value)} placeholder="Ex. Freins avant" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+          </div>
+          {devisDuClient.length > 0 && (
+            <div>
+              <label className="text-[12px] font-medium text-slate-500">Devis d'origine (facultatif)</label>
+              <select value={devisId} onChange={(e) => setDevisId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500">
+                <option value="">—</option>
+                {devisDuClient.map((d) => (
+                  <option key={d.id} value={d.id}>{d.prestation} · {Number(d.montant_ttc || 0).toLocaleString("fr-FR")} € TTC</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[12px] font-medium text-slate-500">Montant TTC (facultatif)</label>
+              <input type="number" min="0" step="0.01" value={montantTtc} onChange={(e) => setMontantTtc(e.target.value)} placeholder="Ex. 480" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-slate-500">Date de relance</label>
+              <input type="date" value={dateRelance} onChange={(e) => setDateRelance(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+            </div>
+          </div>
+          <div>
+            <label className="text-[12px] font-medium text-slate-500">Niveau</label>
+            <select value={niveau} onChange={(e) => setNiveau(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500">
+              {NIVEAU_TRAVAIL_DIFFERE.map((n) => (
+                <option key={n.value} value={n.value}>{n.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[12px] font-medium text-slate-500">Motif (facultatif)</label>
+            <input value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Ex. client a reporté faute de budget" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600">Annuler</button>
+          <button onClick={submit} disabled={submitting || !clientId || !intervention.trim() || !dateRelance} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: ACCENT }}>
+            {submitting ? "Enregistrement…" : "Enregistrer"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   if (loading) {
     return (
@@ -744,9 +863,25 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   const propositionsEnRetard = propositions.filter((p) => joursDepuis(p.created_at) >= 1);
   const propositionsRecentes = propositions.filter((p) => joursDepuis(p.created_at) < 1);
 
-  const devisEnAttenteTous = devisList.filter((d) => d.statut === "en_attente");
+  // Un devis déjà lié à un travail différé ne doit pas être compté deux fois dans
+  // "Argent à risque" — le travail différé remplace la ligne devis-vieux.
+  const devisIdsAvecTravailDiffere = new Set(travauxDifferes.map((t) => t.devis_id).filter(Boolean));
+  const devisEnAttenteTous = devisList.filter((d) => d.statut === "en_attente" && !devisIdsAvecTravailDiffere.has(d.id));
   const devisAges = devisEnAttenteTous.filter((d) => joursDepuis(d.created_at) >= 3);
   const devisRecents = devisEnAttenteTous.filter((d) => joursDepuis(d.created_at) < 3);
+
+  // ---- Travaux différés — visibles dans "Argent à risque" uniquement à l'échéance --
+  const NIVEAU_RANG = { securite: 0, important: 1, normal: 2 };
+  const travauxActifs = travauxDifferes.filter(
+    (t) => t.statut !== "recupere" && t.statut !== "refus_definitif" && new Date(t.date_relance) <= now
+  );
+  const travauxTries = [...travauxActifs].sort((a, b) => {
+    const rang = NIVEAU_RANG[a.niveau] - NIVEAU_RANG[b.niveau];
+    if (rang !== 0) return rang;
+    const dateDiff = new Date(a.date_relance) - new Date(b.date_relance);
+    if (dateDiff !== 0) return dateDiff;
+    return (Number(b.montant_ttc) || 0) - (Number(a.montant_ttc) || 0);
+  });
 
   // ---- Zone 1 — À traiter maintenant (rouge = urgence réelle ou délai dépassé) -----
   const zone1Rows = [
@@ -880,15 +1015,53 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
       action: "Voir la fiche",
       onAction: () => setView("clients"),
     })),
+    ...travauxTries.map((t) => {
+      const retardJours = joursDepuis(t.date_relance);
+      const critique = t.niveau === "securite" || retardJours >= 14;
+      return {
+        key: `td-${t.id}`,
+        stripe: critique ? "#DC2626" : "#B45309",
+        urgent: critique,
+        title: `${t.intervention}${t.niveau === "securite" ? " · sécurité" : ""}`,
+        meta: `${t.clientNom}${t.vehiculeLabel ? ` · ${t.vehiculeLabel}` : ""} · reporté depuis ${retardJours} jour${retardJours > 1 ? "s" : ""}${t.statut === "contacte_en_attente" ? " · contacté, en attente" : ""}`,
+        amount: t.montant_ttc ? Number(t.montant_ttc) : 0,
+        action: "Ouvrir la fiche",
+        onAction: () => setView("clients"),
+        statusControl: {
+          value: t.statut === "planifie" ? "a_relancer" : t.statut,
+          options: [
+            { value: "a_relancer", label: "À relancer" },
+            { value: "contacte_en_attente", label: "Contacté — en attente" },
+            { value: "recupere", label: "Récupéré" },
+            { value: "refus_definitif", label: "Refus définitif" },
+          ],
+          onChange: (statut) => {
+            if (statut === "contacte_en_attente") onMarquerContacteTravail && onMarquerContacteTravail(t.id);
+            else if (statut === "recupere") onMarquerRecupereTravail && onMarquerRecupereTravail(t.id);
+            else if (statut === "refus_definitif") onCloturerRefusTravail && onCloturerRefusTravail(t.id);
+          },
+        },
+        dateControl: { onChange: (date) => onReprogrammerTravail && onReprogrammerTravail(t.id, date) },
+      };
+    }),
   ];
   const zone3TotalConnu = zone3Rows.reduce((s, r) => s + (r.amount || 0), 0);
   const zone3NonChiffrees = zone3Rows.filter((r) => !r.amount).length;
-  const zone3TotalLine = zone3Rows.length > 0 ? (
-    <div className="text-[12px] text-slate-500 mt-0.5">
-      <b className="text-slate-900 font-bold">{zone3TotalConnu.toLocaleString("fr-FR")} €</b> identifiés à risque
-      {zone3NonChiffrees > 0 ? ` · ${zone3NonChiffrees} opportunité${zone3NonChiffrees > 1 ? "s" : ""} non chiffrée${zone3NonChiffrees > 1 ? "s" : ""}` : ""}
+  const debutMoisTravaux = new Date(now.getFullYear(), now.getMonth(), 1);
+  const travailleRecupereCeMois = travauxDifferes
+    .filter((t) => t.statut === "recupere" && t.recupere_le && new Date(t.recupere_le) >= debutMoisTravaux)
+    .reduce((s, t) => s + (Number(t.montant_ttc) || 0), 0);
+  const zone3TotalLine = (
+    <div className="text-[12px] text-slate-500 mt-0.5 space-y-0.5">
+      {zone3Rows.length > 0 && (
+        <div>
+          <b className="text-slate-900 font-bold">{zone3TotalConnu.toLocaleString("fr-FR")} €</b> identifiés à risque
+          {zone3NonChiffrees > 0 ? ` · ${zone3NonChiffrees} opportunité${zone3NonChiffrees > 1 ? "s" : ""} non chiffrée${zone3NonChiffrees > 1 ? "s" : ""}` : ""}
+        </div>
+      )}
+      <div><b className="text-slate-900 font-bold">{travailleRecupereCeMois.toLocaleString("fr-FR")} €</b> récupérés ce mois-ci</div>
     </div>
-  ) : null;
+  );
 
   // ---- Aperçu atelier du jour — un seul état à la fois, piloté par les vraies données
   const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
@@ -998,6 +1171,15 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
         countColor="#B45309"
         rows={zone3Rows}
         emptyLabel="Rien à risque actuellement."
+        headerAction={
+          <button
+            onClick={() => onOuvrirTravailDiffereModal && onOuvrirTravailDiffereModal()}
+            className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
+            style={{ color: ACCENT }}
+          >
+            <Plus size={12} /> Enregistrer un travail différé
+          </button>
+        }
       />
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
@@ -2908,7 +3090,15 @@ function NouveauClientModal({ onClose, onCreerClient }) {
   );
 }
 
-function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], onCreerDevis, onCreerClient, onToast }) {
+const TRAVAIL_DIFFERE_STATUT_LABEL = {
+  planifie: "Planifié",
+  a_relancer: "À relancer",
+  contacte_en_attente: "Contacté — en attente",
+  recupere: "Récupéré",
+  refus_definitif: "Refus définitif",
+};
+
+function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], travauxDifferes = [], onCreerDevis, onCreerClient, onOuvrirTravailDiffereModal, onToast }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [devisModalOpen, setDevisModalOpen] = useState(false);
@@ -2931,6 +3121,9 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
     .map((r) => ({ prestation: r.prestation, date: new Date(r.date_debut).toLocaleDateString("fr-FR"), statut: r.statut, statutLabel: RDV_STATUS_LABEL[r.statut] || r.statut, terminee: r.statut_atelier === "restitue", note: r.notes, montant: factureParRdv.get(r.id)?.montant_ttc || 0 }));
   const derniereVisite = historique.find((h) => h.terminee)?.date || null;
   const totalCA = historique.filter((h) => h.terminee).reduce((sum, h) => sum + Number(h.montant || 0), 0);
+  const travauxDifferesClient = travauxDifferes
+    .filter((t) => t.client_id === selected?.id)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
@@ -2981,7 +3174,7 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
             <div><div className="text-lg font-semibold text-slate-900">{selected?.nom}</div><div className="text-[12.5px] text-slate-500">Dossier client et véhicule</div></div>
             {selected?.fidele && <Badge tone="amber">⭐ Client fidèle</Badge>}
           </div>
-          <div className="flex items-center gap-2 flex-wrap"><a href={selected?.telephone ? `tel:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><Phone size={13} />Appeler</a><a href={selected?.telephone ? `sms:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><MessageSquare size={13} />SMS</a><button onClick={() => setDevisModalOpen(true)} className="px-3 py-2 rounded-xl text-[12.5px] font-medium text-white flex items-center gap-1.5" style={{ backgroundColor: ACCENT }}><ReceiptText size={13} />Devis</button></div>
+          <div className="flex items-center gap-2 flex-wrap"><a href={selected?.telephone ? `tel:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><Phone size={13} />Appeler</a><a href={selected?.telephone ? `sms:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><MessageSquare size={13} />SMS</a><button onClick={() => setDevisModalOpen(true)} className="px-3 py-2 rounded-xl text-[12.5px] font-medium text-white flex items-center gap-1.5" style={{ backgroundColor: ACCENT }}><ReceiptText size={13} />Devis</button>{selected && <button onClick={() => onOuvrirTravailDiffereModal && onOuvrirTravailDiffereModal(selected.id)} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><Clock size={13} />Travail différé</button>}</div>
           {devisModalOpen && selected && (
             <GenererDevisModal
               clients={clients}
@@ -3015,6 +3208,34 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
             ))}
           </div>
         </div>
+
+        {travauxDifferesClient.length > 0 && (
+          <div className="mt-6">
+            <div className="text-[13px] font-medium text-slate-500 mb-2">Travaux différés</div>
+            <div className="space-y-2">
+              {travauxDifferesClient.map((t) => (
+                <div key={t.id} className="bg-slate-50 rounded-xl px-3.5 py-2.5">
+                  <div className="flex items-center justify-between text-sm text-slate-700 flex-wrap gap-1">
+                    <span className="flex items-center gap-2">
+                      <Clock size={14} className="text-slate-400" /> {t.intervention}
+                      {t.niveau === "securite" && <Badge tone="red">Sécurité</Badge>}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Badge tone={t.statut === "recupere" ? "green" : t.statut === "refus_definitif" ? "slate" : "amber"}>
+                        {TRAVAIL_DIFFERE_STATUT_LABEL[t.statut] || t.statut}
+                      </Badge>
+                      <span className="text-slate-500 text-[13px]">relance : {new Date(t.date_relance).toLocaleDateString("fr-FR")}</span>
+                    </div>
+                  </div>
+                  <div className="text-[12.5px] text-slate-500 mt-1 pl-6">
+                    {t.montant_ttc ? `${Number(t.montant_ttc).toLocaleString("fr-FR")} € TTC` : "montant non estimé"}
+                    {t.motif ? ` · ${t.motif}` : ""}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="mt-6">
           <div className="text-[13px] font-medium text-slate-500 mb-2">Historique</div>
@@ -3510,6 +3731,9 @@ function NexoraDashboardInner({ garageId }) {
   const [rappelsManques, setRappelsManques] = useState([]);
   const [showAjouterRappel, setShowAjouterRappel] = useState(false);
   const [submittingRappel, setSubmittingRappel] = useState(false);
+  const [travauxDifferes, setTravauxDifferes] = useState([]);
+  const [travailDiffereModal, setTravailDiffereModal] = useState(null); // { clientId? } | null
+  const [submittingTravailDiffere, setSubmittingTravailDiffere] = useState(false);
 
   useEffect(() => {
     async function loadPreparedDemandeIds() {
@@ -3957,6 +4181,37 @@ setPropositions(formattedPropositions);
     loadDevisList();
   }, []);
 
+  const loadTravauxDifferes = async () => {
+    const { data, error } = await supabase
+      .from("travaux_differes")
+      .select(`
+        *,
+        clients ( nom, telephone, email ),
+        vehicules ( marque, modele, immatriculation ),
+        devis ( id, prestation, montant_ttc )
+      `)
+      .eq("garage_id", garageId)
+      .order("date_relance", { ascending: true });
+
+    if (error) {
+      console.error("Erreur chargement travaux différés :", error);
+      flashToast("Impossible de charger les travaux différés", "error");
+      return;
+    }
+
+    const formatted = (data || []).map((t) => ({
+      ...t,
+      clientNom: t.clients?.nom || "Client inconnu",
+      vehiculeLabel: `${t.vehicules?.marque || ""} ${t.vehicules?.modele || ""}`.trim(),
+      immatriculation: t.vehicules?.immatriculation || "",
+    }));
+    setTravauxDifferes(formatted);
+  };
+
+  useEffect(() => {
+    loadTravauxDifferes();
+  }, []);
+
   useEffect(() => {
     async function loadErreurs() {
       const { data, error } = await supabase
@@ -4313,6 +4568,69 @@ if (updateError) {
     }
     setRappelsManques((prev) => prev.map((r) => (r.id === id ? { ...r, statut } : r)));
   };
+
+  // Travaux différés V1 — aucun envoi externe, aucun job planifié, statut/date gérés à la main.
+  const handleCreerTravailDiffere = async ({ client_id, vehicule_id, devis_id, intervention, montant_ttc, date_relance, niveau, motif }) => {
+    if (!client_id || !intervention?.trim() || !date_relance) {
+      flashToast("Client, intervention et date de relance sont obligatoires", "error");
+      return;
+    }
+    setSubmittingTravailDiffere(true);
+    const { data, error } = await supabase
+      .from("travaux_differes")
+      .insert({
+        garage_id: garageId,
+        client_id,
+        vehicule_id: vehicule_id || null,
+        devis_id: devis_id || null,
+        intervention: intervention.trim(),
+        montant_ttc: montant_ttc ? Number(montant_ttc) : null,
+        date_relance,
+        niveau: niveau || "normal",
+        motif: motif?.trim() || null,
+        statut: "planifie",
+      })
+      .select(`*, clients ( nom, telephone, email ), vehicules ( marque, modele, immatriculation ), devis ( id, prestation, montant_ttc )`)
+      .single();
+    setSubmittingTravailDiffere(false);
+    if (error) {
+      console.error("Erreur création travail différé :", error);
+      flashToast("Impossible d'enregistrer ce travail différé", "error");
+      return;
+    }
+    setTravauxDifferes((prev) => [
+      ...prev,
+      { ...data, clientNom: data.clients?.nom || "Client inconnu", vehiculeLabel: `${data.vehicules?.marque || ""} ${data.vehicules?.modele || ""}`.trim(), immatriculation: data.vehicules?.immatriculation || "" },
+    ]);
+    setTravailDiffereModal(null);
+    flashToast("Travail différé enregistré");
+  };
+
+  const handleMettreAJourTravailDiffere = async (id, changes) => {
+    const { error } = await supabase
+      .from("travaux_differes")
+      .update(changes)
+      .eq("id", id)
+      .eq("garage_id", garageId);
+    if (error) {
+      console.error("Erreur mise à jour travail différé :", error);
+      flashToast("Impossible de mettre à jour ce travail différé", "error");
+      return;
+    }
+    setTravauxDifferes((prev) => prev.map((t) => (t.id === id ? { ...t, ...changes } : t)));
+  };
+
+  const handleMarquerContacteTravail = (id) => handleMettreAJourTravailDiffere(id, { statut: "contacte_en_attente" });
+
+  const handleReprogrammerTravail = (id, nouvelleDate) => {
+    if (!nouvelleDate) return;
+    handleMettreAJourTravailDiffere(id, { statut: "planifie", date_relance: nouvelleDate });
+  };
+
+  const handleMarquerRecupereTravail = (id) =>
+    handleMettreAJourTravailDiffere(id, { statut: "recupere", recupere_le: new Date().toISOString() });
+
+  const handleCloturerRefusTravail = (id) => handleMettreAJourTravailDiffere(id, { statut: "refus_definitif" });
 
   const handleUpdateDevisMontant = async (id, montantHt) => {
     const montantTtc = Math.round(montantHt * 1.2 * 100) / 100;
@@ -4804,6 +5122,16 @@ if (updateError) {
     submitting={submittingRappel}
   />
 )}
+{travailDiffereModal && (
+  <TravailDiffereModal
+    clients={clients}
+    devisList={devisList}
+    defaultClientId={travailDiffereModal.clientId}
+    onClose={() => setTravailDiffereModal(null)}
+    onSubmit={handleCreerTravailDiffere}
+    submitting={submittingTravailDiffere}
+  />
+)}
       <main className="flex-1 min-w-0">
         <div className="flex items-center justify-between px-5 md:px-8 py-5 border-b border-slate-200 bg-white">
           <div className="flex items-center gap-3">
@@ -4872,7 +5200,7 @@ if (updateError) {
         )}
 
         <div className="p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} />}
+          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
@@ -4905,7 +5233,7 @@ if (updateError) {
               onRecommend={handleRecommendedAppointment}
             />
           )}
-          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onToast={flashToast} />}
+          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} travauxDifferes={travauxDifferes} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onOuvrirTravailDiffereModal={(clientId) => setTravailDiffereModal({ clientId })} onToast={flashToast} />}
           {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
         </div>
       </main>
