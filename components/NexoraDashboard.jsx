@@ -818,7 +818,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
         stripe: "#DC2626",
         urgent: true,
         title: `Report demandé — ${r.client}`,
-        meta: `${r.jour || ""} ${r.debut || ""} · ${r.prestation || "—"}${r.confirmation_repondu_at ? ` · reçu ${depuisLabel(r.confirmation_repondu_at)}` : ""}`.trim(),
+        meta: `${r.jour || ""} ${r.debut || ""} · ${r.prestation || "—"}${r.confirmation_repondu_at ? ` · ${depuisLabel(r.confirmation_repondu_at)}` : ""}`.trim(),
         action: "Proposer un nouveau créneau",
         onAction: () => setView("agenda"),
       })),
@@ -2193,16 +2193,16 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
           <button 
          onClick={() => changeDate(1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500"><ChevronRight size={16} /></button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <div className="flex rounded-xl border border-slate-200 overflow-hidden text-[13px]">
             {[["jour", "Jour"], ["semaine", "Semaine"], ["mois", "Mois"], ["annee", "Année"]].map(([m, label]) => (
-              <button key={m} onClick={() => setMode(m)} className="px-3.5 py-1.5 font-medium" style={mode === m ? { backgroundColor: ACCENT, color: "#fff" } : { backgroundColor: "#fff", color: "#64748B" }}>
+              <button key={m} onClick={() => setMode(m)} className="px-3.5 py-1.5 font-medium whitespace-nowrap" style={mode === m ? { backgroundColor: ACCENT, color: "#fff" } : { backgroundColor: "#fff", color: "#64748B" }}>
                 {label}
               </button>
             ))}
           </div>
           {/* Préparé pour une future synchronisation bidirectionnelle Google Calendar */}
-          <button onClick={onConnectCalendar} className="flex items-center gap-1.5 text-[13px] font-medium text-white px-3.5 py-1.5 rounded-xl" style={{ backgroundColor: garageData.google_agenda_connecte ? "#16A34A" : ACCENT }}>
+          <button onClick={onConnectCalendar} className="flex items-center justify-center gap-1.5 text-[13px] font-medium text-white px-3.5 py-1.5 rounded-xl w-full sm:w-auto" style={{ backgroundColor: garageData.google_agenda_connecte ? "#16A34A" : ACCENT }}>
             <CalendarPlus size={14} /> {garageData.google_agenda_connecte ? "Google synchronisé" : "Connecter Google"}
           </button>
         </div>
