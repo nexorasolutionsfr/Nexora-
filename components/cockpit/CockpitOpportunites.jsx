@@ -155,41 +155,45 @@ function OpportuniteRow({ item, onTraiter, onOuvrirReporter }) {
           <span>{item.meta}</span>
         </div>
       </div>
-      <div className="flex items-center gap-1.5 flex-wrap w-full sm:w-auto sm:flex-nowrap shrink-0">
-        {item.statusControl && (
-          <select
-            value={item.statusControl.value}
-            onChange={(e) => item.statusControl.onChange(e.target.value)}
-            className="text-[12px] rounded-[10px] border border-slate-200 px-2 py-2 text-slate-600 bg-white outline-none"
-          >
-            {(item.statusControl.options || [
-              { value: "a_rappeler", label: "À rappeler" },
-              { value: "tentative_sans_reponse", label: "Tentative sans réponse" },
-              { value: "rdv_a_creer", label: "RDV à créer" },
-              { value: "rdv_cree", label: "RDV créé" },
-              { value: "demande_traitee", label: "Demande traitée" },
-              { value: "perdu", label: "Perdu / non pertinent" },
-            ]).map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        )}
-        {item.dateControl && <ReprogrammerDateInline onReprogrammer={item.dateControl.onChange} />}
-        {item.telHref ? (
-          <a href={item.telHref} className="text-[12.5px] font-semibold px-3 py-2 rounded-[10px] text-white whitespace-nowrap inline-flex items-center gap-1.5" style={{ backgroundColor: item.urgent ? "#DC2626" : ACCENT }}>
-            <Phone size={12} /> {item.action}
-          </a>
-        ) : (
-          <button onClick={item.onAction} className="text-[12.5px] font-semibold px-3 py-2 rounded-[10px] text-white whitespace-nowrap" style={{ backgroundColor: item.urgent ? "#DC2626" : ACCENT }}>
-            {item.action}
+      <div className="flex flex-col gap-1.5 w-full sm:flex-row sm:flex-nowrap sm:items-center sm:w-auto shrink-0">
+        <div className="flex items-center gap-1.5 flex-wrap sm:contents">
+          {item.statusControl && (
+            <select
+              value={item.statusControl.value}
+              onChange={(e) => item.statusControl.onChange(e.target.value)}
+              className="text-[12px] rounded-[10px] border border-slate-200 px-2 py-2 text-slate-600 bg-white outline-none"
+            >
+              {(item.statusControl.options || [
+                { value: "a_rappeler", label: "À rappeler" },
+                { value: "tentative_sans_reponse", label: "Tentative sans réponse" },
+                { value: "rdv_a_creer", label: "RDV à créer" },
+                { value: "rdv_cree", label: "RDV créé" },
+                { value: "demande_traitee", label: "Demande traitée" },
+                { value: "perdu", label: "Perdu / non pertinent" },
+              ]).map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          )}
+          {item.dateControl && <ReprogrammerDateInline onReprogrammer={item.dateControl.onChange} />}
+          {item.telHref ? (
+            <a href={item.telHref} className="text-[12.5px] font-semibold px-3 py-2 rounded-[10px] text-white whitespace-nowrap inline-flex items-center gap-1.5" style={{ backgroundColor: item.urgent ? "#DC2626" : ACCENT }}>
+              <Phone size={12} /> {item.action}
+            </a>
+          ) : (
+            <button onClick={item.onAction} className="text-[12.5px] font-semibold px-3 py-2 rounded-[10px] text-white whitespace-nowrap" style={{ backgroundColor: item.urgent ? "#DC2626" : ACCENT }}>
+              {item.action}
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 sm:contents">
+          <button onClick={() => onTraiter(item)} title="Marque cette ligne traitée dans le Cockpit — n'envoie et ne valide rien" className="flex-1 sm:flex-none justify-center h-8 px-2.5 rounded-[10px] border border-slate-200 flex items-center gap-1 text-[12px] font-semibold text-slate-500 hover:text-green-600 hover:border-green-200 shrink-0 whitespace-nowrap">
+            <CheckCircle2 size={14} /> Traiter
           </button>
-        )}
-        <button onClick={() => onTraiter(item)} title="Marque cette ligne traitée dans le Cockpit — n'envoie et ne valide rien" className="h-8 px-2.5 rounded-[10px] border border-slate-200 flex items-center gap-1 text-[12px] font-semibold text-slate-500 hover:text-green-600 hover:border-green-200 shrink-0 whitespace-nowrap">
-          <CheckCircle2 size={14} /> Traiter
-        </button>
-        <button onClick={() => onOuvrirReporter(item)} title="Masque cette ligne jusqu'à l'échéance choisie — n'envoie et ne valide rien" className="h-8 px-2.5 rounded-[10px] border border-slate-200 flex items-center gap-1 text-[12px] font-semibold text-slate-500 hover:text-amber-600 hover:border-amber-200 shrink-0 whitespace-nowrap">
-          <Clock size={14} /> Reporter
-        </button>
+          <button onClick={() => onOuvrirReporter(item)} title="Masque cette ligne jusqu'à l'échéance choisie — n'envoie et ne valide rien" className="flex-1 sm:flex-none justify-center h-8 px-2.5 rounded-[10px] border border-slate-200 flex items-center gap-1 text-[12px] font-semibold text-slate-500 hover:text-amber-600 hover:border-amber-200 shrink-0 whitespace-nowrap">
+            <Clock size={14} /> Reporter
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -389,7 +393,7 @@ export default function CockpitOpportunites({
       </div>
 
       <div className="px-1 text-[12px] text-slate-400">
-        Traiter et Reporter organisent uniquement ce Cockpit (avec une trace dans l'historique) — aucune de ces actions ne valide, ne refuse, ne confirme ou n'envoie quoi que ce soit au client.
+        Traiter et Reporter organisent seulement le Cockpit. Aucun message n'est envoyé au client.
       </div>
 
       {totalVisible === 0 ? (

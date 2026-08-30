@@ -1149,9 +1149,8 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   const caMoisCourant = facturesMoisCourant.reduce((s, f) => s + Number(f.montant_ttc || 0), 0);
   const rdvFactures = facturesMoisCourant.length;
   const panierMoyen = rdvFactures ? Math.round(caMoisCourant / rdvFactures) : 0;
-  const tempsEconomiseMin = Math.round(aiStats?.tempsEconomiseMin || 0);
 
-  // ---- Bilan Pilote : détectée / préparée / validée / refusée / en attente --------
+  // ---- Demandes de rendez-vous : demandes / propositions / RDV confirmés / refus / en attente --------
   const piloteDebut = garageData?.pilote_debut ? new Date(garageData.pilote_debut) : null;
   const periodeStartPilote = (() => {
     if (periodePilote === "pilote" && piloteDebut) return piloteDebut;
@@ -1366,13 +1365,13 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
 
       <details className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3">
         <summary className="flex items-center gap-3 flex-wrap cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-          <span className="text-[12.5px] font-semibold text-slate-700">Confirmations de rendez-vous — {periodePilote === "pilote" ? "depuis le début" : periodePilote.replace("j", " derniers jours")}</span>
+          <span className="text-[12.5px] font-semibold text-slate-700">Demandes de rendez-vous — {periodePilote === "pilote" ? "depuis le début" : periodePilote.replace("j", " derniers jours")}</span>
           <div className="flex items-center gap-4 flex-wrap ml-auto text-[12px] text-slate-500">
-            <span><b className="text-slate-900 font-bold">{detecteesCount}</b> détectées</span>
-            <span><b className="text-slate-900 font-bold">{parseesCount}</b> préparées</span>
-            <span style={{ color: "#16A34A" }}><b className="font-bold">{valideesCount}</b> validées</span>
-            <span style={{ color: "#DC2626" }}><b className="font-bold">{refuseesCount}</b> refusée{refuseesCount > 1 ? "s" : ""}</span>
-            <span style={{ color: "#B45309" }}><b className="font-bold">{enAttenteCount}</b> en attente</span>
+            <span><b className="text-slate-900 font-bold">{detecteesCount}</b> Demandes</span>
+            <span><b className="text-slate-900 font-bold">{parseesCount}</b> Propositions</span>
+            <span style={{ color: "#16A34A" }}><b className="font-bold">{valideesCount}</b> RDV confirmés</span>
+            <span style={{ color: "#DC2626" }}><b className="font-bold">{refuseesCount}</b> Refus</span>
+            <span style={{ color: "#B45309" }}><b className="font-bold">{enAttenteCount}</b> En attente</span>
           </div>
           <ChevronRight size={16} className="text-slate-400" />
         </summary>
@@ -1411,9 +1410,6 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
         <div className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
           <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: garageData?.google_agenda_connecte ? "#16A34A" : "#CBD5E1" }} />
           Google Calendar — <b className="text-slate-900">{garageData?.google_agenda_connecte ? "connecté" : "non connecté"}</b>
-        </div>
-        <div className="text-[12.5px] text-slate-500 ml-auto">
-          <b className="text-slate-900">{tempsEconomiseMin} min</b> gagnées aujourd'hui grâce à Nexora
         </div>
       </div>
     </div>
