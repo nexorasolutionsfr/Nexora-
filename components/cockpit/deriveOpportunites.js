@@ -41,7 +41,7 @@ export function construireCandidats(ctx) {
     inspections = [],
     handlers = {},
   } = ctx;
-  const { onSelectDemande, onSelectAppt, setView, onChangerStatutRappel, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, onOuvrirInspection, onOuvrirClient, onToast } = handlers;
+  const { onSelectDemande, onSelectAppt, setView, onChangerStatutRappel, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, onOuvrirInspection, onToast } = handlers;
 
   const candidats = [];
 
@@ -231,28 +231,11 @@ export function construireCandidats(ctx) {
     });
   }
 
-  // ---- Clients fidèles silencieux ---------------------------------------------------
-  const oneYearAgo = new Date(now);
-  oneYearAgo.setFullYear(now.getFullYear() - 1);
-  const dormants = clients.filter((c) => {
-    if (!c.fidele) return false;
-    const dernier = rendezVous.filter((r) => r.client_id === c.id && r.statut_atelier === "restitue").sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut))[0];
-    return !dernier || new Date(dernier.date_debut) < oneYearAgo;
-  });
-  for (const c of dormants) {
-    candidats.push({
-      key: `client_dormant:${c.id}`,
-      sourceType: "client_dormant",
-      sourceId: c.id,
-      section: "a_planifier",
-      stripe: "#94A3B8",
-      urgent: false,
-      titre: "Client fidèle silencieux",
-      meta: c.nom || "Client",
-      action: "Ouvrir le client",
-      onAction: () => (onOuvrirClient ? onOuvrirClient(c.id) : setView && setView("clients")),
-    });
-  }
+  // ---- Clients fidèles silencieux : retirée du Cockpit V1 -------------------------
+  // clients.fidele n'existe pas dans le schéma réel (colonnes réelles : id, garage_id,
+  // nom, email, telephone, created_at) et n'est écrit nulle part dans l'app — la
+  // règle est structurellement morte (audit du 2026-08-30), pas seulement absente de
+  // données de recette. Retirée plutôt que masquée par une donnée simulée.
 
   return candidats;
 }

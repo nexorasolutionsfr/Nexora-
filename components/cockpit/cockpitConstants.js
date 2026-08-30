@@ -47,7 +47,7 @@ export const SECTION_FIXE = {
 // Sources pour lesquelles une réapparition automatique après traitement est
 // possible, parce qu'un champ updated_at fiable et déjà utilisé ailleurs
 // dans l'app existe pour elles. Liste fermée et explicite : pour toute autre
-// source (demande, proposition, devis, rdv_confirmation, client_dormant),
+// source (demande, proposition, devis, rdv_confirmation),
 // aucun champ de ce type n'a été vérifié fiable — elles restent masquées
 // jusqu'à réactivation manuelle ou échéance du report, sans mécanisme inventé.
 export const SOURCES_REACTIVATION_AUTO = ["rappel", "inspection", "travail_differe"];
@@ -65,5 +65,4 @@ export const ORIGINE_LABEL = {
   rdv_confirmation: "Confirmation RDV",
   inspection: "Inspection véhicule",
   travail_differe: "Travail différé",
-  client_dormant: "Client fidèle",
 };

@@ -20,7 +20,6 @@ function libelleSource(action, data) {
     case "rdv_confirmation": { const r = trouve(data.rendezVous); return r ? `RDV — ${r.client}` : null; }
     case "inspection": { const i = trouve(data.inspections); return i ? `Inspection — ${i.clients?.nom || i.client_nom_libre || "Client libre"}` : null; }
     case "travail_differe": { const t = trouve(data.travauxDifferes); return t ? `Travail différé — ${t.clientNom || t.intervention}` : null; }
-    case "client_dormant": { const c = trouve(data.clients); return c ? `Client — ${c.nom}` : null; }
     default: return null;
   }
 }
@@ -251,7 +250,6 @@ export default function CockpitOpportunites({
   onMarquerRecupereTravail,
   onCloturerRefusTravail,
   onOuvrirInspection,
-  onOuvrirClient,
   onToast,
 }) {
   const [inspections, setInspections] = useState([]);
@@ -310,7 +308,6 @@ export default function CockpitOpportunites({
     onMarquerRecupereTravail,
     onCloturerRefusTravail,
     onOuvrirInspection,
-    onOuvrirClient,
     onToast,
   };
 
