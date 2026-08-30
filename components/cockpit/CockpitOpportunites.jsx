@@ -261,6 +261,8 @@ export default function CockpitOpportunites({
   const [submitting, setSubmitting] = useState(false);
   const [masqueesOuvert, setMasqueesOuvert] = useState(false);
   const [historiqueOuvert, setHistoriqueOuvert] = useState(false);
+  const PAGE_HISTORIQUE = 20;
+  const [historiqueVisibleCount, setHistoriqueVisibleCount] = useState(PAGE_HISTORIQUE);
 
   const chargerInspections = async () => {
     const { data, error } = await supabase
@@ -275,13 +277,15 @@ export default function CockpitOpportunites({
     setInspections(data || []);
   };
 
+  // Historique append-only : chargé intégralement, sans limite de date — une
+  // action ancienne ne doit jamais devenir invisible silencieusement. Sert
+  // aussi à la logique de masquage/réapparition (deriveOpportunites), qui a
+  // besoin de connaître la dernière action même si elle est ancienne.
   const chargerActions = async () => {
-    const depuis = new Date(Date.now() - 30 * 86_400_000).toISOString();
     const { data, error } = await supabase
       .from("opportunites_actions")
       .select("*")
       .eq("garage_id", garageId)
-      .gte("created_at", depuis)
       .order("created_at", { ascending: false });
     if (error) {
       console.error("Cockpit — erreur chargement du journal d'actions :", error);
@@ -424,8 +428,8 @@ export default function CockpitOpportunites({
             <History size={13} /> Historique des actions ({actions.length})
             <ChevronRight size={14} className="text-slate-400" style={{ transform: historiqueOuvert ? "rotate(90deg)" : "none" }} />
           </summary>
-          <div className="mt-3 pt-3 border-t border-slate-100 space-y-2 max-h-72 overflow-y-auto">
-            {actions.map((a) => {
+          <div className="mt-3 pt-3 border-t border-slate-100 space-y-2 max-h-96 overflow-y-auto">
+            {actions.slice(0, historiqueVisibleCount).map((a) => {
               const libelle = libelleSource(a, { demandes, propositions, devisList, rappelsManques, rendezVous, travauxDifferes, clients, inspections }) || `${ORIGINE_LABEL[a.source_type] || a.source_type} (détail indisponible)`;
               return (
                 <div key={a.id} className="text-[12.5px] py-1.5 border-b border-slate-50 last:border-0">
@@ -441,6 +445,19 @@ export default function CockpitOpportunites({
               );
             })}
           </div>
+          {historiqueVisibleCount < actions.length ? (
+            <button
+              onClick={() => setHistoriqueVisibleCount((n) => n + PAGE_HISTORIQUE)}
+              className="w-full text-center mt-2 pt-2.5 border-t border-slate-100 text-[12.5px] font-semibold"
+              style={{ color: ACCENT }}
+            >
+              Charger plus ancien ({actions.length - historiqueVisibleCount} restante{actions.length - historiqueVisibleCount > 1 ? "s" : ""})
+            </button>
+          ) : (
+            actions.length > PAGE_HISTORIQUE && (
+              <div className="text-center mt-2 pt-2.5 border-t border-slate-100 text-[12px] text-slate-400">Tout l'historique est affiché ({actions.length} action{actions.length > 1 ? "s" : ""})</div>
+            )
+          )}
         </details>
       )}
 
