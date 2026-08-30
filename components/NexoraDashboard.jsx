@@ -2,6 +2,7 @@
 "use client"; import { supabase } from "@/lib/supabase";
 
 import React, { useState, useEffect } from "react";
+import InspectionsSection from "./inspections/InspectionsSection";
 import {
   Home,
   Calendar,
@@ -214,6 +215,7 @@ const navGroups = [
       { key: "aujourdhui", label: "Aujourd'hui", icon: Home },
       { key: "atelier", label: "Atelier", icon: Wrench },
       { key: "clients", label: "Clients", icon: Users },
+      { key: "inspections", label: "Inspections", icon: ClipboardList },
       { key: "facturation", label: "Facturation", icon: ReceiptText, match: ["devis", "factures", "historique"] },
       { key: "statistiques", label: "Statistiques", icon: TrendingUp },
       { key: "parametres", label: "Paramètres", icon: Settings },
@@ -5289,6 +5291,7 @@ if (updateError) {
             />
           )}
           {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} travauxDifferes={travauxDifferes} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onOuvrirTravailDiffereModal={(clientId) => setTravailDiffereModal({ clientId })} onToast={flashToast} />}
+          {view === "inspections" && <InspectionsSection garageId={garageId} clients={clients} rendezVous={rendezVous} onToast={flashToast} />}
           {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
         </div>
       </main>
