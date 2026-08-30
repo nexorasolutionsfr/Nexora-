@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import InspectionsSection from "./inspections/InspectionsSection";
+import CockpitOpportunites from "./cockpit/CockpitOpportunites";
 import {
   Home,
   Calendar,
@@ -55,6 +56,11 @@ import {
 // conformes (isolation garage_id, décision client non modifiable
 // directement par authenticated, jeton invalide sans fuite).
 const INSPECTIONS_MODULE_ACTIF = true;
+// INTERRUPTEUR — Cockpit Opportunités V1. Remplace les 3 zones historiques
+// d'Aujourd'hui par une liste unique priorisée. Faux par défaut le temps de
+// la recette complète (migration opportunites_actions à appliquer d'abord) ;
+// l'ancien affichage en 3 zones reste intact et actif tant que c'est à false.
+const COCKPIT_OPPORTUNITES_ACTIF = false;
 // =====================================================================================
 // DESIGN TOKENS
 // =====================================================================================
@@ -884,7 +890,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
   );
 }
 
-function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail }) {
+function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   if (loading) {
     return (
@@ -1191,60 +1197,87 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
         <span>{openState.label}</span>
       </div>
 
-      <CommandZone
-        icon={AlertTriangle}
-        iconBg="#FDECEC"
-        iconColor="#DC2626"
-        title="À traiter maintenant"
-        subtitle="Ça attend une décision de votre part"
-        countBg="#FDECEC"
-        countColor="#B91C1C"
-        rows={zone1Rows}
-        emptyLabel="Rien à traiter pour l'instant."
-        headerAction={
-          <button
-            onClick={() => onAjouterRappel && onAjouterRappel()}
-            className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
-            style={{ color: ACCENT }}
-          >
-            <Phone size={12} /> Ajouter un appel à rappeler
-          </button>
-        }
-      />
+      {COCKPIT_OPPORTUNITES_ACTIF ? (
+        <CockpitOpportunites
+          garageId={garageId}
+          demandes={demandes}
+          propositions={propositions}
+          devisList={devisList}
+          rappelsManques={rappelsManques}
+          rendezVous={rendezVous}
+          travauxDifferes={travauxDifferes}
+          clients={clients}
+          onSelectDemande={onSelectDemande}
+          onSelectAppt={onSelectAppt}
+          setView={setView}
+          onChangerStatutRappel={onChangerStatutRappel}
+          onAjouterRappel={onAjouterRappel}
+          onOuvrirTravailDiffereModal={onOuvrirTravailDiffereModal}
+          onMarquerContacteTravail={onMarquerContacteTravail}
+          onReprogrammerTravail={onReprogrammerTravail}
+          onMarquerRecupereTravail={onMarquerRecupereTravail}
+          onCloturerRefusTravail={onCloturerRefusTravail}
+          onOuvrirInspection={onOuvrirInspection}
+          onToast={onToast}
+        />
+      ) : (
+        <>
+          <CommandZone
+            icon={AlertTriangle}
+            iconBg="#FDECEC"
+            iconColor="#DC2626"
+            title="À traiter maintenant"
+            subtitle="Ça attend une décision de votre part"
+            countBg="#FDECEC"
+            countColor="#B91C1C"
+            rows={zone1Rows}
+            emptyLabel="Rien à traiter pour l'instant."
+            headerAction={
+              <button
+                onClick={() => onAjouterRappel && onAjouterRappel()}
+                className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
+                style={{ color: ACCENT }}
+              >
+                <Phone size={12} /> Ajouter un appel à rappeler
+              </button>
+            }
+          />
 
-      <CommandZone
-        icon={Bot}
-        iconBg={ACCENT_SOFT}
-        iconColor={ACCENT}
-        title="Nexora a préparé"
-        subtitle="Prêt pour votre validation"
-        countBg={ACCENT_SOFT}
-        countColor={ACCENT}
-        rows={zone2Rows}
-        emptyLabel="Rien de préparé pour l'instant."
-      />
+          <CommandZone
+            icon={Bot}
+            iconBg={ACCENT_SOFT}
+            iconColor={ACCENT}
+            title="Nexora a préparé"
+            subtitle="Prêt pour votre validation"
+            countBg={ACCENT_SOFT}
+            countColor={ACCENT}
+            rows={zone2Rows}
+            emptyLabel="Rien de préparé pour l'instant."
+          />
 
-      <CommandZone
-        icon={CircleDollarSign}
-        iconBg="#FEF3E2"
-        iconColor="#B45309"
-        title="Argent à risque"
-        subtitle="Ce qui peut vous échapper si personne ne relance"
-        extraHeaderInfo={zone3TotalLine}
-        countBg="#FEF3E2"
-        countColor="#B45309"
-        rows={zone3Rows}
-        emptyLabel="Rien à risque actuellement."
-        headerAction={
-          <button
-            onClick={() => onOuvrirTravailDiffereModal && onOuvrirTravailDiffereModal()}
-            className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
-            style={{ color: ACCENT }}
-          >
-            <Plus size={12} /> Enregistrer un travail différé
-          </button>
-        }
-      />
+          <CommandZone
+            icon={CircleDollarSign}
+            iconBg="#FEF3E2"
+            iconColor="#B45309"
+            title="Argent à risque"
+            subtitle="Ce qui peut vous échapper si personne ne relance"
+            extraHeaderInfo={zone3TotalLine}
+            countBg="#FEF3E2"
+            countColor="#B45309"
+            rows={zone3Rows}
+            emptyLabel="Rien à risque actuellement."
+            headerAction={
+              <button
+                onClick={() => onOuvrirTravailDiffereModal && onOuvrirTravailDiffereModal()}
+                className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
+                style={{ color: ACCENT }}
+              >
+                <Plus size={12} /> Enregistrer un travail différé
+              </button>
+            }
+          />
+        </>
+      )}
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
         <div className="flex items-center justify-between mb-3.5">
@@ -3798,6 +3831,7 @@ function NexoraDashboardInner({ garageId }) {
   const [travauxDifferes, setTravauxDifferes] = useState([]);
   const [travailDiffereModal, setTravailDiffereModal] = useState(null); // { clientId? } | null
   const [submittingTravailDiffere, setSubmittingTravailDiffere] = useState(false);
+  const [inspectionCibleCockpit, setInspectionCibleCockpit] = useState(null);
 
   useEffect(() => {
     async function loadPreparedDemandeIds() {
@@ -5264,7 +5298,7 @@ if (updateError) {
         )}
 
         <div className="p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} />}
+          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
@@ -5298,7 +5332,7 @@ if (updateError) {
             />
           )}
           {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} travauxDifferes={travauxDifferes} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onOuvrirTravailDiffereModal={(clientId) => setTravailDiffereModal({ clientId })} onToast={flashToast} />}
-          {INSPECTIONS_MODULE_ACTIF && view === "inspections" && <InspectionsSection garageId={garageId} clients={clients} rendezVous={rendezVous} onToast={flashToast} />}
+          {INSPECTIONS_MODULE_ACTIF && view === "inspections" && <InspectionsSection garageId={garageId} clients={clients} rendezVous={rendezVous} onToast={flashToast} initialDetailId={inspectionCibleCockpit} onInitialDetailConsumed={() => setInspectionCibleCockpit(null)} />}
           {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
         </div>
       </main>
