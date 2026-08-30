@@ -890,7 +890,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
   );
 }
 
-function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
+function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection, onOuvrirClient }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   if (loading) {
     return (
@@ -1218,6 +1218,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
           onMarquerRecupereTravail={onMarquerRecupereTravail}
           onCloturerRefusTravail={onCloturerRefusTravail}
           onOuvrirInspection={onOuvrirInspection}
+          onOuvrirClient={onOuvrirClient}
           onToast={onToast}
         />
       ) : (
@@ -3195,9 +3196,14 @@ const TRAVAIL_DIFFERE_STATUT_LABEL = {
   refus_definitif: "Refus définitif",
 };
 
-function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], travauxDifferes = [], onCreerDevis, onCreerClient, onOuvrirTravailDiffereModal, onToast }) {
+function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], travauxDifferes = [], onCreerDevis, onCreerClient, onOuvrirTravailDiffereModal, onToast, initialSelectedClientId = null, onInitialSelectedConsumed }) {
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(initialSelectedClientId);
+
+  useEffect(() => {
+    if (initialSelectedClientId) onInitialSelectedConsumed && onInitialSelectedConsumed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [devisModalOpen, setDevisModalOpen] = useState(false);
   const [nouveauClientOuvert, setNouveauClientOuvert] = useState(false);
   const [tri, setTri] = useState("nom");
@@ -3832,6 +3838,7 @@ function NexoraDashboardInner({ garageId }) {
   const [travailDiffereModal, setTravailDiffereModal] = useState(null); // { clientId? } | null
   const [submittingTravailDiffere, setSubmittingTravailDiffere] = useState(false);
   const [inspectionCibleCockpit, setInspectionCibleCockpit] = useState(null);
+  const [clientCibleCockpit, setClientCibleCockpit] = useState(null);
 
   useEffect(() => {
     async function loadPreparedDemandeIds() {
@@ -5298,7 +5305,7 @@ if (updateError) {
         )}
 
         <div className="p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
+          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} onOuvrirClient={(id) => { setClientCibleCockpit(id); setView("clients"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
@@ -5331,7 +5338,7 @@ if (updateError) {
               onRecommend={handleRecommendedAppointment}
             />
           )}
-          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} travauxDifferes={travauxDifferes} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onOuvrirTravailDiffereModal={(clientId) => setTravailDiffereModal({ clientId })} onToast={flashToast} />}
+          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} travauxDifferes={travauxDifferes} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onOuvrirTravailDiffereModal={(clientId) => setTravailDiffereModal({ clientId })} onToast={flashToast} initialSelectedClientId={clientCibleCockpit} onInitialSelectedConsumed={() => setClientCibleCockpit(null)} />}
           {INSPECTIONS_MODULE_ACTIF && view === "inspections" && <InspectionsSection garageId={garageId} clients={clients} rendezVous={rendezVous} onToast={flashToast} initialDetailId={inspectionCibleCockpit} onInitialDetailConsumed={() => setInspectionCibleCockpit(null)} />}
           {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
         </div>

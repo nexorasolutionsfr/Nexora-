@@ -1,4 +1,4 @@
-import { SEUILS } from "./cockpitConstants";
+import { SECTION_FIXE, SEUILS, SOURCES_REACTIVATION_AUTO } from "./cockpitConstants";
 
 // Cockpit Opportunités V1 — dérivation pure des opportunités à partir des
 // données déjà existantes. Aucune donnée n'est stockée ici : uniquement
@@ -41,7 +41,7 @@ export function construireCandidats(ctx) {
     inspections = [],
     handlers = {},
   } = ctx;
-  const { onSelectDemande, onSelectAppt, setView, onChangerStatutRappel, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, onOuvrirInspection, onToast } = handlers;
+  const { onSelectDemande, onSelectAppt, setView, onChangerStatutRappel, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, onOuvrirInspection, onOuvrirClient, onToast } = handlers;
 
   const candidats = [];
 
@@ -58,7 +58,7 @@ export function construireCandidats(ctx) {
       urgent: urgente,
       titre: `${urgente ? "Demande urgente" : "Nouvelle demande"} — ${d.clients?.nom || "Client"}`,
       meta: `${depuisLabel(d.created_at, now)} · ${d.motif || d.type_demande || "motif non précisé"}`,
-      action: "Répondre",
+      action: "Ouvrir la demande",
       onAction: () => onSelectDemande && onSelectDemande(d),
     });
   }
@@ -75,7 +75,7 @@ export function construireCandidats(ctx) {
       urgent: retard,
       titre: `Créneau en attente — ${p.client}`,
       meta: `${depuisLabel(p.created_at, now)} · ${p.prestation || "prestation non précisée"}`,
-      action: "Valider",
+      action: "Ouvrir le créneau",
       onAction: () => setView && setView("valider"),
     });
   }
@@ -95,7 +95,7 @@ export function construireCandidats(ctx) {
       titre: `Devis sans réponse depuis ${jours} jour${jours > 1 ? "s" : ""}`,
       meta: `${d.client} · ${d.prestation || "—"}`,
       amount: Number(d.montant_ttc || 0),
-      action: "Prévisualiser et envoyer",
+      action: "Ouvrir le devis",
       onAction: () => setView && setView("devis"),
     });
   }
@@ -116,11 +116,13 @@ export function construireCandidats(ctx) {
       section: r.urgent ? "maintenant" : "aujourdhui",
       stripe: r.urgent ? "#DC2626" : "#3D6BE0",
       urgent: !!r.urgent,
+      suiviInterne: true,
+      updatedAt: r.updated_at,
       titre: estCreationRdv
         ? `RDV à créer — ${r.telephone || "numéro non renseigné"}`
         : `${r.statut === "tentative_sans_reponse" ? "Rappel — sans réponse" : "Rappel à faire"} — ${r.telephone || "numéro non renseigné"}`,
       meta: `${depuisLabel(r.created_at, now)}${r.motif ? ` · ${r.motif}` : ""}`,
-      action: estCreationRdv ? "Créer le rendez-vous →" : r.statut === "tentative_sans_reponse" ? "Réessayer" : "Rappeler",
+      action: estCreationRdv ? "Ouvrir l'agenda" : r.statut === "tentative_sans_reponse" ? "Réessayer" : "Rappeler",
       telHref: estCreationRdv ? null : telHref,
       onAction: estCreationRdv
         ? () => setView && setView("agenda")
@@ -138,7 +140,7 @@ export function construireCandidats(ctx) {
         key: `rdv_confirmation:${r.id}`,
         sourceType: "rdv_confirmation",
         sourceId: r.id,
-        section: "maintenant",
+        section: SECTION_FIXE.rdvReportDemande,
         stripe: "#DC2626",
         urgent: true,
         titre: `Report demandé — ${r.client}`,
@@ -149,16 +151,16 @@ export function construireCandidats(ctx) {
       continue;
     }
     if (r.statut_confirmation === "en_attente_confirmation" && r.date_debut) {
+      // Section fixe, sans palier ni filtre de date (aucune règle existante à
+      // reprendre pour cette catégorie inédite) : voir SECTION_FIXE.rdvEnAttenteConfirmation.
       const joursRestants = joursAvant(r.date_debut, now);
-      if (joursRestants > SEUILS.rdvConfirmation.horizonMaxJours) continue; // trop loin, pas encore pertinent
-      const section = joursRestants <= SEUILS.rdvConfirmation.maintenantJours ? "maintenant" : joursRestants <= SEUILS.rdvConfirmation.aujourdhuiJours ? "aujourdhui" : "a_planifier";
       candidats.push({
         key: `rdv_confirmation:${r.id}`,
         sourceType: "rdv_confirmation",
         sourceId: r.id,
-        section,
-        stripe: section === "maintenant" ? "#DC2626" : section === "aujourdhui" ? "#3D6BE0" : "#94A3B8",
-        urgent: section === "maintenant",
+        section: SECTION_FIXE.rdvEnAttenteConfirmation,
+        stripe: "#3D6BE0",
+        urgent: false,
         titre: `Sans confirmation — ${r.client}`,
         meta: `${r.jour || ""} ${r.debut || ""} · ${r.prestation || "—"} · ${joursRestants <= 0 ? "rendez-vous passé sans réponse" : `dans ${joursRestants} jour${joursRestants > 1 ? "s" : ""}`}`.trim(),
         action: "Voir le rendez-vous",
@@ -171,17 +173,19 @@ export function construireCandidats(ctx) {
   const ENATTENTE = ["en_attente_client", "consulte", "partiellement_valide"];
   for (const i of inspections) {
     if (!ENATTENTE.includes(i.statut)) continue;
+    // Section fixe (voir SECTION_FIXE.inspectionEnAttente) : aucune règle
+    // temporelle existante à reprendre pour cette catégorie inédite.
     const heures = heuresDepuis(i.verrouille_le, now);
-    const section = heures >= SEUILS.inspectionEnAttente.maintenantHeures ? "maintenant" : heures >= SEUILS.inspectionEnAttente.aujourdhuiHeures ? "aujourdhui" : "a_planifier";
     const clientLabel = i.clients?.nom || i.client_nom_libre || "Client libre";
     const vehiculeLabel = i.vehicules ? `${i.vehicules.marque || ""} ${i.vehicules.modele || ""}`.trim() : i.vehicule_libelle_libre;
     candidats.push({
       key: `inspection:${i.id}`,
       sourceType: "inspection",
       sourceId: i.id,
-      section,
-      stripe: section === "maintenant" ? "#DC2626" : section === "aujourdhui" ? "#3D6BE0" : "#94A3B8",
-      urgent: section === "maintenant",
+      section: SECTION_FIXE.inspectionEnAttente,
+      stripe: "#3D6BE0",
+      urgent: false,
+      updatedAt: i.updated_at,
       titre: `Inspection en attente — ${clientLabel}`,
       meta: `${vehiculeLabel ? `${vehiculeLabel} · ` : ""}partagée depuis ${heures < 24 ? `${heures}h` : `${Math.floor(heures / 24)} jour${Math.floor(heures / 24) > 1 ? "s" : ""}`}`,
       action: "Voir l'inspection",
@@ -202,6 +206,8 @@ export function construireCandidats(ctx) {
       section: critique ? "maintenant" : "aujourdhui",
       stripe: critique ? "#DC2626" : "#B45309",
       urgent: critique,
+      suiviInterne: true,
+      updatedAt: t.updated_at,
       titre: `${t.intervention}${t.niveau === "securite" ? " · sécurité" : ""}`,
       meta: `${t.clientNom}${t.vehiculeLabel ? ` · ${t.vehiculeLabel}` : ""} · reporté depuis ${retardJours} jour${retardJours > 1 ? "s" : ""}${t.statut === "contacte_en_attente" ? " · contacté, en attente" : ""}`,
       amount: t.montant_ttc ? Number(t.montant_ttc) : 0,
@@ -243,8 +249,8 @@ export function construireCandidats(ctx) {
       urgent: false,
       titre: "Client fidèle silencieux",
       meta: c.nom || "Client",
-      action: "Voir la fiche",
-      onAction: () => setView && setView("clients"),
+      action: "Ouvrir le client",
+      onAction: () => (onOuvrirClient ? onOuvrirClient(c.id) : setView && setView("clients")),
     });
   }
 
@@ -274,6 +280,16 @@ export function appliquerActions(candidats, actions, now) {
       continue;
     }
     if (derniere.action === "reactiver") {
+      visibles.push(c);
+      continue;
+    }
+    // Réapparition automatique : uniquement pour les sources listées dans
+    // SOURCES_REACTIVATION_AUTO, et seulement si leur updated_at (réel,
+    // déjà utilisé ailleurs dans l'app) est postérieur à la dernière action.
+    // Pour toute autre source, aucune réapparition automatique n'est tentée.
+    const activiteReelleRecente =
+      SOURCES_REACTIVATION_AUTO.includes(c.sourceType) && c.updatedAt && new Date(c.updatedAt) > new Date(derniere.created_at);
+    if (activiteReelleRecente) {
       visibles.push(c);
       continue;
     }

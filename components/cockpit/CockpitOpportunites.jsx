@@ -1,10 +1,35 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Calendar, CheckCircle2, ChevronRight, Clock, Phone, RotateCcw } from "lucide-react";
+import { Calendar, CheckCircle2, ChevronRight, Clock, History, Phone, RotateCcw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { ORIGINE_LABEL, SECTIONS, SECTION_LABEL, SECTION_SUBTITLE, SECTION_TONE } from "./cockpitConstants";
+import { ORIGINE_LABEL, SECTIONS, SECTION_LABEL, SECTION_SUBTITLE, SECTION_TONE, SOURCES_SUIVI_INTERNE } from "./cockpitConstants";
 import { deriveOpportunites } from "./deriveOpportunites";
+
+// Désignation lisible d'une ligne du journal, résolue à partir des données
+// déjà chargées (aucune donnée stockée en plus dans opportunites_actions).
+// Les sources ne sont jamais supprimées dans cette app (seul leur statut
+// change) : le lookup réussit donc quasi toujours. Fallback honnête sinon.
+function libelleSource(action, data) {
+  const trouve = (arr = []) => arr.find((x) => x.id === action.source_id);
+  switch (action.source_type) {
+    case "demande": { const d = trouve(data.demandes); return d ? `Demande — ${d.clients?.nom || "Client"}` : null; }
+    case "proposition": { const p = trouve(data.propositions); return p ? `Créneau — ${p.client}` : null; }
+    case "devis": { const d = trouve(data.devisList); return d ? `Devis — ${d.client}` : null; }
+    case "rappel": { const r = trouve(data.rappelsManques); return r ? `Rappel — ${r.telephone || "numéro non renseigné"}` : null; }
+    case "rdv_confirmation": { const r = trouve(data.rendezVous); return r ? `RDV — ${r.client}` : null; }
+    case "inspection": { const i = trouve(data.inspections); return i ? `Inspection — ${i.clients?.nom || i.client_nom_libre || "Client libre"}` : null; }
+    case "travail_differe": { const t = trouve(data.travauxDifferes); return t ? `Travail différé — ${t.clientNom || t.intervention}` : null; }
+    case "client_dormant": { const c = trouve(data.clients); return c ? `Client — ${c.nom}` : null; }
+    default: return null;
+  }
+}
+
+// Identité honnête : aucune table de profils/rôles n'existe dans cette app.
+// effectue_par (forcé serveur) est affiché tel quel, jamais un nom inventé.
+function identiteLabel(uid) {
+  return uid ? `Utilisateur authentifié · ${uid.slice(0, 8)}` : "Utilisateur authentifié";
+}
 
 const ACCENT = "#3D6BE0";
 
@@ -122,6 +147,11 @@ function OpportuniteRow({ item, onTraiter, onOuvrirReporter }) {
         </div>
         <div className="text-[12px] text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
           <span className="text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">{ORIGINE_LABEL[item.sourceType]}</span>
+          {item.suiviInterne && (
+            <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded" style={{ backgroundColor: "#F1F5F9", color: "#64748B" }} title="Contrôle de suivi interne — n'envoie rien au client">
+              Suivi interne
+            </span>
+          )}
           <span>·</span>
           <span>{item.meta}</span>
         </div>
@@ -221,6 +251,7 @@ export default function CockpitOpportunites({
   onMarquerRecupereTravail,
   onCloturerRefusTravail,
   onOuvrirInspection,
+  onOuvrirClient,
   onToast,
 }) {
   const [inspections, setInspections] = useState([]);
@@ -229,11 +260,12 @@ export default function CockpitOpportunites({
   const [reporterCible, setReporterCible] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [masqueesOuvert, setMasqueesOuvert] = useState(false);
+  const [historiqueOuvert, setHistoriqueOuvert] = useState(false);
 
   const chargerInspections = async () => {
     const { data, error } = await supabase
       .from("inspections")
-      .select("id, statut, verrouille_le, client_nom_libre, vehicule_libelle_libre, clients (nom), vehicules (marque, modele)")
+      .select("id, statut, verrouille_le, updated_at, client_nom_libre, vehicule_libelle_libre, clients (nom), vehicules (marque, modele)")
       .eq("garage_id", garageId)
       .in("statut", ["en_attente_client", "consulte", "partiellement_valide"]);
     if (error) {
@@ -274,6 +306,7 @@ export default function CockpitOpportunites({
     onMarquerRecupereTravail,
     onCloturerRefusTravail,
     onOuvrirInspection,
+    onOuvrirClient,
     onToast,
   };
 
@@ -381,6 +414,32 @@ export default function CockpitOpportunites({
                 </button>
               </div>
             ))}
+          </div>
+        </details>
+      )}
+
+      {actions.length > 0 && (
+        <details open={historiqueOuvert} onToggle={(e) => setHistoriqueOuvert(e.target.open)} className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3">
+          <summary className="flex items-center gap-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden text-[12.5px] font-semibold text-slate-600">
+            <History size={13} /> Historique des actions ({actions.length})
+            <ChevronRight size={14} className="text-slate-400" style={{ transform: historiqueOuvert ? "rotate(90deg)" : "none" }} />
+          </summary>
+          <div className="mt-3 pt-3 border-t border-slate-100 space-y-2 max-h-72 overflow-y-auto">
+            {actions.map((a) => {
+              const libelle = libelleSource(a, { demandes, propositions, devisList, rappelsManques, rendezVous, travauxDifferes, clients, inspections }) || `${ORIGINE_LABEL[a.source_type] || a.source_type} (détail indisponible)`;
+              return (
+                <div key={a.id} className="text-[12.5px] py-1.5 border-b border-slate-50 last:border-0">
+                  <div className="font-medium text-slate-700">
+                    {libelle} — {a.action === "traite" ? "traité" : a.action === "reactiver" ? "réactivé" : "reporté"}
+                  </div>
+                  <div className="text-slate-400 mt-0.5">
+                    {identiteLabel(a.effectue_par)} · {new Date(a.created_at).toLocaleString("fr-FR")}
+                    {a.motif && ` · motif : ${a.motif}`}
+                    {a.masquer_jusqu_au && ` · revoir le ${new Date(a.masquer_jusqu_au).toLocaleDateString("fr-FR")}`}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </details>
       )}
