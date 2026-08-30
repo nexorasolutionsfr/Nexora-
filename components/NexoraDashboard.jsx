@@ -49,6 +49,13 @@ import {
 } from "lucide-react";
 // Vercel rebuild trigger
 // =====================================================================================
+// INTERRUPTEUR — Inspections V1 masquée tant que les migrations Supabase
+// (supabase/migrations/20260830000400_inspections.sql et suivantes) ne sont
+// pas appliquées en production. Code intégralement conservé. Repasser à
+// true une fois les migrations validées pour réactiver le module (nav +
+// chargement) sans rien modifier d'autre.
+const INSPECTIONS_MODULE_ACTIF = false;
+// =====================================================================================
 // DESIGN TOKENS
 // =====================================================================================
 const NAVY = "#0F1B33";
@@ -215,7 +222,7 @@ const navGroups = [
       { key: "aujourdhui", label: "Aujourd'hui", icon: Home },
       { key: "atelier", label: "Atelier", icon: Wrench },
       { key: "clients", label: "Clients", icon: Users },
-      { key: "inspections", label: "Inspections", icon: ClipboardList },
+      ...(INSPECTIONS_MODULE_ACTIF ? [{ key: "inspections", label: "Inspections", icon: ClipboardList }] : []),
       { key: "facturation", label: "Facturation", icon: ReceiptText, match: ["devis", "factures", "historique"] },
       { key: "statistiques", label: "Statistiques", icon: TrendingUp },
       { key: "parametres", label: "Paramètres", icon: Settings },
@@ -5291,7 +5298,7 @@ if (updateError) {
             />
           )}
           {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} travauxDifferes={travauxDifferes} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onOuvrirTravailDiffereModal={(clientId) => setTravailDiffereModal({ clientId })} onToast={flashToast} />}
-          {view === "inspections" && <InspectionsSection garageId={garageId} clients={clients} rendezVous={rendezVous} onToast={flashToast} />}
+          {INSPECTIONS_MODULE_ACTIF && view === "inspections" && <InspectionsSection garageId={garageId} clients={clients} rendezVous={rendezVous} onToast={flashToast} />}
           {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
         </div>
       </main>
