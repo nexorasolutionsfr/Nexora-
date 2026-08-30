@@ -598,7 +598,7 @@ function ReprogrammerDateControl({ onReprogrammer }) {
         type="date"
         title="Programmer une nouvelle date de relance"
         value={value}
-        onChange={(e) => { setValue(e.target.value); setErreur(""); }}
+        onInput={(e) => { setValue(e.target.value); setErreur(""); }}
         onKeyDown={(e) => { if (e.key === "Enter") confirmer(); }}
         disabled={enregistrement}
         className="text-[12px] rounded-[10px] border border-slate-200 px-2 py-2 text-slate-600 bg-white outline-none disabled:opacity-60"
