@@ -557,6 +557,59 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] })
 // =====================================================================================
 const CANAL_COLOR = { email: ACCENT, sms: "#7C3AED", whatsapp: "#16A34A" };
 
+// Reprogrammation d'un travail différé — contrôlé (pas defaultValue) et validé avant
+// tout appel réseau : évite qu'un onChange déclenché avec une date incomplète ou passée
+// mette à jour silencieusement sans que rien ne se passe visiblement à l'écran.
+function ReprogrammerDateControl({ onReprogrammer }) {
+  const [value, setValue] = useState("");
+  const [erreur, setErreur] = useState("");
+  const [confirme, setConfirme] = useState(false);
+
+  const confirmer = () => {
+    if (!value) return;
+    const saisie = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(saisie.getTime())) {
+      setErreur("Date invalide");
+      return;
+    }
+    const aujourdHui = new Date();
+    aujourdHui.setHours(0, 0, 0, 0);
+    if (saisie <= aujourdHui) {
+      setErreur("Choisissez une date future");
+      return;
+    }
+    setErreur("");
+    onReprogrammer(value);
+    setValue("");
+    setConfirme(true);
+    setTimeout(() => setConfirme(false), 2500);
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <input
+        type="date"
+        title="Programmer une nouvelle date de relance"
+        value={value}
+        onChange={(e) => { setValue(e.target.value); setErreur(""); }}
+        onKeyDown={(e) => { if (e.key === "Enter") confirmer(); }}
+        className="text-[12px] rounded-[10px] border border-slate-200 px-2 py-2 text-slate-600 bg-white outline-none"
+      />
+      <button
+        type="button"
+        onClick={confirmer}
+        disabled={!value}
+        title="Confirmer la nouvelle date de relance"
+        className="text-[12px] font-semibold px-2.5 py-2 rounded-[10px] border border-slate-200 text-slate-600 disabled:opacity-40 whitespace-nowrap"
+      >
+        Programmer
+      </button>
+      {erreur && <span className="text-[11px] font-medium text-red-600 whitespace-nowrap">{erreur}</span>}
+      {confirme && <span className="text-[11px] font-medium text-green-600 whitespace-nowrap">Reprogrammé ✓</span>}
+    </div>
+  );
+}
+
 function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHeaderInfo, headerAction, countBg, countColor, rows, emptyLabel }) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? rows : rows.slice(0, 3);
@@ -622,13 +675,7 @@ function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHead
                     </select>
                   )}
                   {row.dateControl && (
-                    <input
-                      type="date"
-                      title="Programmer une nouvelle date de relance"
-                      defaultValue=""
-                      onChange={(e) => e.target.value && row.dateControl.onChange(e.target.value)}
-                      className="text-[12px] rounded-[10px] border border-slate-200 px-2 py-2 text-slate-600 bg-white outline-none"
-                    />
+                    <ReprogrammerDateControl onReprogrammer={row.dateControl.onChange} />
                   )}
                   {row.telHref ? (
                     <a href={row.telHref} className="text-[12.5px] font-semibold px-3.5 py-2 rounded-[10px] text-white whitespace-nowrap inline-flex items-center gap-1.5" style={{ backgroundColor: row.urgent ? "#DC2626" : ACCENT }}>
