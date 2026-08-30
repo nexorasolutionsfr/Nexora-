@@ -49,12 +49,12 @@ import {
 } from "lucide-react";
 // Vercel rebuild trigger
 // =====================================================================================
-// INTERRUPTEUR — Inspections V1 masquée tant que les migrations Supabase
-// (supabase/migrations/20260830000400_inspections.sql et suivantes) ne sont
-// pas appliquées en production. Code intégralement conservé. Repasser à
-// true une fois les migrations validées pour réactiver le module (nav +
-// chargement) sans rien modifier d'autre.
-const INSPECTIONS_MODULE_ACTIF = false;
+// INTERRUPTEUR — Inspections V1. Migrations Supabase (20260830000400 à
+// 20260830001000) vérifiées appliquées en production le 2026-08-30 :
+// grants, RLS, triggers de verrouillage et bucket privé confirmés
+// conformes (isolation garage_id, décision client non modifiable
+// directement par authenticated, jeton invalide sans fuite).
+const INSPECTIONS_MODULE_ACTIF = true;
 // =====================================================================================
 // DESIGN TOKENS
 // =====================================================================================
