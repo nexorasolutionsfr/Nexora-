@@ -57,10 +57,13 @@ import {
 // directement par authenticated, jeton invalide sans fuite).
 const INSPECTIONS_MODULE_ACTIF = true;
 // INTERRUPTEUR — Cockpit Opportunités V1. Remplace les 3 zones historiques
-// d'Aujourd'hui par une liste unique priorisée. Faux par défaut le temps de
-// la recette complète (migration opportunites_actions à appliquer d'abord) ;
-// l'ancien affichage en 3 zones reste intact et actif tant que c'est à false.
-const COCKPIT_OPPORTUNITES_ACTIF = true; // TEMPORAIRE — recette visuelle sur preview uniquement, remis à false avant la fin
+// d'Aujourd'hui par une liste unique priorisée. Piloté par variable
+// d'environnement plutôt que codé en dur : fermé par défaut (toute valeur
+// absente ou différente de "true" désactive le Cockpit), pour que
+// l'activation en production soit un changement Vercel explicite et
+// réversible, distinct d'un déploiement de code. L'ancien affichage en
+// 3 zones reste intact et actif tant que la variable n'est pas à "true".
+const COCKPIT_OPPORTUNITES_ACTIF = process.env.NEXT_PUBLIC_COCKPIT_OPPORTUNITES_ACTIF === "true";
 // =====================================================================================
 // DESIGN TOKENS
 // =====================================================================================
