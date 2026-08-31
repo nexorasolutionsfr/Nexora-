@@ -85,11 +85,26 @@ begin
 end;
 $$;
 
--- Par défaut, PostgreSQL accorde EXECUTE à PUBLIC sur toute nouvelle
--- fonction : révoqué explicitement, puis ré-accordé seulement à
--- authenticated. Jamais à anon.
+-- Ce projet Supabase accorde EXECUTE par défaut à anon, authenticated ET
+-- service_role au moment de la création d'une fonction dans le schéma
+-- public (privilèges par défaut configurés au niveau du schéma) — pas
+-- seulement à PUBLIC. Un simple `revoke all ... from public` ne retire donc
+-- pas ces GRANT directs : chaque rôle applicatif doit être révoqué
+-- explicitement, avant tout nouveau GRANT.
+--
+-- Aucun rôle applicatif n'a besoin d'appeler cette fonction aujourd'hui :
+-- déclarer un envoi comme réussi/échoué doit venir de la couche serveur qui
+-- a réellement parlé au fournisseur d'email, jamais d'un utilisateur
+-- connecté (authenticated) ni d'un accès anonyme (anon). service_role
+-- n'est pas non plus accordé ici : le lot d'envoi qui l'utilisera réellement
+-- n'existe pas encore, et un GRANT prématuré serait une porte ouverte sans
+-- code pour la garder fermée.
 revoke all on function public.revenue_recovery_marquer_tentative(uuid, text, text) from public;
-grant execute on function public.revenue_recovery_marquer_tentative(uuid, text, text) to authenticated;
+revoke all on function public.revenue_recovery_marquer_tentative(uuid, text, text) from anon;
+revoke all on function public.revenue_recovery_marquer_tentative(uuid, text, text) from authenticated;
+revoke all on function public.revenue_recovery_marquer_tentative(uuid, text, text) from service_role;
+-- Aucun GRANT à personne : fonction volontairement inappelable par tout
+-- rôle applicatif tant que le lot d'envoi n'existe pas.
 
 comment on function public.revenue_recovery_marquer_tentative(uuid, text, text) is
-  'Seul point d''écriture autorisé sur statut/erreur d''une tentative. N''est appelé par aucun code applicatif dans cette session (aucun envoi implémenté) — prépare uniquement la transition pour le lot d''envoi futur.';
+  'Seul point d''écriture autorisé sur statut/erreur d''une tentative. Fermée à anon/authenticated/service_role : non appelée par aucun code applicatif dans cette session (aucun envoi implémenté), sera ouverte à service_role uniquement quand le lot d''envoi existera réellement.';

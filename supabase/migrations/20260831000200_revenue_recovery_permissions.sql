@@ -104,10 +104,10 @@ select distinct on (garage_id, client_id, canal)
   garage_id, client_id, travail_differe_id, canal, statut,
   base_eligibilite, origine, preuve_reference, enregistre_par, created_at
 from public.revenue_recovery_permissions
-order by garage_id, client_id, canal, created_at desc;
+order by garage_id, client_id, canal, created_at desc, id desc;
 
 comment on view public.revenue_recovery_permissions_courant is
-  'Statut courant par (garage_id, client_id, canal), dérivé de la dernière ligne du journal. created_at étant forcé serveur (jamais falsifiable), la plus récente décision est toujours la plus récente réelle : une opposition l''emporte donc naturellement sur toute autorisation antérieure, sans logique de priorité séparée à maintenir.';
+  'Statut courant par (garage_id, client_id, canal), dérivé de la dernière ligne du journal (created_at desc, id desc en cas d''égalité stricte d''horodatage — ordre totalement déterministe). created_at étant forcé serveur (jamais falsifiable), la plus récente décision est toujours la plus récente réelle : une opposition l''emporte donc naturellement sur toute autorisation antérieure, sans logique de priorité séparée à maintenir.';
 
 alter table public.revenue_recovery_permissions enable row level security;
 

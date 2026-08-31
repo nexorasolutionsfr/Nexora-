@@ -40,9 +40,24 @@ begin
 end;
 $$;
 
+-- Vulnérabilité démontrée sur le projet de test isolé : ce projet Supabase
+-- accorde EXECUTE par défaut à anon, authenticated ET service_role au
+-- moment de la création d'une fonction dans le schéma public (privilèges
+-- par défaut configurés au niveau du schéma) — pas seulement à PUBLIC.
+-- `revoke all ... from public` seul laissait donc anon (et authenticated,
+-- et service_role) directement capables d'appeler cette fonction sur
+-- n'importe quel garage, sans JWT ni vérification de propriété. Chaque
+-- rôle applicatif doit être révoqué explicitement, avant tout GRANT.
 revoke all on function public.revenue_recovery_definir_autorisation_garage(uuid, boolean, text) from public;
--- Volontairement AUCUN grant à authenticated ni anon : appelable
--- uniquement via service_role ou un accès direct habilité (SQL Editor).
+revoke all on function public.revenue_recovery_definir_autorisation_garage(uuid, boolean, text) from anon;
+revoke all on function public.revenue_recovery_definir_autorisation_garage(uuid, boolean, text) from authenticated;
+revoke all on function public.revenue_recovery_definir_autorisation_garage(uuid, boolean, text) from service_role;
+-- Aucun GRANT à personne : appelable uniquement par un rôle qui n'est
+-- soumis à aucun de ces REVOKE (postgres / le propriétaire de la base, via
+-- un accès direct habilité — SQL Editor en tant que postgres, jamais via
+-- la Data API applicative). C'est un choix délibéré : même service_role,
+-- qui pourrait légitimement outrepasser le RLS, n'a pas besoin d'appeler
+-- cette fonction tant qu'aucun back-office ne l'orchestre.
 
 comment on function public.revenue_recovery_definir_autorisation_garage(uuid, boolean, text) is
-  'Point d''entrée unique pour activer/désactiver un garage. Non exposé à authenticated/anon : reste opéré manuellement (SQL Editor / service_role) tant qu''aucun back-office n''existe. Remplace un UPDATE manuel improvisé, sans en changer le mode opératoire actuel.';
+  'Point d''entrée unique pour activer/désactiver un garage. Fermée à anon/authenticated/service_role explicitement (pas seulement à PUBLIC) : reste opérée manuellement (SQL Editor en tant que postgres) tant qu''aucun back-office n''existe.';

@@ -44,6 +44,7 @@ as $$
 declare
   v_row public.revenue_recovery_permissions;
   v_actuel record;
+  v_derniere_autorisation record;
 begin
   if p_canal <> 'email' then
     raise exception 'Canal non supporté : %', p_canal;
@@ -89,7 +90,12 @@ begin
     hashtextextended(p_garage_id::text || ':' || p_client_id::text || ':' || p_canal, 0)
   );
 
-  select statut, preuve_reference into v_actuel
+  -- État courant : uniquement le statut. Son preuve_reference n'est PAS
+  -- fiable pour la comparaison ci-dessous — une ligne "oppose" n'a jamais
+  -- de preuve (elle n'en exige aucune), donc comparer contre elle rendait
+  -- la garde de fraîcheur totalement inopérante (bug corrigé ici : voir
+  -- v_derniere_autorisation plus bas).
+  select statut into v_actuel
   from public.revenue_recovery_permissions_courant
   where garage_id = p_garage_id and client_id = p_client_id and canal = p_canal;
 
@@ -106,9 +112,29 @@ begin
        or p_preuve_reference is null or length(trim(p_preuve_reference)) = 0 then
       raise exception 'Transition refusée : "autorise" exige base_eligibilite et preuve_reference';
     end if;
-    if v_actuel.statut in ('oppose', 'expire', 'revoque')
-       and p_preuve_reference is not distinct from v_actuel.preuve_reference then
-      raise exception 'Transition refusée : une nouvelle autorisation après "%" exige une preuve distincte de la précédente', v_actuel.statut;
+
+    if v_actuel.statut in ('oppose', 'expire', 'revoque') then
+      -- Comparaison contre la DERNIÈRE ligne "autorise" réelle (jamais
+      -- contre la ligne "oppose"/"expire"/"revoque" courante, dont la
+      -- preuve est structurellement absente). Ordre totalement
+      -- déterministe (created_at desc, id desc) pour départager deux
+      -- lignes au même horodatage.
+      select preuve_reference into v_derniere_autorisation
+      from public.revenue_recovery_permissions
+      where garage_id = p_garage_id and client_id = p_client_id and canal = p_canal
+        and statut = 'autorise'
+      order by created_at desc, id desc
+      limit 1;
+
+      -- Si aucune autorisation n'a jamais existé (le client s'est opposé
+      -- avant d'avoir jamais été autorisé), il n'y a rien à comparer :
+      -- toute preuve non vide déjà validée ci-dessus suffit. Sinon, la
+      -- nouvelle preuve doit être non vide ET différente de la dernière
+      -- preuve d'autorisation connue.
+      if v_derniere_autorisation.preuve_reference is not null
+         and p_preuve_reference is not distinct from v_derniere_autorisation.preuve_reference then
+        raise exception 'Transition refusée : une nouvelle autorisation après "%" exige une preuve distincte de la dernière autorisation (pas de la ligne d''opposition, qui n''en porte pas)', v_actuel.statut;
+      end if;
     end if;
   end if;
 
@@ -125,11 +151,28 @@ begin
 end;
 $$;
 
+-- Ce projet Supabase accorde EXECUTE par défaut à anon, authenticated ET
+-- service_role au moment de la création d'une fonction dans le schéma
+-- public (privilèges par défaut configurés au niveau du schéma) — pas
+-- seulement à PUBLIC. Chaque rôle doit donc être révoqué explicitement,
+-- avant tout nouveau GRANT, plutôt que de compter sur `revoke ... from
+-- public` seul (insuffisant, démontré sur le projet de test isolé).
 revoke all on function public.revenue_recovery_enregistrer_permission(uuid, uuid, text, text, text, uuid, text, text, text) from public;
+revoke all on function public.revenue_recovery_enregistrer_permission(uuid, uuid, text, text, text, uuid, text, text, text) from anon;
+revoke all on function public.revenue_recovery_enregistrer_permission(uuid, uuid, text, text, text, uuid, text, text, text) from authenticated;
+revoke all on function public.revenue_recovery_enregistrer_permission(uuid, uuid, text, text, text, uuid, text, text, text) from service_role;
+-- Seul authenticated est ré-accordé : c'est le garage lui-même qui
+-- enregistre ses propres décisions de permission (pas anon — jamais avant
+-- authentification ; pas service_role — aucun processus serveur n'en a
+-- besoin aujourd'hui). Le contrôle interne est complet : propriété du
+-- garage vérifiée via auth.uid(), client/travail différé scopés au même
+-- garage, machine à états imposée, preuve comparée à la dernière
+-- autorisation réelle (corrigé ci-dessus), verrou consultatif contre les
+-- appels concurrents.
 grant execute on function public.revenue_recovery_enregistrer_permission(uuid, uuid, text, text, text, uuid, text, text, text) to authenticated;
 
 comment on function public.revenue_recovery_enregistrer_permission(uuid, uuid, text, text, text, uuid, text, text, text) is
-  'Seul point d''écriture autorisé sur revenue_recovery_permissions. Impose la machine à états (l''opposition ne peut être levée que par une preuve nouvelle et distincte) et interdit toute écriture inter-garages.';
+  'Seul point d''écriture autorisé sur revenue_recovery_permissions. Impose la machine à états (l''opposition ne peut être levée que par une preuve nouvelle et distincte de la dernière autorisation réelle, jamais de la ligne d''opposition) et interdit toute écriture inter-garages. Fermée à anon et service_role explicitement.';
 
 -- INSERT direct désormais fermé à authenticated : toute écriture doit
 -- passer par la fonction ci-dessus. SELECT reste ouvert (déjà accordé en
