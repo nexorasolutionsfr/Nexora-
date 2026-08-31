@@ -157,7 +157,7 @@ values ('<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'contournement direct');
 --
 -- Scénario A — quatre APPELS mais TROIS ÉCRITURES, dans UNE SEULE
 -- transaction (reproduit exactement les conditions du bug d'origine).
--- Deux corrections par rapport à une version précédente de ce fichier :
+-- Corrections par rapport à des versions précédentes de ce fichier :
 --   1. L'appel rejeté (même preuve) ne crée AUCUNE ligne — le total
 --      persisté attendu est 3, pas 4.
 --   2. Une exception SQL non interceptée met toute la transaction en
@@ -168,8 +168,20 @@ values ('<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'contournement direct');
 --      d'un unique bloc `do $$ … $$` qui constitue toute la transaction —
 --      exactement le mécanisme déjà utilisé et vérifié fonctionnel dans
 --      cette session pour les batteries de tests réelles.
+--   3. AUCUN `begin;`/`rollback;` externe n'entoure ce bloc `do` (retiré
+--      d'une version précédente de ce fichier, où sa présence était une
+--      hypothèse fausse) : avec l'outil `db query` réellement disponible
+--      dans cette session, chaque appel — `begin;`, le bloc `do`,
+--      `rollback;` — ouvre sa PROPRE connexion. Le `rollback;` n'entoure
+--      donc jamais réellement le `do`, qui s'exécute et SE COMMITE SEUL,
+--      que ce soit via `db query` (un seul appel = tout le bloc = toute la
+--      transaction, auto-commit implicite à la fin en l'absence de
+--      `begin`/`rollback` explicite dans le MÊME appel) ou dans n'importe
+--      quel client qui exécute ce bloc comme une requête indépendante.
+--      C'est pourquoi ce scénario porte désormais son propre nettoyage
+--      explicite juste après (voir plus bas), au lieu de compter sur un
+--      rollback qui ne s'appliquait jamais en pratique.
 
--- begin;
 -- do $$
 -- declare
 --   v_result public.revenue_recovery_permissions;
@@ -181,16 +193,21 @@ values ('<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'contournement direct');
 --     json_build_object('sub', '<USER_A_UUID>', 'role', 'authenticated')::text, true);
 --   execute 'set local role authenticated';
 --
---   -- 1) autorise initial
+--   -- 1) autorise initial. Origine explicitement taguée "(scenario A)" :
+--   -- pas seulement pour la lisibilité, mais pour que le nettoyage privilégié
+--   -- après ce bloc (voir plus bas) puisse cibler UNIQUEMENT ces 3 lignes,
+--   -- sans risquer de supprimer une ligne d'une autre section du fichier qui
+--   -- utiliserait un texte d'origine par ailleurs identique (ex. la section
+--   -- 3 ci-dessus utilise déjà littéralement "devis accepté").
 --   v_result := public.revenue_recovery_enregistrer_permission(
---     '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'devis accepté',
+--     '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'devis accepté (scenario A meme transaction)',
 --     null, 'prestation réalisée', 'devis:preuve-meme-transaction'
 --   );
 --   assert v_result.statut = 'autorise', 'étape 1 : attendu autorise, obtenu ' || v_result.statut;
 --
 --   -- 2) oppose
 --   v_result := public.revenue_recovery_enregistrer_permission(
---     '<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'demande client téléphone'
+--     '<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'demande client téléphone (scenario A meme transaction)'
 --   );
 --   assert v_result.statut = 'oppose', 'étape 2 : attendu oppose, obtenu ' || v_result.statut;
 --
@@ -226,7 +243,7 @@ values ('<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'contournement direct');
 --   -- 4) réautorisation avec preuve DISTINCTE, dans la transaction
 --   -- externe (aucun savepoint nécessaire ici : ce n'est pas censé échouer).
 --   v_result := public.revenue_recovery_enregistrer_permission(
---     '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'nouvelle demande explicite',
+--     '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'nouvelle demande explicite (scenario A meme transaction)',
 --     null, 'reconsentement', 'devis:preuve-distincte-meme-transaction'
 --   );
 --   assert v_result.statut = 'autorise', 'étape 4 : attendu autorise, obtenu ' || v_result.statut;
@@ -244,7 +261,30 @@ values ('<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'contournement direct');
 --   execute 'reset role';
 -- end
 -- $$;
--- rollback;
+--
+-- Ce `do $$ … $$` SE COMMITE seul dès qu'il se termine sans exception non
+-- interceptée (voir point 3 ci-dessus) : les 3 lignes qu'il crée sont
+-- réellement persistées, pas annulées. Nettoyage explicite et privilégié
+-- obligatoire juste après (hors impersonation — un rôle privilégié comme
+-- postgres, seul capable de tout supprimer sans dépendre des GRANT
+-- restreints d'authenticated), limité au triplet GARAGE_A/CLIENT_A/email
+-- utilisé par ce scénario, sans toucher aux autres lignes de ce client
+-- créées par d'autres sections de ce fichier :
+--
+--   delete from public.revenue_recovery_permissions
+--   where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A>' and canal = 'email'
+--     and origine in (
+--       'devis accepté (scenario A meme transaction)',
+--       'demande client téléphone (scenario A meme transaction)',
+--       'nouvelle demande explicite (scenario A meme transaction)'
+--     );
+--   -- Filtre par origine taguée "(scenario A meme transaction)" — et non un
+--   -- simple where garage/client/canal — pour ne supprimer QUE les 3
+--   -- lignes de ce scénario, même si d'autres sections du fichier ont déjà
+--   -- écrit ou écriront pour ce même triplet garage_id/client_id/canal
+--   -- (ex. la section 3 plus haut utilise déjà littéralement l'origine
+--   -- "devis accepté", sans le tag : un filtre non tagué aurait aussi
+--   -- supprimé cette ligne-là par erreur).
 
 -- Scénario B — même comportement, mais CHAQUE appel dans SA PROPRE
 -- transaction (usage réel via PostgREST : chaque appel RPC est une
