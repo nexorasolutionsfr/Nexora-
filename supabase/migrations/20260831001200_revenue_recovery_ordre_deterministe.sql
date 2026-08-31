@@ -57,7 +57,23 @@ where r.id = p.id
 --    colonne échoue sauf OVERRIDING SYSTEM VALUE, jamais utilisé par ce
 --    projet). START WITH reprend juste après le plus grand rang déjà
 --    attribué au backfill, pour qu'aucune future valeur ne collisionne.
+--
+-- Ordre corrigé (échec réel constaté à l'exécution sur le projet de test
+-- isolé le 2026-08-31, jamais Production) : Postgres refuse
+-- `ALTER COLUMN ... ADD GENERATED ALWAYS AS IDENTITY` tant que la colonne
+-- n'est pas déjà NOT NULL ("column ... must be declared NOT NULL before
+-- identity can be added", SQLSTATE 55000) — SET NOT NULL doit donc
+-- précéder la conversion en identité, jamais la suivre. Le backfill
+-- (étape 2 ci-dessus) reste néanmoins la toute première étape : il doit
+-- avoir attribué une valeur à chaque ligne existante avant que NOT NULL
+-- puisse être posé sans échouer sur une table déjà peuplée — l'ordre
+-- global backfill -> NOT NULL -> identité reste valide aussi bien table
+-- vide (aucune ligne à contraindre) que table déjà remplie (chaque ligne
+-- a déjà une valeur non nulle grâce au backfill).
 -- ---------------------------------------------------------------------
+alter table public.revenue_recovery_permissions
+  alter column numero_sequence set not null;
+
 do $$
 declare
   v_depart bigint;
@@ -71,9 +87,6 @@ begin
   );
 end
 $$;
-
-alter table public.revenue_recovery_permissions
-  alter column numero_sequence set not null;
 
 alter table public.revenue_recovery_permissions
   add constraint revenue_recovery_permissions_numero_sequence_unique unique (numero_sequence);
