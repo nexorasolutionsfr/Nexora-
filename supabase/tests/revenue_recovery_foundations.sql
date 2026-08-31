@@ -127,53 +127,70 @@ values ('<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'contournement direct');
 -- 20260831000700 ; seule la fonction ci-dessus peut écrire.
 
 -- =====================================================================
--- 4. Transition de tentative : uniquement via la fonction dédiée
+-- 4. Écritures directes fermées au navigateur (contexte : <USER_A_UUID>,
+--    authenticated)
 -- =====================================================================
+insert into public.revenue_recovery_tentatives
+  (garage_id, travail_differe_id, canal, destinataire, contenu_fige, cle_idempotence)
+values ('<GARAGE_A>', '<TRAVAIL_DIFFERE_A>', 'email', 'client@example.fr', 'Contenu figé de test', 'test-cle-1');
+-- Attendu : rejet — aucun GRANT insert (révoqué par 20260831001000).
+-- Aucune fonction de création de tentative n'existe encore : cette table
+-- est entièrement en lecture seule pour authenticated tant que le lot
+-- d'envoi n'a pas défini le RPC de création (garage activé + permission
+-- autorisée + absence d'opposition + idempotence, dans la même transaction).
+
+insert into public.revenue_recovery_evenements
+  (garage_id, travail_differe_id, type_evenement)
+values ('<GARAGE_A>', '<TRAVAIL_DIFFERE_A>', 'brouillon_cree');
+-- Attendu : rejet — aucun GRANT insert (révoqué par 20260831001000). Les
+-- événements ne sont désormais créés que par des fonctions SECURITY
+-- DEFINER (ex. revenue_recovery_marquer_tentative), jamais directement.
+
+select public.revenue_recovery_marquer_tentative('<UNE_TENTATIVE_QUELCONQUE>', 'envoyee');
+-- Attendu : rejet ("permission denied for function ...") — EXECUTE révoqué
+-- à authenticated par 20260831001000. Un utilisateur connecté ne peut plus
+-- déclarer lui-même un envoi réussi ou échoué.
+
+-- =====================================================================
+-- 5. Transition de tentative et idempotence — nécessite un contexte
+--    privilégié (service_role / postgres), plus authenticated
+-- =====================================================================
+-- Les sections 4 et 5 de la version précédente de ce fichier testaient la
+-- transition et l'idempotence en tant que garage impersonné : ce n'est
+-- plus possible depuis 20260831001000 (ni la création de la tentative, ni
+-- l'appel à marquer_tentative ne sont accessibles à authenticated). Pour
+-- vérifier la machine à états et l'idempotence elles-mêmes, rejouer les
+-- requêtes suivantes HORS impersonation (rôle service_role / postgres, le
+-- seul qui pourra insérer une tentative tant que le RPC de création
+-- n'existe pas) :
+
+-- reset role; -- ou toute méthode équivalente pour sortir du contexte authenticated impersonné
+
 insert into public.revenue_recovery_tentatives
   (garage_id, travail_differe_id, canal, destinataire, contenu_fige, cle_idempotence)
 values ('<GARAGE_A>', '<TRAVAIL_DIFFERE_A>', 'email', 'client@example.fr', 'Contenu figé de test', 'test-cle-1')
 returning id;
--- Noter l'id retourné comme <TENTATIVE_A> pour la suite.
+-- Noter l'id retourné comme <TENTATIVE_A>.
 
-update public.revenue_recovery_tentatives set contenu_fige = 'modifié' where id = '<TENTATIVE_A>';
--- Attendu : rejet — aucun GRANT update (vérifié statiquement, inchangé
--- par le correctif : seul `grant select, insert` dans 20260831000400).
-
-select public.revenue_recovery_marquer_tentative('<TENTATIVE_A>', 'envoyee');
--- Attendu : accepté, statut passe à 'envoyee', un événement 'envoi_reussi'
--- apparaît dans revenue_recovery_evenements pour cette tentative.
-
-select statut from public.revenue_recovery_tentatives where id = '<TENTATIVE_A>';
--- Attendu : 'envoyee'.
-
-select type_evenement from public.revenue_recovery_evenements where tentative_id = '<TENTATIVE_A>';
--- Attendu : 'envoi_reussi'.
-
-select public.revenue_recovery_marquer_tentative('<TENTATIVE_A>', 'echec', 'test double transition');
--- Attendu : exception "tentative ... déjà au statut définitif envoyee" —
--- une transition depuis un état terminal est refusée.
-
--- =====================================================================
--- 5. Idempotence : impossible de créer deux tentatives actives
--- =====================================================================
 insert into public.revenue_recovery_tentatives
   (garage_id, travail_differe_id, canal, destinataire, contenu_fige, cle_idempotence)
 values ('<GARAGE_A>', '<TRAVAIL_DIFFERE_A>', 'email', 'client@example.fr', 'Deuxième tentative', 'test-cle-2');
 -- Attendu : rejet par l'index unique partiel
--- revenue_recovery_tentatives_actif_unique. 'envoyee' fait partie des
--- statuts couverts par cet index (where statut in
--- ('en_preparation','envoyee')), donc une tentative déjà envoyée avec
--- succès bloque toute nouvelle tentative sur le même travail différé —
--- cohérent avec la règle produit "une seule relance en V1" (dossier de
--- décision, §4). C'est le comportement voulu, pas un bug : une deuxième
--- relance nécessitera une décision produit explicite dans un lot futur,
--- pas une simple réouverture technique de l'index.
+-- revenue_recovery_tentatives_actif_unique (une tentative 'en_preparation'
+-- existe déjà pour ce travail différé).
 
 insert into public.revenue_recovery_tentatives
   (garage_id, travail_differe_id, canal, destinataire, contenu_fige, cle_idempotence)
 values ('<GARAGE_A>', '<AUTRE_TRAVAIL_DIFFERE_A>', 'email', 'client@example.fr', 'Autre contenu', 'test-cle-1');
--- Attendu : rejet par l'index unique (garage_id, cle_idempotence) — même
--- clé déjà utilisée pour ce garage, même si le travail différé diffère.
+-- Attendu : rejet par l'index unique (garage_id, cle_idempotence).
+
+select public.revenue_recovery_marquer_tentative('<TENTATIVE_A>', 'envoyee');
+-- Attendu : accepté (service_role/postgres n'est pas soumis au GRANT
+-- execute) — statut passe à 'envoyee', un événement 'envoi_reussi' apparaît
+-- dans revenue_recovery_evenements pour cette tentative.
+
+select public.revenue_recovery_marquer_tentative('<TENTATIVE_A>', 'echec', 'test double transition');
+-- Attendu : exception "tentative ... déjà au statut définitif envoyee".
 
 -- =====================================================================
 -- 6. Incohérence garage / travail différé / client
