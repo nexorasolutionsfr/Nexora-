@@ -133,32 +133,80 @@ values ('<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'contournement direct');
 -- 20260831000700 ; seule la fonction ci-dessus peut écrire.
 
 -- =====================================================================
--- 3bis. Déterminisme sous égalité stricte d'horodatage
+-- 3bis. Déterminisme sous égalité stricte de created_at — régression du
+--       bug D3 (recette du 2026-08-31, corrigé par la migration
+--       20260831001200 : colonne numero_sequence, identité serveur
+--       monotone, remplace id comme second critère de tri)
 -- =====================================================================
--- Nécessite un contexte privilégié (service_role / postgres) pour forcer
--- deux lignes au même created_at — la fonction/le trigger le forcent
--- normalement à now(), ce qui rend deux timestamps identiques improbable
--- en usage réel mais pas impossible (deux requêtes dans la même
--- transaction, ou une horloge à faible résolution). Hors impersonation :
+-- Bug confirmé : dans une même transaction, now() renvoie l'heure de
+-- DÉBUT de transaction — plusieurs écritures y partagent donc exactement
+-- le même created_at. Avec l'ancien tri "created_at desc, id desc", le
+-- tie-break utilisait un uuid aléatoire, non corrélé à l'ordre réel
+-- d'écriture : une opposition insérée après une autorisation pouvait être
+-- ignorée au profit de l'autorisation si son uuid triait plus bas — le
+-- contrôle de preuve distincte après opposition ne se déclenchait alors
+-- jamais. numero_sequence (bigint generated always as identity) élimine
+-- ce problème : sa valeur croît strictement dans l'ordre réel d'écriture,
+-- y compris à created_at identique.
+--
+-- Scénario A — quatre transitions dans UNE SEULE transaction (reproduit
+-- exactement les conditions du bug d'origine) :
 
 -- begin;
--- insert into public.revenue_recovery_permissions
---   (garage_id, client_id, canal, statut, origine, created_at, enregistre_par)
--- values ('<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'test ordre A', now(), '<USER_A_UUID>')
--- returning id, created_at;
--- insert into public.revenue_recovery_permissions
---   (garage_id, client_id, canal, statut, origine, created_at, enregistre_par)
--- values ('<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'test ordre B',
---         (select created_at from public.revenue_recovery_permissions
---          where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A>' and origine = 'test ordre A'),
---         '<USER_A_UUID>')  -- même created_at que la ligne précédente, forcé explicitement
--- returning id, created_at;
--- select statut, id from public.revenue_recovery_permissions_courant
+-- select set_config('request.jwt.claims',
+--   json_build_object('sub', '<USER_A_UUID>', 'role', 'authenticated')::text, true);
+-- set local role authenticated;
+--
+-- select public.revenue_recovery_enregistrer_permission(
+--   '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'devis accepté',
+--   null, 'prestation réalisée', 'devis:preuve-meme-transaction'
+-- );
+-- select public.revenue_recovery_enregistrer_permission(
+--   '<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'demande client téléphone'
+-- );
+--
+-- -- Vérification intermédiaire, DANS la même transaction : l'opposition
+-- -- doit être l'état courant malgré un created_at identique à
+-- -- l'autorisation précédente.
+-- select statut from public.revenue_recovery_permissions_courant
 -- where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A>' and canal = 'email';
--- -- Attendu : la ligne avec l'id le plus grand gagne (order by created_at
--- -- desc, id desc dans la vue) — résultat stable et reproductible, jamais
--- -- dépendant de l'ordre physique de stockage.
+-- -- Attendu : 'oppose'. (Avant le correctif : pouvait renvoyer 'autorise'
+-- -- selon l'uuid généré, comme observé lors de la recette du 31/08.)
+--
+-- select public.revenue_recovery_enregistrer_permission(
+--   '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'test même preuve',
+--   null, 'x', 'devis:preuve-meme-transaction'  -- même preuve que la première autorisation
+-- );
+-- -- Attendu : exception "une nouvelle autorisation après oppose exige une
+-- -- preuve distincte de la dernière autorisation". C'est le test de
+-- -- régression direct du bug D3 : avant le correctif, cette insertion
+-- -- pouvait réussir silencieusement.
+--
+-- select public.revenue_recovery_enregistrer_permission(
+--   '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'nouvelle demande explicite',
+--   null, 'reconsentement', 'devis:preuve-distincte-meme-transaction'
+-- );
+-- -- Attendu : accepté (preuve distincte).
+--
+-- select count(*), count(distinct numero_sequence)
+-- from public.revenue_recovery_permissions
+-- where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A>' and canal = 'email';
+-- -- Attendu : les deux valeurs égales (4) — aucune collision sur
+-- -- numero_sequence malgré le created_at partagé par les 4 lignes.
 -- rollback;
+
+-- Scénario B — même enchaînement, mais chaque étape dans SA PROPRE
+-- transaction (usage réel via PostgREST : chaque appel RPC est une
+-- requête HTTP séparée, donc sa propre transaction avec son propre
+-- created_at). Rejouer les 4 appels select public.revenue_recovery_
+-- enregistrer_permission(...) ci-dessus un par un, chacun dans son propre
+-- begin/commit (ou tel quel via db query, chaque appel étant déjà sa
+-- propre transaction), avec des valeurs de preuve différentes de celles
+-- du scénario A pour ne pas interférer (ex. suffixe "-transactions-separees").
+-- Attendu : mêmes résultats que le scénario A à chaque étape (l'opposition
+-- devient l'état courant, la preuve identique est rejetée, la preuve
+-- distincte est acceptée) — numero_sequence garantit le même ordre total
+-- correct que created_at soit partagé ou non entre les lignes.
 
 -- =====================================================================
 -- 4. Écritures directes fermées au navigateur (contexte : <USER_A_UUID>,
