@@ -863,7 +863,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
             </div>
             <div>
               <label className="text-[12px] font-medium text-slate-500">Date de relance</label>
-              <input type="date" value={dateRelance} onChange={(e) => setDateRelance(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              <input type="date" value={dateRelance} onInput={(e) => setDateRelance(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
           </div>
           <div>
