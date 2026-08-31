@@ -149,64 +149,140 @@ values ('<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'contournement direct');
 -- ce problème : sa valeur croît strictement dans l'ordre réel d'écriture,
 -- y compris à created_at identique.
 --
--- Scénario A — quatre transitions dans UNE SEULE transaction (reproduit
--- exactement les conditions du bug d'origine) :
+-- Scénario A — quatre APPELS mais TROIS ÉCRITURES, dans UNE SEULE
+-- transaction (reproduit exactement les conditions du bug d'origine).
+-- Deux corrections par rapport à une version précédente de ce fichier :
+--   1. L'appel rejeté (même preuve) ne crée AUCUNE ligne — le total
+--      persisté attendu est 3, pas 4.
+--   2. Une exception SQL non interceptée met toute la transaction en
+--      échec dans un client SQL classique (psql, db query) : on ne peut
+--      pas enchaîner des `select` de haut niveau après un appel censé
+--      lever une exception. L'appel rejeté est donc isolé dans un bloc
+--      PL/pgSQL BEGIN…EXCEPTION…END (savepoint implicite), à l'intérieur
+--      d'un unique bloc `do $$ … $$` qui constitue toute la transaction —
+--      exactement le mécanisme déjà utilisé et vérifié fonctionnel dans
+--      cette session pour les batteries de tests réelles.
 
 -- begin;
--- select set_config('request.jwt.claims',
---   json_build_object('sub', '<USER_A_UUID>', 'role', 'authenticated')::text, true);
--- set local role authenticated;
+-- do $$
+-- declare
+--   v_result public.revenue_recovery_permissions;
+--   v_statut_courant text;
+--   v_lignes bigint;
+--   v_sequences_distinctes bigint;
+-- begin
+--   perform set_config('request.jwt.claims',
+--     json_build_object('sub', '<USER_A_UUID>', 'role', 'authenticated')::text, true);
+--   execute 'set local role authenticated';
 --
--- select public.revenue_recovery_enregistrer_permission(
---   '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'devis accepté',
---   null, 'prestation réalisée', 'devis:preuve-meme-transaction'
--- );
--- select public.revenue_recovery_enregistrer_permission(
---   '<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'demande client téléphone'
--- );
+--   -- 1) autorise initial
+--   v_result := public.revenue_recovery_enregistrer_permission(
+--     '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'devis accepté',
+--     null, 'prestation réalisée', 'devis:preuve-meme-transaction'
+--   );
+--   assert v_result.statut = 'autorise', 'étape 1 : attendu autorise, obtenu ' || v_result.statut;
 --
--- -- Vérification intermédiaire, DANS la même transaction : l'opposition
--- -- doit être l'état courant malgré un created_at identique à
--- -- l'autorisation précédente.
--- select statut from public.revenue_recovery_permissions_courant
--- where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A>' and canal = 'email';
--- -- Attendu : 'oppose'. (Avant le correctif : pouvait renvoyer 'autorise'
--- -- selon l'uuid généré, comme observé lors de la recette du 31/08.)
+--   -- 2) oppose
+--   v_result := public.revenue_recovery_enregistrer_permission(
+--     '<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'demande client téléphone'
+--   );
+--   assert v_result.statut = 'oppose', 'étape 2 : attendu oppose, obtenu ' || v_result.statut;
 --
--- select public.revenue_recovery_enregistrer_permission(
---   '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'test même preuve',
---   null, 'x', 'devis:preuve-meme-transaction'  -- même preuve que la première autorisation
--- );
--- -- Attendu : exception "une nouvelle autorisation après oppose exige une
--- -- preuve distincte de la dernière autorisation". C'est le test de
--- -- régression direct du bug D3 : avant le correctif, cette insertion
--- -- pouvait réussir silencieusement.
+--   -- Vérification intermédiaire, DANS la même transaction : la vue doit
+--   -- refléter 'oppose' comme état courant malgré un created_at identique
+--   -- à l'étape 1. (Avant le correctif : pouvait renvoyer 'autorise' selon
+--   -- l'uuid généré, comme observé lors de la recette du 31/08 — c'était
+--   -- le bug D3.)
+--   select statut into v_statut_courant
+--   from public.revenue_recovery_permissions_courant
+--   where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A>' and canal = 'email';
+--   assert v_statut_courant = 'oppose', 'la vue ne reflète pas oppose comme état courant : ' || v_statut_courant;
 --
--- select public.revenue_recovery_enregistrer_permission(
---   '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'nouvelle demande explicite',
---   null, 'reconsentement', 'devis:preuve-distincte-meme-transaction'
--- );
--- -- Attendu : accepté (preuve distincte).
+--   -- 3) tentative avec la MÊME preuve : doit échouer, et ne doit créer
+--   -- aucune ligne. Isolée dans un bloc BEGIN…EXCEPTION imbriqué pour ne
+--   -- pas empoisonner la transaction externe.
+--   begin
+--     v_result := public.revenue_recovery_enregistrer_permission(
+--       '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'test même preuve',
+--       null, 'x', 'devis:preuve-meme-transaction'
+--     );
+--     -- Si on arrive ici, l'insertion a réussi à tort : régression.
+--     raise exception 'RÉGRESSION D3 : réautorisation avec la même preuve acceptée (statut=%)', v_result.statut;
+--   exception
+--     when others then
+--       if sqlerrm like '%preuve distincte%' then
+--         null;  -- rejet attendu, pour la bonne raison : on continue.
+--       else
+--         raise;  -- toute autre erreur (dont notre propre "RÉGRESSION" ci-dessus) doit remonter et faire échouer le test.
+--       end if;
+--   end;
 --
--- select count(*), count(distinct numero_sequence)
--- from public.revenue_recovery_permissions
--- where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A>' and canal = 'email';
--- -- Attendu : les deux valeurs égales (4) — aucune collision sur
--- -- numero_sequence malgré le created_at partagé par les 4 lignes.
+--   -- 4) réautorisation avec preuve DISTINCTE, dans la transaction
+--   -- externe (aucun savepoint nécessaire ici : ce n'est pas censé échouer).
+--   v_result := public.revenue_recovery_enregistrer_permission(
+--     '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'nouvelle demande explicite',
+--     null, 'reconsentement', 'devis:preuve-distincte-meme-transaction'
+--   );
+--   assert v_result.statut = 'autorise', 'étape 4 : attendu autorise, obtenu ' || v_result.statut;
+--
+--   -- Vérification finale : exactement 3 lignes persistées (l'étape 3
+--   -- rejetée n'en a créé aucune) et 3 numero_sequence distincts, malgré
+--   -- un created_at partagé par les 3 lignes.
+--   select count(*), count(distinct numero_sequence) into v_lignes, v_sequences_distinctes
+--   from public.revenue_recovery_permissions
+--   where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A>' and canal = 'email';
+--   assert v_lignes = 3, 'attendu 3 lignes persistées, obtenu ' || v_lignes;
+--   assert v_sequences_distinctes = 3, 'attendu 3 numero_sequence distincts, obtenu ' || v_sequences_distinctes;
+--
+--   raise notice 'Scénario A : PASS (3 lignes, 3 numero_sequence distincts, oppose bien devenu état courant)';
+--   execute 'reset role';
+-- end
+-- $$;
 -- rollback;
 
--- Scénario B — même enchaînement, mais chaque étape dans SA PROPRE
+-- Scénario B — même comportement, mais CHAQUE appel dans SA PROPRE
 -- transaction (usage réel via PostgREST : chaque appel RPC est une
--- requête HTTP séparée, donc sa propre transaction avec son propre
--- created_at). Rejouer les 4 appels select public.revenue_recovery_
--- enregistrer_permission(...) ci-dessus un par un, chacun dans son propre
--- begin/commit (ou tel quel via db query, chaque appel étant déjà sa
--- propre transaction), avec des valeurs de preuve différentes de celles
--- du scénario A pour ne pas interférer (ex. suffixe "-transactions-separees").
--- Attendu : mêmes résultats que le scénario A à chaque étape (l'opposition
--- devient l'état courant, la preuve identique est rejetée, la preuve
--- distincte est acceptée) — numero_sequence garantit le même ordre total
--- correct que created_at soit partagé ou non entre les lignes.
+-- requête HTTP séparée). Aucun savepoint n'est nécessaire ici : une
+-- transaction séparée qui échoue n'affecte jamais les transactions
+-- suivantes, contrairement au scénario A. Rejouer un par un (chaque appel
+-- via `db query`, ou dans son propre begin/commit), avec des valeurs de
+-- preuve différentes du scénario A pour ne pas interférer (suffixe
+-- "-transactions-separees") :
+--
+--   1. select public.revenue_recovery_enregistrer_permission(
+--        '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'devis accepté',
+--        null, 'prestation réalisée', 'devis:preuve-transactions-separees'
+--      );
+--      -- Attendu : accepté, statut='autorise'.
+--
+--   2. select public.revenue_recovery_enregistrer_permission(
+--        '<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'demande client téléphone'
+--      );
+--      -- Attendu : accepté, statut='oppose'.
+--
+--   3. select statut from public.revenue_recovery_permissions_courant
+--      where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A>' and canal = 'email';
+--      -- Attendu : 'oppose'.
+--
+--   4. select public.revenue_recovery_enregistrer_permission(
+--        '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'test même preuve',
+--        null, 'x', 'devis:preuve-transactions-separees'
+--      );
+--      -- Attendu : exception "...preuve distincte...". Cette transaction
+--      -- échoue et ne crée aucune ligne — sans effet sur les transactions
+--      -- suivantes puisqu'elle est déjà isolée par construction.
+--
+--   5. select public.revenue_recovery_enregistrer_permission(
+--        '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'nouvelle demande explicite',
+--        null, 'reconsentement', 'devis:preuve-distincte-transactions-separees'
+--      );
+--      -- Attendu : accepté, statut='autorise'.
+--
+--   6. select count(*), count(distinct numero_sequence)
+--      from public.revenue_recovery_permissions
+--      where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A>' and canal = 'email';
+--      -- Attendu : 3 lignes, 3 numero_sequence distincts (l'étape 4
+--      -- rejetée n'a créé aucune ligne).
 
 -- =====================================================================
 -- 4. Écritures directes fermées au navigateur (contexte : <USER_A_UUID>,
