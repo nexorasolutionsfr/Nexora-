@@ -105,9 +105,15 @@ select public.revenue_recovery_enregistrer_permission(
   null, 'x', 'devis:<id-devis-1>'  -- même preuve que la toute première autorisation
 );
 -- Attendu : exception "une nouvelle autorisation après oppose exige une
--- preuve distincte de la précédente" — contrairement à la version
--- précédente de ce test, cette insertion échoue désormais réellement,
--- elle ne se contente plus de réussir silencieusement.
+-- preuve distincte de la dernière autorisation". C'EST LE TEST DE
+-- RÉGRESSION DE LA VULNÉRABILITÉ #2 : la fonction comparait auparavant la
+-- nouvelle preuve à celle de la ligne "oppose" courante (ligne 96-98
+-- ci-dessus), qui n'a jamais de preuve (NULL) — la comparaison
+-- `p_preuve_reference is not distinct from NULL` était donc toujours
+-- fausse pour une preuve non vide, et cette insertion réussissait
+-- silencieusement. Corrigé pour comparer contre la DERNIÈRE ligne
+-- "autorise" réelle (celle des lignes 88-91, preuve 'devis:<id-devis-1>') :
+-- cette insertion doit désormais être rejetée pour de bon.
 
 select public.revenue_recovery_enregistrer_permission(
   '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'nouvelle demande explicite du client',
@@ -125,6 +131,34 @@ insert into public.revenue_recovery_permissions
 values ('<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'contournement direct');
 -- Attendu : rejet — INSERT direct révoqué à authenticated depuis
 -- 20260831000700 ; seule la fonction ci-dessus peut écrire.
+
+-- =====================================================================
+-- 3bis. Déterminisme sous égalité stricte d'horodatage
+-- =====================================================================
+-- Nécessite un contexte privilégié (service_role / postgres) pour forcer
+-- deux lignes au même created_at — la fonction/le trigger le forcent
+-- normalement à now(), ce qui rend deux timestamps identiques improbable
+-- en usage réel mais pas impossible (deux requêtes dans la même
+-- transaction, ou une horloge à faible résolution). Hors impersonation :
+
+-- begin;
+-- insert into public.revenue_recovery_permissions
+--   (garage_id, client_id, canal, statut, origine, created_at, enregistre_par)
+-- values ('<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'test ordre A', now(), '<USER_A_UUID>')
+-- returning id, created_at;
+-- insert into public.revenue_recovery_permissions
+--   (garage_id, client_id, canal, statut, origine, created_at, enregistre_par)
+-- values ('<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'test ordre B',
+--         (select created_at from public.revenue_recovery_permissions
+--          where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A>' and origine = 'test ordre A'),
+--         '<USER_A_UUID>')  -- même created_at que la ligne précédente, forcé explicitement
+-- returning id, created_at;
+-- select statut, id from public.revenue_recovery_permissions_courant
+-- where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A>' and canal = 'email';
+-- -- Attendu : la ligne avec l'id le plus grand gagne (order by created_at
+-- -- desc, id desc dans la vue) — résultat stable et reproductible, jamais
+-- -- dépendant de l'ordre physique de stockage.
+-- rollback;
 
 -- =====================================================================
 -- 4. Écritures directes fermées au navigateur (contexte : <USER_A_UUID>,
@@ -147,9 +181,67 @@ values ('<GARAGE_A>', '<TRAVAIL_DIFFERE_A>', 'brouillon_cree');
 -- DEFINER (ex. revenue_recovery_marquer_tentative), jamais directement.
 
 select public.revenue_recovery_marquer_tentative('<UNE_TENTATIVE_QUELCONQUE>', 'envoyee');
--- Attendu : rejet ("permission denied for function ...") — EXECUTE révoqué
--- à authenticated par 20260831001000. Un utilisateur connecté ne peut plus
+-- Attendu : rejet ("permission denied for function ...") — EXECUTE jamais
+-- accordé à authenticated (ni à personne d'autre) dès la création de la
+-- fonction dans 20260831000600. Un utilisateur connecté ne peut pas
 -- déclarer lui-même un envoi réussi ou échoué.
+
+-- =====================================================================
+-- 4bis. Aucune fonction Revenue Recovery appelable par anon (sans JWT)
+-- =====================================================================
+-- Contexte requis : rôle anon, SANS aucun set_config de JWT (c'est
+-- exactement le rôle utilisé par un visiteur non authentifié). Dans une
+-- transaction, pour ne rien laisser en place :
+--
+--   begin;
+--   set local role anon;
+--   -- ... les 4 appels ci-dessous ...
+--   rollback;
+
+select public.revenue_recovery_definir_autorisation_garage('<GARAGE_A>', true, 'anon test');
+-- Attendu : rejet ("permission denied for function ...") — c'est la
+-- vulnérabilité #1 démontrée sur le projet de test : anon pouvait
+-- auparavant appeler cette fonction sur N'IMPORTE QUEL garage, sans JWT,
+-- car les privilèges par défaut du schéma accordaient EXECUTE à anon dès
+-- la création de la fonction. `revoke ... from public` seul ne le
+-- révoquait pas — corrigé par un `revoke ... from anon` explicite dans
+-- 20260831000900.
+
+select public.revenue_recovery_marquer_tentative('<UNE_TENTATIVE_QUELCONQUE>', 'envoyee');
+-- Attendu : rejet ("permission denied for function ...").
+
+select public.revenue_recovery_enregistrer_permission(
+  '<GARAGE_A>', '<CLIENT_A>', 'email', 'inconnu', 'anon test'
+);
+-- Attendu : rejet ("permission denied for function ...") — seul
+-- authenticated a EXECUTE sur cette fonction (20260831000700).
+
+select public.revenue_recovery_marquer_tentative('<UNE_TENTATIVE_QUELCONQUE>', 'echec', 'anon test');
+-- Attendu : rejet, même raison.
+
+-- =====================================================================
+-- 4ter. Vérification statique des droits résiduels (à défaut d'exécution)
+-- =====================================================================
+select routine_name, grantee, privilege_type
+from information_schema.routine_privileges
+where routine_schema = 'public'
+  and routine_name in (
+    'revenue_recovery_definir_autorisation_garage',
+    'revenue_recovery_marquer_tentative',
+    'revenue_recovery_enregistrer_permission'
+  )
+order by routine_name, grantee;
+-- Attendu :
+--   revenue_recovery_definir_autorisation_garage : AUCUNE ligne (aucun
+--     rôle applicatif ni PUBLIC n'a de droit résiduel).
+--   revenue_recovery_marquer_tentative : AUCUNE ligne.
+--   revenue_recovery_enregistrer_permission : EXACTEMENT une ligne,
+--     grantee = authenticated, privilege_type = EXECUTE.
+-- Si une ligne grantee = PUBLIC, anon, ou service_role apparaît pour
+-- n'importe laquelle des trois, la migration correspondante n'a pas
+-- fermé les privilèges par défaut du schéma comme attendu — ne pas
+-- considérer les fondations comme sûres tant que cette requête ne renvoie
+-- pas exactement ce qui précède.
 
 -- =====================================================================
 -- 5. Transition de tentative et idempotence — nécessite un contexte
