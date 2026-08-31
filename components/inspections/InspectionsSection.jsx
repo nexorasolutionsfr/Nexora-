@@ -466,14 +466,19 @@ function InspectionDetail({ garageId, inspectionId, onClose, onToast, onChanged 
   );
 }
 
-export default function InspectionsSection({ garageId, clients = [], rendezVous = [], onToast }) {
+export default function InspectionsSection({ garageId, clients = [], rendezVous = [], onToast, initialDetailId = null, onInitialDetailConsumed }) {
   const [inspections, setInspections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statutFilter, setStatutFilter] = useState("tous");
   const [createOpen, setCreateOpen] = useState(false);
   const [submittingCreate, setSubmittingCreate] = useState(false);
-  const [detailId, setDetailId] = useState(null);
+  const [detailId, setDetailId] = useState(initialDetailId);
+
+  useEffect(() => {
+    if (initialDetailId) onInitialDetailConsumed && onInitialDetailConsumed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const flashToast = (message, tone) => (onToast ? onToast(message, tone) : console.log(message));
 
