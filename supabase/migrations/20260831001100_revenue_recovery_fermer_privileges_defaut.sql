@@ -11,7 +11,7 @@
 -- Vulnérabilité confirmée sur le projet de test isolé slawilafseganlbghgwx
 -- (jamais sur Production) : `pg_default_acl` de ce projet accorde
 -- automatiquement TOUS les privilèges (arwdDxtm : select/insert/update/
--- delete/truncate/references/trigger) à anon, authenticated ET
+-- delete/truncate/references/trigger/maintain) à anon, authenticated ET
 -- service_role sur toute TABLE créée par `postgres` dans `public` — la
 -- même règle déjà identifiée pour les fonctions (EXECUTE), jamais
 -- généralisée aux tables lors des correctifs précédents. Confirmé par :
@@ -119,41 +119,75 @@ revoke all on table public.revenue_recovery_evenements from service_role;
 grant select on table public.revenue_recovery_evenements to authenticated;
 
 -- ---------------------------------------------------------------------
--- Vérification post-migration bloquante
+-- Vérification post-migration bloquante — privilège effectif, pas déclaratif
 -- ---------------------------------------------------------------------
--- Comme pour 20260831000800 (vérification des contraintes ON DELETE), ce
--- correctif n'a pas pu être exécuté sur un moteur réel avant écriture au
--- moment où ce fichier a été rédigé : ce bloc échoue bruyamment à
--- l'application si l'état final ne correspond pas exactement à l'intention
--- ci-dessus, plutôt que de supposer silencieusement que chaque REVOKE/GRANT
--- a produit l'effet attendu.
+-- Revue sécurité du 2026-08-31 : la première version de ce bloc lisait
+-- information_schema.role_table_grants, qui liste les lignes d'ACL
+-- déclarées mais ne calcule pas le privilège EFFECTIF d'un rôle — elle
+-- peut manquer un droit hérité (le rôle est membre d'un autre rôle qui,
+-- lui, a un GRANT) ou un droit accordé à PUBLIC qui s'applique
+-- implicitement à tous les rôles sans apparaître sous leur propre nom de
+-- grantee. Elle ne prouvait par ailleurs jamais qu'un droit ATTENDU était
+-- bien présent, seulement l'absence de lignes inattendues.
+--
+-- Remplacé par has_table_privilege(role, table, privilege) : fonction
+-- Postgres canonique qui calcule le privilège réellement effectif pour un
+-- rôle sur un objet, en tenant compte de l'appartenance de rôle et des
+-- GRANT à PUBLIC — exactement ce que role_table_grants ne garantissait
+-- pas. Vérifie à la fois la présence des droits attendus et l'absence de
+-- tout droit inattendu, sur les 8 privilèges qu'une table/vue peut porter
+-- sur ce projet (Postgres 17 : select/insert/update/delete/truncate/
+-- references/trigger/maintain — le même octuplet que pg_default_acl
+-- accorde par défaut, confirmé arwdDxtm+m lors de l'audit).
 do $$
 declare
-  v_probleme text;
+  v_objets text[] := array[
+    'revenue_recovery_garages_autorises',
+    'revenue_recovery_permissions',
+    'revenue_recovery_permissions_courant',
+    'revenue_recovery_brouillons',
+    'revenue_recovery_tentatives',
+    'revenue_recovery_evenements'
+  ];
+  v_privileges text[] := array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN'];
+  v_roles text[] := array['anon', 'authenticated', 'service_role'];
+  v_objet text;
+  v_privilege text;
+  v_role text;
+  v_attendu boolean;
+  v_effectif boolean;
+  v_violations text[] := array[]::text[];
 begin
-  select string_agg(table_name || ':' || grantee || ':' || privilege_type, ', ') into v_probleme
-  from information_schema.role_table_grants
-  where table_schema = 'public'
-    and table_name in (
-      'revenue_recovery_garages_autorises',
-      'revenue_recovery_permissions',
-      'revenue_recovery_permissions_courant',
-      'revenue_recovery_brouillons',
-      'revenue_recovery_tentatives',
-      'revenue_recovery_evenements'
-    )
-    and (
-      grantee in ('anon', 'service_role', 'PUBLIC')
-      or (grantee = 'authenticated' and table_name = 'revenue_recovery_garages_autorises' and privilege_type <> 'SELECT')
-      or (grantee = 'authenticated' and table_name = 'revenue_recovery_permissions' and privilege_type <> 'SELECT')
-      or (grantee = 'authenticated' and table_name = 'revenue_recovery_permissions_courant' and privilege_type <> 'SELECT')
-      or (grantee = 'authenticated' and table_name = 'revenue_recovery_brouillons' and privilege_type not in ('SELECT', 'INSERT', 'UPDATE'))
-      or (grantee = 'authenticated' and table_name = 'revenue_recovery_tentatives' and privilege_type <> 'SELECT')
-      or (grantee = 'authenticated' and table_name = 'revenue_recovery_evenements' and privilege_type <> 'SELECT')
-    );
+  foreach v_role in array v_roles loop
+    foreach v_objet in array v_objets loop
+      foreach v_privilege in array v_privileges loop
+        -- Matrice des droits attendus : anon et service_role n'ont jamais
+        -- rien ; authenticated a select seul partout, sauf sur
+        -- revenue_recovery_brouillons (select+insert+update — seul objet
+        -- où une écriture directe est légitime, voir commentaire plus haut
+        -- dans ce fichier).
+        if v_role in ('anon', 'service_role') then
+          v_attendu := false;
+        elsif v_objet = 'revenue_recovery_brouillons' then
+          v_attendu := v_privilege in ('SELECT', 'INSERT', 'UPDATE');
+        else
+          v_attendu := (v_privilege = 'SELECT');
+        end if;
 
-  if v_probleme is not null then
-    raise exception 'Vérification post-migration échouée : privilège(s) résiduel(s) inattendu(s) : %', v_probleme;
+        v_effectif := has_table_privilege(v_role, 'public.' || v_objet, v_privilege);
+
+        if v_effectif is distinct from v_attendu then
+          v_violations := v_violations || (
+            v_objet || ':' || v_role || ':' || v_privilege ||
+            ' (attendu=' || v_attendu::text || ', effectif=' || v_effectif::text || ')'
+          );
+        end if;
+      end loop;
+    end loop;
+  end loop;
+
+  if array_length(v_violations, 1) > 0 then
+    raise exception 'Vérification post-migration échouée (privilège effectif via has_table_privilege) : %', array_to_string(v_violations, ', ');
   end if;
 end
 $$;
