@@ -40,6 +40,12 @@
 -- <TRAVAIL_DIFFERE_A> par des id réels d'un environnement de test avant
 -- exécution. Chaque section suppose le contexte impersonné de <USER_A_UUID>
 -- (propriétaire de <GARAGE_A>) sauf mention contraire.
+--
+-- <CLIENT_A2> : client dédié supplémentaire, appartenant au MÊME garage
+-- que <CLIENT_A> (<GARAGE_A>) — fixture requise uniquement par le
+-- scénario B de la section 3bis (voir plus bas), pour garantir un
+-- triplet garage_id/client_id/canal totalement distinct de celui du
+-- scénario A et éviter toute interférence entre les deux scénarios.
 
 -- =====================================================================
 -- 1. Isolation stricte entre garages
@@ -244,28 +250,55 @@ values ('<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'contournement direct');
 -- transaction (usage réel via PostgREST : chaque appel RPC est une
 -- requête HTTP séparée). Aucun savepoint n'est nécessaire ici : une
 -- transaction séparée qui échoue n'affecte jamais les transactions
--- suivantes, contrairement au scénario A. Rejouer un par un (chaque appel
--- via `db query`, ou dans son propre begin/commit), avec des valeurs de
--- preuve différentes du scénario A pour ne pas interférer (suffixe
--- "-transactions-separees") :
+-- suivantes, contrairement au scénario A.
+--
+-- ISOLATION vis-à-vis du scénario A (point corrigé) : le scénario A
+-- s'exécute comme trois appels `db query` distincts (`begin;`, le bloc
+-- `do $$ … $$`, puis `rollback;`) — chacun ouvre sa PROPRE connexion, donc
+-- son PROPRE `begin`/`rollback` n'entoure en réalité PAS le bloc `do`
+-- exécuté entre les deux : ce dernier s'auto-committe. Réutiliser
+-- <CLIENT_A> pour le scénario B verrait donc ses 3 lignes s'ajouter à
+-- celles, réellement persistées, du scénario A — d'où un `count(*)` faux
+-- (6 au lieu de 3). Le scénario B utilise donc un client dédié <CLIENT_A2>,
+-- appartenant au MÊME garage <GARAGE_A> (même contexte JWT <USER_A_UUID>,
+-- même couverture métier), jamais écrit par le scénario A ni par aucune
+-- autre section de ce fichier — le triplet garage_id/client_id/canal est
+-- ainsi garanti totalement distinct, indépendamment du sort réel du
+-- `rollback;` du scénario A.
+--
+-- Fixture requise avant exécution (garage_id = <GARAGE_A>, donc RLS et
+-- JWT identiques au reste du fichier) :
+--
+--   insert into public.clients (id, garage_id, nom)
+--   values ('<CLIENT_A2>', '<GARAGE_A>', 'RR Test Client A2 (scenario B isole)');
+--
+-- Vérification préalable : historique vide pour ce triplet avant de
+-- commencer (garantit que le scénario B part bien de zéro) :
+--
+--   select count(*) from public.revenue_recovery_permissions
+--   where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A2>' and canal = 'email';
+--   -- Attendu : 0.
+--
+-- Rejouer ensuite un par un (chaque appel via `db query`, ou dans son
+-- propre begin/commit) :
 --
 --   1. select public.revenue_recovery_enregistrer_permission(
---        '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'devis accepté',
+--        '<GARAGE_A>', '<CLIENT_A2>', 'email', 'autorise', 'devis accepté',
 --        null, 'prestation réalisée', 'devis:preuve-transactions-separees'
 --      );
 --      -- Attendu : accepté, statut='autorise'.
 --
 --   2. select public.revenue_recovery_enregistrer_permission(
---        '<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'demande client téléphone'
+--        '<GARAGE_A>', '<CLIENT_A2>', 'email', 'oppose', 'demande client téléphone'
 --      );
 --      -- Attendu : accepté, statut='oppose'.
 --
 --   3. select statut from public.revenue_recovery_permissions_courant
---      where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A>' and canal = 'email';
+--      where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A2>' and canal = 'email';
 --      -- Attendu : 'oppose'.
 --
 --   4. select public.revenue_recovery_enregistrer_permission(
---        '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'test même preuve',
+--        '<GARAGE_A>', '<CLIENT_A2>', 'email', 'autorise', 'test même preuve',
 --        null, 'x', 'devis:preuve-transactions-separees'
 --      );
 --      -- Attendu : exception "...preuve distincte...". Cette transaction
@@ -273,16 +306,25 @@ values ('<GARAGE_A>', '<CLIENT_A>', 'email', 'oppose', 'contournement direct');
 --      -- suivantes puisqu'elle est déjà isolée par construction.
 --
 --   5. select public.revenue_recovery_enregistrer_permission(
---        '<GARAGE_A>', '<CLIENT_A>', 'email', 'autorise', 'nouvelle demande explicite',
+--        '<GARAGE_A>', '<CLIENT_A2>', 'email', 'autorise', 'nouvelle demande explicite',
 --        null, 'reconsentement', 'devis:preuve-distincte-transactions-separees'
 --      );
 --      -- Attendu : accepté, statut='autorise'.
 --
 --   6. select count(*), count(distinct numero_sequence)
 --      from public.revenue_recovery_permissions
---      where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A>' and canal = 'email';
---      -- Attendu : 3 lignes, 3 numero_sequence distincts (l'étape 4
---      -- rejetée n'a créé aucune ligne).
+--      where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A2>' and canal = 'email';
+--      -- Attendu : exactement 3 lignes, 3 numero_sequence distincts
+--      -- (l'étape 4 rejetée n'a créé aucune ligne) — ni plus ni moins,
+--      -- puisqu'aucune autre section de ce fichier n'écrit pour ce
+--      -- triplet garage_id/client_id/canal.
+--
+-- Nettoyage propre au scénario B (ses écritures sont réellement commitées,
+-- contrairement au scénario A qui vise un rollback) :
+--
+--   delete from public.revenue_recovery_permissions
+--   where garage_id = '<GARAGE_A>' and client_id = '<CLIENT_A2>' and canal = 'email';
+--   delete from public.clients where id = '<CLIENT_A2>';
 
 -- =====================================================================
 -- 4. Écritures directes fermées au navigateur (contexte : <USER_A_UUID>,
