@@ -30,14 +30,24 @@
 --   - une table temporaire `_captured_tokens` retient les jetons en clair
 --     renvoyés par les fonctions creer_jeton_* (capturés une seule fois,
 --     jamais rejouables, exactement comme l'exige la conception réelle) ;
---   - trois fonctions SECURITY DEFINER dans le schéma `pg_temp` (donc
---     invisibles et supprimées avec la session, jamais des objets
---     permanents) servent d'accesseurs à ces deux tables temporaires
---     malgré les changements de rôle : `pg_temp.fid(cle)`,
---     `pg_temp.capturer_jeton(cle, jeton)`, `pg_temp.jeton_de(cle)`.
---     SECURITY DEFINER est utilisé ICI uniquement pour ce rôle d'échafaudage
---     de test (accès aux tables temporaires de préparation), jamais pour
---     contourner l'ACL des fonctions réellement testées
+--   - quatre fonctions dans le schéma `pg_temp` (donc invisibles et
+--     supprimées avec la session, jamais des objets permanents) servent
+--     d'accesseurs à ces deux tables temporaires malgré les changements de
+--     rôle : `pg_temp.fid(cle)`, `pg_temp.capturer_jeton(cle, jeton)`,
+--     `pg_temp.jeton_de(cle)` (SECURITY DEFINER, les 3 touchent les tables
+--     temporaires) et `pg_temp.assert(condition, message)` (pas besoin de
+--     SECURITY DEFINER, ne touche aucune table). Durci après revue : les 4
+--     fixent `search_path = ''` et qualifient explicitement
+--     `pg_temp._fixture_ids`/`pg_temp._captured_tokens` (jamais de
+--     référence nue résolue par un search_path ambiant) ; chacune révoque
+--     EXECUTE de PUBLIC juste après sa création (ne dépend jamais des
+--     privilèges par défaut du projet) et ne reçoit qu'un GRANT explicite
+--     et minimal vers les seuls rôles qui l'appellent réellement dans ce
+--     script précis — vérifié par un parcours programmatique du fichier,
+--     pas par supposition (voir le commentaire au-dessus de chaque
+--     fonction). SECURITY DEFINER est utilisé ICI uniquement pour ce rôle
+--     d'échafaudage de test (accès aux tables temporaires de préparation),
+--     jamais pour contourner l'ACL des fonctions réellement testées
 --     (public.creer_jeton_*, public.lire_*_par_jeton, etc.), qui sont
 --     TOUJOURS appelées directement, sous le rôle courant (anon/
 --     authenticated), sans intermédiaire — c'est exactement ce que ce banc
@@ -78,13 +88,19 @@
 -- des garages, de leurs ressources, exécution des scénarios, y compris les
 -- fabrications directes de jetons expirés — se déroule DANS la transaction
 -- ouverte par le premier `begin;` ci-dessous, jamais validée. Le
--- `rollback;` final (dernière ligne du fichier) défait tout d'un bloc :
--- aucune ligne de auth.users, garages, clients, vehicules, prestations,
--- rendez_vous, devis, factures, atelier_jetons, devis_jetons ou
--- factures_jetons créée par ce script ne survit à son exécution. Les
--- `savepoint`/`rollback to savepoint` internes ne servent qu'à poursuivre
--- les assertions suivantes après une exception attendue — jamais à
--- valider quoi que ce soit prématurément.
+-- `rollback;` (avant-dernier bloc du fichier, scénario 15) défait tout
+-- d'un bloc : aucune ligne de auth.users, garages, clients, vehicules,
+-- prestations, rendez_vous, devis, factures, atelier_jetons, devis_jetons
+-- ou factures_jetons créée par ce script ne devrait survivre à son
+-- exécution — et un bloc PL/pgSQL exécuté juste APRÈS ce `rollback;`
+-- (donc en lecture seule, hors transaction) le VÉRIFIE réellement par
+-- comptage sur des marqueurs déterministes, et lève une exception
+-- bloquante si le moindre résidu subsiste (voir scénario 15 en fin de
+-- fichier) — ce n'est plus une garantie seulement structurelle présentée
+-- comme preuve. Les blocs `begin ... exception` internes aux `do $$ ...
+-- $$;` (mécanisme de savepoint implicite, voir plus haut) ne servent
+-- qu'à poursuivre les assertions suivantes après une exception attendue
+-- pendant les scénarios — jamais à valider quoi que ce soit prématurément.
 
 begin;
 
@@ -103,30 +119,66 @@ create temporary table _captured_tokens (
   jeton text not null
 ) on commit drop;
 
+-- Durcissement (après revue) : les 4 fonctions d'échafaudage ci-dessous ne
+-- doivent jamais dépendre des privilèges par défaut du projet (EXECUTE
+-- accordé à PUBLIC par défaut sur toute nouvelle fonction Postgres) ni
+-- d'un search_path ambiant. Chacune fixe `search_path = ''` et qualifie
+-- explicitement `pg_temp._fixture_ids`/`pg_temp._captured_tokens` — jamais
+-- de référence nue. Juste après chaque `create function`, `revoke execute
+-- ... from public` supprime le privilège par défaut, puis un `grant
+-- execute` explicite et minimal n'accorde qu'aux rôles qui appellent
+-- réellement cette fonction dans ce script précis (vérifié scénario par
+-- scénario ci-dessous, pas accordé "au cas où").
+
 create function pg_temp.fid(p_cle text) returns uuid
-language sql security definer as $$
-  select valeur from _fixture_ids where cle = p_cle;
+language sql security definer set search_path = '' as $$
+  select valeur from pg_temp._fixture_ids where cle = p_cle;
 $$;
+revoke execute on function pg_temp.fid(text) from public;
+grant execute on function pg_temp.fid(text) to anon, authenticated;
+-- Vérifié par un parcours programmatique du script (pas une supposition) :
+-- pg_temp.fid est appelée sous authenticated (ex. génération de jeton par
+-- son propriétaire) ET sous anon (ex. tentative de génération par anon en
+-- 5d, qui doit échouer AVANT même d'évaluer l'id — mais l'id doit d'abord
+-- être résolu pour construire l'appel). Les deux grants sont donc
+-- réellement nécessaires ici, aucun n'est accordé "par précaution".
 
 create function pg_temp.capturer_jeton(p_cle text, p_jeton text) returns void
-language sql security definer as $$
-  insert into _captured_tokens (cle, jeton) values (p_cle, p_jeton)
+language sql security definer set search_path = '' as $$
+  insert into pg_temp._captured_tokens (cle, jeton) values (p_cle, p_jeton)
   on conflict (cle) do update set jeton = excluded.jeton;
 $$;
+revoke execute on function pg_temp.capturer_jeton(text, text) from public;
+grant execute on function pg_temp.capturer_jeton(text, text) to authenticated;
+-- Seul authenticated capture un jeton dans ce script (les fonctions
+-- creer_jeton_* ne sont exécutables que par authenticated) : aucun grant
+-- à anon.
 
 create function pg_temp.jeton_de(p_cle text) returns text
-language sql security definer as $$
-  select jeton from _captured_tokens where cle = p_cle;
+language sql security definer set search_path = '' as $$
+  select jeton from pg_temp._captured_tokens where cle = p_cle;
 $$;
+revoke execute on function pg_temp.jeton_de(text) from public;
+grant execute on function pg_temp.jeton_de(text) to anon, authenticated;
+-- Vérifié de la même façon : appelée sous anon (relecture publique d'un
+-- jeton déjà capturé) ET sous authenticated (assertion immédiatement après
+-- capture, en 5a, avant tout changement de rôle) — les deux grants sont
+-- réellement exercés par le script, pas accordés par défaut.
 
 create function pg_temp.assert(p_condition boolean, p_message text) returns void
-language plpgsql as $$
+language plpgsql set search_path = '' as $$
 begin
   if p_condition is not true then
     raise exception 'ASSERTION FAILED: %', p_message;
   end if;
 end;
 $$;
+revoke execute on function pg_temp.assert(boolean, text) from public;
+grant execute on function pg_temp.assert(boolean, text) to anon, authenticated;
+-- pg_temp.assert est appelée sous les trois rôles (opérateur, authenticated,
+-- anon) tout au long du script : les deux rôles applicatifs ont besoin du
+-- grant explicite (l'opérateur/postgres, propriétaire de la fonction, n'en
+-- a jamais besoin).
 
 insert into _fixture_ids (cle, valeur) values
   ('user_a', gen_random_uuid()),
@@ -497,18 +549,56 @@ select pg_temp.assert(
 -- =====================================================================
 -- 15. Aucune donnée synthétique conservée après la transaction
 -- =====================================================================
--- Ne peut pas être vérifié DEPUIS l'intérieur de cette transaction (les
+-- Ne peut pas être assertée DEPUIS l'intérieur de cette transaction (les
 -- données créées ci-dessus sont, par construction, visibles tant que la
--- transaction est ouverte). La garantie est structurelle : tout ce script
--- s'exécute entre le `begin;` du tout début et le `rollback;` final
--- ci-dessous, sans aucun `commit` intermédiaire — vérifiable en relisant
--- le fichier (un seul `begin`, un seul `rollback`, zéro `commit`). Pour
--- une confirmation empirique, exécuter séparément APRÈS ce script (hors
--- de toute transaction) :
---
---   select count(*) from auth.users where email like '%example.invalid';
---   select count(*) from public.garages where nom_garage like 'RECETTE SYNTHÉTIQUE%';
---
--- Attendu : 0 dans les deux cas.
+-- transaction reste ouverte). La garantie structurelle — un seul `begin`,
+-- un seul `rollback`, zéro `commit` dans tout le fichier — reste vraie,
+-- mais N'EST PAS EN ELLE-MÊME UNE PREUVE : une erreur de script ailleurs
+-- (ex. `commit` oublié dans un futur correctif) la rendrait fausse sans
+-- avertissement. Le bloc ci-dessous, exécuté APRÈS le `rollback;` qui
+-- suit (donc hors de toute transaction ouverte par ce script, en lecture
+-- seule), est la preuve réelle : il recompte chaque fixture synthétique
+-- par un marqueur déterministe (domaine e-mail, préfixe de nom, valeurs
+-- littérales utilisées plus haut) et lève une exception bloquante si le
+-- compte n'est pas nul.
 
 rollback;
+
+do $$
+declare
+  v_residus text[] := array[]::text[];
+  v_n bigint;
+begin
+  select count(*) into v_n from auth.users where email like '%@example.invalid';
+  if v_n > 0 then v_residus := v_residus || ('auth.users (example.invalid) : ' || v_n); end if;
+
+  select count(*) into v_n from public.garages where nom_garage like 'RECETTE SYNTHÉTIQUE%';
+  if v_n > 0 then v_residus := v_residus || ('garages (RECETTE SYNTHÉTIQUE) : ' || v_n); end if;
+
+  select count(*) into v_n from public.clients where nom like 'RECETTE SYNTHÉTIQUE%';
+  if v_n > 0 then v_residus := v_residus || ('clients (RECETTE SYNTHÉTIQUE) : ' || v_n); end if;
+
+  select count(*) into v_n from public.prestations where nom like 'RECETTE SYNTHÉTIQUE%';
+  if v_n > 0 then v_residus := v_residus || ('prestations (RECETTE SYNTHÉTIQUE) : ' || v_n); end if;
+
+  select count(*) into v_n from public.vehicules where marque = 'MarqueTest';
+  if v_n > 0 then v_residus := v_residus || ('vehicules (MarqueTest) : ' || v_n); end if;
+
+  select count(*) into v_n from public.factures where numero = 'RECETTE-SYNTH-A';
+  if v_n > 0 then v_residus := v_residus || ('factures (RECETTE-SYNTH-A) : ' || v_n); end if;
+
+  -- Le jeton devis expiré du scénario 9 a été inséré directement (hors
+  -- RPC) : son jeton_hash littéral, déterministe, permet de le retrouver
+  -- explicitement même si toute autre fixture liée a bien disparu.
+  select count(*) into v_n from public.devis_jetons
+    where jeton_hash = encode(extensions.digest('jeton-synthetique-expire', 'sha256'), 'hex');
+  if v_n > 0 then v_residus := v_residus || ('devis_jetons (jeton expiré fabriqué en scénario 9) : ' || v_n); end if;
+
+  if array_length(v_residus, 1) > 0 then
+    raise exception 'NETTOYAGE ÉCHOUÉ après rollback — fixtures synthétiques encore présentes : %', array_to_string(v_residus, '; ');
+  end if;
+end;
+$$;
+
+-- Si ce bloc s'exécute sans lever d'exception, le nettoyage est prouvé,
+-- pas seulement supposé.
