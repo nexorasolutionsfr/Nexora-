@@ -3579,8 +3579,7 @@ const THEMES_DASHBOARD = [
   { key: "automatique", label: "Automatique", description: "S'adapte aux réglages de l'appareil." },
 ];
 
-function ParametresView({ garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, erreurs = [], onResoudre, onConnecterGmail }) {
-  const [connectingGmail, setConnectingGmail] = useState(false);
+function ParametresView({ garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, erreurs = [], onResoudre }) {
   const [onglet, setOnglet] = useState("garage");
   const [newPrestation, setNewPrestation] = useState({ nom: "", categorie: "entretien", duree_minutes: 60 });
   const [newMecanicienNom, setNewMecanicienNom] = useState("");
@@ -3712,22 +3711,10 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
             right={
               garageData.gmail_connecte ? (
                 <Badge tone="green">Connectée{garageData.gmail_adresse ? ` · ${garageData.gmail_adresse}` : ""}</Badge>
-              ) : onConnecterGmail ? (
-                <button
-                  type="button"
-                  disabled={connectingGmail}
-                  onClick={async () => {
-                    setConnectingGmail(true);
-                    await onConnecterGmail();
-                    setConnectingGmail(false);
-                  }}
-                  className="text-[12.5px] font-semibold px-3 py-1.5 rounded-xl text-white disabled:opacity-50"
-                  style={{ backgroundColor: ACCENT }}
-                >
-                  {connectingGmail ? "Connexion…" : "Connecter Gmail"}
-                </button>
               ) : (
-                <Badge tone="amber">Non connectée</Badge>
+                /* SÉCURITÉ (audit 2026-09-01) : connexion Gmail désactivée temporairement,
+                   voir app/api/auth/google/connect/route.ts */
+                <Badge tone="amber">Connexion temporairement indisponible (sécurisation en cours)</Badge>
               )
             }
           />
@@ -4820,37 +4807,6 @@ if (updateError) {
     flashToast("Lien facture révoqué");
   };
 
-  // Connexion Gmail (OAuth Google, reconstruction sécurisée du 2026-09-01) —
-  // le token d'accès Supabase de la session en cours est transmis en en-tête
-  // Authorization (jamais en query string), jamais journalisé. La route
-  // retourne l'URL Google à suivre après avoir vérifié authentification +
-  // propriété du garage ; aucun flux Google n'est déclenché tant que ce
-  // bouton n'est pas cliqué par un garage réellement connecté.
-  const connecterGmail = async () => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData?.session?.access_token;
-    if (!accessToken) {
-      flashToast("Session expirée — reconnectez-vous puis réessayez", "error");
-      return;
-    }
-    try {
-      const res = await fetch("/api/auth/google/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ garageId }),
-      });
-      const json = await res.json();
-      if (!res.ok || !json.url) {
-        flashToast("Impossible de démarrer la connexion Gmail", "error");
-        return;
-      }
-      window.location.href = json.url;
-    } catch (err) {
-      console.error("Erreur démarrage connexion Gmail :", err);
-      flashToast("Impossible de démarrer la connexion Gmail", "error");
-    }
-  };
-
   // Nexora Relais Appels V1 — saisie manuelle uniquement, aucun lien avec le pipeline IA,
   // aucun envoi externe, isolé du reste par garage_id.
   const handleAjouterRappel = async ({ telephone, motif, urgent }) => {
@@ -5614,7 +5570,7 @@ if (updateError) {
           )}
           {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} travauxDifferes={travauxDifferes} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onOuvrirTravailDiffereModal={(clientId) => setTravailDiffereModal({ clientId })} onToast={flashToast} />}
           {INSPECTIONS_MODULE_ACTIF && view === "inspections" && <InspectionsSection garageId={garageId} clients={clients} rendezVous={rendezVous} onToast={flashToast} initialDetailId={inspectionCibleCockpit} onInitialDetailConsumed={() => setInspectionCibleCockpit(null)} />}
-          {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} onConnecterGmail={connecterGmail} />}
+          {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
         </div>
       </main>
 
