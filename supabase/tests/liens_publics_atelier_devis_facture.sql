@@ -705,6 +705,10 @@ select pg_temp.assert(
   (public.avancer_etape_atelier_par_jeton('0000000000000000000000000000000000000000000000000000000000000000', 'depose')->>'raison') = 'invalide',
   'avancer_etape_atelier_par_jeton avec un jeton inconnu doit renvoyer raison=invalide sous anon'
 );
+select pg_temp.assert(
+  (public.lire_devis_par_jeton('0000000000000000000000000000000000000000000000000000000000000000')->>'raison') = 'inconnu',
+  'lire_devis_par_jeton avec un jeton inconnu doit renvoyer raison=inconnu sous anon'
+);
 reset role;
 select set_config('request.jwt.claims', json_build_object('sub', pg_temp.fid('user_a')::text, 'role', 'authenticated')::text, true);
 set local role authenticated;
