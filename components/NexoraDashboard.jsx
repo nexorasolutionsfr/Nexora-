@@ -3584,9 +3584,9 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
               garageData.gmail_connecte ? (
                 <Badge tone="green">Connectée{garageData.gmail_adresse ? ` · ${garageData.gmail_adresse}` : ""}</Badge>
               ) : (
-                <a href={`/api/auth/google/connect?garage_id=${garageData.id}`} className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg text-white inline-block" style={{ backgroundColor: ACCENT }}>
-                  Connecter ma boîte mail
-                </a>
+                /* SÉCURITÉ (audit 2026-09-01) : connexion Gmail désactivée temporairement,
+                   voir app/api/auth/google/connect/route.ts */
+                <Badge tone="amber">Connexion temporairement indisponible (sécurisation en cours)</Badge>
               )
             }
           />
