@@ -208,17 +208,29 @@ $$;
 
 -- 4) search_path fermé sur les 11 fonctions SECURITY DEFINER/INVOKER de
 --    20260901000400_liens_publics_rpc.sql — durci le 2026-09-01 après
---    revue : `set search_path = ''` attendu exactement (proconfig contient
---    littéralement l'entrée 'search_path=', valeur vide après le '='),
---    jamais 'search_path=public' ni l'absence de tout search_path fixé
---    (ce qui laisserait le search_path de l'appelant s'appliquer).
+--    revue ; corrigé le 2026-09-01 (échec constaté lors du premier push
+--    Test) : la comparaison initiale attendait littéralement l'entrée
+--    'search_path=' (chaîne vide nue), alors que PostgreSQL stocke en
+--    réalité 'search_path=""' (chaîne vide entre guillemets doubles) —
+--    confirmé en lecture seule sur Test (slawilafseganlbghgwx) pour les
+--    11 fonctions avant ce correctif. Les deux représentations sont donc
+--    acceptées comme canoniquement vides, et seulement elles.
+--    `set search_path = ''` attendu exactement, jamais 'search_path=public'
+--    ni l'absence de toute configuration search_path (ce qui laisserait le
+--    search_path de l'appelant s'appliquer) — un simple `LIKE
+--    'search_path=%'` ne suffit jamais à conclure : il matche aussi
+--    'search_path=public', d'où la vérification explicite de la valeur
+--    après le '=' ci-dessous, jamais un filtre de préfixe isolé.
 do $$
 declare
   v_violations text[] := array[]::text[];
   v_signature text;
   v_oid oid;
   v_proconfig text[];
-  v_a_search_path_vide boolean;
+  v_entrees_search_path text[];
+  v_entree text;
+  v_valeur text;
+  v_normalisee text;
 begin
   foreach v_signature in array array[
     'public.creer_jeton_atelier(uuid)',
@@ -241,10 +253,30 @@ begin
     end if;
 
     select proconfig into v_proconfig from pg_proc where oid = v_oid;
-    v_a_search_path_vide := v_proconfig is not null and 'search_path=' = any(v_proconfig);
 
-    if not v_a_search_path_vide then
-      v_violations := v_violations || (v_signature || ' (search_path effectif=' || coalesce(array_to_string(v_proconfig, ','), 'aucun') || ', attendu=search_path=)');
+    -- Préfixe seul insuffisant (matcherait 'search_path=public') : filtre
+    -- d'abord les entrées candidates, la valeur exacte est vérifiée après.
+    select array_agg(e) into v_entrees_search_path
+      from unnest(coalesce(v_proconfig, array[]::text[])) as e
+      where e like 'search_path=%';
+
+    if v_entrees_search_path is null or array_length(v_entrees_search_path, 1) is distinct from 1 then
+      v_violations := v_violations || (v_signature || ' (' ||
+        coalesce(array_length(v_entrees_search_path, 1)::text, '0') ||
+        ' entrée(s) search_path, attendu exactement 1 ; proconfig=' ||
+        coalesce(array_to_string(v_proconfig, ','), 'aucun') || ')');
+      continue;
+    end if;
+
+    v_entree := v_entrees_search_path[1];
+    v_valeur := substring(v_entree from length('search_path=') + 1);
+    -- Deux seules représentations canoniques acceptées d'un search_path
+    -- vide : chaîne nue vide, ou chaîne vide entre guillemets doubles
+    -- littéraux (forme réellement observée sur cette instance Postgres).
+    v_normalisee := case when v_valeur = '""' then '' else v_valeur end;
+
+    if v_normalisee <> '' then
+      v_violations := v_violations || (v_signature || ' (search_path effectif=' || v_entree || ', attendu=search_path= ou search_path="")');
     end if;
   end loop;
 
