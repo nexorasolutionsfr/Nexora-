@@ -310,6 +310,15 @@ export function deriveOpportunites(ctx) {
 
   masquees.sort((a, b) => new Date(b.masquageAction.created_at) - new Date(a.masquageAction.created_at));
 
+  // Agrégats dérivés des mêmes opportunités visibles — utilisés par
+  // l'accueil Garage OS (Synthèse immédiate, "Nexora a repéré") pour éviter
+  // de recalculer une seconde fois les mêmes règles de priorisation.
+  const montantConnu = visibles.reduce((s, item) => s + (item.amount || 0), 0);
+  const parCategorie = {};
+  for (const item of visibles) {
+    parCategorie[item.sourceType] = (parCategorie[item.sourceType] || 0) + 1;
+  }
+
   return {
     sections,
     masquees,
@@ -318,5 +327,7 @@ export function deriveOpportunites(ctx) {
       aujourdhui: sections.aujourdhui.length,
       a_planifier: sections.a_planifier.length,
     },
+    montantConnu,
+    parCategorie,
   };
 }
