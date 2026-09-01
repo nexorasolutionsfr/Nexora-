@@ -26,7 +26,7 @@ export default function SyntheseImmediate({ rdvAujourdhui, vehiculesEngages, dec
     <div className="flex flex-wrap gap-3">
       <Indicateur icon={Calendar} label="Rendez-vous aujourd'hui" value={rdvAujourdhui} />
       <Indicateur icon={Wrench} label="Véhicules engagés en atelier" value={vehiculesEngages} />
-      <Indicateur icon={ListChecks} label="Décisions en attente" value={decisionsEnAttente} />
+      <Indicateur icon={ListChecks} label="Priorités actives" value={decisionsEnAttente} />
       <Indicateur icon={CircleDollarSign} label="Montant connu à risque" value={montantRisque} suffix=" €" />
     </div>
   );

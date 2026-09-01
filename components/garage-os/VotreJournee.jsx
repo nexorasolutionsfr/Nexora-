@@ -1,7 +1,6 @@
 "use client";
 
 import { ChevronRight, Wrench, AlertTriangle } from "lucide-react";
-import { compterAlertesAtelier } from "./calculs";
 import { ACCENT, NAVY } from "./tokens";
 
 const STATUT_TONE_BG = {
@@ -22,8 +21,8 @@ const STATUT_TONE_TEXT = {
 // Aperçu compact de la journée réelle : prochains rendez-vous, progression
 // atelier par étape, alertes attente client/pièce. Remplace la grille
 // horaire pleine page — plus lisible sur tablette et mobile en garage.
-export default function VotreJournee({ todayAppts = [], stageCounts = [], mecaniciensActifs = [], onSelectAppt, setView }) {
-  const alertes = compterAlertesAtelier(todayAppts);
+export default function VotreJournee({ todayAppts = [], stageCounts = [], mecaniciensActifs = [], alertesAtelier = 0, onSelectAppt, setView }) {
+  const alertes = alertesAtelier;
   const now = new Date();
   const prochains = todayAppts
     .filter((a) => new Date(a.date_fin || a.date_debut) >= now)

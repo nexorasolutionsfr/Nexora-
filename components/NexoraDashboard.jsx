@@ -10,7 +10,7 @@ import CentreDecisionnel from "./garage-os/CentreDecisionnel";
 import VotreJournee from "./garage-os/VotreJournee";
 import NexoraARepere from "./garage-os/NexoraARepere";
 import AccesRapides from "./garage-os/AccesRapides";
-import { compterVehiculesEngages } from "./garage-os/calculs";
+import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier } from "./garage-os/calculs";
 import {
   Home,
   Calendar,
@@ -1211,13 +1211,17 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   );
 
   // ---- Aperçu atelier du jour — un seul état à la fois, piloté par les vraies données
+  // Les étapes actives comptent sur l'ensemble des rendez-vous chargés (un
+  // véhicule entré hier et toujours engagé doit apparaître) ; à venir/prêt/
+  // restitué restent limités aux rendez-vous du jour. Voir calculerProgressionAtelier.
   const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
   const stagesEnCours = ["diagnostic", "intervention"];
   const stagesPrets = ["pret", "restitue"];
+  const progressionAtelier = calculerProgressionAtelier(rendezVous, todayAppts);
   const stageCounts = WORKSHOP_STAGES.map((stage) => ({
     ...stage,
     glanceColor: stagesEnCours.includes(stage.key) ? "#D97706" : stagesPrets.includes(stage.key) ? "#16A34A" : "#1E293B",
-    count: todayAppts.filter((a) => (a.statut_atelier || "a_venir") === stage.key).length,
+    count: progressionAtelier[stage.key] || 0,
   }));
 
   // ---- Aperçu "Ce mois-ci" (glance, le détail complet est dans Statistiques) ------
@@ -1261,7 +1265,8 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   // maintenant" apparaître le plus haut possible, surtout sur mobile -----------------
   const openState = getGarageOpenState(garageData || {});
 
-  const vehiculesEngages = compterVehiculesEngages(todayAppts);
+  const vehiculesEngages = compterVehiculesEngages(rendezVous);
+  const alertesAtelier = compterAlertesAtelier(rendezVous);
   const decisionsEnAttente = COCKPIT_OPPORTUNITES_ACTIF
     ? (cockpitCompteurs ? cockpitCompteurs.total : null)
     : zone1Rows.length + zone2Rows.length;
@@ -1369,6 +1374,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
             todayAppts={todayAppts}
             stageCounts={stageCounts}
             mecaniciensActifs={mecaniciensActifs}
+            alertesAtelier={alertesAtelier}
             onSelectAppt={onSelectAppt}
             setView={setView}
           />
