@@ -8,6 +8,58 @@
 -- Complété le 2026-09-01 après revue : bloc 4 (search_path fermé sur les
 -- 11 fonctions) et bloc 5 (index unique partiel garantissant un seul jeton
 -- actif par ressource).
+--
+-- Normalisation ACL ajoutée le 2026-09-01 (échec constaté sur Test lors du
+-- premier push : authenticated avait EXECUTE effectif sur les 3 fonctions
+-- lire_*_par_jeton alors que la vérification d'alors l'interdisait). Cause
+-- confirmée : les default privileges du projet accordent EXECUTE à
+-- anon/authenticated/service_role sur toute nouvelle fonction du schéma
+-- public ; le simple `revoke ... from public` de 20260901000400 ne retire
+-- pas ces grants individuels par rôle (PUBLIC et un rôle nommé sont deux
+-- choses distinctes pour has_function_privilege). Décision d'architecture :
+-- les 5 fonctions publiques par jeton doivent être exécutables par anon ET
+-- authenticated (le jeton reste l'unique capacité — un lien doit fonctionner
+-- même ouvert dans un navigateur ayant déjà une session Nexora). Le bloc
+-- ci-dessous repart de zéro par un REVOKE explicite (neutralise les default
+-- privileges, quel que soit leur origine) avant d'appliquer la matrice
+-- voulue par GRANT ciblé — atomique avec les vérifications qui suivent :
+-- si l'une d'elles échoue, aucune partie de cette migration n'est retenue.
+-- Ne touche ni au corps, ni au propriétaire, ni au search_path des fonctions.
+
+-- 6 fonctions génération/révocation : authenticated uniquement.
+revoke execute on function public.creer_jeton_atelier(uuid) from public, anon, authenticated, service_role;
+grant execute on function public.creer_jeton_atelier(uuid) to authenticated;
+
+revoke execute on function public.revoquer_jeton_atelier(uuid) from public, anon, authenticated, service_role;
+grant execute on function public.revoquer_jeton_atelier(uuid) to authenticated;
+
+revoke execute on function public.creer_jeton_devis(uuid) from public, anon, authenticated, service_role;
+grant execute on function public.creer_jeton_devis(uuid) to authenticated;
+
+revoke execute on function public.revoquer_jeton_devis(uuid) from public, anon, authenticated, service_role;
+grant execute on function public.revoquer_jeton_devis(uuid) to authenticated;
+
+revoke execute on function public.creer_jeton_facture(uuid) from public, anon, authenticated, service_role;
+grant execute on function public.creer_jeton_facture(uuid) to authenticated;
+
+revoke execute on function public.revoquer_jeton_facture(uuid) from public, anon, authenticated, service_role;
+grant execute on function public.revoquer_jeton_facture(uuid) to authenticated;
+
+-- 5 fonctions publiques par jeton : anon ET authenticated (jeton = unique capacité).
+revoke execute on function public.lire_atelier_par_jeton(text) from public, anon, authenticated, service_role;
+grant execute on function public.lire_atelier_par_jeton(text) to anon, authenticated;
+
+revoke execute on function public.avancer_etape_atelier_par_jeton(text, text) from public, anon, authenticated, service_role;
+grant execute on function public.avancer_etape_atelier_par_jeton(text, text) to anon, authenticated;
+
+revoke execute on function public.lire_devis_par_jeton(text) from public, anon, authenticated, service_role;
+grant execute on function public.lire_devis_par_jeton(text) to anon, authenticated;
+
+revoke execute on function public.repondre_devis_par_jeton(text, text) from public, anon, authenticated, service_role;
+grant execute on function public.repondre_devis_par_jeton(text, text) to anon, authenticated;
+
+revoke execute on function public.lire_facture_par_jeton(text) from public, anon, authenticated, service_role;
+grant execute on function public.lire_facture_par_jeton(text) to anon, authenticated;
 
 do $$
 declare
@@ -40,9 +92,13 @@ end
 $$;
 
 -- 2) Fonctions : anon ne doit jamais pouvoir générer ni révoquer un jeton
---    (réservé au garage propriétaire authentifié) ; authenticated ne doit
---    jamais pouvoir répondre à la place du public (lecture/réponse par
---    jeton réservées à anon, qui les utilise sans session).
+--    (réservé au garage propriétaire authentifié) ; les 5 fonctions
+--    publiques par jeton sont exécutables par anon ET authenticated (le
+--    jeton reste l'unique capacité — décision d'architecture du 2026-09-01
+--    pour qu'un lien fonctionne aussi ouvert dans un navigateur possédant
+--    déjà une session Nexora) ; service_role ne doit jamais avoir EXECUTE
+--    effectif sur aucune des 11 fonctions (accès admin exclusivement via
+--    des voies dédiées, jamais via ces RPC publiques).
 do $$
 declare
   v_violations text[] := array[]::text[];
@@ -54,32 +110,43 @@ begin
       -- Génération / révocation : authenticated uniquement.
       ('public.creer_jeton_atelier(uuid)', 'anon', false),
       ('public.creer_jeton_atelier(uuid)', 'authenticated', true),
+      ('public.creer_jeton_atelier(uuid)', 'service_role', false),
       ('public.revoquer_jeton_atelier(uuid)', 'anon', false),
       ('public.revoquer_jeton_atelier(uuid)', 'authenticated', true),
+      ('public.revoquer_jeton_atelier(uuid)', 'service_role', false),
 
       ('public.creer_jeton_devis(uuid)', 'anon', false),
       ('public.creer_jeton_devis(uuid)', 'authenticated', true),
+      ('public.creer_jeton_devis(uuid)', 'service_role', false),
       ('public.revoquer_jeton_devis(uuid)', 'anon', false),
       ('public.revoquer_jeton_devis(uuid)', 'authenticated', true),
+      ('public.revoquer_jeton_devis(uuid)', 'service_role', false),
 
       ('public.creer_jeton_facture(uuid)', 'anon', false),
       ('public.creer_jeton_facture(uuid)', 'authenticated', true),
+      ('public.creer_jeton_facture(uuid)', 'service_role', false),
       ('public.revoquer_jeton_facture(uuid)', 'anon', false),
       ('public.revoquer_jeton_facture(uuid)', 'authenticated', true),
+      ('public.revoquer_jeton_facture(uuid)', 'service_role', false),
 
-      -- Lecture / réponse par jeton : anon uniquement (usage public sans session).
+      -- Lecture / réponse par jeton : anon ET authenticated (jeton = unique capacité).
       ('public.lire_atelier_par_jeton(text)', 'anon', true),
-      ('public.lire_atelier_par_jeton(text)', 'authenticated', false),
+      ('public.lire_atelier_par_jeton(text)', 'authenticated', true),
+      ('public.lire_atelier_par_jeton(text)', 'service_role', false),
       ('public.avancer_etape_atelier_par_jeton(text, text)', 'anon', true),
-      ('public.avancer_etape_atelier_par_jeton(text, text)', 'authenticated', false),
+      ('public.avancer_etape_atelier_par_jeton(text, text)', 'authenticated', true),
+      ('public.avancer_etape_atelier_par_jeton(text, text)', 'service_role', false),
 
       ('public.lire_devis_par_jeton(text)', 'anon', true),
-      ('public.lire_devis_par_jeton(text)', 'authenticated', false),
+      ('public.lire_devis_par_jeton(text)', 'authenticated', true),
+      ('public.lire_devis_par_jeton(text)', 'service_role', false),
       ('public.repondre_devis_par_jeton(text, text)', 'anon', true),
-      ('public.repondre_devis_par_jeton(text, text)', 'authenticated', false),
+      ('public.repondre_devis_par_jeton(text, text)', 'authenticated', true),
+      ('public.repondre_devis_par_jeton(text, text)', 'service_role', false),
 
       ('public.lire_facture_par_jeton(text)', 'anon', true),
-      ('public.lire_facture_par_jeton(text)', 'authenticated', false)
+      ('public.lire_facture_par_jeton(text)', 'authenticated', true),
+      ('public.lire_facture_par_jeton(text)', 'service_role', false)
     ) as t(signature, role, attendu)
   loop
     v_effectif := has_function_privilege(v_row.role, v_row.signature, 'EXECUTE');

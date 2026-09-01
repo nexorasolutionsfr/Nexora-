@@ -278,6 +278,40 @@ select pg_temp.assert(
 );
 
 -- =====================================================================
+-- 3b. service_role sans EXECUTE effectif sur les 11 fonctions (contrôle
+--     structurel — has_function_privilege, aucun appel réel nécessaire ;
+--     accès admin exclusivement via des voies dédiées, jamais via ces RPC
+--     publiques, ajouté le 2026-09-01 avec la normalisation ACL de
+--     20260901000500).
+-- =====================================================================
+
+do $$
+declare
+  v_signature text;
+begin
+  foreach v_signature in array array[
+    'public.creer_jeton_atelier(uuid)',
+    'public.revoquer_jeton_atelier(uuid)',
+    'public.lire_atelier_par_jeton(text)',
+    'public.avancer_etape_atelier_par_jeton(text, text)',
+    'public.creer_jeton_devis(uuid)',
+    'public.revoquer_jeton_devis(uuid)',
+    'public.lire_devis_par_jeton(text)',
+    'public.repondre_devis_par_jeton(text, text)',
+    'public.creer_jeton_facture(uuid)',
+    'public.revoquer_jeton_facture(uuid)',
+    'public.lire_facture_par_jeton(text)'
+  ]
+  loop
+    perform pg_temp.assert(
+      not has_function_privilege('service_role', v_signature, 'EXECUTE'),
+      v_signature || ' ne doit jamais être exécutable par service_role'
+    );
+  end loop;
+end;
+$$;
+
+-- =====================================================================
 -- 4. UUID brut inutilisable comme jeton — même un UUID réel (celui du
 --    RDV A qui vient d'être créé) ne matche structurellement aucune
 --    ligne *_jetons (hash SHA-256 d'un UUID ≠ hash d'un jeton 256 bits
@@ -547,7 +581,245 @@ select pg_temp.assert(
 );
 
 -- =====================================================================
--- 15. Aucune donnée synthétique conservée après la transaction
+-- 15. Décision d'architecture 2026-09-01 — anon ET authenticated sur les
+--     5 fonctions publiques par jeton (jeton = unique capacité, un lien
+--     doit fonctionner même ouvert dans un navigateur ayant déjà une
+--     session Nexora) ; rejet d'un jeton inconnu sous les deux rôles ;
+--     anon toujours interdit sur les 6 fonctions créer/révoquer (seule
+--     creer_jeton_atelier était couverte en 5d) ; authenticated toujours
+--     interdit d'accès direct aux 3 tables de jetons (seul anon était
+--     couvert en 6). Couvre la normalisation ACL ajoutée dans
+--     20260901000500 suite à l'échec constaté lors du premier push Test.
+-- =====================================================================
+
+-- 15a. anon toujours interdit sur les 5 fonctions créer/révoquer restantes
+--      (creer_jeton_atelier déjà couvert en 5d).
+set local role anon;
+do $$
+begin
+  begin
+    perform public.revoquer_jeton_atelier(pg_temp.fid('rdv_a'));
+    perform pg_temp.assert(false, 'revoquer_jeton_atelier par anon aurait dû échouer');
+  exception when others then
+    if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
+    perform pg_temp.assert(sqlstate = '42501', 'anon appelant revoquer_jeton_atelier doit échouer en 42501, reçu : ' || sqlstate);
+  end;
+end;
+$$;
+do $$
+begin
+  begin
+    perform public.creer_jeton_devis(pg_temp.fid('devis_a'));
+    perform pg_temp.assert(false, 'creer_jeton_devis par anon aurait dû échouer');
+  exception when others then
+    if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
+    perform pg_temp.assert(sqlstate = '42501', 'anon appelant creer_jeton_devis doit échouer en 42501, reçu : ' || sqlstate);
+  end;
+end;
+$$;
+do $$
+begin
+  begin
+    perform public.revoquer_jeton_devis(pg_temp.fid('devis_a'));
+    perform pg_temp.assert(false, 'revoquer_jeton_devis par anon aurait dû échouer');
+  exception when others then
+    if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
+    perform pg_temp.assert(sqlstate = '42501', 'anon appelant revoquer_jeton_devis doit échouer en 42501, reçu : ' || sqlstate);
+  end;
+end;
+$$;
+do $$
+begin
+  begin
+    perform public.creer_jeton_facture(pg_temp.fid('facture_a'));
+    perform pg_temp.assert(false, 'creer_jeton_facture par anon aurait dû échouer');
+  exception when others then
+    if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
+    perform pg_temp.assert(sqlstate = '42501', 'anon appelant creer_jeton_facture doit échouer en 42501, reçu : ' || sqlstate);
+  end;
+end;
+$$;
+do $$
+begin
+  begin
+    perform public.revoquer_jeton_facture(pg_temp.fid('facture_a'));
+    perform pg_temp.assert(false, 'revoquer_jeton_facture par anon aurait dû échouer');
+  exception when others then
+    if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
+    perform pg_temp.assert(sqlstate = '42501', 'anon appelant revoquer_jeton_facture doit échouer en 42501, reçu : ' || sqlstate);
+  end;
+end;
+$$;
+reset role;
+
+-- 15b. authenticated toujours interdit d'accès direct aux 3 tables de
+--      jetons (accès exclusivement via les fonctions SECURITY DEFINER,
+--      même règle que anon en section 6 — l'accès élargi décidé ici porte
+--      uniquement sur les 5 RPC de lecture par jeton, jamais sur les
+--      tables sous-jacentes).
+select set_config('request.jwt.claims', json_build_object('sub', pg_temp.fid('user_a')::text, 'role', 'authenticated')::text, true);
+set local role authenticated;
+do $$
+begin
+  begin
+    perform count(*) from public.atelier_jetons;
+    perform pg_temp.assert(false, 'authenticated ne doit jamais pouvoir lire directement atelier_jetons');
+  exception when others then
+    if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
+    perform pg_temp.assert(sqlstate = '42501', 'accès direct à atelier_jetons par authenticated doit échouer en 42501, reçu : ' || sqlstate);
+  end;
+end;
+$$;
+do $$
+begin
+  begin
+    perform count(*) from public.devis_jetons;
+    perform pg_temp.assert(false, 'authenticated ne doit jamais pouvoir lire directement devis_jetons');
+  exception when others then
+    if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
+    perform pg_temp.assert(sqlstate = '42501', 'accès direct à devis_jetons par authenticated doit échouer en 42501, reçu : ' || sqlstate);
+  end;
+end;
+$$;
+do $$
+begin
+  begin
+    perform count(*) from public.factures_jetons;
+    perform pg_temp.assert(false, 'authenticated ne doit jamais pouvoir lire directement factures_jetons');
+  exception when others then
+    if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
+    perform pg_temp.assert(sqlstate = '42501', 'accès direct à factures_jetons par authenticated doit échouer en 42501, reçu : ' || sqlstate);
+  end;
+end;
+$$;
+reset role;
+
+-- 15c. Jeton inconnu toujours refusé, sous anon ET sous authenticated,
+--      pour les 5 fonctions (déjà couvert sous anon seul en sections 4/8).
+set local role anon;
+select pg_temp.assert(
+  (public.lire_atelier_par_jeton('0000000000000000000000000000000000000000000000000000000000000000')->>'raison') = 'inconnu',
+  'lire_atelier_par_jeton avec un jeton inconnu doit renvoyer raison=inconnu sous anon'
+);
+select pg_temp.assert(
+  (public.avancer_etape_atelier_par_jeton('0000000000000000000000000000000000000000000000000000000000000000', 'depose')->>'raison') = 'invalide',
+  'avancer_etape_atelier_par_jeton avec un jeton inconnu doit renvoyer raison=invalide sous anon'
+);
+reset role;
+select set_config('request.jwt.claims', json_build_object('sub', pg_temp.fid('user_a')::text, 'role', 'authenticated')::text, true);
+set local role authenticated;
+select pg_temp.assert(
+  (public.lire_atelier_par_jeton('0000000000000000000000000000000000000000000000000000000000000000')->>'raison') = 'inconnu',
+  'lire_atelier_par_jeton avec un jeton inconnu doit renvoyer raison=inconnu sous authenticated'
+);
+select pg_temp.assert(
+  (public.avancer_etape_atelier_par_jeton('0000000000000000000000000000000000000000000000000000000000000000', 'depose')->>'raison') = 'invalide',
+  'avancer_etape_atelier_par_jeton avec un jeton inconnu doit renvoyer raison=invalide sous authenticated'
+);
+select pg_temp.assert(
+  (public.lire_devis_par_jeton('0000000000000000000000000000000000000000000000000000000000000000')->>'raison') = 'inconnu',
+  'lire_devis_par_jeton avec un jeton inconnu doit renvoyer raison=inconnu sous authenticated'
+);
+select pg_temp.assert(
+  (public.repondre_devis_par_jeton('0000000000000000000000000000000000000000000000000000000000000000', 'accepte')->>'raison') = 'invalide',
+  'repondre_devis_par_jeton avec un jeton inconnu doit renvoyer raison=invalide sous authenticated'
+);
+select pg_temp.assert(
+  (public.lire_facture_par_jeton('0000000000000000000000000000000000000000000000000000000000000000')->>'raison') = 'inconnu',
+  'lire_facture_par_jeton avec un jeton inconnu doit renvoyer raison=inconnu sous authenticated'
+);
+reset role;
+
+-- 15d. Les 5 fonctions publiques par jeton fonctionnent identiquement sous
+--      anon ET sous authenticated pour un jeton valide. Jetons dédiés
+--      (v3/v2) : leur génération révoque les jetons précédents de la même
+--      ressource (index unique partiel), sans effet sur les assertions
+--      déjà exécutées dans les sections précédentes.
+select set_config('request.jwt.claims', json_build_object('sub', pg_temp.fid('user_a')::text, 'role', 'authenticated')::text, true);
+set local role authenticated;
+select pg_temp.capturer_jeton('atelier_a_v3', public.creer_jeton_atelier(pg_temp.fid('rdv_a')));
+select pg_temp.capturer_jeton('devis_a_v2', public.creer_jeton_devis(pg_temp.fid('devis_a')));
+select pg_temp.capturer_jeton('facture_a_v2', public.creer_jeton_facture(pg_temp.fid('facture_a')));
+reset role;
+
+-- lire_atelier_par_jeton : anon puis authenticated, même jeton.
+set local role anon;
+select pg_temp.assert(
+  (public.lire_atelier_par_jeton(pg_temp.jeton_de('atelier_a_v3'))->>'ok') = 'true',
+  'lire_atelier_par_jeton doit réussir pour anon avec un jeton valide'
+);
+reset role;
+select set_config('request.jwt.claims', json_build_object('sub', pg_temp.fid('user_a')::text, 'role', 'authenticated')::text, true);
+set local role authenticated;
+select pg_temp.assert(
+  (public.lire_atelier_par_jeton(pg_temp.jeton_de('atelier_a_v3'))->>'ok') = 'true',
+  'lire_atelier_par_jeton doit aussi réussir pour authenticated avec le même jeton valide'
+);
+reset role;
+
+-- lire_devis_par_jeton : anon puis authenticated, même jeton.
+set local role anon;
+select pg_temp.assert(
+  (public.lire_devis_par_jeton(pg_temp.jeton_de('devis_a_v2'))->>'ok') = 'true',
+  'lire_devis_par_jeton doit réussir pour anon avec un jeton valide'
+);
+reset role;
+select set_config('request.jwt.claims', json_build_object('sub', pg_temp.fid('user_a')::text, 'role', 'authenticated')::text, true);
+set local role authenticated;
+select pg_temp.assert(
+  (public.lire_devis_par_jeton(pg_temp.jeton_de('devis_a_v2'))->>'ok') = 'true',
+  'lire_devis_par_jeton doit aussi réussir pour authenticated avec le même jeton valide'
+);
+reset role;
+
+-- lire_facture_par_jeton : anon puis authenticated, même jeton.
+set local role anon;
+select pg_temp.assert(
+  (public.lire_facture_par_jeton(pg_temp.jeton_de('facture_a_v2'))->>'ok') = 'true',
+  'lire_facture_par_jeton doit réussir pour anon avec un jeton valide'
+);
+reset role;
+select set_config('request.jwt.claims', json_build_object('sub', pg_temp.fid('user_a')::text, 'role', 'authenticated')::text, true);
+set local role authenticated;
+select pg_temp.assert(
+  (public.lire_facture_par_jeton(pg_temp.jeton_de('facture_a_v2'))->>'ok') = 'true',
+  'lire_facture_par_jeton doit aussi réussir pour authenticated avec le même jeton valide'
+);
+reset role;
+
+-- avancer_etape_atelier_par_jeton : anon puis authenticated, transitions
+-- adjacentes distinctes (rdv_a est à 'depose' depuis la section 12 ;
+-- depose -> diagnostic sous anon, puis diagnostic -> attente_client sous
+-- authenticated, sur le même jeton atelier_a_v3).
+set local role anon;
+select pg_temp.assert(
+  (public.avancer_etape_atelier_par_jeton(pg_temp.jeton_de('atelier_a_v3'), 'diagnostic')->>'ok') = 'true',
+  'avancer_etape_atelier_par_jeton doit réussir pour anon (transition adjacente)'
+);
+reset role;
+select set_config('request.jwt.claims', json_build_object('sub', pg_temp.fid('user_a')::text, 'role', 'authenticated')::text, true);
+set local role authenticated;
+select pg_temp.assert(
+  (public.avancer_etape_atelier_par_jeton(pg_temp.jeton_de('atelier_a_v3'), 'attente_client')->>'ok') = 'true',
+  'avancer_etape_atelier_par_jeton doit aussi réussir pour authenticated (transition adjacente)'
+);
+
+-- repondre_devis_par_jeton sous authenticated : devis_a a déjà reçu sa
+-- réponse définitive en section 11 (statut='accepte' — état métier, pas
+-- lié au jeton). Le token 'devis_a' original a été révoqué par la
+-- régénération plus haut (devis_a_v2, un seul jeton actif par ressource) :
+-- on réutilise donc devis_a_v2 (actif) pour atteindre la fonction. Un
+-- retour métier 'deja_repondu' (au lieu d'un refus de privilège 42501)
+-- prouve que authenticated atteint bien la fonction — exactement ce qui
+-- manquait lors du premier push Test.
+select pg_temp.assert(
+  (public.repondre_devis_par_jeton(pg_temp.jeton_de('devis_a_v2'), 'accepte')->>'raison') = 'deja_repondu',
+  'repondre_devis_par_jeton doit être exécutable par authenticated (retour métier deja_repondu, pas un refus de privilège)'
+);
+reset role;
+
+-- =====================================================================
+-- 16. Aucune donnée synthétique conservée après la transaction
 -- =====================================================================
 -- Ne peut pas être assertée DEPUIS l'intérieur de cette transaction (les
 -- données créées ci-dessus sont, par construction, visibles tant que la
