@@ -1,0 +1,32 @@
+-- Revenue Recovery V1 — correctif : ferme les écritures directes que la
+-- Data API laissait encore ouvertes au navigateur sur les TABLES
+-- (revenue_recovery_tentatives, revenue_recovery_evenements).
+-- Migration additive côté schéma (uniquement des REVOKE), non destructive.
+--
+-- Faille confirmée : `authenticated` avait INSERT direct sur ces deux
+-- tables. Un utilisateur connecté aurait pu créer une tentative ou un
+-- événement d'audit directement via la Data API, en contournant toute
+-- vérification d'éligibilité, d'activation par garage, de permission ou
+-- de transition — aucune de ces validations ne vit dans une contrainte de
+-- table, seulement dans les fonctions métier. Un GRANT insert direct sur
+-- ces deux tables rendait donc ces fonctions contournables, pas
+-- obligatoires.
+--
+-- Correctif : fermeture des deux INSERT directs. Aucune fonction de
+-- remplacement n'est créée ici pour la création d'une tentative — elle
+-- dépend du futur lot d'envoi et devra, dans la même transaction, vérifier
+-- le garage activé, la permission autorisée, l'absence d'opposition et
+-- l'idempotence. Ce lot est explicitement hors périmètre de cette session
+-- (aucun envoi, aucune interface). Le seul effet observable aujourd'hui :
+-- revenue_recovery_tentatives et revenue_recovery_evenements deviennent
+-- entièrement en lecture seule pour authenticated (elles l'étaient déjà
+-- pour tout le reste : aucun update, aucun delete n'a jamais été accordé).
+--
+-- (La faille jumelle sur revenue_recovery_marquer_tentative() — EXECUTE
+-- accordé à authenticated — est désormais corrigée directement à la
+-- source, dans 20260831000600 : cette fonction n'accorde plus EXECUTE à
+-- aucun rôle applicatif dès sa création, il n'y a donc plus rien à
+-- révoquer ici après coup.)
+
+revoke insert on public.revenue_recovery_tentatives from authenticated;
+revoke insert on public.revenue_recovery_evenements from authenticated;
