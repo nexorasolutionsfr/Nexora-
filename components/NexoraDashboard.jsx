@@ -47,6 +47,9 @@ import {
   ReceiptText,
   Eye,
   LogOut,
+  Copy,
+  ShieldOff,
+  Link2,
 } from "lucide-react";
 // Vercel rebuild trigger
 // =====================================================================================
@@ -459,7 +462,7 @@ function LienPaiementField({ appt, onSave }) {
   );
 }
 
-function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, onUpdateStatutAtelier, onUpdateLienPaiement }) {
+function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, onUpdateStatutAtelier, onUpdateLienPaiement, atelierLien, atelierBusy, onGenererLienAtelier, onRevoquerLienAtelier }) {
   if (!appt) return null;
 
   const client = appt.client;
@@ -504,10 +507,47 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
           </div>
           {onAssignMecanicien && <label className="block pt-2"><span className="text-[12.5px] font-medium text-slate-500">Mécanicien</span><select value={appt.mecanicien_id || ""} onChange={(e) => onAssignMecanicien(appt.id, e.target.value || null)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"><option value="">Non assigné</option>{mecaniciens.filter((m) => m.actif !== false).map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}</select></label>}
         </div>
-        {estAujourdhui && (
-          <div className="mt-4 flex items-center gap-3 bg-slate-50 rounded-xl p-3">
-            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`https://nexora-garage.vercel.app/atelier/${appt.id}`)}`} alt="QR code atelier" className="w-[70px] h-[70px] rounded-lg bg-white p-1" />
-            <div className="text-[12px] text-slate-500">QR à imprimer et coller sur le véhicule pour que le mécanicien mette à jour l'étape sans passer par le dashboard.</div>
+        {estAujourdhui && onGenererLienAtelier && (
+          <div className="mt-4 bg-slate-50 rounded-xl p-3">
+            {atelierLien ? (
+              <div className="flex items-center gap-3">
+                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(atelierLien)}`} alt="QR code atelier" className="w-[70px] h-[70px] rounded-lg bg-white p-1" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] text-slate-500">QR à imprimer et coller sur le véhicule pour que le mécanicien mette à jour l'étape sans passer par le dashboard.</div>
+                  <div className="flex gap-3 mt-1.5">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(atelierLien);
+                        } catch {}
+                      }}
+                      className="flex items-center gap-1 text-[12px] font-medium text-slate-600 hover:text-slate-800"
+                    >
+                      <Copy size={12} /> Copier le lien
+                    </button>
+                    <button
+                      type="button"
+                      disabled={atelierBusy}
+                      onClick={() => onRevoquerLienAtelier(appt.id)}
+                      className="flex items-center gap-1 text-[12px] font-medium text-slate-500 hover:text-red-600 disabled:opacity-50"
+                    >
+                      <ShieldOff size={12} /> Révoquer
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={atelierBusy}
+                onClick={() => onGenererLienAtelier(appt.id)}
+                className="flex items-center gap-1.5 text-[12.5px] font-semibold px-3 py-2 rounded-xl text-white disabled:opacity-50"
+                style={{ backgroundColor: ACCENT }}
+              >
+                <Link2 size={13} /> {atelierBusy ? "Génération…" : "Générer le lien atelier"}
+              </button>
+            )}
           </div>
         )}
         {appt.statut_confirmation && (
@@ -524,13 +564,20 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
   );
 }
 
-function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] }) {
+function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], atelierLiens = {}, onGenererEtiquettes }) {
   const todayAppts = rendezVous.filter((r) => isToday(r.date_debut));
   const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
   const resourceAppointments = (resourceId) => todayAppts.filter((appt) => (resourceId === null ? !appt.mecanicien_id : appt.mecanicien_id === resourceId));
   const ressources = [...mecaniciensActifs.map((m) => ({ id: m.id, name: m.nom, role: "Mécanicien", color: m.couleur || "#3D6BE0" })), { id: null, name: "Non assigné", role: "", color: "#94A3B8" }];
+  const [imprimant, setImprimant] = useState(false);
+  const imprimerEtiquettes = async () => {
+    if (!onGenererEtiquettes || imprimant) return;
+    setImprimant(true);
+    await onGenererEtiquettes(todayAppts);
+    setImprimant(false);
+  };
     return <div className="space-y-5">
-    <div className="print:hidden rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}><div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" /><div className="relative flex items-start justify-between flex-wrap gap-4"><div><div className="flex items-center gap-2"><Wrench size={18} color="#8FB0FF" /><span className="font-semibold">Atelier en direct</span></div><div className="text-2xl font-semibold mt-3">Votre équipe sait quoi faire, maintenant.</div><div className="text-[13px] mt-1 text-blue-200">Répartissez les véhicules, suivez les retards et gardez le client informé.</div><button onClick={() => setTimeout(() => window.print(), 600)} className="mt-3 inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl px-3 py-2 text-[12.5px] font-medium">🖨️ Imprimer les étiquettes du jour</button></div><div className="grid grid-cols-2 gap-2"><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Véhicules aujourd’hui</div><div className="text-xl font-semibold mt-1">{todayAppts.length}</div></div><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Équipe disponible</div><div className="text-xl font-semibold mt-1">{mecaniciensActifs.length}</div></div></div></div></div>
+    <div className="print:hidden rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}><div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" /><div className="relative flex items-start justify-between flex-wrap gap-4"><div><div className="flex items-center gap-2"><Wrench size={18} color="#8FB0FF" /><span className="font-semibold">Atelier en direct</span></div><div className="text-2xl font-semibold mt-3">Votre équipe sait quoi faire, maintenant.</div><div className="text-[13px] mt-1 text-blue-200">Répartissez les véhicules, suivez les retards et gardez le client informé.</div><button disabled={imprimant} onClick={imprimerEtiquettes} className="mt-3 inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl px-3 py-2 text-[12.5px] font-medium disabled:opacity-50">🖨️ {imprimant ? "Génération des liens…" : "Imprimer les étiquettes du jour"}</button></div><div className="grid grid-cols-2 gap-2"><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Véhicules aujourd’hui</div><div className="text-xl font-semibold mt-1">{todayAppts.length}</div></div><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Équipe disponible</div><div className="text-xl font-semibold mt-1">{mecaniciensActifs.length}</div></div></div></div></div>
         <div className="print:hidden">
     <WorkshopTimeline rendezVous={rendezVous} onSelectAppt={onSelectAppt} mecaniciens={mecaniciensActifs} />
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"><div className="px-5 py-4 border-b border-slate-100"><div className="font-semibold text-slate-900 text-[15px]">Planning des ressources</div><div className="text-[12.5px] text-slate-500 mt-0.5">Cliquez un rendez-vous pour l’affecter à un mécanicien.</div></div><div className="overflow-x-auto"><div className="min-w-[850px]"><div className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] border-b border-slate-100">{["Ressource", ...heuresGrille].map((hour) => <div key={hour} className="px-3 py-2 text-[11px] font-medium text-slate-400 border-r border-slate-100">{hour}</div>)}</div>{mecaniciensActifs.length === 0 && <div className="px-5 py-6 text-[13px] text-slate-500">Ajoutez vos mécaniciens dans Paramètres pour affecter les rendez-vous.</div>}{ressources.map((resource) => { const assigned = resourceAppointments(resource.id); return <div key={resource.id ?? "non_assigne"} className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] min-h-[74px] border-b border-slate-100 last:border-0"><div className="px-3 py-3 border-r border-slate-100"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resource.color }} /><div><div className="text-[12.5px] font-medium text-slate-800">{resource.name}</div><div className="text-[11px] text-slate-400">{resource.role}</div></div></div></div><div className="col-span-10 relative p-1.5" style={{ minHeight: 58 }}>{assigned.map((appt) => {
@@ -558,12 +605,12 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [] })
       }
     `}</style>
     <div id="nexora-print-labels" className="hidden">
-            {todayAppts.map((appt, index) => (
-        <div key={appt.id} style={{ pageBreakAfter: index < todayAppts.length - 1 ? "always" : "auto", padding: 24, border: `3px solid ${catColor(appt.categorie).bar}`, borderRadius: 16, marginBottom: 16 }}>
+            {todayAppts.filter((appt) => atelierLiens[appt.id]).map((appt, index, arr) => (
+        <div key={appt.id} style={{ pageBreakAfter: index < arr.length - 1 ? "always" : "auto", padding: 24, border: `3px solid ${catColor(appt.categorie).bar}`, borderRadius: 16, marginBottom: 16 }}>
           <div style={{ fontSize: 28, fontWeight: 700 }}>{appt.client}</div>
           <div style={{ fontSize: 20, marginTop: 8 }}>{appt.vehicule} · {appt.immatriculation}</div>
           <div style={{ fontSize: 16, color: "#64748B", marginTop: 4 }}>{appt.debut} – {appt.fin} · {appt.prestation}</div>
-          <img src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(`https://nexora-garage.vercel.app/atelier/${appt.id}`)}`} style={{ marginTop: 16 }} />
+          <img src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(atelierLiens[appt.id])}`} style={{ marginTop: 16 }} />
         </div>
       ))}
     </div>
@@ -2081,7 +2128,7 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
   );
 }
 
-function FacturationView({ view, setView, devisList, clients, prestations, garageData, onAcceptDevis, onRefuseDevis, onUpdateMontant, onCreerDevis, onCreerClient, rendezVous, factures, onGenererFacture, onMarquerPayee, onSauvegarderFacture, garageId }) {
+function FacturationView({ view, setView, devisList, clients, prestations, garageData, onAcceptDevis, onRefuseDevis, onUpdateMontant, onCreerDevis, onCreerClient, rendezVous, factures, onGenererFacture, onMarquerPayee, onSauvegarderFacture, garageId, devisLiens, devisBusyId, onGenererLienDevis, onRevoquerLienDevis, facturesLiens, facturesBusyId, onGenererLienFacture, onRevoquerLienFacture }) {
   const tabs = [
     ["devis", "Devis"],
     ["factures", "Factures"],
@@ -2094,8 +2141,8 @@ function FacturationView({ view, setView, devisList, clients, prestations, garag
           <button key={key} onClick={() => setView(key)} className="text-[13px] font-medium px-4 py-1.5 rounded-lg" style={view === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>{label}</button>
         ))}
       </div>
-      {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} />}
-      {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={onGenererFacture} onMarquerPayee={onMarquerPayee} onSauvegarder={onSauvegarderFacture} />}
+      {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} />}
+      {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={onGenererFacture} onMarquerPayee={onMarquerPayee} onSauvegarder={onSauvegarderFacture} facturesLiens={facturesLiens} facturesBusyId={facturesBusyId} onGenererLien={onGenererLienFacture} onRevoquerLien={onRevoquerLienFacture} />}
       {view === "historique" && <HistoriqueView devisList={devisList} garageId={garageId} />}
     </div>
   );
@@ -2224,7 +2271,7 @@ function HistoriqueView({ devisList, garageId }) {
   );
 }
 
-function DevisView({ devisList: devisListToutesSources, clients, prestations, garageData, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient }) {
+function DevisView({ devisList: devisListToutesSources, clients, prestations, garageData, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient, devisLiens = {}, devisBusyId, onGenererLien, onRevoquerLien }) {
   const devisList = devisListToutesSources.filter((d) => d.statut === "en_attente");
   const [modalOuvert, setModalOuvert] = useState(false);
   return (
@@ -2238,7 +2285,7 @@ function DevisView({ devisList: devisListToutesSources, clients, prestations, ga
         <EmptyState icon={ReceiptText} title="Aucun devis en attente" subtitle="Les demandes de devis apparaîtront ici, prêtes à valider ou ajuster." />
       ) : (
         devisList.map((d) => (
-          <DevisCard key={d.id} d={d} garageData={garageData} onAccept={onAccept} onRefuse={onRefuse} onUpdateMontant={onUpdateMontant} />
+          <DevisCard key={d.id} d={d} garageData={garageData} onAccept={onAccept} onRefuse={onRefuse} onUpdateMontant={onUpdateMontant} lien={devisLiens[d.id]} busy={devisBusyId === d.id} onGenererLien={onGenererLien} onRevoquerLien={onRevoquerLien} />
         ))
       )}
       {modalOuvert && (
@@ -2278,7 +2325,7 @@ function DevisApercuModal({ d, garageData, onClose }) {
   );
 }
 
-function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant }) {
+function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, busy, onGenererLien, onRevoquerLien }) {
   const [editing, setEditing] = useState(false);
   const [montant, setMontant] = useState(d.montant_ht ?? 0);
   const [showMessage, setShowMessage] = useState(false);
@@ -2372,6 +2419,42 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant }) {
           <Eye size={15} /> Aperçu client
         </button>
       </div>
+      {onGenererLien && (
+        <div className="mt-3 pt-3 border-t border-slate-100">
+          {lien ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1.5 text-[12px] bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 min-w-0">
+                <Link2 size={13} className="text-slate-400 shrink-0" />
+                <span className="truncate">{lien}</span>
+              </div>
+              <button
+                type="button"
+                onClick={async () => { try { await navigator.clipboard.writeText(lien); } catch {} }}
+                className="flex items-center gap-1 text-[12px] font-medium text-slate-600 hover:text-slate-800"
+              >
+                <Copy size={12} /> Copier
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onRevoquerLien(d.id)}
+                className="flex items-center gap-1 text-[12px] font-medium text-slate-500 hover:text-red-600 disabled:opacity-50"
+              >
+                <ShieldOff size={12} /> Révoquer
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onGenererLien(d.id)}
+              className="flex items-center gap-1.5 text-[12.5px] font-medium text-slate-600 hover:text-slate-800 disabled:opacity-50"
+            >
+              <Link2 size={13} /> {busy ? "Génération…" : "Générer le lien client (réponse à distance)"}
+            </button>
+          )}
+        </div>
+      )}
       {apercuOuvert && <DevisApercuModal d={d} garageData={garageData} onClose={() => setApercuOuvert(false)} />}
     </div>
   );
@@ -2911,7 +2994,7 @@ function imprimerFacture(facture, garageData) {
   w.print();
 }
 
-function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer, onMarquerPayee, onSauvegarder }) {
+function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer, onMarquerPayee, onSauvegarder, facturesLiens = {}, facturesBusyId, onGenererLien, onRevoquerLien }) {
   const [factureOuverte, setFactureOuverte] = useState(null);
   const [query, setQuery] = useState("");
   const [periode, setPeriode] = useState("toutes");
@@ -3028,13 +3111,17 @@ function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer
             await onSauvegarder(factureOuverte.id, payload);
             setFactureOuverte((prev) => (prev ? { ...prev, ...payload } : prev));
           }}
+          lien={facturesLiens[factureOuverte.id]}
+          busy={facturesBusyId === factureOuverte.id}
+          onGenererLien={onGenererLien}
+          onRevoquerLien={onRevoquerLien}
         />
       )}
     </div>
   );
 }
 
-function FactureDetailModal({ facture, garageData, onClose, onSauvegarder }) {
+function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien, busy, onGenererLien, onRevoquerLien }) {
   const [modeEdition, setModeEdition] = useState(false);
   const [motif, setMotif] = useState(facture.motif || "");
   const [lignes, setLignes] = useState(
@@ -3143,6 +3230,42 @@ function FactureDetailModal({ facture, garageData, onClose, onSauvegarder }) {
             </>
           )}
         </div>
+        {!modeEdition && onGenererLien && (
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            {lien ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5 text-[12px] bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 min-w-0">
+                  <Link2 size={13} className="text-slate-400 shrink-0" />
+                  <span className="truncate">{lien}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => { try { await navigator.clipboard.writeText(lien); } catch {} }}
+                  className="flex items-center gap-1 text-[12px] font-medium text-slate-600 hover:text-slate-800"
+                >
+                  <Copy size={12} /> Copier
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onRevoquerLien(facture.id)}
+                  className="flex items-center gap-1 text-[12px] font-medium text-slate-500 hover:text-red-600 disabled:opacity-50"
+                >
+                  <ShieldOff size={12} /> Révoquer
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onGenererLien(facture.id)}
+                className="flex items-center gap-1.5 text-[12.5px] font-medium text-slate-600 hover:text-slate-800 disabled:opacity-50"
+              >
+                <Link2 size={13} /> {busy ? "Génération…" : "Générer le lien client"}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3803,6 +3926,12 @@ function NexoraDashboardInner({ garageId }) {
   const [factures, setFactures] = useState([]);
   const [toast, setToast] = useState(null);
   const [selectedAppt, setSelectedAppt] = useState(null);
+  const [atelierLiens, setAtelierLiens] = useState({});
+  const [atelierBusyId, setAtelierBusyId] = useState(null);
+  const [devisLiens, setDevisLiens] = useState({});
+  const [devisBusyId, setDevisBusyId] = useState(null);
+  const [facturesLiens, setFacturesLiens] = useState({});
+  const [factureBusyId, setFactureBusyId] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [rendezVous, setRendezVous] = useState([]);
@@ -4619,6 +4748,59 @@ if (updateError) {
     flashToast("Devis refusé");
   };
 
+  // Lien devis sécurisé (jeton opaque, cf. migration liens_publics) — un
+  // seul lien actif par devis, régénéré à la demande, jamais journalisé.
+  const genererLienDevis = async (devisId) => {
+    setDevisBusyId(devisId);
+    const { data: token, error } = await supabase.rpc("creer_jeton_devis", { p_devis_id: devisId });
+    setDevisBusyId(null);
+    if (error || !token) {
+      console.error("Erreur génération lien devis :", error);
+      flashToast("Impossible de générer le lien devis", "error");
+      return;
+    }
+    setDevisLiens((prev) => ({ ...prev, [devisId]: `${window.location.origin}/devis/${token}` }));
+  };
+
+  const revoquerLienDevis = async (devisId) => {
+    setDevisBusyId(devisId);
+    const { error } = await supabase.rpc("revoquer_jeton_devis", { p_devis_id: devisId });
+    setDevisBusyId(null);
+    if (error) {
+      console.error("Erreur révocation lien devis :", error);
+      flashToast("Impossible de révoquer le lien devis", "error");
+      return;
+    }
+    setDevisLiens((prev) => { const next = { ...prev }; delete next[devisId]; return next; });
+    flashToast("Lien devis révoqué");
+  };
+
+  // Lien facture sécurisé, lecture seule — même mécanisme.
+  const genererLienFacture = async (factureId) => {
+    setFactureBusyId(factureId);
+    const { data: token, error } = await supabase.rpc("creer_jeton_facture", { p_facture_id: factureId });
+    setFactureBusyId(null);
+    if (error || !token) {
+      console.error("Erreur génération lien facture :", error);
+      flashToast("Impossible de générer le lien facture", "error");
+      return;
+    }
+    setFacturesLiens((prev) => ({ ...prev, [factureId]: `${window.location.origin}/facture/${token}` }));
+  };
+
+  const revoquerLienFacture = async (factureId) => {
+    setFactureBusyId(factureId);
+    const { error } = await supabase.rpc("revoquer_jeton_facture", { p_facture_id: factureId });
+    setFactureBusyId(null);
+    if (error) {
+      console.error("Erreur révocation lien facture :", error);
+      flashToast("Impossible de révoquer le lien facture", "error");
+      return;
+    }
+    setFacturesLiens((prev) => { const next = { ...prev }; delete next[factureId]; return next; });
+    flashToast("Lien facture révoqué");
+  };
+
   // Nexora Relais Appels V1 — saisie manuelle uniquement, aucun lien avec le pipeline IA,
   // aucun envoi externe, isolé du reste par garage_id.
   const handleAjouterRappel = async ({ telephone, motif, urgent }) => {
@@ -5115,6 +5297,44 @@ if (updateError) {
     flashToast("Étape mise à jour");
   };
 
+  // Lien atelier sécurisé (jeton opaque, cf. migration liens_publics) — un
+  // seul lien actif par RDV, régénéré à la demande, jamais journalisé.
+  const genererLienAtelier = async (rdvId) => {
+    setAtelierBusyId(rdvId);
+    const { data: token, error } = await supabase.rpc("creer_jeton_atelier", { p_rdv_id: rdvId });
+    setAtelierBusyId(null);
+    if (error || !token) {
+      console.error("Erreur génération lien atelier :", error);
+      flashToast("Impossible de générer le lien atelier", "error");
+      return null;
+    }
+    const url = `${window.location.origin}/atelier/${token}`;
+    setAtelierLiens((prev) => ({ ...prev, [rdvId]: url }));
+    return url;
+  };
+
+  const revoquerLienAtelier = async (rdvId) => {
+    setAtelierBusyId(rdvId);
+    const { error } = await supabase.rpc("revoquer_jeton_atelier", { p_rdv_id: rdvId });
+    setAtelierBusyId(null);
+    if (error) {
+      console.error("Erreur révocation lien atelier :", error);
+      flashToast("Impossible de révoquer le lien atelier", "error");
+      return;
+    }
+    setAtelierLiens((prev) => { const next = { ...prev }; delete next[rdvId]; return next; });
+    flashToast("Lien atelier révoqué");
+  };
+
+  const genererEtiquettesAtelier = async (appts) => {
+    const manquants = appts.filter((a) => !atelierLiens[a.id]);
+    if (manquants.length > 0) {
+      const resultats = await Promise.all(manquants.map((a) => genererLienAtelier(a.id)));
+      if (resultats.some((url) => !url)) return;
+    }
+    setTimeout(() => window.print(), 300);
+  };
+
   const updateLienPaiement = async (rdvId, lienPaiement) => {
     const { error } = await supabase.from("rendez_vous").update({ lien_paiement: lienPaiement }).eq("id", rdvId).eq("garage_id", garageId);
     if (error) {
@@ -5293,7 +5513,7 @@ if (updateError) {
         <div className="p-5 md:p-8">
           {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
-          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} />}
+          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} onGenererEtiquettes={genererEtiquettesAtelier} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
           {["devis", "factures", "historique"].includes(view) && (
             <FacturationView
@@ -5314,6 +5534,14 @@ if (updateError) {
               onMarquerPayee={handleMarquerFacturePayee}
               onSauvegarderFacture={handleSauvegarderFacture}
               garageId={garageId}
+              devisLiens={devisLiens}
+              devisBusyId={devisBusyId}
+              onGenererLienDevis={genererLienDevis}
+              onRevoquerLienDevis={revoquerLienDevis}
+              facturesLiens={facturesLiens}
+              facturesBusyId={factureBusyId}
+              onGenererLienFacture={genererLienFacture}
+              onRevoquerLienFacture={revoquerLienFacture}
             />
           )}
           {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} garageData={garageData} onConnectCalendar={connectGoogleCalendar} clients={clients} prestations={prestations} onCreerRdv={handleCreerRdvManuel} onCreerClient={handleCreerClient} />}
@@ -5331,7 +5559,7 @@ if (updateError) {
       </main>
 
       <Toast toast={toast} />
-      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} onUpdateStatutAtelier={updateStatutAtelier} onUpdateLienPaiement={updateLienPaiement} />
+      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} onUpdateStatutAtelier={updateStatutAtelier} onUpdateLienPaiement={updateLienPaiement} atelierLien={selectedAppt ? atelierLiens[selectedAppt.id] : null} atelierBusy={selectedAppt ? atelierBusyId === selectedAppt.id : false} onGenererLienAtelier={genererLienAtelier} onRevoquerLienAtelier={revoquerLienAtelier} />
     </div>
   );
 }
