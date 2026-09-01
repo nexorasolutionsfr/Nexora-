@@ -2,6 +2,7 @@
 "use client"; import { supabase } from "@/lib/supabase";
 
 import React, { useState, useEffect } from "react";
+import QRCode from "qrcode";
 import InspectionsSection from "./inspections/InspectionsSection";
 import CockpitOpportunites from "./cockpit/CockpitOpportunites";
 import {
@@ -462,7 +463,7 @@ function LienPaiementField({ appt, onSave }) {
   );
 }
 
-function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, onUpdateStatutAtelier, onUpdateLienPaiement, atelierLien, atelierBusy, onGenererLienAtelier, onRevoquerLienAtelier }) {
+function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, onUpdateStatutAtelier, onUpdateLienPaiement, atelierLien, atelierQr, atelierBusy, onGenererLienAtelier, onRevoquerLienAtelier }) {
   if (!appt) return null;
 
   const client = appt.client;
@@ -511,7 +512,11 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
           <div className="mt-4 bg-slate-50 rounded-xl p-3">
             {atelierLien ? (
               <div className="flex items-center gap-3">
-                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(atelierLien)}`} alt="QR code atelier" className="w-[70px] h-[70px] rounded-lg bg-white p-1" />
+                {atelierQr ? (
+                  <img src={atelierQr} alt="QR code atelier" className="w-[70px] h-[70px] rounded-lg bg-white p-1" />
+                ) : (
+                  <div className="w-[70px] h-[70px] rounded-lg bg-white border border-slate-200 flex items-center justify-center text-[10px] text-slate-400 text-center px-1">QR…</div>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="text-[12px] text-slate-500">QR à imprimer et coller sur le véhicule pour que le mécanicien mette à jour l'étape sans passer par le dashboard.</div>
                   <div className="flex gap-3 mt-1.5">
@@ -564,7 +569,7 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
   );
 }
 
-function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], atelierLiens = {}, onGenererEtiquettes }) {
+function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], atelierLiens = {}, atelierQr = {}, onGenererEtiquettes }) {
   const todayAppts = rendezVous.filter((r) => isToday(r.date_debut));
   const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
   const resourceAppointments = (resourceId) => todayAppts.filter((appt) => (resourceId === null ? !appt.mecanicien_id : appt.mecanicien_id === resourceId));
@@ -605,12 +610,12 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], a
       }
     `}</style>
     <div id="nexora-print-labels" className="hidden">
-            {todayAppts.filter((appt) => atelierLiens[appt.id]).map((appt, index, arr) => (
+            {todayAppts.filter((appt) => atelierLiens[appt.id] && atelierQr[appt.id]).map((appt, index, arr) => (
         <div key={appt.id} style={{ pageBreakAfter: index < arr.length - 1 ? "always" : "auto", padding: 24, border: `3px solid ${catColor(appt.categorie).bar}`, borderRadius: 16, marginBottom: 16 }}>
           <div style={{ fontSize: 28, fontWeight: 700 }}>{appt.client}</div>
           <div style={{ fontSize: 20, marginTop: 8 }}>{appt.vehicule} · {appt.immatriculation}</div>
           <div style={{ fontSize: 16, color: "#64748B", marginTop: 4 }}>{appt.debut} – {appt.fin} · {appt.prestation}</div>
-          <img src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(atelierLiens[appt.id])}`} style={{ marginTop: 16 }} />
+          <img src={atelierQr[appt.id]} style={{ marginTop: 16 }} />
         </div>
       ))}
     </div>
@@ -3940,6 +3945,7 @@ function NexoraDashboardInner({ garageId }) {
   const [toast, setToast] = useState(null);
   const [selectedAppt, setSelectedAppt] = useState(null);
   const [atelierLiens, setAtelierLiens] = useState({});
+  const [atelierQr, setAtelierQr] = useState({});
   const [atelierBusyId, setAtelierBusyId] = useState(null);
   const [devisLiens, setDevisLiens] = useState({});
   const [devisBusyId, setDevisBusyId] = useState(null);
@@ -5342,7 +5348,9 @@ if (updateError) {
   };
 
   // Lien atelier sécurisé (jeton opaque, cf. migration liens_publics) — un
-  // seul lien actif par RDV, régénéré à la demande, jamais journalisé.
+  // seul lien actif par RDV, régénéré à la demande, jamais journalisé. Le QR
+  // est généré entièrement dans le navigateur (paquet "qrcode", data URL
+  // locale) — le jeton n'est jamais envoyé à un service tiers.
   const genererLienAtelier = async (rdvId) => {
     setAtelierBusyId(rdvId);
     const { data: token, error } = await supabase.rpc("creer_jeton_atelier", { p_rdv_id: rdvId });
@@ -5354,6 +5362,13 @@ if (updateError) {
     }
     const url = `${window.location.origin}/atelier/${token}`;
     setAtelierLiens((prev) => ({ ...prev, [rdvId]: url }));
+    try {
+      const dataUrl = await QRCode.toDataURL(url, { width: 220, margin: 1 });
+      setAtelierQr((prev) => ({ ...prev, [rdvId]: dataUrl }));
+    } catch (qrError) {
+      console.error("Erreur génération QR atelier :", qrError);
+      setAtelierQr((prev) => { const next = { ...prev }; delete next[rdvId]; return next; });
+    }
     return url;
   };
 
@@ -5367,6 +5382,7 @@ if (updateError) {
       return;
     }
     setAtelierLiens((prev) => { const next = { ...prev }; delete next[rdvId]; return next; });
+    setAtelierQr((prev) => { const next = { ...prev }; delete next[rdvId]; return next; });
     flashToast("Lien atelier révoqué");
   };
 
@@ -5557,7 +5573,7 @@ if (updateError) {
         <div className="p-5 md:p-8">
           {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
-          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} onGenererEtiquettes={genererEtiquettesAtelier} />}
+          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} onGenererEtiquettes={genererEtiquettesAtelier} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
           {["devis", "factures", "historique"].includes(view) && (
             <FacturationView
@@ -5603,7 +5619,7 @@ if (updateError) {
       </main>
 
       <Toast toast={toast} />
-      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} onUpdateStatutAtelier={updateStatutAtelier} onUpdateLienPaiement={updateLienPaiement} atelierLien={selectedAppt ? atelierLiens[selectedAppt.id] : null} atelierBusy={selectedAppt ? atelierBusyId === selectedAppt.id : false} onGenererLienAtelier={genererLienAtelier} onRevoquerLienAtelier={revoquerLienAtelier} />
+      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} onUpdateStatutAtelier={updateStatutAtelier} onUpdateLienPaiement={updateLienPaiement} atelierLien={selectedAppt ? atelierLiens[selectedAppt.id] : null} atelierQr={selectedAppt ? atelierQr[selectedAppt.id] : null} atelierBusy={selectedAppt ? atelierBusyId === selectedAppt.id : false} onGenererLienAtelier={genererLienAtelier} onRevoquerLienAtelier={revoquerLienAtelier} />
     </div>
   );
 }

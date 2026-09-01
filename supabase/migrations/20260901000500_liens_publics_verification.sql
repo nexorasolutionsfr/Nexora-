@@ -4,6 +4,10 @@
 -- has_table_privilege / has_function_privilege calculent le privilège
 -- réellement effectif d'un rôle (appartenance de rôle + GRANT à PUBLIC
 -- inclus), contrairement à une lecture déclarative de information_schema.
+--
+-- Complété le 2026-09-01 après revue : bloc 4 (search_path fermé sur les
+-- 11 fonctions) et bloc 5 (index unique partiel garantissant un seul jeton
+-- actif par ressource).
 
 do $$
 declare
@@ -131,6 +135,91 @@ begin
 
   if array_length(v_violations, 1) > 0 then
     raise exception 'Vérification échouée (anciennes RPC UUID réactivées) : %', array_to_string(v_violations, ', ');
+  end if;
+end
+$$;
+
+-- 4) search_path fermé sur les 11 fonctions SECURITY DEFINER/INVOKER de
+--    20260901000400_liens_publics_rpc.sql — durci le 2026-09-01 après
+--    revue : `set search_path = ''` attendu exactement (proconfig contient
+--    littéralement l'entrée 'search_path=', valeur vide après le '='),
+--    jamais 'search_path=public' ni l'absence de tout search_path fixé
+--    (ce qui laisserait le search_path de l'appelant s'appliquer).
+do $$
+declare
+  v_violations text[] := array[]::text[];
+  v_signature text;
+  v_oid oid;
+  v_proconfig text[];
+  v_a_search_path_vide boolean;
+begin
+  foreach v_signature in array array[
+    'public.creer_jeton_atelier(uuid)',
+    'public.revoquer_jeton_atelier(uuid)',
+    'public.lire_atelier_par_jeton(text)',
+    'public.avancer_etape_atelier_par_jeton(text, text)',
+    'public.creer_jeton_devis(uuid)',
+    'public.revoquer_jeton_devis(uuid)',
+    'public.lire_devis_par_jeton(text)',
+    'public.repondre_devis_par_jeton(text, text)',
+    'public.creer_jeton_facture(uuid)',
+    'public.revoquer_jeton_facture(uuid)',
+    'public.lire_facture_par_jeton(text)'
+  ]
+  loop
+    v_oid := to_regprocedure(v_signature);
+    if v_oid is null then
+      v_violations := v_violations || (v_signature || ' (fonction introuvable)');
+      continue;
+    end if;
+
+    select proconfig into v_proconfig from pg_proc where oid = v_oid;
+    v_a_search_path_vide := v_proconfig is not null and 'search_path=' = any(v_proconfig);
+
+    if not v_a_search_path_vide then
+      v_violations := v_violations || (v_signature || ' (search_path effectif=' || coalesce(array_to_string(v_proconfig, ','), 'aucun') || ', attendu=search_path=)');
+    end if;
+  end loop;
+
+  if array_length(v_violations, 1) > 0 then
+    raise exception 'Vérification échouée (search_path non fermé) : %', array_to_string(v_violations, ', ');
+  end if;
+end
+$$;
+
+-- 5) Un seul jeton actif par ressource — l'index unique partiel existe bien
+--    sur les 3 tables, avec la bonne colonne et la bonne condition
+--    (where revoked_at is null). Contrôle structurel : confirme que
+--    l'index déclaré dans 20260901000300_liens_publics_jetons.sql a
+--    effectivement été créé, pas seulement écrit dans le fichier source.
+do $$
+declare
+  v_violations text[] := array[]::text[];
+  v_row record;
+begin
+  for v_row in
+    select * from (values
+      ('atelier_jetons_actif_unique', 'atelier_jetons', 'rendez_vous_id'),
+      ('devis_jetons_actif_unique', 'devis_jetons', 'devis_id'),
+      ('factures_jetons_actif_unique', 'factures_jetons', 'facture_id')
+    ) as t(index_name, table_name, column_name)
+  loop
+    if not exists (
+      select 1
+      from pg_indexes
+      where schemaname = 'public'
+        and tablename = v_row.table_name
+        and indexname = v_row.index_name
+        and indexdef ilike '%unique%'
+        and indexdef ilike '%' || v_row.column_name || '%'
+        and indexdef ilike '%where%revoked_at is null%'
+    ) then
+      v_violations := v_violations || (v_row.index_name || ' (absent, incomplet, ou condition inattendue)');
+    end if;
+  end loop;
+
+  if array_length(v_violations, 1) > 0 then
+    raise exception 'Vérification échouée (index unicité jeton actif) : %', array_to_string(v_violations, ', ');
   end if;
 end
 $$;

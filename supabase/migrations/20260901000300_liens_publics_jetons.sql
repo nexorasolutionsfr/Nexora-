@@ -34,6 +34,15 @@ create table if not exists public.atelier_jetons (
 );
 create index if not exists atelier_jetons_rendez_vous_idx on public.atelier_jetons (rendez_vous_id);
 
+-- Un seul jeton actif à la fois par RDV — la fonction creer_jeton_atelier
+-- révoque déjà l'ancien avant d'insérer le nouveau, mais un index unique
+-- partiel rend ça vrai au niveau base (pas seulement au niveau applicatif) :
+-- deux insertions concurrentes de jeton actif pour le même rendez_vous_id
+-- sont structurellement impossibles, même en cas de bug applicatif futur.
+create unique index if not exists atelier_jetons_actif_unique
+  on public.atelier_jetons (rendez_vous_id)
+  where revoked_at is null;
+
 comment on table public.atelier_jetons is
   'Jetons opaques du lien atelier (staff scannant un QR sur le véhicule, ou client). used_at non utilisé comme usage unique : plusieurs consultations/changements de statut sont attendus tant que le lien est valide.';
 
@@ -52,6 +61,12 @@ create table if not exists public.devis_jetons (
 );
 create index if not exists devis_jetons_devis_idx on public.devis_jetons (devis_id);
 
+-- Un seul jeton actif à la fois par devis — même garantie structurelle que
+-- atelier_jetons_actif_unique ci-dessus.
+create unique index if not exists devis_jetons_actif_unique
+  on public.devis_jetons (devis_id)
+  where revoked_at is null;
+
 comment on table public.devis_jetons is
   'Jetons opaques du lien devis client. used_at marqué au moment de la réponse (accepté/refusé) — le lien reste consultable en lecture après, tant qu''il n''est pas expiré/révoqué.';
 
@@ -69,6 +84,12 @@ create table if not exists public.factures_jetons (
   created_at timestamptz not null default now()
 );
 create index if not exists factures_jetons_facture_idx on public.factures_jetons (facture_id);
+
+-- Un seul jeton actif à la fois par facture — même garantie structurelle
+-- que atelier_jetons_actif_unique ci-dessus.
+create unique index if not exists factures_jetons_actif_unique
+  on public.factures_jetons (facture_id)
+  where revoked_at is null;
 
 comment on table public.factures_jetons is
   'Jetons opaques du lien facture client, lecture seule. used_at marqué au premier accès, informatif uniquement (le lien reste réutilisable en lecture).';

@@ -9,9 +9,35 @@
 -- explicitement `garages.owner_user_id = auth.uid()` — jamais une simple
 -- délégation à RLS, qui de toute façon ne s'appliquerait pas à un rôle
 -- SECURITY DEFINER. Aucune des fonctions ci-dessous n'utilise de SQL
--- dynamique (pas de EXECUTE), toutes fixent `search_path = public`, et
--- aucune n'accorde EXECUTE à PUBLIC (revoke explicite avant tout grant
--- ciblé).
+-- dynamique (pas de EXECUTE), aucune n'accorde EXECUTE à PUBLIC (revoke
+-- explicite avant tout grant ciblé).
+--
+-- search_path fermé (durci le 2026-09-01 après revue) : `set search_path = ''`
+-- sur les 11 fonctions, au lieu de `set search_path = public`. Un
+-- search_path non vide sur une fonction SECURITY DEFINER reste un risque
+-- de détournement (un objet de même nom créé dans un schéma placé plus tôt
+-- dans le chemin de résolution, ou dans `public` lui-même par un rôle qui y
+-- a CREATE, primerait sur l'objet visé). search_path vide oblige à
+-- qualifier explicitement CHAQUE objet non-système référencé
+-- (public.rendez_vous, public.garages, public.clients, public.vehicules,
+-- public.prestations, public.devis, public.factures, les 3 tables de
+-- jetons, auth.uid(), extensions.digest/gen_random_bytes, y compris les
+-- déclarations %rowtype) — fait ci-dessous, objet par objet. pg_catalog
+-- reste implicitement résolu quel que soit search_path (documenté ainsi
+-- par Postgres), donc les fonctions/opérateurs standard (now(), coalesce(),
+-- trim(), to_char(), array_position(), abs(), encode(), jsonb_build_object())
+-- n'ont pas besoin de préfixe.
+--
+-- Un seul jeton actif par ressource (durci le 2026-09-01 après revue) :
+-- l'index unique partiel *_actif_unique (where revoked_at is null, voir
+-- 20260901000300_liens_publics_jetons.sql) le garantit au niveau base.
+-- Les 6 fonctions creer_jeton_*/revoquer_jeton_* verrouillent en plus la
+-- ligne de la ressource elle-même (`for update of rv/d/f` sur la requête de
+-- vérification de propriété) : deux demandes concurrentes de génération
+-- pour le même rendez_vous/devis/facture se sérialisent (la seconde attend
+-- la fin de la transaction de la première avant de lire l'état "jeton actif
+-- existant"), au lieu de risquer une violation de l'index unique ou deux
+-- jetons actifs simultanés selon l'ordre d'exécution.
 --
 -- Idempotent (create or replace), non destructif.
 
@@ -25,27 +51,28 @@
 --    Expiration liée au RDV, au plus tard 7 jours après son début.
 create or replace function public.creer_jeton_atelier(p_rdv_id uuid)
 returns text
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = '' as $$
 declare
   v_garage_id uuid;
   v_date_debut timestamptz;
   v_token text;
 begin
   select rv.garage_id, rv.date_debut into v_garage_id, v_date_debut
-  from rendez_vous rv
-  join garages g on g.id = rv.garage_id
-  where rv.id = p_rdv_id and g.owner_user_id = auth.uid();
+  from public.rendez_vous rv
+  join public.garages g on g.id = rv.garage_id
+  where rv.id = p_rdv_id and g.owner_user_id = auth.uid()
+  for update of rv;
 
   if v_garage_id is null then
     raise exception 'Rendez-vous introuvable ou accès refusé';
   end if;
 
-  update atelier_jetons
+  update public.atelier_jetons
     set revoked_at = now()
     where rendez_vous_id = p_rdv_id and revoked_at is null;
 
   v_token := encode(extensions.gen_random_bytes(32), 'hex');
-  insert into atelier_jetons (rendez_vous_id, garage_id, jeton_hash, expires_at)
+  insert into public.atelier_jetons (rendez_vous_id, garage_id, jeton_hash, expires_at)
   values (p_rdv_id, v_garage_id, encode(extensions.digest(v_token, 'sha256'), 'hex'), v_date_debut + interval '7 days');
 
   return v_token;
@@ -57,20 +84,21 @@ grant execute on function public.creer_jeton_atelier(uuid) to authenticated;
 -- 2) Révocation manuelle (bouton "Révoquer le lien").
 create or replace function public.revoquer_jeton_atelier(p_rdv_id uuid)
 returns boolean
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = '' as $$
 declare
   v_garage_id uuid;
 begin
   select rv.garage_id into v_garage_id
-  from rendez_vous rv
-  join garages g on g.id = rv.garage_id
-  where rv.id = p_rdv_id and g.owner_user_id = auth.uid();
+  from public.rendez_vous rv
+  join public.garages g on g.id = rv.garage_id
+  where rv.id = p_rdv_id and g.owner_user_id = auth.uid()
+  for update of rv;
 
   if v_garage_id is null then
     raise exception 'Rendez-vous introuvable ou accès refusé';
   end if;
 
-  update atelier_jetons
+  update public.atelier_jetons
     set revoked_at = now()
     where rendez_vous_id = p_rdv_id and revoked_at is null;
 
@@ -85,13 +113,13 @@ grant execute on function public.revoquer_jeton_atelier(uuid) to authenticated;
 --    / révoqué / valide — jamais de détail technique exposé au public.
 create or replace function public.lire_atelier_par_jeton(p_token text)
 returns jsonb
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = '' as $$
 declare
   v_hash text := encode(extensions.digest(p_token, 'sha256'), 'hex');
-  v_jeton atelier_jetons%rowtype;
+  v_jeton public.atelier_jetons%rowtype;
   v_result jsonb;
 begin
-  select * into v_jeton from atelier_jetons where jeton_hash = v_hash;
+  select * into v_jeton from public.atelier_jetons where jeton_hash = v_hash;
 
   if not found then
     return jsonb_build_object('ok', false, 'raison', 'inconnu');
@@ -114,11 +142,11 @@ begin
     'debut', to_char(rv.date_debut, 'HH24:MI'),
     'fin', to_char(rv.date_fin, 'HH24:MI')
   ) into v_result
-  from rendez_vous rv
-  join garages g on g.id = rv.garage_id
-  left join clients c on c.id = rv.client_id
-  left join vehicules v on v.id = rv.vehicule_id
-  left join prestations p on p.id = rv.prestation_id
+  from public.rendez_vous rv
+  join public.garages g on g.id = rv.garage_id
+  left join public.clients c on c.id = rv.client_id
+  left join public.vehicules v on v.id = rv.vehicule_id
+  left join public.prestations p on p.id = rv.prestation_id
   where rv.id = v_jeton.rendez_vous_id;
 
   return v_result;
@@ -134,16 +162,16 @@ grant execute on function public.lire_atelier_par_jeton(text) to anon;
 --    côté dashboard (components/NexoraDashboard.jsx).
 create or replace function public.avancer_etape_atelier_par_jeton(p_token text, p_nouveau_statut text)
 returns jsonb
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = '' as $$
 declare
   v_hash text := encode(extensions.digest(p_token, 'sha256'), 'hex');
-  v_jeton atelier_jetons%rowtype;
+  v_jeton public.atelier_jetons%rowtype;
   v_etapes text[] := array['a_venir', 'depose', 'diagnostic', 'attente_client', 'attente_piece', 'intervention', 'pret', 'restitue'];
   v_statut_actuel text;
   v_idx_actuel int;
   v_idx_nouveau int;
 begin
-  select * into v_jeton from atelier_jetons
+  select * into v_jeton from public.atelier_jetons
     where jeton_hash = v_hash and revoked_at is null and expires_at > now()
     for update;
   if not found then
@@ -156,15 +184,15 @@ begin
   end if;
 
   select coalesce(statut_atelier, 'a_venir') into v_statut_actuel
-    from rendez_vous where id = v_jeton.rendez_vous_id;
+    from public.rendez_vous where id = v_jeton.rendez_vous_id;
   v_idx_actuel := coalesce(array_position(v_etapes, v_statut_actuel), 1);
 
   if abs(v_idx_nouveau - v_idx_actuel) <> 1 then
     return jsonb_build_object('ok', false, 'raison', 'transition_invalide');
   end if;
 
-  update rendez_vous set statut_atelier = p_nouveau_statut where id = v_jeton.rendez_vous_id;
-  update atelier_jetons set used_at = coalesce(used_at, now()) where id = v_jeton.id;
+  update public.rendez_vous set statut_atelier = p_nouveau_statut where id = v_jeton.rendez_vous_id;
+  update public.atelier_jetons set used_at = coalesce(used_at, now()) where id = v_jeton.id;
 
   return jsonb_build_object('ok', true, 'statut_atelier', p_nouveau_statut);
 end;
@@ -178,26 +206,27 @@ grant execute on function public.avancer_etape_atelier_par_jeton(text, text) to 
 
 create or replace function public.creer_jeton_devis(p_devis_id uuid)
 returns text
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = '' as $$
 declare
   v_garage_id uuid;
   v_token text;
 begin
   select d.garage_id into v_garage_id
-  from devis d
-  join garages g on g.id = d.garage_id
-  where d.id = p_devis_id and g.owner_user_id = auth.uid();
+  from public.devis d
+  join public.garages g on g.id = d.garage_id
+  where d.id = p_devis_id and g.owner_user_id = auth.uid()
+  for update of d;
 
   if v_garage_id is null then
     raise exception 'Devis introuvable ou accès refusé';
   end if;
 
-  update devis_jetons
+  update public.devis_jetons
     set revoked_at = now()
     where devis_id = p_devis_id and revoked_at is null;
 
   v_token := encode(extensions.gen_random_bytes(32), 'hex');
-  insert into devis_jetons (devis_id, garage_id, jeton_hash, expires_at)
+  insert into public.devis_jetons (devis_id, garage_id, jeton_hash, expires_at)
   values (p_devis_id, v_garage_id, encode(extensions.digest(v_token, 'sha256'), 'hex'), now() + interval '30 days');
 
   return v_token;
@@ -208,20 +237,21 @@ grant execute on function public.creer_jeton_devis(uuid) to authenticated;
 
 create or replace function public.revoquer_jeton_devis(p_devis_id uuid)
 returns boolean
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = '' as $$
 declare
   v_garage_id uuid;
 begin
   select d.garage_id into v_garage_id
-  from devis d
-  join garages g on g.id = d.garage_id
-  where d.id = p_devis_id and g.owner_user_id = auth.uid();
+  from public.devis d
+  join public.garages g on g.id = d.garage_id
+  where d.id = p_devis_id and g.owner_user_id = auth.uid()
+  for update of d;
 
   if v_garage_id is null then
     raise exception 'Devis introuvable ou accès refusé';
   end if;
 
-  update devis_jetons
+  update public.devis_jetons
     set revoked_at = now()
     where devis_id = p_devis_id and revoked_at is null;
 
@@ -233,13 +263,13 @@ grant execute on function public.revoquer_jeton_devis(uuid) to authenticated;
 
 create or replace function public.lire_devis_par_jeton(p_token text)
 returns jsonb
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = '' as $$
 declare
   v_hash text := encode(extensions.digest(p_token, 'sha256'), 'hex');
-  v_jeton devis_jetons%rowtype;
+  v_jeton public.devis_jetons%rowtype;
   v_result jsonb;
 begin
-  select * into v_jeton from devis_jetons where jeton_hash = v_hash;
+  select * into v_jeton from public.devis_jetons where jeton_hash = v_hash;
 
   if not found then
     return jsonb_build_object('ok', false, 'raison', 'inconnu');
@@ -259,10 +289,10 @@ begin
     'montant_ttc', d.montant_ttc,
     'statut', d.statut
   ) into v_result
-  from devis d
-  join garages g on g.id = d.garage_id
-  left join vehicules v on v.id = d.vehicule_id
-  left join prestations p on p.id = d.prestation_id
+  from public.devis d
+  join public.garages g on g.id = d.garage_id
+  left join public.vehicules v on v.id = d.vehicule_id
+  left join public.prestations p on p.id = d.prestation_id
   where d.id = v_jeton.devis_id;
 
   return v_result;
@@ -276,30 +306,30 @@ grant execute on function public.lire_devis_par_jeton(text) to anon;
 -- réponse (répétée ou tardive), retour explicite 'deja_repondu'.
 create or replace function public.repondre_devis_par_jeton(p_token text, p_reponse text)
 returns jsonb
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = '' as $$
 declare
   v_hash text := encode(extensions.digest(p_token, 'sha256'), 'hex');
-  v_jeton devis_jetons%rowtype;
+  v_jeton public.devis_jetons%rowtype;
   v_statut_actuel text;
 begin
   if p_reponse not in ('accepte', 'refuse') then
     return jsonb_build_object('ok', false, 'raison', 'reponse_invalide');
   end if;
 
-  select * into v_jeton from devis_jetons
+  select * into v_jeton from public.devis_jetons
     where jeton_hash = v_hash and revoked_at is null and expires_at > now()
     for update;
   if not found then
     return jsonb_build_object('ok', false, 'raison', 'invalide');
   end if;
 
-  select statut into v_statut_actuel from devis where id = v_jeton.devis_id for update;
+  select statut into v_statut_actuel from public.devis where id = v_jeton.devis_id for update;
   if v_statut_actuel is distinct from 'en_attente' then
     return jsonb_build_object('ok', false, 'raison', 'deja_repondu');
   end if;
 
-  update devis set statut = p_reponse, date_validation = now() where id = v_jeton.devis_id;
-  update devis_jetons set used_at = coalesce(used_at, now()) where id = v_jeton.id;
+  update public.devis set statut = p_reponse, date_validation = now() where id = v_jeton.devis_id;
+  update public.devis_jetons set used_at = coalesce(used_at, now()) where id = v_jeton.id;
 
   return jsonb_build_object('ok', true, 'statut', p_reponse);
 end;
@@ -313,26 +343,27 @@ grant execute on function public.repondre_devis_par_jeton(text, text) to anon;
 
 create or replace function public.creer_jeton_facture(p_facture_id uuid)
 returns text
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = '' as $$
 declare
   v_garage_id uuid;
   v_token text;
 begin
   select f.garage_id into v_garage_id
-  from factures f
-  join garages g on g.id = f.garage_id
-  where f.id = p_facture_id and g.owner_user_id = auth.uid();
+  from public.factures f
+  join public.garages g on g.id = f.garage_id
+  where f.id = p_facture_id and g.owner_user_id = auth.uid()
+  for update of f;
 
   if v_garage_id is null then
     raise exception 'Facture introuvable ou accès refusé';
   end if;
 
-  update factures_jetons
+  update public.factures_jetons
     set revoked_at = now()
     where facture_id = p_facture_id and revoked_at is null;
 
   v_token := encode(extensions.gen_random_bytes(32), 'hex');
-  insert into factures_jetons (facture_id, garage_id, jeton_hash, expires_at)
+  insert into public.factures_jetons (facture_id, garage_id, jeton_hash, expires_at)
   values (p_facture_id, v_garage_id, encode(extensions.digest(v_token, 'sha256'), 'hex'), now() + interval '90 days');
 
   return v_token;
@@ -343,20 +374,21 @@ grant execute on function public.creer_jeton_facture(uuid) to authenticated;
 
 create or replace function public.revoquer_jeton_facture(p_facture_id uuid)
 returns boolean
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = '' as $$
 declare
   v_garage_id uuid;
 begin
   select f.garage_id into v_garage_id
-  from factures f
-  join garages g on g.id = f.garage_id
-  where f.id = p_facture_id and g.owner_user_id = auth.uid();
+  from public.factures f
+  join public.garages g on g.id = f.garage_id
+  where f.id = p_facture_id and g.owner_user_id = auth.uid()
+  for update of f;
 
   if v_garage_id is null then
     raise exception 'Facture introuvable ou accès refusé';
   end if;
 
-  update factures_jetons
+  update public.factures_jetons
     set revoked_at = now()
     where facture_id = p_facture_id and revoked_at is null;
 
@@ -368,13 +400,13 @@ grant execute on function public.revoquer_jeton_facture(uuid) to authenticated;
 
 create or replace function public.lire_facture_par_jeton(p_token text)
 returns jsonb
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = '' as $$
 declare
   v_hash text := encode(extensions.digest(p_token, 'sha256'), 'hex');
-  v_jeton factures_jetons%rowtype;
+  v_jeton public.factures_jetons%rowtype;
   v_result jsonb;
 begin
-  select * into v_jeton from factures_jetons where jeton_hash = v_hash;
+  select * into v_jeton from public.factures_jetons where jeton_hash = v_hash;
 
   if not found then
     return jsonb_build_object('ok', false, 'raison', 'inconnu');
@@ -386,7 +418,7 @@ begin
     return jsonb_build_object('ok', false, 'raison', 'expire');
   end if;
 
-  update factures_jetons set used_at = coalesce(used_at, now()) where id = v_jeton.id;
+  update public.factures_jetons set used_at = coalesce(used_at, now()) where id = v_jeton.id;
 
   select jsonb_build_object(
     'ok', true,
@@ -399,9 +431,9 @@ begin
     'lignes', coalesce(to_jsonb(f.lignes), '[]'::jsonb),
     'created_at', f.created_at
   ) into v_result
-  from factures f
-  join garages g on g.id = f.garage_id
-  left join vehicules v on v.id = f.vehicule_id
+  from public.factures f
+  join public.garages g on g.id = f.garage_id
+  left join public.vehicules v on v.id = f.vehicule_id
   where f.id = v_jeton.facture_id;
 
   return v_result;
