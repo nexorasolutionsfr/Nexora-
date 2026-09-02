@@ -10,8 +10,17 @@ import CentreDecisionnel from "./garage-os/CentreDecisionnel";
 import VotreJournee from "./garage-os/VotreJournee";
 import NexoraARepere from "./garage-os/NexoraARepere";
 import AccesRapides from "./garage-os/AccesRapides";
-import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier } from "./garage-os/calculs";
+import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier, dateLongueFR } from "./garage-os/calculs";
 import VehicleCaseFileView from "./vehicle-case-file/VehicleCaseFileView";
+import {
+  calculerCompteurs as calculerCompteursAtelier,
+  calculerTempsPlanifieParMecanicien,
+  determinerAlertes as determinerAlertesAtelier,
+  regrouperParEtape as regrouperParEtapeAtelier,
+  selectionnerAAccueillir,
+  selectionnerPretsARestituer,
+  selectionnerRestitutionsAujourdhui,
+} from "./atelier/calculs";
 import {
   Home,
   Calendar,
@@ -424,41 +433,6 @@ function GarageIdentityCard({ garageData = garage }) {
   );
 }
 
-// Centre de contrôle Nexora IA — carte ROI + timeline des actions automatisées
-function WorkshopTimeline({ rendezVous, onSelectAppt, mecaniciens = [], compact = false }) {
-  const grouped = WORKSHOP_STAGES.map((stage) => ({
-    ...stage,
-    appointments: rendezVous
-      .filter((r) => (r.statut_atelier || "a_venir") === stage.key && isToday(r.date_debut))
-      .sort((a, b) => (a.debut || "").localeCompare(b.debut || "")),
-  }));
-  return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-      <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100"><div><div className="font-semibold text-slate-900 text-[15px]">Flux atelier en direct</div><div className="text-[12.5px] text-slate-500 mt-0.5">Chaque véhicule est visible, de son arrivée à sa restitution.</div></div><Badge tone="green">{grouped.reduce((sum, stage) => sum + stage.appointments.length, 0)} véhicules suivis</Badge></div>
-          <div className={`grid grid-cols-1 ${compact ? "md:grid-cols-3" : "xl:grid-cols-8"} gap-px bg-slate-200`}>
-        {grouped.map((stage, index) => <div key={stage.key} className="bg-white min-h-[150px] p-3">
-          <div className="flex items-center justify-between gap-2 mb-3"><div className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: stage.color }}><span className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }} />{stage.label}</div><span className="text-[11px] text-slate-400">{stage.appointments.length}</span></div>
-          <div className="space-y-2 max-h-[190px] overflow-y-auto pr-1">{stage.appointments.length === 0 ? <div className="text-[11.5px] text-slate-300 pt-3">Aucun véhicule</div> : stage.appointments.map((appt) => {
-            const mecanicien = mecaniciens.find((m) => m.id === appt.mecanicien_id);
-            return <button key={appt.id} onClick={() => onSelectAppt(appt)} className="w-full text-left rounded-lg p-2 hover:bg-slate-50 border border-slate-100">
-              <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: mecanicien?.couleur || "#CBD5E1" }} />
-                <div className="text-[12px] font-medium text-slate-800 truncate">{appt.client}</div>
-              </div>
-              <div className="text-[11px] text-slate-500 truncate">{appt.vehicule}</div>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-[11px] font-medium" style={{ color: stage.color }}>{appt.debut}</span>
-                <span className="text-[10px] text-slate-400 truncate max-w-[70px]">{mecanicien?.nom || "Non assigné"}</span>
-              </div>
-            </button>;
-          })}</div>
-          {index < grouped.length - 1 && !compact && <ArrowRight size={14} className="hidden xl:block absolute" />}
-        </div>)}
-      </div>
-    </div>
-  );
-}
-
 function LienPaiementField({ appt, onSave }) {
   const [value, setValue] = useState(appt.lien_paiement || "");
   return (
@@ -591,9 +565,112 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
   );
 }
 
-function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], atelierLiens = {}, atelierQr = {}, onGenererEtiquettes }) {
+// Carte rendez-vous réutilisée dans les 3 sections du tableau atelier
+// (à accueillir, dans l'atelier, prêts à restituer). N'affiche que les
+// informations déjà chargées, sans téléphone ni email — l'atelier n'a pas
+// besoin de contacter le client directement depuis cet écran.
+function AtelierCarte({ appt, etapeInfo, mecanicien, alertes, onSelectAppt, onOuvrirDossierVehicule }) {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-3.5 flex flex-col gap-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[13.5px] font-semibold text-slate-900 truncate">{appt.vehicule || "Véhicule"}</div>
+          <div className="text-[11.5px] text-slate-500 truncate">{appt.immatriculation || "Immatriculation non renseignée"}</div>
+        </div>
+        {etapeInfo && (
+          <span
+            className="text-[10.5px] font-semibold px-2 py-1 rounded-full whitespace-nowrap shrink-0"
+            style={{ backgroundColor: `${etapeInfo.color}1A`, color: etapeInfo.color }}
+          >
+            {etapeInfo.label}
+          </span>
+        )}
+      </div>
+      <div className="text-[12.5px] text-slate-700 truncate">{appt.client || "Client inconnu"}</div>
+      <div className="text-[12px] text-slate-500 truncate">{appt.prestation || "Prestation"}</div>
+      <div className="flex items-center justify-between gap-2 text-[12px] text-slate-500">
+        <span>{appt.debut}{appt.fin ? ` – ${appt.fin}` : ""}</span>
+        <span className="truncate max-w-[120px] text-right">{mecanicien?.nom || "Non assigné"}</span>
+      </div>
+      {alertes.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {alertes.map((alerte) => (
+            <span key={alerte} className="text-[10.5px] font-medium px-2 py-1 rounded-full bg-amber-50 text-amber-700">
+              {alerte}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="button"
+          onClick={() => onSelectAppt(appt)}
+          className="flex-1 min-h-[44px] rounded-xl border border-slate-200 text-[12.5px] font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Détail
+        </button>
+        <button
+          type="button"
+          onClick={() => appt.vehicule_id && onOuvrirDossierVehicule?.(appt.vehicule_id)}
+          disabled={!appt.vehicule_id}
+          className="flex-1 min-h-[44px] rounded-xl border border-slate-200 text-[12.5px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Dossier véhicule
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AtelierCompteur({ label, value, tone = "slate" }) {
+  const tones = {
+    slate: { bg: "rgba(255,255,255,0.1)", text: "white", sub: "rgba(255,255,255,0.65)" },
+    amber: { bg: "#FEF3E2", text: "#B45309", sub: "#B45309" },
+    green: { bg: "#E7F6EC", text: "#15803D", sub: "#15803D" },
+  };
+  const t = tones[tone] || tones.slate;
+  return (
+    <div className="rounded-xl p-3" style={{ backgroundColor: t.bg }}>
+      <div className="text-[11px]" style={{ color: t.sub }}>{label}</div>
+      <div className="text-xl font-semibold mt-1" style={{ color: t.text }}>{value}</div>
+    </div>
+  );
+}
+
+function AtelierSection({ titre, sousTitre, count, accent, enfants, vide }) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div className="font-semibold text-slate-900 text-[15px] flex items-center gap-2">
+            {accent && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: accent }} />}
+            {titre}
+          </div>
+          {sousTitre && <div className="text-[12.5px] text-slate-500 mt-0.5">{sousTitre}</div>}
+        </div>
+        <Badge tone="slate">{count}</Badge>
+      </div>
+      <div className="p-4">
+        {count === 0 ? <div className="text-[12.5px] text-slate-400 py-4 text-center">{vide}</div> : enfants}
+      </div>
+    </div>
+  );
+}
+
+function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], atelierLiens = {}, atelierQr = {}, onGenererEtiquettes, onOuvrirDossierVehicule }) {
+  const maintenant = new Date();
   const todayAppts = rendezVous.filter((r) => isToday(r.date_debut));
   const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
+  const mecanicienParId = (id) => mecaniciens.find((m) => m.id === id);
+  const etapeParCle = (cle) => WORKSHOP_STAGES.find((s) => s.key === cle);
+
+  const aAccueillir = selectionnerAAccueillir(rendezVous, maintenant);
+  const groupesAtelier = regrouperParEtapeAtelier(rendezVous);
+  const pretsARestituer = selectionnerPretsARestituer(rendezVous);
+  const restitutionsAujourdhui = selectionnerRestitutionsAujourdhui(rendezVous, maintenant);
+  const compteurs = calculerCompteursAtelier(rendezVous, maintenant);
+  const tempsParMecanicien = calculerTempsPlanifieParMecanicien(todayAppts, mecaniciensActifs, maintenant);
+
   const resourceAppointments = (resourceId) => todayAppts.filter((appt) => (resourceId === null ? !appt.mecanicien_id : appt.mecanicien_id === resourceId));
   const ressources = [...mecaniciensActifs.map((m) => ({ id: m.id, name: m.nom, role: "Mécanicien", color: m.couleur || "#3D6BE0" })), { id: null, name: "Non assigné", role: "", color: "#94A3B8" }];
   const [imprimant, setImprimant] = useState(false);
@@ -603,11 +680,104 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], a
     await onGenererEtiquettes(todayAppts);
     setImprimant(false);
   };
-    return <div className="space-y-5">
-    <div className="print:hidden rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}><div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" /><div className="relative flex items-start justify-between flex-wrap gap-4"><div><div className="flex items-center gap-2"><Wrench size={18} color="#8FB0FF" /><span className="font-semibold">Atelier en direct</span></div><div className="text-2xl font-semibold mt-3">Votre équipe sait quoi faire, maintenant.</div><div className="text-[13px] mt-1 text-blue-200">Répartissez les véhicules, suivez les retards et gardez le client informé.</div><button disabled={imprimant} onClick={imprimerEtiquettes} className="mt-3 inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl px-3 py-2 text-[12.5px] font-medium disabled:opacity-50">🖨️ {imprimant ? "Génération des liens…" : "Imprimer les étiquettes du jour"}</button></div><div className="grid grid-cols-2 gap-2"><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Véhicules aujourd’hui</div><div className="text-xl font-semibold mt-1">{todayAppts.length}</div></div><div className="bg-white/10 rounded-xl p-3"><div className="text-[11px] text-blue-200">Équipe disponible</div><div className="text-xl font-semibold mt-1">{mecaniciensActifs.length}</div></div></div></div></div>
-        <div className="print:hidden">
-    <WorkshopTimeline rendezVous={rendezVous} onSelectAppt={onSelectAppt} mecaniciens={mecaniciensActifs} />
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"><div className="px-5 py-4 border-b border-slate-100"><div className="font-semibold text-slate-900 text-[15px]">Planning des ressources</div><div className="text-[12.5px] text-slate-500 mt-0.5">Cliquez un rendez-vous pour l’affecter à un mécanicien.</div></div><div className="overflow-x-auto"><div className="min-w-[850px]"><div className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] border-b border-slate-100">{["Ressource", ...heuresGrille].map((hour) => <div key={hour} className="px-3 py-2 text-[11px] font-medium text-slate-400 border-r border-slate-100">{hour}</div>)}</div>{mecaniciensActifs.length === 0 && <div className="px-5 py-6 text-[13px] text-slate-500">Ajoutez vos mécaniciens dans Paramètres pour affecter les rendez-vous.</div>}{ressources.map((resource) => { const assigned = resourceAppointments(resource.id); return <div key={resource.id ?? "non_assigne"} className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] min-h-[74px] border-b border-slate-100 last:border-0"><div className="px-3 py-3 border-r border-slate-100"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resource.color }} /><div><div className="text-[12.5px] font-medium text-slate-800">{resource.name}</div><div className="text-[11px] text-slate-400">{resource.role}</div></div></div></div><div className="col-span-10 relative p-1.5" style={{ minHeight: 58 }}>{assigned.map((appt) => {
+
+  const carte = (appt) => (
+    <AtelierCarte
+      key={appt.id}
+      appt={appt}
+      etapeInfo={etapeParCle(appt.statut_atelier || "a_venir")}
+      mecanicien={mecanicienParId(appt.mecanicien_id)}
+      alertes={determinerAlertesAtelier(appt, maintenant)}
+      onSelectAppt={onSelectAppt}
+      onOuvrirDossierVehicule={onOuvrirDossierVehicule}
+    />
+  );
+
+  return <div className="space-y-5">
+    <div className="print:hidden rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}>
+      <div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" />
+      <div className="relative">
+        <div className="flex items-start justify-between flex-wrap gap-4">
+          <div>
+            <div className="flex items-center gap-2"><Wrench size={18} color="#8FB0FF" /><span className="font-semibold">Atelier en direct</span></div>
+            <div className="text-[13px] mt-1 text-blue-200 capitalize">{dateLongueFR(maintenant)}</div>
+            <button disabled={imprimant} onClick={imprimerEtiquettes} className="mt-3 inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl px-3 min-h-[44px] text-[12.5px] font-medium disabled:opacity-50">🖨️ {imprimant ? "Génération des liens…" : "Imprimer les étiquettes du jour"}</button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+          <AtelierCompteur label="À accueillir" value={compteurs.aAccueillir} />
+          <AtelierCompteur label="Dans l'atelier" value={compteurs.dansAtelier} />
+          <AtelierCompteur label="Bloqués" value={compteurs.bloques} tone={compteurs.bloques > 0 ? "amber" : "slate"} />
+          <AtelierCompteur label="Prêts" value={compteurs.prets} tone={compteurs.prets > 0 ? "green" : "slate"} />
+        </div>
+      </div>
+    </div>
+
+    <div className="print:hidden space-y-5">
+      <AtelierSection
+        titre="À accueillir aujourd'hui"
+        sousTitre="Rendez-vous du jour pas encore arrivés à l'atelier."
+        count={aAccueillir.length}
+        vide="Aucun véhicule à accueillir pour l'instant."
+        enfants={<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{aAccueillir.map(carte)}</div>}
+      />
+
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100">
+          <div className="font-semibold text-slate-900 text-[15px]">Dans l'atelier</div>
+          <div className="text-[12.5px] text-slate-500 mt-0.5">Véhicules encore en cours de traitement, quelle que soit leur date d'entrée — les véhicules prêts sont dans « Prêts à restituer » ci-dessous.</div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-px bg-slate-200">
+          {groupesAtelier.map((etape) => {
+            const info = etapeParCle(etape.key);
+            return (
+              <div key={etape.key} className="bg-white min-h-[150px] p-3">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: info?.color }}>
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: info?.color }} />
+                    {etape.label}
+                  </div>
+                  <span className="text-[11px] text-slate-400">{etape.rendezVous.length}</span>
+                </div>
+                <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                  {etape.rendezVous.length === 0 ? (
+                    <div className="text-[11.5px] text-slate-300 pt-3">Aucun véhicule</div>
+                  ) : (
+                    etape.rendezVous.map(carte)
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <AtelierSection
+        titre="Prêts à restituer"
+        sousTitre="Véhicules terminés, en attente que le client vienne les chercher."
+        count={pretsARestituer.length}
+        accent="#16A34A"
+        vide="Aucun véhicule prêt pour l'instant."
+        enfants={
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{pretsARestituer.map(carte)}</div>
+            {restitutionsAujourdhui.length > 0 && (
+              <div className="border-t border-slate-100 pt-3">
+                <div className="text-[12px] font-semibold text-slate-500">
+                  Restitutions prévues aujourd'hui ({restitutionsAujourdhui.length})
+                </div>
+                <div className="text-[11.5px] text-slate-400 mb-2">
+                  Date du rendez-vous, pas une heure de restitution réellement constatée.
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{restitutionsAujourdhui.map(carte)}</div>
+              </div>
+            )}
+          </div>
+        }
+      />
+
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"><div className="px-5 py-4 border-b border-slate-100"><div className="font-semibold text-slate-900 text-[15px]">Planning du jour</div><div className="text-[12.5px] text-slate-500 mt-0.5">Cliquez un rendez-vous pour l’affecter à un mécanicien.</div></div>
+        <div className="overflow-x-auto"><div className="min-w-[850px]"><div className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] border-b border-slate-100">{["Ressource", ...heuresGrille].map((hour) => <div key={hour} className="px-3 py-2 text-[11px] font-medium text-slate-400 border-r border-slate-100">{hour}</div>)}</div>{mecaniciensActifs.length === 0 && <div className="px-5 py-6 text-[13px] text-slate-500">Ajoutez vos mécaniciens dans Paramètres pour affecter les rendez-vous.</div>}{ressources.map((resource) => { const assigned = resourceAppointments(resource.id); return <div key={resource.id ?? "non_assigne"} className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] min-h-[74px] border-b border-slate-100 last:border-0"><div className="px-3 py-3 border-r border-slate-100"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resource.color }} /><div><div className="text-[12.5px] font-medium text-slate-800">{resource.name}</div><div className="text-[11px] text-slate-400">{resource.role}</div></div></div></div><div className="col-span-10 relative p-1.5" style={{ minHeight: 58 }}>{assigned.map((appt) => {
               const stage = WORKSHOP_STAGES.find((s) => s.key === (appt.statut_atelier || "a_venir")) || WORKSHOP_STAGES[0];
               const [h1, m1] = (appt.debut || "08:00").split(":").map(Number);
               const [h2, m2] = (appt.fin || appt.debut || "09:00").split(":").map(Number);
@@ -623,7 +793,29 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], a
                 <div className="text-[9.5px] truncate" style={{ color: stage.color }}>{stage.label}</div>
               </button>;
             })}</div></div>; })}</div></div></div>
+
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100">
+          <div className="font-semibold text-slate-900 text-[15px]">Temps planifié aujourd'hui</div>
+          <div className="text-[12.5px] text-slate-500 mt-0.5">Nombre de rendez-vous et somme des créneaux prévus, par mécanicien.</div>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {tempsParMecanicien.length === 0 ? (
+            <div className="px-5 py-6 text-[13px] text-slate-500 text-center">Aucun rendez-vous planifié aujourd'hui.</div>
+          ) : (
+            tempsParMecanicien.map((m) => (
+              <div key={m.mecanicienId ?? "non_assigne"} className="px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
+                <div className="text-[13px] font-medium text-slate-800">{m.nom}</div>
+                <div className="text-[12.5px] text-slate-500">
+                  {m.nombreRdv} rendez-vous · {Math.floor(m.minutesPlanifiees / 60)} h {String(m.minutesPlanifiees % 60).padStart(2, "0")} planifiées
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
+
     <style>{`
       @media print {
         body * { visibility: hidden; }
@@ -5545,7 +5737,7 @@ if (updateError) {
         <div className="p-5 md:p-8">
           {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
-          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} onGenererEtiquettes={genererEtiquettesAtelier} />}
+          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} onGenererEtiquettes={genererEtiquettesAtelier} onOuvrirDossierVehicule={setDossierVehiculeId} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
           {["devis", "factures", "historique"].includes(view) && (
             <FacturationView
