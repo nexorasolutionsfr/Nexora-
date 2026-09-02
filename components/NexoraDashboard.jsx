@@ -11,6 +11,7 @@ import VotreJournee from "./garage-os/VotreJournee";
 import NexoraARepere from "./garage-os/NexoraARepere";
 import AccesRapides from "./garage-os/AccesRapides";
 import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier } from "./garage-os/calculs";
+import VehicleCaseFileView from "./vehicle-case-file/VehicleCaseFileView";
 import {
   Home,
   Calendar,
@@ -3304,7 +3305,7 @@ const TRAVAIL_DIFFERE_STATUT_LABEL = {
   refus_definitif: "Refus définitif",
 };
 
-function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], travauxDifferes = [], onCreerDevis, onCreerClient, onOuvrirTravailDiffereModal, onToast }) {
+function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], travauxDifferes = [], onCreerDevis, onCreerClient, onOuvrirTravailDiffereModal, onToast, onOuvrirDossierVehicule }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [devisModalOpen, setDevisModalOpen] = useState(false);
@@ -3407,10 +3408,25 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
           <div className="space-y-2">
             {selectedVehicles.length === 0 && <div className="text-[13px] text-slate-400">Aucun véhicule enregistré.</div>}
             {selectedVehicles.map((v, i) => (
-              <div key={v.id || i} className="bg-slate-50 rounded-xl p-3.5 flex items-center gap-3">
-                <Car size={16} className="text-slate-400" />
-                <div className="text-sm text-slate-800">{v.marque} {v.modele} ({v.annee}) · <span className="text-slate-500">{v.immatriculation}</span></div>
-              </div>
+              v.id && onOuvrirDossierVehicule ? (
+                <button
+                  key={v.id || i}
+                  type="button"
+                  onClick={() => onOuvrirDossierVehicule(v.id)}
+                  className="w-full text-left bg-slate-50 hover:bg-slate-100 rounded-xl p-3.5 flex items-center justify-between gap-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Car size={16} className="text-slate-400 shrink-0" />
+                    <div className="text-sm text-slate-800 truncate">{v.marque} {v.modele} ({v.annee}) · <span className="text-slate-500">{v.immatriculation}</span></div>
+                  </div>
+                  <ArrowRight size={14} className="text-slate-400 shrink-0" />
+                </button>
+              ) : (
+                <div key={v.id || i} className="bg-slate-50 rounded-xl p-3.5 flex items-center gap-3">
+                  <Car size={16} className="text-slate-400" />
+                  <div className="text-sm text-slate-800">{v.marque} {v.modele} ({v.annee}) · <span className="text-slate-500">{v.immatriculation}</span></div>
+                </div>
+              )
             ))}
           </div>
         </div>
@@ -3948,6 +3964,7 @@ function NexoraDashboardInner({ garageId }) {
   const [travailDiffereModal, setTravailDiffereModal] = useState(null); // { clientId? } | null
   const [submittingTravailDiffere, setSubmittingTravailDiffere] = useState(false);
   const [inspectionCibleCockpit, setInspectionCibleCockpit] = useState(null);
+  const [dossierVehiculeId, setDossierVehiculeId] = useState(null);
 
   useEffect(() => {
     async function loadPreparedDemandeIds() {
@@ -5381,6 +5398,16 @@ if (updateError) {
     demandes: demandes.filter((d) => d.statut === "nouveau" || d.statut === "infos_manquantes").length,
   };
 
+  const dossierClient = dossierVehiculeId
+    ? clients.find((c) => {
+        const vehicules = Array.isArray(c.vehicules) ? c.vehicules : c.vehicules ? [c.vehicules] : [];
+        return vehicules.some((v) => v.id === dossierVehiculeId);
+      })
+    : null;
+  const dossierVehicule = dossierClient
+    ? (Array.isArray(dossierClient.vehicules) ? dossierClient.vehicules : [dossierClient.vehicules]).find((v) => v.id === dossierVehiculeId)
+    : null;
+
   return (
     <div className="flex min-h-[800px] w-full font-sans" style={{ backgroundColor: BG }}>
       <aside className="w-60 shrink-0 py-5 px-3.5 hidden md:flex flex-col" style={{ backgroundColor: NAVY }}>
@@ -5557,7 +5584,7 @@ if (updateError) {
               onRecommend={handleRecommendedAppointment}
             />
           )}
-          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} travauxDifferes={travauxDifferes} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onOuvrirTravailDiffereModal={(clientId) => setTravailDiffereModal({ clientId })} onToast={flashToast} />}
+          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} travauxDifferes={travauxDifferes} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onOuvrirTravailDiffereModal={(clientId) => setTravailDiffereModal({ clientId })} onToast={flashToast} onOuvrirDossierVehicule={(vehiculeId) => setDossierVehiculeId(vehiculeId)} />}
           {INSPECTIONS_MODULE_ACTIF && view === "inspections" && <InspectionsSection garageId={garageId} clients={clients} rendezVous={rendezVous} onToast={flashToast} initialDetailId={inspectionCibleCockpit} onInitialDetailConsumed={() => setInspectionCibleCockpit(null)} />}
           {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
         </div>
@@ -5565,6 +5592,24 @@ if (updateError) {
 
       <Toast toast={toast} />
       <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} onUpdateStatutAtelier={updateStatutAtelier} onUpdateLienPaiement={updateLienPaiement} atelierLien={selectedAppt ? atelierLiens[selectedAppt.id] : null} atelierQr={selectedAppt ? atelierQr[selectedAppt.id] : null} atelierBusy={selectedAppt ? atelierBusyId === selectedAppt.id : false} onGenererLienAtelier={genererLienAtelier} onRevoquerLienAtelier={revoquerLienAtelier} />
+      {dossierVehiculeId && dossierClient && dossierVehicule && (
+        <VehicleCaseFileView
+          vehicule={dossierVehicule}
+          client={dossierClient}
+          rendezVous={rendezVous.filter((r) => r.vehicule_id === dossierVehiculeId)}
+          devis={devisList.filter((d) => d.vehicule_id === dossierVehiculeId)}
+          factures={factures.filter((f) => f.vehicule_id === dossierVehiculeId)}
+          workshopStages={WORKSHOP_STAGES}
+          inspectionsDisponibles={INSPECTIONS_MODULE_ACTIF}
+          onClose={() => setDossierVehiculeId(null)}
+          onOuvrirAtelier={() => { setDossierVehiculeId(null); setView("atelier"); }}
+          onOuvrirDevis={() => { setDossierVehiculeId(null); setView("devis"); }}
+          onOuvrirFactures={() => { setDossierVehiculeId(null); setView("factures"); }}
+          onOuvrirAgenda={() => { setDossierVehiculeId(null); setView("agenda"); }}
+          onOuvrirInspections={() => { setDossierVehiculeId(null); setView("inspections"); }}
+          onOuvrirRendezVous={(rdv) => { if (rdv) { setDossierVehiculeId(null); setSelectedAppt(rdv); } }}
+        />
+      )}
     </div>
   );
 }
