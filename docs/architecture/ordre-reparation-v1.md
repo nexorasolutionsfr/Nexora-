@@ -68,7 +68,7 @@
 | `libelle` | text | NOT NULL | — | Description libre |
 | `quantite` | numeric | NOT NULL | `1` | |
 | `prix_unitaire_ht` | numeric | NULL | — | **Estimation interne uniquement** |
-| `duree_minutes` | integer | NULL | — | Pertinent seulement pour `type = main_oeuvre` |
+| `duree_minutes` | integer | NULL | — | Renseigné uniquement pour `type = main_oeuvre` |
 | `prestation_id` | uuid | NULL | — | FK → `prestations(id)`, réutilisation facultative du catalogue existant |
 | `statut` | text | NOT NULL | `prevu` | Valeurs autorisées : `prevu`, `fait`, `annule` |
 | `created_at` | timestamptz | NOT NULL | maintenant | |
@@ -78,6 +78,12 @@
 
 **Index attendus** : index sur `ordre_reparation_id` ; index sur `garage_id`.
 
+**Contraintes métier de la ligne — contrôlées côté base, pas seulement par le formulaire** :
+- `quantite` strictement positive (`quantite > 0`).
+- `prix_unitaire_ht`, quand renseigné, nul ou positif (jamais négatif).
+- `duree_minutes` strictement positive **uniquement** pour `type = main_oeuvre` ; une ligne `type = piece` ne porte **aucune** durée (`duree_minutes` doit rester nulle pour ce type).
+- Ces règles doivent être portées par des contraintes CHECK dans la future migration de création de la table, et non laissées à la seule validation du formulaire — un contournement de l'interface (appel direct, script, autre client) ne doit jamais pouvoir produire une ligne incohérente.
+
 ### C.3 `ordres_reparation_historique`
 
 | Champ | Type | Nullabilité | Défaut | Notes |
@@ -85,15 +91,31 @@
 | `id` | uuid | NOT NULL | généré | Clé primaire |
 | `ordre_reparation_id` | uuid | NOT NULL | — | FK → `ordres_reparation(id)`, suppression en cascade |
 | `garage_id` | uuid | NOT NULL | — | Dénormalisé pour isolation RLS |
-| `action` | text | NOT NULL | — | Ex. libre : création, changement de statut, ajout/modification de ligne, changement de mécanicien |
+| `action` | text | NOT NULL | — | Valeurs V1 : `creation`, `changement_statut`, `changement_mecanicien`, `annulation` — liste fermée, voir note ci-dessous |
 | `ancien_statut` | text | NULL | — | |
 | `nouveau_statut` | text | NULL | — | |
 | `motif` | text | NULL | — | |
-| `created_at` | timestamptz | NOT NULL | maintenant | Table **append-only** — aucune mise à jour ni suppression de ligne après écriture |
+| `effectue_par` | uuid | NULL | — | Identifiant du compte authentifié à l'origine de l'action, renseigné **quand cet identifiant est disponible** au moment de l'écriture ; peut rester nul si l'action est produite par un mécanisme sans compte utilisateur direct |
+| `created_at` | timestamptz | NOT NULL | maintenant | |
+
+**Portée V1 de l'historique — à ne pas dépasser dans les écrans ou la communication produit** : seules quatre catégories d'événements sont tracées — création de l'OR, changement de son statut document, changement de mécanicien assigné, annulation. **Les modifications de lignes (ajout, édition, suppression) restent explicitement hors historique détaillé en V1** — ce contrat ne doit jamais laisser entendre qu'un audit exhaustif des lignes existe tant que cette portée n'est pas élargie par une décision produit ultérieure.
+
+**Caractère append-only** : tant que l'OR parent existe, aucune ligne d'historique n'est jamais modifiée ni supprimée individuellement — seule la suppression de l'OR parent entraîne, par cascade, la disparition de son historique.
 
 **Règles de suppression** : suppression en cascade uniquement si l'OR parent est supprimé. Aucune suppression individuelle d'une ligne d'historique.
 
 **Index attendus** : index sur `ordre_reparation_id` ; index sur `garage_id`.
+
+### C.4 Intégrité inter-garage — contrat transversal aux trois tables
+
+Cette règle s'applique à `ordres_reparation` et `ordres_reparation_lignes` et doit être respectée par toute future migration, pas seulement par l'interface :
+
+- Un `ordres_reparation` ne peut référencer que des `rendez_vous_id`, `client_id`, `vehicule_id`, `devis_id` et `mecanicien_id` appartenant **au même `garage_id`** que l'OR lui-même. Un OR d'un garage ne doit jamais pouvoir pointer vers une ressource d'un autre garage.
+- Une `ordres_reparation_lignes` ne peut référencer qu'un `ordre_reparation_id` et, le cas échéant, un `prestation_id` appartenant **au même `garage_id`**.
+- Cette cohérence doit être **appliquée côté base** dans les futures migrations, pas seulement vérifiée côté interface :
+  - lorsque c'est possible avec une contrainte déclarative simple (colonnes `garage_id` dénormalisées et cohérentes entre table et ligne, contrainte d'unicité composite le cas échéant) ;
+  - et, pour les relations croisées qu'une contrainte déclarative ne peut pas exprimer seule (ex. vérifier que le `garage_id` du `rendez_vous_id` référencé correspond bien au `garage_id` de l'OR), par une **validation serveur ou un trigger versionné dans une migration** — jamais par une vérification laissée uniquement à l'interface.
+- Une vérification uniquement côté formulaire/UI **n'est jamais suffisante** pour cette règle : elle doit résister à un appel direct contournant l'interface.
 
 ---
 
@@ -113,6 +135,10 @@
 1. **Depuis un rendez-vous** : une action « Créer un ordre de réparation » proposée au niveau du détail d'un rendez-vous existant. Nécessite que le rendez-vous existe déjà (règle A.4).
 2. **Depuis le Dossier Véhicule** : un accès à l'OR (existant ou à créer) au même niveau que les accès déjà présents vers l'atelier et les devis du véhicule.
 3. **Transformation manuelle d'un devis accepté** : une action explicite, déclenchée par le staff, qui pré-remplit un nouvel OR (client, véhicule, référence au devis, éventuellement une première ligne) à partir d'un devis dont le statut est accepté. Cette action ne se déclenche jamais automatiquement.
+   - Le schéma actuel ne fait apparaître **aucun lien direct** entre `devis` et `rendez_vous` (voir section B) : la transformation ne peut donc jamais déduire seule le rendez-vous cible.
+   - Le staff **choisit obligatoirement et explicitement** le rendez-vous auquel l'OR issu de ce devis doit être rattaché — jamais de sélection implicite ou automatique.
+   - Ce choix est **limité aux rendez-vous du même client, du même véhicule et du même garage** que le devis transformé — aucun rendez-vous d'un autre client, d'un autre véhicule ou d'un autre garage ne doit être proposable.
+   - La création est **refusée** si le devis n'est pas au statut `accepte`, ou si un OR existe déjà pour le rendez-vous cible choisi (voir C.1, contrainte d'unicité).
 
 ### Écran OR
 - Identification : client, véhicule concernés.
@@ -127,6 +153,8 @@
 - **Aucun OR pour ce véhicule/rendez-vous** : message explicite invitant à en créer un, avec l'action de création disponible seulement si un rendez-vous existe (sinon, message expliquant qu'un rendez-vous est nécessaire au préalable — pas de création possible dans l'absolu).
 - **Tentative de création d'un second OR pour un même rendez-vous** : refus explicite, avec redirection vers l'OR déjà existant pour ce rendez-vous.
 - **Devis non accepté** : l'action de transformation manuelle n'est pas proposée tant que le devis n'est pas au statut accepté.
+- **Transformation d'un devis accepté sans rendez-vous cible choisi** : la création reste bloquée tant que le staff n'a pas explicitement sélectionné, dans la liste restreinte au même client/véhicule/garage, le rendez-vous auquel rattacher l'OR.
+- **Transformation vers un rendez-vous déjà pourvu d'un OR** : refus explicite, avec redirection vers l'OR déjà existant pour ce rendez-vous — même comportement que la tentative de double création directe.
 - **Aucune ligne dans l'OR** : état affiché comme valide (un OR sans ligne encore renseignée n'est pas une erreur), avec une invitation à ajouter une première ligne.
 
 ---
@@ -136,7 +164,11 @@
 - Les migrations à venir se limiteront à des **ajouts de nouvelles tables** (`ordres_reparation`, `ordres_reparation_lignes`, `ordres_reparation_historique`) et de leurs objets associés (contraintes, index, policies RLS). **Aucune modification de `rendez_vous`, `devis`, `factures`, ni de l'historique de migrations existant** n'est prévue par ce plan.
 - Toute migration future devra d'abord être **validée sur l'environnement Supabase de test** dédié, jamais directement en Production.
 - Une **revue critique indépendante est obligatoire** avant toute écriture sur un environnement distant, quel qu'il soit.
-- **Stratégie de rollback** limitée à la suppression des trois tables neuves elles-mêmes, dans l'ordre inverse de leur création (`ordres_reparation_historique` puis `ordres_reparation_lignes` puis `ordres_reparation`) — sans aucun impact sur les tables existantes puisque aucune n'est modifiée.
+- **Stratégie de rollback, en deux temps distincts** :
+  - **Avant toute donnée réelle sur l'environnement Test** (tables neuves encore vides) : la suppression des trois tables neuves elles-mêmes reste possible, dans l'ordre inverse de leur création (`ordres_reparation_historique` puis `ordres_reparation_lignes` puis `ordres_reparation`).
+  - **Après déploiement en Production, ou dès qu'une donnée réelle a été créée** (sur Test ou en Production) : **aucune suppression automatique** des tables n'est plus autorisée. Toute correction nécessaire passe uniquement par une **migration corrective additive**, décidée avec un **feu vert explicite**, jamais par un rollback silencieux ou automatique.
+  - Dans tous les cas, **aucun rollback ne touche une table historique** (`ordres_reparation_historique`, ni aucune table d'historique existante par ailleurs) — un historique, une fois écrit, n'est jamais annulé.
+  - Sans aucun impact sur les tables existantes puisque aucune n'est modifiée par ce plan.
 - Aucune réparation silencieuse de l'historique de migrations existant n'est envisagée à quelque étape que ce soit.
 
 ---
