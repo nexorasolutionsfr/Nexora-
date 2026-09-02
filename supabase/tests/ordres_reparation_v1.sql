@@ -617,6 +617,37 @@ select pg_temp.assert(not has_table_privilege('authenticated', 'public.ordres_re
 select pg_temp.assert(not has_table_privilege('service_role', 'public.ordres_reparation_historique', 'TRUNCATE'), 'service_role ne doit pas avoir TRUNCATE sur ordres_reparation_historique');
 
 -- =====================================================================
+-- 13b. Absence du droit EXECUTE sur les quatre fonctions trigger — pour
+--     PUBLIC, anon, authenticated et service_role. Vérification par
+--     métadonnée de privilège uniquement (has_function_privilege) : les
+--     fonctions trigger ne sont jamais appelées directement ici, ce test
+--     ne fait que lire l'ACL. Corrige l'écart constaté après application
+--     de 20260902000100 sur Test : ce projet accorde EXECUTE par défaut
+--     directement aux rôles nommés, pas seulement à PUBLIC — voir
+--     20260902000200_fermer_execute_fonctions_ordre_reparation.sql.
+-- =====================================================================
+
+select pg_temp.assert(not has_function_privilege('public', 'public.ordres_reparation_set_updated_at()', 'EXECUTE'), 'PUBLIC ne doit pas avoir EXECUTE sur ordres_reparation_set_updated_at');
+select pg_temp.assert(not has_function_privilege('anon', 'public.ordres_reparation_set_updated_at()', 'EXECUTE'), 'anon ne doit pas avoir EXECUTE sur ordres_reparation_set_updated_at');
+select pg_temp.assert(not has_function_privilege('authenticated', 'public.ordres_reparation_set_updated_at()', 'EXECUTE'), 'authenticated ne doit pas avoir EXECUTE sur ordres_reparation_set_updated_at');
+select pg_temp.assert(not has_function_privilege('service_role', 'public.ordres_reparation_set_updated_at()', 'EXECUTE'), 'service_role ne doit pas avoir EXECUTE sur ordres_reparation_set_updated_at');
+
+select pg_temp.assert(not has_function_privilege('public', 'public.ordres_reparation_check_integrite()', 'EXECUTE'), 'PUBLIC ne doit pas avoir EXECUTE sur ordres_reparation_check_integrite');
+select pg_temp.assert(not has_function_privilege('anon', 'public.ordres_reparation_check_integrite()', 'EXECUTE'), 'anon ne doit pas avoir EXECUTE sur ordres_reparation_check_integrite');
+select pg_temp.assert(not has_function_privilege('authenticated', 'public.ordres_reparation_check_integrite()', 'EXECUTE'), 'authenticated ne doit pas avoir EXECUTE sur ordres_reparation_check_integrite');
+select pg_temp.assert(not has_function_privilege('service_role', 'public.ordres_reparation_check_integrite()', 'EXECUTE'), 'service_role ne doit pas avoir EXECUTE sur ordres_reparation_check_integrite');
+
+select pg_temp.assert(not has_function_privilege('public', 'public.ordres_reparation_lignes_check_integrite()', 'EXECUTE'), 'PUBLIC ne doit pas avoir EXECUTE sur ordres_reparation_lignes_check_integrite');
+select pg_temp.assert(not has_function_privilege('anon', 'public.ordres_reparation_lignes_check_integrite()', 'EXECUTE'), 'anon ne doit pas avoir EXECUTE sur ordres_reparation_lignes_check_integrite');
+select pg_temp.assert(not has_function_privilege('authenticated', 'public.ordres_reparation_lignes_check_integrite()', 'EXECUTE'), 'authenticated ne doit pas avoir EXECUTE sur ordres_reparation_lignes_check_integrite');
+select pg_temp.assert(not has_function_privilege('service_role', 'public.ordres_reparation_lignes_check_integrite()', 'EXECUTE'), 'service_role ne doit pas avoir EXECUTE sur ordres_reparation_lignes_check_integrite');
+
+select pg_temp.assert(not has_function_privilege('public', 'public.ordres_reparation_log_historique()', 'EXECUTE'), 'PUBLIC ne doit pas avoir EXECUTE sur ordres_reparation_log_historique');
+select pg_temp.assert(not has_function_privilege('anon', 'public.ordres_reparation_log_historique()', 'EXECUTE'), 'anon ne doit pas avoir EXECUTE sur ordres_reparation_log_historique');
+select pg_temp.assert(not has_function_privilege('authenticated', 'public.ordres_reparation_log_historique()', 'EXECUTE'), 'authenticated ne doit pas avoir EXECUTE sur ordres_reparation_log_historique');
+select pg_temp.assert(not has_function_privilege('service_role', 'public.ordres_reparation_log_historique()', 'EXECUTE'), 'service_role ne doit pas avoir EXECUTE sur ordres_reparation_log_historique');
+
+-- =====================================================================
 -- 14. Annulation d'un OR après que le devis rattaché a changé de statut
 --     APRÈS la création : doit réussir, conserver lignes et historique,
 --     et écrire l'événement 'annulation' — jamais revalider un devis dont
