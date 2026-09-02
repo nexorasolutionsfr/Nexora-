@@ -64,7 +64,7 @@ export function SiteFooter() {
           </a>
         </div>
 
-        <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground/80 sm:text-left">
+        <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground sm:text-left">
           Nexora est édité par Nexora Solutions (entreprise individuelle, France). Mentions légales
           complètes (SIREN/SIRET, adresse de domiciliation, conditions générales) en cours de
           finalisation — la publication commerciale de cette offre reste suspendue jusqu'à leur
