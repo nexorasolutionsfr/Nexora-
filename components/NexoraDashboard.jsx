@@ -4,7 +4,13 @@
 import React, { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import InspectionsSection from "./inspections/InspectionsSection";
-import CockpitOpportunites from "./cockpit/CockpitOpportunites";
+import MorningHeader from "./garage-os/MorningHeader";
+import SyntheseImmediate from "./garage-os/SyntheseImmediate";
+import CentreDecisionnel from "./garage-os/CentreDecisionnel";
+import VotreJournee from "./garage-os/VotreJournee";
+import NexoraARepere from "./garage-os/NexoraARepere";
+import AccesRapides from "./garage-os/AccesRapides";
+import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier } from "./garage-os/calculs";
 import {
   Home,
   Calendar,
@@ -231,12 +237,27 @@ const aiStatsToday = {
 const navGroups = [
   {
     label: "",
+    items: [{ key: "aujourdhui", label: "Aujourd'hui", icon: Home }],
+  },
+  {
+    label: "Exploitation",
     items: [
-      { key: "aujourdhui", label: "Aujourd'hui", icon: Home },
+      { key: "agenda", label: "Agenda", icon: Calendar },
       { key: "atelier", label: "Atelier", icon: Wrench },
-      { key: "clients", label: "Clients", icon: Users },
       ...(INSPECTIONS_MODULE_ACTIF ? [{ key: "inspections", label: "Inspections", icon: ClipboardList }] : []),
+    ],
+  },
+  {
+    label: "Commerce",
+    items: [
+      { key: "demandes", label: "Demandes", icon: Inbox },
+      { key: "clients", label: "Clients", icon: Users },
       { key: "facturation", label: "Facturation", icon: ReceiptText, match: ["devis", "factures", "historique"] },
+    ],
+  },
+  {
+    label: "Pilotage",
+    items: [
       { key: "statistiques", label: "Statistiques", icon: TrendingUp },
       { key: "parametres", label: "Paramètres", icon: Settings },
     ],
@@ -947,6 +968,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
 
 function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
+  const [cockpitCompteurs, setCockpitCompteurs] = useState(null);
   if (loading) {
     return (
       <div className="space-y-6">
@@ -1084,7 +1106,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
       })),
   ];
 
-  // ---- Zone 2 — Nexora a préparé (toujours bleu, actions habituelles) --------------
+  // ---- Zone 2 — Prêt à valider (toujours bleu, actions habituelles) ---------------
   const zone2Rows = [
     ...propositionsRecentes.map((p) => ({
       key: `p2-${p.id}`,
@@ -1189,13 +1211,17 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   );
 
   // ---- Aperçu atelier du jour — un seul état à la fois, piloté par les vraies données
+  // Les étapes actives comptent sur l'ensemble des rendez-vous chargés (un
+  // véhicule entré hier et toujours engagé doit apparaître) ; à venir/prêt/
+  // restitué restent limités aux rendez-vous du jour. Voir calculerProgressionAtelier.
   const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
   const stagesEnCours = ["diagnostic", "intervention"];
   const stagesPrets = ["pret", "restitue"];
+  const progressionAtelier = calculerProgressionAtelier(rendezVous, todayAppts);
   const stageCounts = WORKSHOP_STAGES.map((stage) => ({
     ...stage,
     glanceColor: stagesEnCours.includes(stage.key) ? "#D97706" : stagesPrets.includes(stage.key) ? "#16A34A" : "#1E293B",
-    count: todayAppts.filter((a) => (a.statut_atelier || "a_venir") === stage.key).length,
+    count: progressionAtelier[stage.key] || 0,
   }));
 
   // ---- Aperçu "Ce mois-ci" (glance, le détail complet est dans Statistiques) ------
@@ -1239,18 +1265,29 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   // maintenant" apparaître le plus haut possible, surtout sur mobile -----------------
   const openState = getGarageOpenState(garageData || {});
 
+  const vehiculesEngages = compterVehiculesEngages(rendezVous);
+  const alertesAtelier = compterAlertesAtelier(rendezVous);
+  const decisionsEnAttente = COCKPIT_OPPORTUNITES_ACTIF
+    ? (cockpitCompteurs ? cockpitCompteurs.total : null)
+    : zone1Rows.length + zone2Rows.length + zone3Rows.length;
+  const montantRisque = COCKPIT_OPPORTUNITES_ACTIF
+    ? (cockpitCompteurs ? cockpitCompteurs.montantConnu : null)
+    : zone3TotalConnu;
+
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-2 flex-wrap text-[13px] text-slate-500 px-1">
-        <span className="font-semibold text-slate-900">{garageData?.nom_garage || "Votre garage"}</span>
-        <span className="text-slate-300">·</span>
-        <span className="font-medium" style={{ color: openState.open ? "#16A34A" : "#DC2626" }}>
-          {openState.label}
-        </span>
-      </div>
+      <MorningHeader garageData={garageData} openState={openState} />
+
+      <SyntheseImmediate
+        rdvAujourdhui={todayAppts.length}
+        vehiculesEngages={vehiculesEngages}
+        decisionsEnAttente={decisionsEnAttente}
+        montantRisque={montantRisque}
+      />
 
       {COCKPIT_OPPORTUNITES_ACTIF ? (
-        <CockpitOpportunites
+        <CentreDecisionnel
+          onCompteurs={setCockpitCompteurs}
           garageId={garageId}
           demandes={demandes}
           propositions={propositions}
@@ -1299,8 +1336,8 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
             icon={Bot}
             iconBg={ACCENT_SOFT}
             iconColor={ACCENT}
-            title="Nexora a préparé"
-            subtitle="Prêt pour votre validation"
+            title="Prêt à valider"
+            subtitle="Éléments en attente de votre validation"
             countBg={ACCENT_SOFT}
             countColor={ACCENT}
             rows={zone2Rows}
@@ -1331,76 +1368,16 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
         </>
       )}
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-        <div className="flex items-center justify-between mb-3.5">
-          <div className="font-semibold text-slate-900 text-[14.5px]">Flux atelier — en ce moment</div>
-          <button onClick={() => setView("atelier")} className="text-[13px] font-medium flex items-center gap-1" style={{ color: ACCENT }}>
-            Ouvrir l'atelier <ChevronRight size={14} />
-          </button>
-        </div>
-        {todayAppts.length === 0 ? (
-          <div className="flex flex-col items-center text-center gap-1.5 py-6 text-slate-500">
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-1" style={{ backgroundColor: "#F1F5F9" }}>
-              <Wrench size={18} className="text-slate-400" />
-            </div>
-            <div className="text-[13.5px] font-medium text-slate-700">Rien en atelier pour l'instant</div>
-            <div className="text-[12.5px] max-w-[320px]">Les véhicules du jour apparaîtront ici dès qu'un rendez-vous sera confirmé.</div>
-          </div>
-        ) : (
-          <>
-            <div className="flex divide-x divide-slate-100 -mx-1 overflow-x-auto">
-              {stageCounts.map((stage) => (
-                <div key={stage.key} className="flex-1 min-w-[86px] text-center px-2 py-1.5">
-                  <div className="text-[19px] font-bold tabular-nums" style={{ color: stage.count > 0 ? stage.glanceColor : "#CBD5E1" }}>{stage.count}</div>
-                  <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-0.5">{stage.label}</div>
-                </div>
-              ))}
-            </div>
-            {mecaniciensActifs.length === 0 && (
-              <div className="mt-3 text-[12px] text-slate-400">Ajoutez vos mécaniciens dans Paramètres pour suivre leur charge de travail.</div>
-            )}
-          </>
-        )}
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-            <div className="font-semibold text-slate-900 text-[15px]">Votre journée</div>
-            <button onClick={() => setView("agenda")} className="text-[13px] font-medium flex items-center gap-1" style={{ color: ACCENT }}>
-              Voir l'agenda complet <ChevronRight size={14} />
-            </button>
-          </div>
-          <div className="py-2">
-              {heuresGrille.map((h) => {
-                const apptsAtHour = todayAppts.filter((a) => a.debut?.slice(0, 2) === h.slice(0, 2));
-                const currentHour = String(new Date().getHours()).padStart(2, "0");
-                const isNow = h.slice(0, 2) === currentHour;
-                return (
-                  <div key={h} className="flex gap-3 px-5">
-                    <div className="w-12 shrink-0 text-[11.5px] text-slate-400 pt-3">{h}</div>
-                    <div className="flex-1 border-l-2 pl-4 pb-3 relative" style={{ borderColor: "#EEF1F6" }}>
-                      <span className="absolute -left-[5px] top-[15px] w-2 h-2 rounded-full" style={{ backgroundColor: isNow ? ACCENT : "#E2E8F0", boxShadow: isNow ? `0 0 0 4px ${ACCENT_SOFT}` : "none" }} />
-                      {apptsAtHour.length === 0 ? (
-                        <div className="text-[12px] text-slate-300 py-2.5">Créneau libre</div>
-                      ) : (
-                        <div className="space-y-1.5 py-0.5">
-                          {apptsAtHour.map((a) => {
-                            return (
-                              <button key={a.id} onClick={() => onSelectAppt(a)} className="w-full text-left rounded-xl px-3 py-2 flex items-center gap-3 flex-wrap" style={{ backgroundColor: ACCENT_SOFT, borderLeft: `3px solid ${ACCENT}` }}>
-                                <div className="text-[13px] font-semibold" style={{ color: NAVY }}>{a.client}</div>
-                                <div className="text-[12.5px] text-slate-500">{a.vehicule} · {a.prestation}</div>
-                                <Badge tone={STATUT_TONE[a.statut] || "slate"}>{a.statut}</Badge>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
+        <div className="lg:col-span-2">
+          <VotreJournee
+            todayAppts={todayAppts}
+            stageCounts={stageCounts}
+            mecaniciensActifs={mecaniciensActifs}
+            alertesAtelier={alertesAtelier}
+            onSelectAppt={onSelectAppt}
+            setView={setView}
+          />
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
@@ -1417,6 +1394,17 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
           </div>
         </div>
       </div>
+
+      <NexoraARepere
+        actif={COCKPIT_OPPORTUNITES_ACTIF}
+        cockpitCompteurs={cockpitCompteurs}
+        propositionsCount={propositionsRecentes.length + propositionsEnRetard.length}
+        devisEnAttenteCount={devisEnAttenteTous.length}
+        travauxEchusCount={travauxTries.length}
+        setView={setView}
+      />
+
+      <AccesRapides setView={setView} inspectionsActif={INSPECTIONS_MODULE_ACTIF} />
 
       <details className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3">
         <summary className="flex items-center gap-3 flex-wrap cursor-pointer list-none [&::-webkit-details-marker]:hidden">
@@ -2413,14 +2401,14 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
         )}
       </div>
 
-      <div className="flex gap-2.5 mt-4">
-        <button onClick={() => onAccept(d.id)} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl" style={{ backgroundColor: "#16A34A" }}>
+      <div className="flex flex-wrap gap-2.5 mt-4">
+        <button onClick={() => onAccept(d.id)} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl whitespace-nowrap" style={{ backgroundColor: "#16A34A" }}>
           <Check size={15} /> Valider et envoyer au client
         </button>
-        <button onClick={() => onRefuse(d.id)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
+        <button onClick={() => onRefuse(d.id)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600 whitespace-nowrap">
           <X size={15} /> Refuser
         </button>
-        <button onClick={() => setApercuOuvert(true)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
+        <button onClick={() => setApercuOuvert(true)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600 whitespace-nowrap">
           <Eye size={15} /> Aperçu client
         </button>
       </div>
@@ -2532,9 +2520,9 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <button 
-          onClick={() => changeDate(-1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500"><ChevronLeft size={16} /></button>
-          <div className="w-[260px] text-center font-semibold text-slate-900 text-[15px] capitalize">
+          <button
+          onClick={() => changeDate(-1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 shrink-0"><ChevronLeft size={16} /></button>
+          <div className="w-[150px] sm:w-[260px] text-center font-semibold text-slate-900 text-[15px] capitalize">
           {mode === "jour"
   ? currentDate.toLocaleDateString("fr-FR", {
       weekday: "long",
@@ -2550,8 +2538,8 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
     })}` : mode === "mois" ? monthLabel : `${currentDate.getFullYear()}`
 }
           </div>
-          <button 
-         onClick={() => changeDate(1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500"><ChevronRight size={16} /></button>
+          <button
+         onClick={() => changeDate(1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 shrink-0"><ChevronRight size={16} /></button>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <div className="flex rounded-xl border border-slate-200 overflow-hidden text-[13px]">
@@ -5390,6 +5378,7 @@ if (updateError) {
 
   const navBadgeCounts = {
     aujourdhui: demandes.filter((d) => d.statut === "nouveau").length + propositions.length + devisList.filter((d) => d.statut === "en_attente").length,
+    demandes: demandes.filter((d) => d.statut === "nouveau" || d.statut === "infos_manquantes").length,
   };
 
   return (

@@ -258,6 +258,7 @@ export default function CockpitOpportunites({
   onCloturerRefusTravail,
   onOuvrirInspection,
   onToast,
+  onCompteurs,
 }) {
   const [inspections, setInspections] = useState([]);
   const [actions, setActions] = useState([]);
@@ -318,11 +319,19 @@ export default function CockpitOpportunites({
     onToast,
   };
 
-  const { sections, masquees, compteurs } = useMemo(
+  const { sections, masquees, compteurs, montantConnu, parCategorie } = useMemo(
     () => deriveOpportunites({ demandes, propositions, devisList, rappelsManques, rendezVous, travauxDifferes, clients, inspections, actions, handlers }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [demandes, propositions, devisList, rappelsManques, rendezVous, travauxDifferes, clients, inspections, actions]
   );
+
+  // Remonte au parent (accueil Garage OS) les compteurs déjà calculés par
+  // deriveOpportunites — aucun recalcul, seule la donnée existante circule.
+  useEffect(() => {
+    if (loading || !onCompteurs) return;
+    onCompteurs({ ...compteurs, total: compteurs.maintenant + compteurs.aujourdhui + compteurs.a_planifier, montantConnu, parCategorie });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, compteurs.maintenant, compteurs.aujourdhui, compteurs.a_planifier, montantConnu, JSON.stringify(parCategorie)]);
 
   const enregistrerAction = async (payload) => {
     const { error } = await supabase.from("opportunites_actions").insert({ garage_id: garageId, ...payload });
