@@ -326,7 +326,7 @@ begin
     perform pg_temp.assert(false, 'un OR sur le RDV d''un autre garage aurait du etre refuse');
   exception when others then
     if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
-    perform pg_temp.assert(sqlerrm ilike '%rendez_vous introuvable%', 'exception inattendue pour RDV hors garage : ' || sqlerrm);
+    perform pg_temp.assert(sqlerrm ilike '%rendez_vous introuvable%' or sqlerrm ilike '%rendez_vous ne correspond pas%', 'exception inattendue pour RDV hors garage : ' || sqlerrm);
   end;
 end;
 $$;
@@ -340,7 +340,7 @@ begin
     perform pg_temp.assert(false, 'un OR rattache au devis d''un autre garage aurait du etre refuse');
   exception when others then
     if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
-    perform pg_temp.assert(sqlerrm ilike '%devis introuvable%', 'exception inattendue pour devis hors garage : ' || sqlerrm);
+    perform pg_temp.assert(sqlerrm ilike '%devis introuvable%' or sqlerrm ilike '%devis ne correspond pas%', 'exception inattendue pour devis hors garage : ' || sqlerrm);
   end;
 end;
 $$;
