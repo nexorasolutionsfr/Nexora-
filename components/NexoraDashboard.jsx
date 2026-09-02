@@ -1106,7 +1106,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
       })),
   ];
 
-  // ---- Zone 2 — Nexora a préparé (toujours bleu, actions habituelles) --------------
+  // ---- Zone 2 — Prêt à valider (toujours bleu, actions habituelles) ---------------
   const zone2Rows = [
     ...propositionsRecentes.map((p) => ({
       key: `p2-${p.id}`,
@@ -1269,7 +1269,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   const alertesAtelier = compterAlertesAtelier(rendezVous);
   const decisionsEnAttente = COCKPIT_OPPORTUNITES_ACTIF
     ? (cockpitCompteurs ? cockpitCompteurs.total : null)
-    : zone1Rows.length + zone2Rows.length;
+    : zone1Rows.length + zone2Rows.length + zone3Rows.length;
   const montantRisque = COCKPIT_OPPORTUNITES_ACTIF
     ? (cockpitCompteurs ? cockpitCompteurs.montantConnu : null)
     : zone3TotalConnu;
@@ -1336,8 +1336,8 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
             icon={Bot}
             iconBg={ACCENT_SOFT}
             iconColor={ACCENT}
-            title="Nexora a préparé"
-            subtitle="Prêt pour votre validation"
+            title="Prêt à valider"
+            subtitle="Éléments en attente de votre validation"
             countBg={ACCENT_SOFT}
             countColor={ACCENT}
             rows={zone2Rows}
@@ -2401,14 +2401,14 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
         )}
       </div>
 
-      <div className="flex gap-2.5 mt-4">
-        <button onClick={() => onAccept(d.id)} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl" style={{ backgroundColor: "#16A34A" }}>
+      <div className="flex flex-wrap gap-2.5 mt-4">
+        <button onClick={() => onAccept(d.id)} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl whitespace-nowrap" style={{ backgroundColor: "#16A34A" }}>
           <Check size={15} /> Valider et envoyer au client
         </button>
-        <button onClick={() => onRefuse(d.id)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
+        <button onClick={() => onRefuse(d.id)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600 whitespace-nowrap">
           <X size={15} /> Refuser
         </button>
-        <button onClick={() => setApercuOuvert(true)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
+        <button onClick={() => setApercuOuvert(true)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600 whitespace-nowrap">
           <Eye size={15} /> Aperçu client
         </button>
       </div>
@@ -2520,9 +2520,9 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <button 
-          onClick={() => changeDate(-1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500"><ChevronLeft size={16} /></button>
-          <div className="w-[260px] text-center font-semibold text-slate-900 text-[15px] capitalize">
+          <button
+          onClick={() => changeDate(-1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 shrink-0"><ChevronLeft size={16} /></button>
+          <div className="w-[150px] sm:w-[260px] text-center font-semibold text-slate-900 text-[15px] capitalize">
           {mode === "jour"
   ? currentDate.toLocaleDateString("fr-FR", {
       weekday: "long",
@@ -2538,8 +2538,8 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
     })}` : mode === "mois" ? monthLabel : `${currentDate.getFullYear()}`
 }
           </div>
-          <button 
-         onClick={() => changeDate(1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500"><ChevronRight size={16} /></button>
+          <button
+         onClick={() => changeDate(1)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 shrink-0"><ChevronRight size={16} /></button>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <div className="flex rounded-xl border border-slate-200 overflow-hidden text-[13px]">

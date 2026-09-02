@@ -7,8 +7,11 @@ import { ACCENT } from "./tokens";
 // Cockpit Opportunités (mode actif) ou, à défaut, les compteurs déjà
 // disponibles côté Aujourd'hui (mode historique). Aucune donnée n'est
 // recalculée ici : uniquement des compteurs honnêtes, jamais estimés.
+// N'affiche que les catégories strictement positives — une catégorie à 0
+// n'est pas une information utile ici, contrairement à "—" qui signale une
+// valeur réellement non calculable dans ce mode.
 function Puce({ icon: Icon, label, value, onClick }) {
-  if (value === null || value === undefined) return null;
+  if (!value) return null;
   return (
     <button
       onClick={onClick}
