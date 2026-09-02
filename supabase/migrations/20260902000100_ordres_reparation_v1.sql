@@ -4,15 +4,21 @@
 -- ordres_reparation_lignes, ordres_reparation_historique) et leurs objets
 -- associés. Ne modifie, n'altère et ne supprime AUCUNE table existante
 -- (rendez_vous, devis, factures, clients, vehicules, garages, mecaniciens,
--- prestations) ni l'historique de migrations. Idempotent : create table if
--- not exists, drop policy/trigger if exists avant recréation. Aucun DROP de
--- table ni de données, aucun SQL de réparation.
+-- prestations) ni l'historique de migrations. Aucun DROP de table ni de
+-- données, aucun SQL de réparation.
+--
+-- Cette migration est volontairement NON idempotente : aucun objet n'est
+-- créé avec IF NOT EXISTS / OR REPLACE, et aucun DROP ... IF EXISTS ne
+-- précède une création. Tous les noms d'objets sont neufs sur cette
+-- branche ; en cas de collision avec un objet déjà présent, la migration
+-- doit échouer bruyamment plutôt que d'écraser silencieusement un objet
+-- préexistant.
 
 -- =====================================================================
 -- 1. Table ordres_reparation
 -- =====================================================================
 
-create table if not exists public.ordres_reparation (
+create table public.ordres_reparation (
   id uuid primary key default gen_random_uuid(),
   garage_id uuid not null references public.garages(id) on delete restrict,
   rendez_vous_id uuid not null references public.rendez_vous(id) on delete restrict,
@@ -24,7 +30,7 @@ create table if not exists public.ordres_reparation (
     statut in ('brouillon', 'confirme', 'termine', 'annule')
   ),
   notes_internes text,
-  created_by uuid,
+  created_by uuid default auth.uid(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint ordres_reparation_rendez_vous_unique unique (rendez_vous_id)
@@ -35,14 +41,22 @@ create table if not exists public.ordres_reparation (
 -- empêchant la suppression d'un rendez-vous, véhicule, client ou garage
 -- référencé par un OR. devis_id / mecanicien_id restent facultatifs et
 -- passent à NULL si la ressource référencée disparaît.
+--
+-- created_by a une valeur par défaut auth.uid() (utile si jamais inséré
+-- hors du chemin normal), mais la valeur réellement retenue est imposée
+-- par le trigger ordres_reparation_check_integrite (section 5) qui écrase
+-- systématiquement toute valeur fournie par le client : un appel ne peut
+-- jamais choisir un autre auteur que l'utilisateur authentifié courant.
+-- Sous service_role (écriture backend), auth.uid() vaut NULL : le champ
+-- reste NULL plutôt que d'inventer un compte utilisateur.
 
-create index if not exists ordres_reparation_garage_idx
+create index ordres_reparation_garage_idx
   on public.ordres_reparation (garage_id);
 
-create index if not exists ordres_reparation_devis_idx
+create index ordres_reparation_devis_idx
   on public.ordres_reparation (devis_id);
 
-create index if not exists ordres_reparation_mecanicien_idx
+create index ordres_reparation_mecanicien_idx
   on public.ordres_reparation (mecanicien_id);
 
 comment on table public.ordres_reparation is
@@ -52,7 +66,7 @@ comment on table public.ordres_reparation is
 -- 2. Table ordres_reparation_lignes
 -- =====================================================================
 
-create table if not exists public.ordres_reparation_lignes (
+create table public.ordres_reparation_lignes (
   id uuid primary key default gen_random_uuid(),
   ordre_reparation_id uuid not null references public.ordres_reparation(id) on delete cascade,
   garage_id uuid not null references public.garages(id) on delete restrict,
@@ -71,10 +85,10 @@ create table if not exists public.ordres_reparation_lignes (
   )
 );
 
-create index if not exists ordres_reparation_lignes_ordre_idx
+create index ordres_reparation_lignes_ordre_idx
   on public.ordres_reparation_lignes (ordre_reparation_id);
 
-create index if not exists ordres_reparation_lignes_garage_idx
+create index ordres_reparation_lignes_garage_idx
   on public.ordres_reparation_lignes (garage_id);
 
 comment on table public.ordres_reparation_lignes is
@@ -84,7 +98,7 @@ comment on table public.ordres_reparation_lignes is
 -- 3. Table ordres_reparation_historique (append-only)
 -- =====================================================================
 
-create table if not exists public.ordres_reparation_historique (
+create table public.ordres_reparation_historique (
   id uuid primary key default gen_random_uuid(),
   ordre_reparation_id uuid not null references public.ordres_reparation(id) on delete restrict,
   garage_id uuid not null references public.garages(id) on delete restrict,
@@ -99,28 +113,29 @@ create table if not exists public.ordres_reparation_historique (
 );
 
 -- ordre_reparation_id est volontairement en ON DELETE RESTRICT (pas CASCADE) :
--- un OR n'est jamais supprimé en V1 (aucune policy DELETE plus bas), donc
--- cette relation ne doit jamais avoir à se comporter comme une suppression
--- en cascade. Elle joue un rôle protecteur : elle atteste que tout OR ayant
--- un historique reste, lui aussi, présent en base.
+-- un OR n'est jamais supprimé en V1 (aucune policy ni aucun droit DELETE
+-- accordé plus bas), donc cette relation ne doit jamais avoir à se
+-- comporter comme une suppression en cascade. Elle joue un rôle protecteur :
+-- elle atteste que tout OR ayant un historique reste, lui aussi, présent
+-- en base.
 
-create index if not exists ordres_reparation_historique_ordre_idx
+create index ordres_reparation_historique_ordre_idx
   on public.ordres_reparation_historique (ordre_reparation_id, created_at);
 
-create index if not exists ordres_reparation_historique_garage_idx
+create index ordres_reparation_historique_garage_idx
   on public.ordres_reparation_historique (garage_id);
 
 comment on table public.ordres_reparation_historique is
-  'Historique append-only d''un Ordre de Réparation. Portée V1 strictement limitée à 4 actions : creation, changement_statut, changement_mecanicien, annulation — les modifications de lignes ne sont pas tracées en détail ici. Écrite exclusivement par le trigger ordres_reparation_log_historique (voir plus bas) ; aucune policy INSERT/UPDATE/DELETE directe pour le rôle garage authentifié.';
+  'Historique append-only d''un Ordre de Réparation. Portée V1 strictement limitée à 4 actions : creation, changement_statut, changement_mecanicien, annulation — les modifications de lignes ne sont pas tracées en détail ici. Écrite exclusivement par le trigger ordres_reparation_log_historique (voir plus bas) ; aucun droit INSERT/UPDATE/DELETE, direct ou via policy, pour le rôle garage authentifié.';
 
 -- =====================================================================
 -- 4. updated_at automatique (ordres_reparation, ordres_reparation_lignes)
 -- =====================================================================
 
-create or replace function public.ordres_reparation_set_updated_at()
+create function public.ordres_reparation_set_updated_at()
 returns trigger
 language plpgsql
-set search_path = 'public'
+set search_path = ''
 as $$
 begin
   new.updated_at := now();
@@ -128,31 +143,30 @@ begin
 end;
 $$;
 
-drop trigger if exists ordres_reparation_updated_at on public.ordres_reparation;
 create trigger ordres_reparation_updated_at
   before update on public.ordres_reparation
   for each row
   execute function public.ordres_reparation_set_updated_at();
 
-drop trigger if exists ordres_reparation_lignes_updated_at on public.ordres_reparation_lignes;
 create trigger ordres_reparation_lignes_updated_at
   before update on public.ordres_reparation_lignes
   for each row
   execute function public.ordres_reparation_set_updated_at();
 
 -- =====================================================================
--- 5. Intégrité inter-garage (contrat C.4) — fonctions SECURITY INVOKER.
--- Pas de SECURITY DEFINER ici : ces fonctions ne font que relire des
--- tables (rendez_vous, devis, mecaniciens, prestations, ordres_reparation)
--- déjà isolées par garage via leurs propres policies RLS existantes ou
--- créées ci-dessous — la visibilité de l'appelant est donc déjà bornée à
--- son propre garage, et l'égalité est en plus vérifiée explicitement.
+-- 5. Intégrité inter-garage (contrat C.4) + auteur non falsifiable —
+-- fonctions SECURITY INVOKER (défaut). Pas de SECURITY DEFINER ici : ces
+-- fonctions ne font que relire des tables (rendez_vous, devis, mecaniciens,
+-- prestations, ordres_reparation) déjà isolées par garage via leurs
+-- propres policies RLS existantes ou créées ci-dessous — la visibilité de
+-- l'appelant est donc déjà bornée à son propre garage, et l'égalité est en
+-- plus vérifiée explicitement.
 -- =====================================================================
 
-create or replace function public.ordres_reparation_check_integrite()
+create function public.ordres_reparation_check_integrite()
 returns trigger
 language plpgsql
-set search_path = 'public'
+set search_path = ''
 as $$
 declare
   v_rdv_garage uuid;
@@ -164,14 +178,23 @@ declare
   v_devis_vehicule uuid;
   v_mecanicien_garage uuid;
 begin
+  if tg_op = 'INSERT' then
+    -- L'auteur est toujours celui de la session courante : un appel client
+    -- ne peut jamais choisir un autre auteur en fournissant sa propre
+    -- valeur de created_by. Sous service_role (pas de JWT), auth.uid() est
+    -- NULL et created_by reste NULL — aucun compte n'est inventé.
+    new.created_by := auth.uid();
+  end if;
+
   if tg_op = 'UPDATE' then
     if new.rendez_vous_id is distinct from old.rendez_vous_id
       or new.vehicule_id is distinct from old.vehicule_id
       or new.client_id is distinct from old.client_id
       or new.garage_id is distinct from old.garage_id
+      or new.created_by is distinct from old.created_by
     then
       raise exception
-        'ordres_reparation: rendez_vous_id, vehicule_id, client_id et garage_id sont figes a la creation';
+        'ordres_reparation: rendez_vous_id, vehicule_id, client_id, garage_id et created_by sont figes a la creation';
     end if;
   end if;
 
@@ -230,16 +253,15 @@ begin
 end;
 $$;
 
-drop trigger if exists ordres_reparation_check_integrite_trigger on public.ordres_reparation;
 create trigger ordres_reparation_check_integrite_trigger
   before insert or update on public.ordres_reparation
   for each row
   execute function public.ordres_reparation_check_integrite();
 
-create or replace function public.ordres_reparation_lignes_check_integrite()
+create function public.ordres_reparation_lignes_check_integrite()
 returns trigger
 language plpgsql
-set search_path = 'public'
+set search_path = ''
 as $$
 declare
   v_or_garage uuid;
@@ -272,7 +294,6 @@ begin
 end;
 $$;
 
-drop trigger if exists ordres_reparation_lignes_check_integrite_trigger on public.ordres_reparation_lignes;
 create trigger ordres_reparation_lignes_check_integrite_trigger
   before insert or update on public.ordres_reparation_lignes
   for each row
@@ -283,22 +304,23 @@ create trigger ordres_reparation_lignes_check_integrite_trigger
 -- lot à en avoir réellement besoin : c'est le mécanisme qui garantit que
 -- ordres_reparation_historique n'est écrite QUE par ce trigger, jamais
 -- par une insertion directe du rôle garage authentifié — voir section 7,
--- aucune policy INSERT n'est accordée à authenticated sur cette table).
--- search_path fermé, corps minimal, ne lit/écrit que public.*.
+-- aucun droit INSERT n'est accordé à authenticated sur cette table).
+-- search_path vide, corps minimal, toutes les références entièrement
+-- qualifiées (public.*, auth.*).
 -- =====================================================================
 
-create or replace function public.ordres_reparation_log_historique()
+create function public.ordres_reparation_log_historique()
 returns trigger
 language plpgsql
 security definer
-set search_path = 'public'
+set search_path = ''
 as $$
 begin
   if tg_op = 'INSERT' then
     insert into public.ordres_reparation_historique (
       ordre_reparation_id, garage_id, action, nouveau_statut, effectue_par
     ) values (
-      new.id, new.garage_id, 'creation', new.statut, coalesce(new.created_by, auth.uid())
+      new.id, new.garage_id, 'creation', new.statut, new.created_by
     );
     return new;
   end if;
@@ -332,17 +354,47 @@ begin
 end;
 $$;
 
-drop trigger if exists ordres_reparation_log_historique_trigger on public.ordres_reparation;
 create trigger ordres_reparation_log_historique_trigger
   after insert or update on public.ordres_reparation
   for each row
   execute function public.ordres_reparation_log_historique();
 
 -- =====================================================================
--- 7. RLS — isolation par garage, motif versionné récent
+-- 7. ACL explicites, au moindre privilège.
+-- Ces tables sont neuves : sans révocation explicite, les privilèges par
+-- défaut du schéma (souvent accordés largement à anon/authenticated sur ce
+-- projet) s'appliqueraient silencieusement. On ne dépend donc d'aucun
+-- privilège par défaut : révocation totale pour PUBLIC et anon, puis
+-- octroi explicite et minimal à authenticated.
+-- =====================================================================
+
+revoke all on table public.ordres_reparation from public, anon;
+grant select, insert, update on table public.ordres_reparation to authenticated;
+
+revoke all on table public.ordres_reparation_lignes from public, anon;
+grant select, insert, update, delete on table public.ordres_reparation_lignes to authenticated;
+
+revoke all on table public.ordres_reparation_historique from public, anon;
+grant select on table public.ordres_reparation_historique to authenticated;
+
+-- Aucun droit EXECUTE public sur les fonctions ajoutées : elles ne sont
+-- appelées que par leurs triggers respectifs (le déclenchement d'un
+-- trigger n'exige pas que le rôle appelant détienne EXECUTE sur la
+-- fonction), jamais par un appel SQL direct. Particulièrement important
+-- pour ordres_reparation_log_historique (SECURITY DEFINER).
+
+revoke execute on function public.ordres_reparation_set_updated_at() from public;
+revoke execute on function public.ordres_reparation_check_integrite() from public;
+revoke execute on function public.ordres_reparation_lignes_check_integrite() from public;
+revoke execute on function public.ordres_reparation_log_historique() from public;
+
+-- =====================================================================
+-- 8. RLS — isolation par garage, motif versionné récent
 -- (garage_id in (select id from public.garages where owner_user_id = auth.uid())).
 -- Aucune dépendance à current_garage_id() (non versionnée). Aucune policy
--- pour anon. Aucun accès public, aucun jeton.
+-- pour anon. Aucun accès public, aucun jeton. Les ACL de la section 7
+-- bornent déjà les commandes possibles par table ; ces policies bornent en
+-- plus les lignes visibles/affectables au sein de ces commandes.
 -- =====================================================================
 
 alter table public.ordres_reparation enable row level security;
@@ -350,10 +402,10 @@ alter table public.ordres_reparation_lignes enable row level security;
 alter table public.ordres_reparation_historique enable row level security;
 
 -- ordres_reparation : SELECT / INSERT / UPDATE pour authenticated,
--- volontairement AUCUNE policy DELETE (voir A.8 et D du contrat :
--- l'annulation passe uniquement par UPDATE statut = 'annule').
+-- cohérent avec les GRANT de la section 7 — volontairement AUCUNE policy
+-- DELETE (voir A.8 et D du contrat : l'annulation passe uniquement par
+-- UPDATE statut = 'annule').
 
-drop policy if exists ordres_reparation_select on public.ordres_reparation;
 create policy ordres_reparation_select on public.ordres_reparation
   for select
   to authenticated
@@ -361,7 +413,6 @@ create policy ordres_reparation_select on public.ordres_reparation
     garage_id in (select id from public.garages where owner_user_id = auth.uid())
   );
 
-drop policy if exists ordres_reparation_insert on public.ordres_reparation;
 create policy ordres_reparation_insert on public.ordres_reparation
   for insert
   to authenticated
@@ -369,7 +420,6 @@ create policy ordres_reparation_insert on public.ordres_reparation
     garage_id in (select id from public.garages where owner_user_id = auth.uid())
   );
 
-drop policy if exists ordres_reparation_update on public.ordres_reparation;
 create policy ordres_reparation_update on public.ordres_reparation
   for update
   to authenticated
@@ -380,11 +430,11 @@ create policy ordres_reparation_update on public.ordres_reparation
     garage_id in (select id from public.garages where owner_user_id = auth.uid())
   );
 
--- ordres_reparation_lignes : CRUD complet pour authenticated (ajout,
+-- ordres_reparation_lignes : CRUD complet pour authenticated, cohérent
+-- avec le GRANT select/insert/update/delete de la section 7 (ajout,
 -- modification, suppression de lignes librement autorisés par le contrat,
 -- seul l'OR parent est protégé contre la suppression).
 
-drop policy if exists ordres_reparation_lignes_isolation on public.ordres_reparation_lignes;
 create policy ordres_reparation_lignes_isolation on public.ordres_reparation_lignes
   for all
   to authenticated
@@ -395,14 +445,15 @@ create policy ordres_reparation_lignes_isolation on public.ordres_reparation_lig
     garage_id in (select id from public.garages where owner_user_id = auth.uid())
   );
 
--- ordres_reparation_historique : SELECT uniquement pour authenticated.
--- Aucune policy INSERT/UPDATE/DELETE : les écritures passent exclusivement
--- par le trigger SECURITY DEFINER ordres_reparation_log_historique_trigger,
--- qui s'exécute avec les privilèges du propriétaire de la fonction (exempté
--- de RLS sur cette table en tant que propriétaire), et non ceux du rôle
--- garage authentifié.
+-- ordres_reparation_historique : SELECT uniquement pour authenticated,
+-- cohérent avec le GRANT select seul de la section 7. Aucune policy
+-- INSERT/UPDATE/DELETE : les écritures passent exclusivement par le
+-- trigger SECURITY DEFINER ordres_reparation_log_historique_trigger, qui
+-- s'exécute avec les privilèges du propriétaire de la fonction (exempté de
+-- RLS sur cette table en tant que propriétaire), et non ceux du rôle
+-- garage authentifié — qui de toute façon n'a reçu aucun droit INSERT en
+-- section 7.
 
-drop policy if exists ordres_reparation_historique_select on public.ordres_reparation_historique;
 create policy ordres_reparation_historique_select on public.ordres_reparation_historique
   for select
   to authenticated
