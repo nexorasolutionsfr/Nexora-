@@ -16,6 +16,7 @@
 5. Les lignes sont limitées à deux types : `main_oeuvre` et `piece`. Aucune autre catégorie en V1.
 6. La transformation d'un devis accepté en OR est une **action manuelle**, initiée par le staff. Aucune automatisation ne déclenche la création d'un OR.
 7. Le modèle **mono-compte-par-garage** (un compte authentifié = un garage, pas de notion de « membre » ou de compte mécanicien distinct) est conservé tel quel en V1. L'OR n'introduit aucun nouveau rôle.
+8. **Un Ordre de Réparation ne se supprime jamais depuis l'interface.** Aucun bouton ni action de suppression n'existe en V1. La seule façon de mettre fin à un OR est de faire passer son `statut` à `annule` — une annulation, pas une suppression. Cette annulation crée un événement `annulation` dans l'historique, et **conserve intégralement** les lignes et l'historique déjà existants de l'OR.
 
 ---
 
@@ -53,7 +54,12 @@
 | `created_at` | timestamptz | NOT NULL | maintenant | |
 | `updated_at` | timestamptz | NOT NULL | maintenant | |
 
-**Règles de suppression** : `ON DELETE` de `rendez_vous_id`/`vehicule_id`/`client_id`/`devis_id`/`mecanicien_id` — à fixer explicitement lors de l'écriture de la migration réelle (recommandation de conception, non actée : restriction ou `SET NULL` selon la colonne, jamais de suppression en cascade d'un OR déclenchée par la suppression d'un rendez-vous, pour préserver la traçabilité).
+**Règles de suppression des relations sortantes** : `ON DELETE` de `rendez_vous_id`/`vehicule_id`/`client_id`/`devis_id`/`mecanicien_id` — à fixer explicitement lors de l'écriture de la migration réelle (recommandation de conception, non actée : restriction ou `SET NULL` selon la colonne, jamais de suppression en cascade d'un OR déclenchée par la suppression d'un rendez-vous, pour préserver la traçabilité).
+
+**L'OR lui-même n'est jamais supprimé** — ni par l'interface, ni par un comportement automatique de la base :
+- Aucune action de suppression n'existe côté interface (voir A.8) ; la seule transition de fin de vie est le passage à `statut = annule`.
+- La future base **ne doit accorder aucune policy `DELETE`** sur `ordres_reparation` au rôle utilisé par le garage authentifié — seule la modification (`UPDATE`) de `statut` (et des autres champs modifiables) doit rester possible.
+- Des opérations administratives exceptionnelles de suppression, hors périmètre V1 et explicitement autorisées au cas par cas, pourraient être étudiées plus tard — **jamais comme un comportement automatique ou accessible depuis le dashboard garage**.
 
 **Index attendus** : unique sur `rendez_vous_id` ; index sur `garage_id` (isolation) ; index sur `devis_id` et `mecanicien_id` (recherche).
 
@@ -100,9 +106,9 @@
 
 **Portée V1 de l'historique — à ne pas dépasser dans les écrans ou la communication produit** : seules quatre catégories d'événements sont tracées — création de l'OR, changement de son statut document, changement de mécanicien assigné, annulation. **Les modifications de lignes (ajout, édition, suppression) restent explicitement hors historique détaillé en V1** — ce contrat ne doit jamais laisser entendre qu'un audit exhaustif des lignes existe tant que cette portée n'est pas élargie par une décision produit ultérieure.
 
-**Caractère append-only** : tant que l'OR parent existe, aucune ligne d'historique n'est jamais modifiée ni supprimée individuellement — seule la suppression de l'OR parent entraîne, par cascade, la disparition de son historique.
+**Caractère append-only** : aucune ligne d'historique n'est jamais modifiée ni supprimée individuellement, quelle que soit la situation.
 
-**Règles de suppression** : suppression en cascade uniquement si l'OR parent est supprimé. Aucune suppression individuelle d'une ligne d'historique.
+**Règles de suppression** : puisqu'un OR **n'est jamais supprimé** en V1 (voir A.8 et C.1), la relation `ordre_reparation_id → ordres_reparation(id)` **ne doit pas** être définie en `ON DELETE CASCADE` — l'historique n'a pas vocation à disparaître à la faveur d'une suppression d'OR qui, par construction, ne se produit pas depuis l'interface. Aucune suppression individuelle d'une ligne d'historique n'est prévue. La relation vers l'OR doit au contraire jouer un rôle **protecteur** : elle atteste que tout OR ayant un historique reste, lui aussi, présent en base.
 
 **Index attendus** : index sur `ordre_reparation_id` ; index sur `garage_id`.
 
@@ -126,6 +132,7 @@ Cette règle s'applique à `ordres_reparation` et `ordres_reparation_lignes` et 
 - **Aucun lien public / jeton OR en V1.** L'OR reste un objet strictement interne au dashboard garage — pas de nouvelle route publique, pas de nouveau jeton, pas de réutilisation d'UUID brut dans une URL.
 - **`notes_internes` ne doit jamais être exposable** en dehors du dashboard garage authentifié — à traiter comme une contrainte de conception permanente, y compris si un accès client à l'OR était envisagé dans une version future (ce champ resterait alors explicitement exclu de toute projection publique).
 - **Aucune nouvelle dépendance** vers la fonction non versionnée identifiée dans l'audit. Toute logique d'isolation nécessaire aux nouvelles tables doit être écrite dans les migrations qui les créent, de façon autonome et traçable.
+- **Aucune policy `DELETE`** sur `ordres_reparation` pour le rôle utilisé par le garage authentifié — cohérent avec A.8 et C.1 : l'annulation passe uniquement par une mise à jour du `statut`, jamais par une suppression de ligne.
 
 ---
 
@@ -177,7 +184,10 @@ Cette règle s'applique à `ordres_reparation` et `ordres_reparation_lignes` et 
 
 **Acceptation fonctionnelle**
 - Impossible de créer un second OR pour un même rendez-vous.
-- La suppression d'un OR ne supprime jamais le rendez-vous, le devis ou la facture qui lui sont liés.
+- Aucune action de suppression d'OR n'est accessible depuis l'interface ; seule une action d'annulation (`statut = annule`) est proposée.
+- Un OR annulé **conserve intégralement** son client, son véhicule, ses lignes et son historique — rien n'est effacé ni masqué par l'annulation.
+- L'annulation d'un OR **ne modifie jamais** le rendez-vous, le devis ou la facture qui lui sont liés.
+- L'annulation d'un OR crée un événement `annulation` dans son historique.
 - L'étape atelier affichée dans l'écran OR correspond toujours exactement à `rendez_vous.statut_atelier` au moment de la consultation — jamais une valeur mise en cache ou dupliquée.
 - Un OR sans ligne reste un état valide et consultable.
 - La transformation d'un devis en OR ne peut être déclenchée que sur un devis au statut accepté, et reste une action volontaire du staff.
