@@ -184,9 +184,70 @@ begin
     -- valeur de created_by. Sous service_role (pas de JWT), auth.uid() est
     -- NULL et created_by reste NULL — aucun compte n'est inventé.
     new.created_by := auth.uid();
+
+    -- Validation complète, une seule fois, à la création : le rendez-vous
+    -- (et donc client/véhicule/garage qu'il porte) ne pourra plus changer
+    -- ensuite (immuabilité vérifiée ci-dessous sur UPDATE), il n'y a donc
+    -- jamais besoin de le revalider après coup.
+    select garage_id, client_id, vehicule_id
+      into v_rdv_garage, v_rdv_client, v_rdv_vehicule
+      from public.rendez_vous
+      where id = new.rendez_vous_id;
+
+    if not found then
+      raise exception 'ordres_reparation: rendez_vous introuvable ou hors garage';
+    end if;
+
+    if v_rdv_garage is distinct from new.garage_id
+      or v_rdv_client is distinct from new.client_id
+      or v_rdv_vehicule is distinct from new.vehicule_id
+    then
+      raise exception
+        'ordres_reparation: le rendez_vous ne correspond pas au garage, client ou vehicule de cet ordre de reparation';
+    end if;
+
+    if new.devis_id is not null then
+      select statut, garage_id, client_id, vehicule_id
+        into v_devis_statut, v_devis_garage, v_devis_client, v_devis_vehicule
+        from public.devis
+        where id = new.devis_id;
+
+      if not found then
+        raise exception 'ordres_reparation: devis introuvable ou hors garage';
+      end if;
+
+      if v_devis_statut is distinct from 'accepte' then
+        raise exception
+          'ordres_reparation: le devis doit etre accepte pour etre rattache a un ordre de reparation';
+      end if;
+
+      if v_devis_garage is distinct from new.garage_id
+        or v_devis_client is distinct from new.client_id
+        or v_devis_vehicule is distinct from new.vehicule_id
+      then
+        raise exception
+          'ordres_reparation: le devis ne correspond pas au garage, client ou vehicule de cet ordre de reparation';
+      end if;
+    end if;
+
+    if new.mecanicien_id is not null then
+      select garage_id into v_mecanicien_garage
+        from public.mecaniciens
+        where id = new.mecanicien_id;
+
+      if not found or v_mecanicien_garage is distinct from new.garage_id then
+        raise exception 'ordres_reparation: mecanicien hors garage';
+      end if;
+    end if;
+
+    return new;
   end if;
 
   if tg_op = 'UPDATE' then
+    -- rendez_vous_id / vehicule_id / client_id / garage_id / created_by
+    -- sont figés à la création : aucune revalidation du rendez-vous n'est
+    -- donc jamais nécessaire après coup, sa cohérence a été prouvée une
+    -- fois pour toutes à l'INSERT et ne peut plus se dégrader.
     if new.rendez_vous_id is distinct from old.rendez_vous_id
       or new.vehicule_id is distinct from old.vehicule_id
       or new.client_id is distinct from old.client_id
@@ -196,57 +257,49 @@ begin
       raise exception
         'ordres_reparation: rendez_vous_id, vehicule_id, client_id, garage_id et created_by sont figes a la creation';
     end if;
-  end if;
 
-  select garage_id, client_id, vehicule_id
-    into v_rdv_garage, v_rdv_client, v_rdv_vehicule
-    from public.rendez_vous
-    where id = new.rendez_vous_id;
+    -- Le devis n'est revalidé QUE si devis_id change dans cet UPDATE — un
+    -- simple changement de statut de l'OR (notamment l'annulation) ne doit
+    -- jamais échouer parce que le devis déjà rattaché a, depuis, changé de
+    -- statut ou été modifié : un OR doit toujours pouvoir être annulé.
+    if new.devis_id is distinct from old.devis_id and new.devis_id is not null then
+      select statut, garage_id, client_id, vehicule_id
+        into v_devis_statut, v_devis_garage, v_devis_client, v_devis_vehicule
+        from public.devis
+        where id = new.devis_id;
 
-  if not found then
-    raise exception 'ordres_reparation: rendez_vous introuvable ou hors garage';
-  end if;
+      if not found then
+        raise exception 'ordres_reparation: devis introuvable ou hors garage';
+      end if;
 
-  if v_rdv_garage is distinct from new.garage_id
-    or v_rdv_client is distinct from new.client_id
-    or v_rdv_vehicule is distinct from new.vehicule_id
-  then
-    raise exception
-      'ordres_reparation: le rendez_vous ne correspond pas au garage, client ou vehicule de cet ordre de reparation';
-  end if;
+      if v_devis_statut is distinct from 'accepte' then
+        raise exception
+          'ordres_reparation: le devis doit etre accepte pour etre rattache a un ordre de reparation';
+      end if;
 
-  if new.devis_id is not null then
-    select statut, garage_id, client_id, vehicule_id
-      into v_devis_statut, v_devis_garage, v_devis_client, v_devis_vehicule
-      from public.devis
-      where id = new.devis_id;
-
-    if not found then
-      raise exception 'ordres_reparation: devis introuvable ou hors garage';
+      if v_devis_garage is distinct from new.garage_id
+        or v_devis_client is distinct from new.client_id
+        or v_devis_vehicule is distinct from new.vehicule_id
+      then
+        raise exception
+          'ordres_reparation: le devis ne correspond pas au garage, client ou vehicule de cet ordre de reparation';
+      end if;
     end if;
 
-    if v_devis_statut is distinct from 'accepte' then
-      raise exception
-        'ordres_reparation: le devis doit etre accepte pour etre rattache a un ordre de reparation';
+    -- Le mécanicien n'est revalidé QUE si mecanicien_id change dans cet
+    -- UPDATE, pour la même raison : un changement de statut ne doit jamais
+    -- redéclencher une validation sur une affectation déjà en place.
+    if new.mecanicien_id is distinct from old.mecanicien_id and new.mecanicien_id is not null then
+      select garage_id into v_mecanicien_garage
+        from public.mecaniciens
+        where id = new.mecanicien_id;
+
+      if not found or v_mecanicien_garage is distinct from new.garage_id then
+        raise exception 'ordres_reparation: mecanicien hors garage';
+      end if;
     end if;
 
-    if v_devis_garage is distinct from new.garage_id
-      or v_devis_client is distinct from new.client_id
-      or v_devis_vehicule is distinct from new.vehicule_id
-    then
-      raise exception
-        'ordres_reparation: le devis ne correspond pas au garage, client ou vehicule de cet ordre de reparation';
-    end if;
-  end if;
-
-  if new.mecanicien_id is not null then
-    select garage_id into v_mecanicien_garage
-      from public.mecaniciens
-      where id = new.mecanicien_id;
-
-    if not found or v_mecanicien_garage is distinct from new.garage_id then
-      raise exception 'ordres_reparation: mecanicien hors garage';
-    end if;
+    return new;
   end if;
 
   return new;
@@ -361,21 +414,47 @@ create trigger ordres_reparation_log_historique_trigger
 
 -- =====================================================================
 -- 7. ACL explicites, au moindre privilège.
--- Ces tables sont neuves : sans révocation explicite, les privilèges par
--- défaut du schéma (souvent accordés largement à anon/authenticated sur ce
--- projet) s'appliqueraient silencieusement. On ne dépend donc d'aucun
--- privilège par défaut : révocation totale pour PUBLIC et anon, puis
--- octroi explicite et minimal à authenticated.
+-- Ces tables sont neuves : les privilèges par défaut du schéma de ce
+-- projet accordent automatiquement TOUS les privilèges (select/insert/
+-- update/delete/truncate/references/trigger) à anon, authenticated ET
+-- service_role sur toute table créée dans public — comportement déjà
+-- documenté et corrigé pour d'autres tables dans
+-- 20260831001100_revenue_recovery_fermer_privileges_defaut.sql. On ne
+-- dépend donc d'aucun privilège par défaut ici non plus : révocation
+-- totale pour PUBLIC, anon, authenticated ET service_role d'abord (efface
+-- l'état hérité, quel qu'il soit), puis octroi explicite et minimal,
+-- exclusivement à authenticated. Aucun droit accordé à service_role dans
+-- ce lot : aucun besoin backend/n8n concret n'est validé pour l'OR ; un
+-- besoin futur devra passer par une migration dédiée qui l'assumera
+-- explicitement.
 -- =====================================================================
 
-revoke all on table public.ordres_reparation from public, anon;
+revoke all on table public.ordres_reparation from public;
+revoke all on table public.ordres_reparation from anon;
+revoke all on table public.ordres_reparation from authenticated;
+revoke all on table public.ordres_reparation from service_role;
 grant select, insert, update on table public.ordres_reparation to authenticated;
+-- anon, service_role : aucun droit. DELETE et TRUNCATE : aucun droit pour
+-- quelque rôle applicatif que ce soit (voir A.8 et D du contrat).
 
-revoke all on table public.ordres_reparation_lignes from public, anon;
+revoke all on table public.ordres_reparation_lignes from public;
+revoke all on table public.ordres_reparation_lignes from anon;
+revoke all on table public.ordres_reparation_lignes from authenticated;
+revoke all on table public.ordres_reparation_lignes from service_role;
 grant select, insert, update, delete on table public.ordres_reparation_lignes to authenticated;
+-- anon, service_role : aucun droit. TRUNCATE : aucun droit pour quelque
+-- rôle applicatif que ce soit.
 
-revoke all on table public.ordres_reparation_historique from public, anon;
+revoke all on table public.ordres_reparation_historique from public;
+revoke all on table public.ordres_reparation_historique from anon;
+revoke all on table public.ordres_reparation_historique from authenticated;
+revoke all on table public.ordres_reparation_historique from service_role;
 grant select on table public.ordres_reparation_historique to authenticated;
+-- anon, service_role : aucun droit. INSERT/UPDATE/DELETE/TRUNCATE : aucun
+-- droit pour quelque rôle applicatif que ce soit — l'écriture ne passe que
+-- par le trigger SECURITY DEFINER (section 6), dont l'exécution ne dépend
+-- d'aucun de ces privilèges de table (le propriétaire de la fonction est
+-- exempté de RLS et détient déjà tous les droits sur ses propres objets).
 
 -- Aucun droit EXECUTE public sur les fonctions ajoutées : elles ne sont
 -- appelées que par leurs triggers respectifs (le déclenchement d'un
