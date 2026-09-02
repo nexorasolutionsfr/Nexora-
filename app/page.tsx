@@ -1,11 +1,10 @@
 import { SiteHeader } from "@/components/site-header"
 import { Hero } from "@/components/hero"
-import { TrustedBy } from "@/components/trusted-by"
-import { UseCases } from "@/components/use-cases"
-import { HowItWorks } from "@/components/how-it-works"
-import { Pricing } from "@/components/pricing"
-import { Testimonials } from "@/components/testimonials"
-import { Resources } from "@/components/resources"
+import { Problems } from "@/components/problems"
+import { DayWithNexora } from "@/components/day-with-nexora"
+import { Features } from "@/components/features"
+import { Security } from "@/components/security"
+import { PilotOffer } from "@/components/pilot-offer"
 import { Faq } from "@/components/faq"
 import { ContactCta } from "@/components/contact-cta"
 import { SiteFooter } from "@/components/site-footer"
@@ -16,12 +15,11 @@ export default function Page() {
       <SiteHeader />
       <main className="flex-1">
         <Hero />
-        <TrustedBy />
-        <UseCases />
-        <HowItWorks />
-        <Pricing />
-        <Testimonials />
-        <Resources />
+        <Problems />
+        <DayWithNexora />
+        <Features />
+        <Security />
+        <PilotOffer />
         <Faq />
         <ContactCta />
       </main>

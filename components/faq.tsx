@@ -7,34 +7,34 @@ type QA = { question: string; answer: string }
 
 const faqs: QA[] = [
   {
-    question: "Qu'est-ce que n8n exactement ?",
+    question: "Nexora remplace-t-il tous les logiciels du garage ?",
     answer:
-      "n8n est une plateforme d'automatisation open-source qui permet de connecter vos applications entre elles et d'automatiser vos tâches. Contrairement à des outils comme Zapier, elle offre plus de flexibilité, un meilleur contrôle sur vos données et des coûts maîtrisés à grande échelle.",
+      "Non, pas encore. Nexora centralise aujourd'hui les demandes, l'agenda, l'atelier, les inspections, les devis et les factures. Il ne gère pas la comptabilité, le stock de pièces ou l'encaissement en carte.",
   },
   {
-    question: "Faut-il des compétences techniques de notre côté ?",
+    question: "Est-ce adapté à un petit garage indépendant ?",
     answer:
-      "Non. C'est tout l'intérêt de notre accompagnement : nous concevons, déployons et maintenons les automatisations pour vous. Vos équipes n'ont qu'à profiter du temps gagné. Nous les formons aussi à l'usage quotidien.",
+      "Oui, c'est exactement le public visé. Nexora est pensé pour un garage indépendant qui veut une vue claire de sa journée, sans devenir gestionnaire de logiciels.",
   },
   {
-    question: "Nos données sont-elles en sécurité ?",
+    question: "Les clients doivent-ils installer une application ?",
     answer:
-      "Absolument. n8n peut être hébergé sur une infrastructure privée dédiée, en Europe. Vos données ne transitent que par les outils que vous autorisez, et nous appliquons les bonnes pratiques de sécurité à chaque projet.",
+      "Non. Les clients accèdent à leur inspection, devis ou facture via un lien sécurisé envoyé par le garage, ouvert dans un navigateur — aucune application ni compte à créer.",
   },
   {
-    question: "Combien de temps pour mettre en place une automatisation ?",
+    question: "Peut-on suivre un véhicule depuis une tablette ?",
     answer:
-      "Une première automatisation est généralement opérationnelle en 2 à 3 semaines, audit inclus. Les projets plus complexes sont découpés en lots pour livrer de la valeur rapidement.",
+      "Oui. L'interface atelier est pensée pour rester lisible et utilisable sur tablette, pour un mécanicien qui consulte ou met à jour un dossier en direct.",
   },
   {
-    question: "Que se passe-t-il si un de mes outils change ?",
+    question: "Comment les liens devis / inspection / facture sont-ils protégés ?",
     answer:
-      "Avec les formules incluant la maintenance, nous surveillons vos workflows et les adaptons en cas d'évolution de vos outils. Vous n'avez rien à gérer, tout continue de tourner.",
+      "Chaque lien repose sur un jeton aléatoire de 256 bits, sans rapport avec vos données. Le garage peut le révoquer à tout moment, et aucune donnée métier n'apparaît dans l'URL.",
   },
   {
-    question: "Le devis est-il vraiment gratuit ?",
+    question: "Nexora est-il déjà disponible ?",
     answer:
-      "Oui. L'audit initial et le devis sont offerts et sans engagement. Nous préférons d'abord comprendre vos besoins et vérifier que l'automatisation a un vrai retour sur investissement pour vous.",
+      "Nexora est une version pilote fonctionnelle : les fonctions décrites sur cette page sont opérationnelles, mais le produit n'est pas encore déployé à grande échelle. Nous constituons actuellement notre premier cercle de garages pilotes, et leurs retours orienteront directement la suite.",
   },
 ]
 
@@ -42,12 +42,12 @@ export function Faq() {
   const [openIndex, setOpenIndex] = useState<number | null>(0)
 
   return (
-    <section id="faq" className="scroll-mt-20 border-t border-border/60 bg-card/30">
+    <section id="faq" className="scroll-mt-20 border-t border-border bg-secondary/30">
       <div className="mx-auto max-w-3xl px-4 py-20 sm:px-6 md:py-28">
         <div className="text-center">
-          <p className="text-sm font-semibold uppercase tracking-widest text-primary">FAQ</p>
+          <p className="text-sm font-semibold uppercase tracking-widest text-[#2748A6]">FAQ</p>
           <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-balance sm:text-4xl">
-            Vous vous posez sûrement ces questions
+            Les questions qu'on nous pose le plus
           </h2>
         </div>
 
@@ -55,7 +55,7 @@ export function Faq() {
           {faqs.map((faq, i) => {
             const isOpen = openIndex === i
             return (
-              <div key={faq.question} className="rounded-2xl border border-border bg-background">
+              <div key={faq.question} className="rounded-2xl border border-border bg-card">
                 <button
                   type="button"
                   onClick={() => setOpenIndex(isOpen ? null : i)}

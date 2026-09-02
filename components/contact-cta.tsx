@@ -2,130 +2,147 @@
 
 import { useState } from "react"
 import type { FormEvent } from "react"
-import { ArrowRight, CheckCircle2, Clock, ShieldCheck, Zap } from "lucide-react"
+import { ArrowRight, Mail, ShieldCheck, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-const CONTACT_EMAIL = "baptiste.papoul52@gmail.com"
+const CONTACT_EMAIL = "nexorasolutions.france@gmail.com"
 
 const perks = [
-  { icon: Clock, text: "Réponse sous 24 h ouvrées" },
-  { icon: ShieldCheck, text: "Audit gratuit et sans engagement" },
-  { icon: Zap, text: "Premières pistes concrètes dès l'appel" },
+  { icon: Users, text: "Démonstration personnalisée avec vos cas concrets" },
+  { icon: ShieldCheck, text: "Aucun engagement avant l'échange" },
+  { icon: Mail, text: "Le formulaire ouvre simplement votre messagerie" },
 ]
 
 export function ContactCta() {
-  const [submitted, setSubmitted] = useState(false)
+  const [opened, setOpened] = useState(false)
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
     const name = formData.get("name")
-    const company = formData.get("company")
+    const garage = formData.get("garage")
     const email = formData.get("email")
+    const phone = formData.get("phone")
     const need = formData.get("need")
 
-    const subject = encodeURIComponent(`Demande de démo — ${company}`)
+    const subject = encodeURIComponent(`Demande de démo — ${garage}`)
     const body = encodeURIComponent(
-      `Nom : ${name}\nEntreprise : ${company}\nEmail : ${email}\n\nBesoin :\n${need}`,
+      `Nom : ${name}\nGarage : ${garage}\nEmail : ${email}\nTéléphone : ${phone || "non renseigné"}\n\nPrincipal besoin :\n${need}`,
     )
     window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`
 
-    setSubmitted(true)
+    setOpened(true)
   }
 
   return (
     <section id="contact" className="scroll-mt-20">
       <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-28">
         <div className="relative overflow-hidden rounded-3xl border border-border bg-card">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -right-32 -top-32 h-80 w-80 rounded-full opacity-50 blur-3xl"
-            style={{
-              background:
-                "radial-gradient(closest-side, oklch(0.7 0.17 18 / 45%), transparent)",
-            }}
-          />
-
           <div className="relative grid gap-10 p-8 sm:p-12 lg:grid-cols-2">
             <div className="flex flex-col gap-6">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-widest text-primary">
-                  Démo & devis
+                <p className="text-sm font-semibold uppercase tracking-widest text-[#2748A6]">
+                  Démo
                 </p>
                 <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-balance sm:text-4xl">
-                  Découvrez ce que Nexora peut automatiser chez vous
+                  Découvrez Nexora sur votre propre activité
                 </h2>
                 <p className="mt-4 text-lg text-muted-foreground text-pretty">
-                  Décrivez-nous votre besoin en quelques mots. On vous rappelle pour une démo
-                  personnalisée et un devis adapté à votre PME.
+                  Décrivez votre garage en quelques mots. On revient vers vous pour organiser une
+                  démonstration personnalisée.
                 </p>
               </div>
 
               <ul className="flex flex-col gap-3">
-                {perks.map((p) => {
-                  const Icon = p.icon
-                  return (
-                    <li key={p.text} className="flex items-center gap-3 text-sm">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        <Icon className="h-4 w-4" />
-                      </span>
-                      <span className="text-foreground/90">{p.text}</span>
-                    </li>
-                  )
-                })}
+                {perks.map((p) => (
+                  <li key={p.text} className="flex items-center gap-3 text-sm">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-primary">
+                      <p.icon className="h-4 w-4" />
+                    </span>
+                    <span className="text-foreground/90">{p.text}</span>
+                  </li>
+                ))}
               </ul>
             </div>
 
             <div className="rounded-2xl border border-border bg-background p-6 sm:p-8">
-              {submitted ? (
+              {opened ? (
                 <div className="flex h-full flex-col items-center justify-center gap-4 py-8 text-center">
-                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/15 text-primary">
-                    <CheckCircle2 className="h-7 w-7" />
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-secondary text-primary">
+                    <Mail className="h-7 w-7" />
                   </span>
-                  <h3 className="font-display text-xl font-semibold">Demande bien reçue !</h3>
+                  <h3 className="font-display text-xl font-semibold">Votre messagerie a dû s'ouvrir</h3>
                   <p className="max-w-sm text-sm text-muted-foreground">
-                    Merci. Notre équipe vous recontacte sous 24 h ouvrées pour organiser votre démo
-                    personnalisée.
+                    Envoyez l'email pour finaliser votre demande. Sans envoi de votre part, Nexora ne
+                    reçoit rien.
                   </p>
+                  <p className="max-w-sm text-sm text-muted-foreground">
+                    Si votre messagerie ne s'est pas ouverte, écrivez-nous directement à{" "}
+                    <a href={`mailto:${CONTACT_EMAIL}`} className="font-medium text-primary hover:underline">
+                      {CONTACT_EMAIL}
+                    </a>
+                    .
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setOpened(false)}
+                    className="text-sm font-medium text-primary hover:underline"
+                  >
+                    Revenir au formulaire
+                  </button>
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                  <p className="rounded-lg bg-secondary px-3.5 py-2.5 text-xs leading-relaxed text-secondary-foreground">
+                    En validant, votre messagerie habituelle va s'ouvrir avec un email pré-rempli.
+                    Il vous suffira de l'envoyer pour finaliser votre demande.
+                  </p>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <Field label="Nom" id="name" name="name" placeholder="Jean Dupont" required />
                     <Field
-                      label="Entreprise"
-                      id="company"
-                      name="company"
-                      placeholder="Votre PME"
+                      label="Garage"
+                      id="garage"
+                      name="garage"
+                      placeholder="Garage Dupont"
                       required
                     />
                   </div>
-                  <Field
-                    label="Email professionnel"
-                    id="email"
-                    name="email"
-                    type="email"
-                    placeholder="jean@entreprise.fr"
-                    required
-                  />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field
+                      label="Email"
+                      id="email"
+                      name="email"
+                      type="email"
+                      placeholder="jean@garage-dupont.fr"
+                      required
+                    />
+                    <Field
+                      label="Téléphone (facultatif)"
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      placeholder="06 12 34 56 78"
+                    />
+                  </div>
                   <div className="flex flex-col gap-1.5">
                     <label htmlFor="need" className="text-sm font-medium">
-                      Que souhaitez-vous automatiser ?
+                      Quel est votre principal besoin ?
                     </label>
                     <textarea
                       id="need"
                       name="need"
                       rows={3}
-                      placeholder="Ex : le suivi de nos factures et les relances clients…"
-                      className="w-full resize-none rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-primary/30"
+                      placeholder="Ex : mieux suivre les véhicules en atelier, ne plus perdre de devis…"
+                      className="w-full resize-none rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
                     />
                   </div>
-                  <Button type="submit" size="lg" className="mt-2 w-full">
-                    Demander ma démo gratuite
+                  <Button type="submit" size="lg" className="mt-2 h-11 w-full">
+                    Demander une démo
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                   <p className="text-center text-xs text-muted-foreground">
-                    En envoyant ce formulaire, vous acceptez d'être recontacté par Nexora.
+                    Les informations saisies servent uniquement à préparer votre message. Rien n'est
+                    envoyé tant que vous ne confirmez pas l'envoi dans votre messagerie.
                   </p>
                 </form>
               )}
@@ -158,7 +175,7 @@ function Field({ label, id, name, type = "text", placeholder, required }: FieldP
         type={type}
         placeholder={placeholder}
         required={required}
-        className="w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-primary/30"
+        className="w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
       />
     </div>
   )
