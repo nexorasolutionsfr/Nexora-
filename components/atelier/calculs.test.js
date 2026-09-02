@@ -44,8 +44,66 @@ test("un véhicule entré la veille et toujours en intervention reste visible da
 
 test('un véhicule prêt depuis la veille reste visible tant que non restitué', () => {
   const pretVeille = rdv({ id: 'rdv-pret-veille', statut_atelier: 'pret', date_debut: '2026-09-09T07:00:00Z', date_fin: '2026-09-09T08:00:00Z' })
+  // Toujours compté dans le total "dans l'atelier" (compteur global)...
   assert.deepEqual(selectionnerDansAtelier([pretVeille]).map((r) => r.id), ['rdv-pret-veille'])
+  // ...et présent dans "Prêts à restituer"...
   assert.deepEqual(selectionnerPretsARestituer([pretVeille]).map((r) => r.id), ['rdv-pret-veille'])
+  // ...mais absent de toutes les colonnes de la grille (pas de doublon visuel).
+  const groupes = regrouperParEtape([pretVeille])
+  assert.deepEqual(groupes.flatMap((g) => g.rendezVous.map((r) => r.id)), [])
+})
+
+test("un rendez-vous \"pret\" n'apparaît qu'une seule fois : dans « Prêts à restituer », jamais dans la grille « Dans l'atelier »", () => {
+  const pret = rdv({ id: 'rdv-pret-unique', statut_atelier: 'pret' })
+
+  // 1. Figure bien dans la sélection "prêts à restituer".
+  assert.deepEqual(selectionnerPretsARestituer([pret]).map((r) => r.id), ['rdv-pret-unique'])
+
+  // 2. Absent de toutes les colonnes de la grille "Dans l'atelier", y compris
+  //    qu'aucune colonne "pret" n'existe même vide (retirée de la grille).
+  const groupes = regrouperParEtape([pret])
+  assert.equal(groupes.some((g) => g.key === 'pret'), false)
+  assert.deepEqual(groupes.flatMap((g) => g.rendezVous.map((r) => r.id)), [])
+})
+
+test("les étapes depose à intervention restent affichées dans la grille « Dans l'atelier »", () => {
+  const cas = [
+    rdv({ id: 'depose', statut_atelier: 'depose' }),
+    rdv({ id: 'diagnostic', statut_atelier: 'diagnostic' }),
+    rdv({ id: 'attente-client', statut_atelier: 'attente_client' }),
+    rdv({ id: 'attente-piece', statut_atelier: 'attente_piece' }),
+    rdv({ id: 'intervention', statut_atelier: 'intervention' }),
+  ]
+  const groupes = regrouperParEtape(cas)
+  assert.deepEqual(groupes.map((g) => g.key), ['depose', 'diagnostic', 'attente_client', 'attente_piece', 'intervention'])
+  for (const c of cas) {
+    const colonne = groupes.find((g) => g.key === c.statut_atelier)
+    assert.deepEqual(colonne.rendezVous.map((r) => r.id), [c.id])
+  }
+})
+
+test("aucun rendez-vous n'est dupliqué entre les sections actives (grille + prêts à restituer)", () => {
+  const cas = [
+    rdv({ id: 'depose', statut_atelier: 'depose' }),
+    rdv({ id: 'diagnostic', statut_atelier: 'diagnostic' }),
+    rdv({ id: 'attente-client', statut_atelier: 'attente_client' }),
+    rdv({ id: 'attente-piece', statut_atelier: 'attente_piece' }),
+    rdv({ id: 'intervention', statut_atelier: 'intervention' }),
+    rdv({ id: 'pret-1', statut_atelier: 'pret' }),
+    rdv({ id: 'pret-2', statut_atelier: 'pret', date_debut: '2026-09-09T07:00:00Z' }),
+  ]
+  const idsGrille = regrouperParEtape(cas).flatMap((g) => g.rendezVous.map((r) => r.id))
+  const idsPrets = selectionnerPretsARestituer(cas).map((r) => r.id)
+
+  // Chaque id "pret" est dans exactement une des deux sections (prêts, pas grille).
+  const intersection = idsGrille.filter((id) => idsPrets.includes(id))
+  assert.deepEqual(intersection, [])
+  assert.deepEqual(idsPrets.sort(), ['pret-1', 'pret-2'])
+  assert.deepEqual(idsGrille.sort(), ['attente-client', 'attente-piece', 'depose', 'diagnostic', 'intervention'])
+
+  // Le compteur global "dans l'atelier" continue d'inclure les prêts (7 au total).
+  assert.equal(calculerCompteurs(cas, MAINTENANT).dansAtelier, 7)
+  assert.equal(calculerCompteurs(cas, MAINTENANT).prets, 2)
 })
 
 test("un rendez-vous ancien sans statut_atelier n'est jamais réintroduit", () => {

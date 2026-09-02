@@ -725,9 +725,9 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], a
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100">
           <div className="font-semibold text-slate-900 text-[15px]">Dans l'atelier</div>
-          <div className="text-[12.5px] text-slate-500 mt-0.5">Tous les véhicules engagés, quelle que soit leur date d'entrée.</div>
+          <div className="text-[12.5px] text-slate-500 mt-0.5">Véhicules encore en cours de traitement, quelle que soit leur date d'entrée — les véhicules prêts sont dans « Prêts à restituer » ci-dessous.</div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-px bg-slate-200">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-px bg-slate-200">
           {groupesAtelier.map((etape) => {
             const info = etapeParCle(etape.key);
             return (

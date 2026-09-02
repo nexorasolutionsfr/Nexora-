@@ -14,6 +14,11 @@ const STATUTS_EXCLUS = ["Annulé", "Absent", "Terminé"];
 // Étapes considérées comme "dans l'atelier" — mêmes clés que WORKSHOP_STAGES
 // (NexoraDashboard.jsx), sans "a_venir" (pas encore arrivé) ni "restitue"
 // (déjà reparti, traité séparément par selectionnerRestitutionsAujourdhui).
+// "pret" reste compté dans cet ensemble (le compteur "Dans l'atelier" inclut
+// les véhicules prêts) mais n'a pas sa propre colonne dans la grille — voir
+// ETAPES_GRILLE_ATELIER ci-dessous, seule utilisée par regrouperParEtape,
+// pour ne jamais afficher un même rendez-vous à la fois dans la grille et
+// dans la section dédiée "Prêts à restituer".
 export const ETAPES_ATELIER = [
   { key: "depose", label: "Véhicule déposé" },
   { key: "diagnostic", label: "Diagnostic" },
@@ -23,6 +28,11 @@ export const ETAPES_ATELIER = [
   { key: "pret", label: "Prêt" },
 ];
 const CLES_ETAPES_ATELIER = ETAPES_ATELIER.map((etape) => etape.key);
+
+// Colonnes réellement affichées dans la grille "Dans l'atelier" — "pret" en
+// est exclu pour éviter le doublon visuel avec "Prêts à restituer" (même
+// rendez-vous montré deux fois dans la vue, constaté en recette).
+const ETAPES_GRILLE_ATELIER = ETAPES_ATELIER.filter((etape) => etape.key !== "pret");
 
 // Étapes activement suivies (exclut "pret" : un véhicule prêt n'est ni en
 // retard ni orphelin, il attend simplement d'être restitué) — c'est sur ce
@@ -71,10 +81,13 @@ export function selectionnerDansAtelier(rendezVous = []) {
   return rendezVous.filter((r) => !estRendezVousExclu(r) && CLES_ETAPES_ATELIER.includes(r.statut_atelier));
 }
 
-// Répartition "Dans l'atelier" par étape, pour le tableau/kanban.
+// Répartition "Dans l'atelier" par étape, pour le tableau/kanban. N'inclut
+// jamais "pret" : ces rendez-vous n'apparaissent que dans la section dédiée
+// "Prêts à restituer" (selectionnerPretsARestituer), jamais dans les deux à
+// la fois.
 export function regrouperParEtape(rendezVous = []) {
   const dansAtelier = selectionnerDansAtelier(rendezVous);
-  return ETAPES_ATELIER.map((etape) => ({
+  return ETAPES_GRILLE_ATELIER.map((etape) => ({
     ...etape,
     rendezVous: dansAtelier.filter((r) => r.statut_atelier === etape.key),
   }));
