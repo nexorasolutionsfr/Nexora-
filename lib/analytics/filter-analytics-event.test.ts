@@ -75,3 +75,30 @@ test('filterAnalyticsEvent allows custom events on the root route, normalized', 
   assert.equal(result?.url, '/')
   assert.equal(result?.type, 'event')
 })
+
+test('filterAnalyticsEvent preserves non-sensitive event fields beyond type/url on the allowed root', () => {
+  const original = {
+    type: 'pageview' as const,
+    url: '/?utm_source=test#top',
+    projectId: 'proj_factice',
+    sdkn: '@vercel/analytics',
+    sdkv: '1.6.1',
+    ts: 1735689600000,
+  }
+  const result = filterAnalyticsEvent(original)
+  assert.notEqual(result, null)
+  assert.equal(result?.url, '/')
+  assert.equal(result?.type, 'pageview')
+  assert.equal(result?.projectId, 'proj_factice')
+  assert.equal(result?.sdkn, '@vercel/analytics')
+  assert.equal(result?.sdkv, '1.6.1')
+  assert.equal(result?.ts, 1735689600000)
+})
+
+test('filterAnalyticsEvent does not mutate the original event object', () => {
+  const original = { type: 'pageview' as const, url: '/?utm_source=test', projectId: 'proj_factice' }
+  const snapshot = { ...original }
+  const result = filterAnalyticsEvent(original)
+  assert.deepEqual(original, snapshot, 'the input event must be left untouched')
+  assert.notEqual(result, original, 'the filter must return a new object, not the original reference')
+})
