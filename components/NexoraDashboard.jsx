@@ -256,8 +256,8 @@ const navGroups = [
     items: [
       { key: "agenda", label: "Agenda", icon: Calendar },
       { key: "atelier", label: "Atelier", icon: Wrench },
-      { key: "ordres-reparation", label: "Ordres de réparation", icon: ClipboardCheck },
-      ...(INSPECTIONS_MODULE_ACTIF ? [{ key: "inspections", label: "Inspections", icon: ClipboardList }] : []),
+      { key: "ordres-reparation", label: "Fiches atelier (OR)", icon: ClipboardCheck },
+      ...(INSPECTIONS_MODULE_ACTIF ? [{ key: "inspections", label: "Contrôle véhicule", icon: ClipboardList }] : []),
     ],
   },
   {
