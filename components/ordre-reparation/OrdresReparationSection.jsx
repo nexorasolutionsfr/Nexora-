@@ -515,9 +515,15 @@ function OrdreDetail({ garageId, ordreId, workshopStages, onClose, onToast, onCh
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
               <div className="text-[12px] font-semibold text-slate-500 uppercase tracking-wide">Lignes</div>
-              {totalEstime > 0 && <div className="text-[12.5px] text-slate-500">Total estimé HT : {totalEstime.toFixed(2)} € <span className="text-slate-400">(indicatif, interne)</span></div>}
+              {lignes.length > 0 && (
+                totalEstime.complet ? (
+                  <div className="text-[12.5px] text-slate-500">Total estimé HT : {totalEstime.total.toFixed(2)} € <span className="text-slate-400">(indicatif, interne)</span></div>
+                ) : (
+                  <div className="text-[12.5px] text-amber-600">Total partiel HT — certaines lignes n'ont pas encore de prix <span className="text-slate-400">(indicatif, interne)</span></div>
+                )
+              )}
             </div>
             <div className="space-y-2">
               {lignes.map((l) => (

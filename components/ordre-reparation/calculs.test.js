@@ -101,13 +101,27 @@ test('validerLigneForm refuse un libellé vide ou blanc', () => {
   assert.equal(validerLigneForm({ type: 'piece', libelle: '   ', quantite: 1 }).valide, false)
 })
 
-test('calculerTotalEstimeHT additionne quantite * prix_unitaire_ht en ignorant les lignes sans prix', () => {
-  const lignes = [ligne({ quantite: 2, prix_unitaire_ht: 10 }), ligne({ quantite: 1, prix_unitaire_ht: 15.5 }), ligne({ quantite: 3, prix_unitaire_ht: null })]
-  assert.equal(calculerTotalEstimeHT(lignes), 35.5)
+test('calculerTotalEstimeHT additionne quantite * prix_unitaire_ht et signale un total complet quand toutes les lignes ont un prix', () => {
+  const lignes = [ligne({ quantite: 2, prix_unitaire_ht: 10 }), ligne({ quantite: 1, prix_unitaire_ht: 15.5 })]
+  const { total, complet } = calculerTotalEstimeHT(lignes)
+  assert.equal(total, 35.5)
+  assert.equal(complet, true)
 })
 
-test('calculerTotalEstimeHT renvoie 0 sur une liste vide', () => {
-  assert.equal(calculerTotalEstimeHT([]), 0)
+test('calculerTotalEstimeHT signale un total partiel (jamais un prix à zéro) si une ligne a un prix null, vide ou non numérique', () => {
+  const casSansPrixValide = [null, undefined, '', 'abc', NaN]
+  for (const prixInvalide of casSansPrixValide) {
+    const lignes = [ligne({ quantite: 2, prix_unitaire_ht: 10 }), ligne({ quantite: 3, prix_unitaire_ht: prixInvalide })]
+    const { total, complet } = calculerTotalEstimeHT(lignes)
+    assert.equal(complet, false, `attendu incomplet pour prix_unitaire_ht = ${String(prixInvalide)}`)
+    assert.equal(total, 20, `la ligne sans prix valide ne doit jamais compter comme 0 pour prix_unitaire_ht = ${String(prixInvalide)}`)
+  }
+})
+
+test('calculerTotalEstimeHT renvoie un total nul et incomplet sur une liste vide (aucun total à afficher)', () => {
+  const { total, complet } = calculerTotalEstimeHT([])
+  assert.equal(total, 0)
+  assert.equal(complet, false)
 })
 
 test("peutModifierLignes n'autorise pas l'édition visuelle d'un OR annulé", () => {

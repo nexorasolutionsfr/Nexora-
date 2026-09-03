@@ -93,19 +93,40 @@ export function validerLigneForm({ type, libelle, quantite, prix_unitaire_ht, du
   return { valide: Object.keys(erreurs).length === 0, erreurs };
 }
 
+function ligneAUnPrixValide(ligne) {
+  const prix = ligne.prix_unitaire_ht;
+  if (prix === null || prix === undefined || prix === "") return false;
+  return Number.isFinite(Number(prix));
+}
+
 /**
  * Total HT estimé d'un OR — indicatif uniquement (aucune valeur
- * contractuelle, jamais un TTC ni un montant facturé). Ignore les lignes
- * sans prix renseigné plutôt que de les compter comme zéro dans l'affichage
- * d'un simple total incomplet.
+ * contractuelle, jamais un TTC ni un montant facturé). Une ligne dont le
+ * prix est null, vide ou non numérique n'est jamais comptée comme un prix à
+ * zéro : elle est exclue de la somme et fait basculer `complet` à false, pour
+ * que l'affichage ne prétende jamais à un total complet qu'il n'est pas.
+ * Une liste vide renvoie un total nul et `complet: false` (aucun total à
+ * afficher).
  */
 export function calculerTotalEstimeHT(lignes) {
-  return lignes.reduce((total, ligne) => {
-    const prix = Number(ligne.prix_unitaire_ht);
+  if (!lignes || lignes.length === 0) {
+    return { total: 0, complet: false };
+  }
+  let total = 0;
+  let complet = true;
+  for (const ligne of lignes) {
+    if (!ligneAUnPrixValide(ligne)) {
+      complet = false;
+      continue;
+    }
     const quantite = Number(ligne.quantite);
-    if (!Number.isFinite(prix) || !Number.isFinite(quantite)) return total;
-    return total + prix * quantite;
-  }, 0);
+    if (!Number.isFinite(quantite)) {
+      complet = false;
+      continue;
+    }
+    total += Number(ligne.prix_unitaire_ht) * quantite;
+  }
+  return { total, complet };
 }
 
 /**
