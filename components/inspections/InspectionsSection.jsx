@@ -539,11 +539,11 @@ export default function InspectionsSection({ garageId, clients = [], rendezVous 
     <div>
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Inspections</h1>
-          <div className="text-[13px] text-slate-500 mt-0.5">Contrôle véhicule digital avant intervention</div>
+          <h1 className="text-xl font-semibold text-slate-900">Contrôle avant travaux</h1>
+          <div className="text-[13px] text-slate-500 mt-0.5">Notez les points à vérifier, ajoutez des photos et faites valider les travaux nécessaires avant d'intervenir</div>
         </div>
         <button onClick={() => setCreateOpen(true)} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center gap-1.5" style={{ backgroundColor: ACCENT }}>
-          <Plus size={15} /> Nouvelle inspection
+          <Plus size={15} /> Nouveau contrôle
         </button>
       </div>
 
@@ -573,8 +573,13 @@ export default function InspectionsSection({ garageId, clients = [], rendezVous 
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState
-          title={inspections.length === 0 ? "Aucune inspection pour l'instant" : "Aucun résultat"}
-          subtitle={inspections.length === 0 ? "Créez une inspection avant la prochaine intervention." : "Essayez une autre recherche ou un autre filtre."}
+          title={inspections.length === 0 ? "Aucun contrôle pour l'instant" : "Aucun résultat"}
+          subtitle={inspections.length === 0 ? "Créez un contrôle avant chaque intervention pour noter l'état du véhicule et faire valider les travaux avec le client." : "Essayez une autre recherche ou un autre filtre."}
+          action={inspections.length === 0 ? (
+            <button onClick={() => setCreateOpen(true)} className="mt-4 px-4 py-2.5 rounded-xl text-sm font-semibold text-white inline-flex items-center gap-1.5" style={{ backgroundColor: ACCENT }}>
+              <Plus size={15} /> Nouveau contrôle
+            </button>
+          ) : undefined}
         />
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100">
