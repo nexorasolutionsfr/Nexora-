@@ -512,7 +512,7 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
               onClick={() => onOuvrirOrdreReparation(appt.id)}
               className="mt-3 w-full min-h-[44px] rounded-xl border border-slate-200 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 flex items-center justify-center gap-1.5"
             >
-              <ClipboardCheck size={14} /> Ordre de réparation
+              <ClipboardCheck size={14} /> Préparer la fiche atelier
             </button>
           )}
         </div>
@@ -2468,7 +2468,7 @@ function HistoriqueView({ devisList, garageId, onCreerOrdreReparation }) {
                     onClick={() => onCreerOrdreReparation(it.raw)}
                     className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 whitespace-nowrap"
                   >
-                    Ordre de réparation
+                    Créer la fiche atelier
                   </button>
                 )}
                 <div className="text-[12.5px] text-slate-400 whitespace-nowrap">{formatDateHeure(it.date)}</div>

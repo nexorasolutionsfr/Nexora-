@@ -236,7 +236,7 @@ export default function VehicleCaseFileView({
                 onClick={() => onOuvrirOrdresReparation(vehicule.id)}
                 className="text-left bg-white rounded-2xl border border-slate-200 p-3.5 col-span-2 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
-                <div className="text-[12px] text-slate-500 flex items-center gap-1.5"><ClipboardCheck size={12} /> Ordres de réparation</div>
+                <div className="text-[12px] text-slate-500 flex items-center gap-1.5"><ClipboardCheck size={12} /> Fiches atelier</div>
                 <div className="text-sm font-semibold text-slate-800 mt-1 flex items-center gap-1">Consulter ou créer <ArrowRight size={13} /></div>
               </button>
             )}

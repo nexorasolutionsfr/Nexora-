@@ -37,7 +37,7 @@ function Badge({ children, tone = "slate" }) {
   );
 }
 
-function EmptyState({ title, subtitle, action }) {
+function EmptyState({ title, subtitle, steps, action }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center shadow-sm">
       <div className="w-11 h-11 rounded-xl flex items-center justify-center mx-auto mb-3" style={{ backgroundColor: ACCENT_SOFT }}>
@@ -45,6 +45,16 @@ function EmptyState({ title, subtitle, action }) {
       </div>
       <div className="text-slate-900 font-medium text-sm">{title}</div>
       {subtitle && <div className="text-slate-500 text-[13px] mt-1">{subtitle}</div>}
+      {steps && steps.length > 0 && (
+        <div className="mt-4 max-w-sm mx-auto text-left bg-slate-50 rounded-xl p-4">
+          <div className="text-[12px] font-semibold text-slate-600">Quand l'utiliser ?</div>
+          <ol className="mt-2 space-y-1.5 text-[12.5px] text-slate-500 list-decimal list-inside">
+            {steps.map((step, i) => (
+              <li key={i}>{step}</li>
+            ))}
+          </ol>
+        </div>
+      )}
       {action}
     </div>
   );
@@ -686,11 +696,11 @@ export default function OrdresReparationSection({
     <div>
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Ordres de réparation</h1>
-          <div className="text-[13px] text-slate-500 mt-0.5">Suivi interne du contenu et de l'avancement des réparations</div>
+          <h1 className="text-xl font-semibold text-slate-900">Fiches atelier</h1>
+          <div className="text-[13px] text-slate-500 mt-0.5">La fiche interne qui suit chaque réparation, de la préparation à la restitution (ordre de réparation)</div>
         </div>
         <button onClick={() => { setCreateInitial({ rendezVousId: null, devisId: null }); setCreateOpen(true); }} className="min-h-[44px] px-4 rounded-xl text-sm font-semibold text-white flex items-center gap-1.5" style={{ backgroundColor: ACCENT }}>
-          <Plus size={15} /> Nouvel ordre
+          <Plus size={15} /> Créer depuis un rendez-vous
         </button>
       </div>
 
@@ -742,8 +752,13 @@ export default function OrdresReparationSection({
           />
         ) : (
           <EmptyState
-            title={ordres.length === 0 ? "Aucun ordre de réparation pour l'instant" : "Aucun résultat"}
-            subtitle={ordres.length === 0 ? "Créez-en un depuis un rendez-vous existant, ou transformez un devis accepté." : "Essayez une autre recherche ou un autre filtre."}
+            title={ordres.length === 0 ? "Aucune fiche atelier pour l'instant" : "Aucun résultat"}
+            subtitle={ordres.length === 0 ? "Créez-en une depuis un rendez-vous existant, ou transformez un devis accepté." : "Essayez une autre recherche ou un autre filtre."}
+            steps={ordres.length === 0 ? [
+              "Un client a un rendez-vous confirmé.",
+              "Le devis est accepté ou les travaux sont validés.",
+              "Vous préparez la fiche pour le mécanicien, de la prise en charge à la restitution.",
+            ] : undefined}
           />
         )
       ) : (
