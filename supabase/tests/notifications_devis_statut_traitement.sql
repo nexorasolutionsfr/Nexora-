@@ -177,6 +177,12 @@ $$;
 do $$
 declare
   v_fn text;
+  v_oid oid;
+  v_proconfig text[];
+  v_entrees_search_path text[];
+  v_entree text;
+  v_valeur text;
+  v_normalisee text;
   v_noms text[] := array[
     'notifications_a_verifier',
     'notification_reessayer',
@@ -184,35 +190,56 @@ declare
   ];
 begin
   foreach v_fn in array v_noms loop
-    perform pg_temp.assert(
-      has_function_privilege('authenticated', p.oid, 'EXECUTE'),
-      v_fn || ' : authenticated doit avoir EXECUTE')
+    select p.oid, p.proconfig into v_oid, v_proconfig
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
      where n.nspname = 'public' and p.proname = v_fn;
 
+    perform pg_temp.assert(v_oid is not null,
+      v_fn || ' doit exister — migration appliquee ?');
+
+    -- Matrice ACL complète : un seul rôle autorisé, et PUBLIC jamais.
+    -- PUBLIC est vérifié explicitement : c'est le défaut de PostgreSQL
+    -- pour toute fonction nouvellement créée, donc l'oubli le plus
+    -- probable et le plus lourd de conséquences.
     perform pg_temp.assert(
-      not has_function_privilege('anon', p.oid, 'EXECUTE'),
-      v_fn || ' : anon ne doit PAS avoir EXECUTE')
-      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-     where n.nspname = 'public' and p.proname = v_fn;
+      has_function_privilege('authenticated', v_oid, 'EXECUTE'),
+      v_fn || ' : authenticated doit avoir EXECUTE');
+    perform pg_temp.assert(
+      not has_function_privilege('public', v_oid, 'EXECUTE'),
+      v_fn || ' : PUBLIC ne doit PAS avoir EXECUTE');
+    perform pg_temp.assert(
+      not has_function_privilege('anon', v_oid, 'EXECUTE'),
+      v_fn || ' : anon ne doit PAS avoir EXECUTE');
+    perform pg_temp.assert(
+      not has_function_privilege('service_role', v_oid, 'EXECUTE'),
+      v_fn || ' : service_role ne doit PAS avoir EXECUTE');
 
     perform pg_temp.assert(
-      not has_function_privilege('service_role', p.oid, 'EXECUTE'),
-      v_fn || ' : service_role ne doit PAS avoir EXECUTE')
-      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-     where n.nspname = 'public' and p.proname = v_fn;
-
-    perform pg_temp.assert(
-      (select p.prosecdef from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-        where n.nspname = 'public' and p.proname = v_fn) is true,
+      (select p.prosecdef from pg_proc p where p.oid = v_oid) is true,
       v_fn || ' doit etre SECURITY DEFINER');
 
+    -- search_path : motif robuste repris de
+    -- supabase/tests/ordres_reparation_v1.sql. Un simple test de préfixe
+    -- accepterait 'search_path=public', qui rouvrirait précisément la
+    -- faille corrigée par 20260902000300.
+    select array_agg(e) into v_entrees_search_path
+      from unnest(coalesce(v_proconfig, array[]::text[])) as e
+      where e like 'search_path=%';
+
     perform pg_temp.assert(
-      (select 'search_path=' = any (
-                select left(cfg, 12) from unnest(p.proconfig) as cfg)
-         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-        where n.nspname = 'public' and p.proname = v_fn) is true,
-      v_fn || ' doit fixer search_path');
+      v_entrees_search_path is not null and array_length(v_entrees_search_path, 1) = 1,
+      v_fn || ' doit avoir exactement une entree search_path, proconfig=' ||
+        coalesce(array_to_string(v_proconfig, ','), 'aucun'));
+
+    v_entree := v_entrees_search_path[1];
+    v_valeur := substring(v_entree from length('search_path=') + 1);
+    -- Deux seules représentations canoniques acceptées d'un search_path
+    -- vide : chaîne nue vide, ou chaîne vide entre guillemets doubles
+    -- littéraux (forme réellement observée sur cette instance Postgres).
+    v_normalisee := case when v_valeur = '""' then '' else v_valeur end;
+
+    perform pg_temp.assert(v_normalisee = '',
+      v_fn || ' doit avoir un search_path fixe et vide, recu : ' || v_entree);
   end loop;
 end;
 $$;
@@ -472,15 +499,38 @@ select pg_temp.assert(
 select set_config('request.jwt.claims', json_build_object('sub', pg_temp.fid('user_c')::text, 'role', 'authenticated')::text, true);
 set local role authenticated;
 
-select pg_temp.assert(
-  (select count(*) from public.notifications_a_verifier()) = 0,
-  'un compte sans garage ne doit rien voir');
+-- La lecture doit ECHOUER explicitement, et non renvoyer une liste vide :
+-- un écran « aucune notification » masquerait un compte mal rattaché
+-- derrière un affichage parfaitement normal.
+do $$
+begin
+  begin
+    perform * from public.notifications_a_verifier();
+    perform pg_temp.assert(false, 'un compte sans garage ne doit pas pouvoir lire la liste');
+  exception when others then
+    perform pg_temp.assert(sqlerrm like '%Aucun garage%',
+      'la lecture sans garage doit etre refusee explicitement (constate: ' || sqlerrm || ')');
+  end;
+end;
+$$;
 
 do $$
 begin
   begin
     perform public.notification_reessayer(pg_temp.fid('notif_a_incomplete'));
     perform pg_temp.assert(false, 'un compte sans garage ne doit pas pouvoir agir');
+  exception when others then
+    perform pg_temp.assert(sqlerrm like '%Aucun garage%',
+      'le refus doit etre explicite sur absence de garage (constate: ' || sqlerrm || ')');
+  end;
+end;
+$$;
+
+do $$
+begin
+  begin
+    perform public.notification_abandonner(pg_temp.fid('notif_a_incomplete'));
+    perform pg_temp.assert(false, 'un compte sans garage ne doit pas pouvoir abandonner');
   exception when others then
     perform pg_temp.assert(sqlerrm like '%Aucun garage%',
       'le refus doit etre explicite sur absence de garage (constate: ' || sqlerrm || ')');

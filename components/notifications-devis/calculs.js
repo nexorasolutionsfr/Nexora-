@@ -39,14 +39,6 @@ export function compterNotifications(liste) {
   return Array.isArray(liste) ? liste.length : 0;
 }
 
-// Référence courte et non identifiante affichée dans la liste : les huit
-// premiers caractères de l'UUID du devis suffisent à retrouver la ligne
-// sans afficher un identifiant complet.
-export function referenceDevis(devisId) {
-  if (typeof devisId !== "string" || devisId.length < 8) return "—";
-  return devisId.slice(0, 8);
-}
-
 export function formaterAnciennete(creeLe, maintenant = new Date()) {
   const t = Date.parse(creeLe ?? "");
   if (Number.isNaN(t)) return "";

@@ -7,7 +7,6 @@ import { ACCENT } from "../garage-os/tokens";
 import {
   aideMotif,
   formaterAnciennete,
-  referenceDevis,
   traduireErreurNotification,
   traduireMotif,
   trierNotifications,
@@ -157,9 +156,7 @@ export default function NotificationsAVerifierSection({ onToast, onCountChange }
             >
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone="amber">{traduireMotif(n.motif)}</Badge>
-                <span className="text-[12.5px] text-slate-500">
-                  Devis {referenceDevis(n.devis_id)}
-                </span>
+                <span className="text-[12.5px] text-slate-500">Devis concerné</span>
                 <span className="text-[12.5px] text-slate-400">
                   {formaterAnciennete(n.cree_le)}
                 </span>

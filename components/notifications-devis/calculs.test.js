@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import * as calculs from './calculs.js'
 import {
   aideMotif,
   compterNotifications,
   estMotifConnu,
   formaterAnciennete,
-  referenceDevis,
   traduireErreurNotification,
   traduireMotif,
   trierNotifications,
@@ -83,16 +83,6 @@ test('compterNotifications alimente le badge sans planter', () => {
   assert.equal(compterNotifications(null), 0)
 })
 
-test('referenceDevis raccourcit sans exposer l’identifiant complet', () => {
-  const uuid = '51399084-f3c7-45a0-b412-ea550987338c'
-  const ref = referenceDevis(uuid)
-  assert.equal(ref, '51399084')
-  assert.ok(ref.length < uuid.length, "la référence doit être plus courte que l'identifiant")
-  assert.ok(uuid.startsWith(ref), 'la référence doit rester un préfixe fidèle')
-  assert.equal(referenceDevis(null), '—')
-  assert.equal(referenceDevis('court'), '—')
-})
-
 test('formaterAnciennete reste lisible et borné', () => {
   const maintenant = new Date('2026-09-10T12:00:00Z')
   assert.equal(formaterAnciennete('2026-09-10T09:00:00Z', maintenant), "aujourd'hui")
@@ -119,6 +109,17 @@ test('traduireErreurNotification couvre les refus des RPC', () => {
   assert.equal(
     traduireErreurNotification({ message: 'quelque chose d’inattendu' }),
     'Une erreur est survenue. Réessayez.'
+  )
+})
+
+test('aucun helper n’expose de fragment d’identifiant', () => {
+  // Minimisation : la RPC ne renvoie plus devis_id, et l'interface
+  // n'affiche plus aucun fragment d'UUID. Ce test empêche la
+  // réintroduction silencieuse d'un tel affichage.
+  assert.equal(calculs.referenceDevis, undefined)
+  assert.ok(
+    !Object.keys(calculs).some((nom) => /reference|uuid|identifiant/i.test(nom)),
+    'aucun helper de calculs ne doit manipuler un identifiant affichable'
   )
 })
 

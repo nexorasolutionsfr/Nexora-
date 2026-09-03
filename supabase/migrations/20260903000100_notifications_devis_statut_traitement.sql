@@ -149,25 +149,44 @@ create index notifications_devis_statut_traitement_idx
 --    regrant au seul rôle `authenticated` (section 6).
 -- =====================================================================
 
+-- Le retour est volontairement minimal : identifiant technique de la
+-- notification (nécessaire aux deux actions), date, et code de motif.
+-- Aucun identifiant de devis, de client ou de véhicule n'est exposé —
+-- l'interface n'en a pas besoin pour permettre de réessayer ou
+-- d'abandonner, et toute donnée transmise en plus serait une donnée
+-- exposée sans usage.
+--
+-- plpgsql plutôt que sql : le refus d'un compte sans garage doit être
+-- explicite et identique aux deux RPC d'action. Une liste vide serait
+-- ambiguë (aucun garage ? aucune notification ?) et masquerait un
+-- problème de compte derrière un écran normal.
 create function public.notifications_a_verifier()
 returns table (
-  id       uuid,
-  cree_le  timestamptz,
-  motif    text,
-  devis_id uuid
+  id      uuid,
+  cree_le timestamptz,
+  motif   text
 )
-language sql
+language plpgsql
 stable
 security definer
 set search_path = ''
 as $$
-  select n.id, n.created_at, n.incomplet_motif, n.devis_id
-  from public.notifications_devis n
-  join public.devis d on d.id = n.devis_id
-  where n.statut_traitement = 'incomplet'
-    and public.current_garage_id() is not null
-    and d.garage_id = public.current_garage_id()
-  order by n.created_at asc
+declare
+  v_garage uuid;
+begin
+  v_garage := public.current_garage_id();
+  if v_garage is null then
+    raise exception 'Aucun garage associe au compte connecte';
+  end if;
+
+  return query
+    select n.id, n.created_at, n.incomplet_motif
+    from public.notifications_devis n
+    join public.devis d on d.id = n.devis_id
+    where n.statut_traitement = 'incomplet'
+      and d.garage_id = v_garage
+    order by n.created_at asc;
+end;
 $$;
 
 comment on function public.notifications_a_verifier() is
