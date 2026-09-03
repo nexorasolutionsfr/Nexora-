@@ -1099,8 +1099,8 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl p-6 w-full max-w-md text-slate-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold text-slate-900">Enregistrer un travail différé</h2>
-        <div className="text-[12.5px] text-slate-500 mt-1">Une réparation refusée ou reportée, à relancer plus tard. Rien n'est envoyé.</div>
+        <h2 className="text-lg font-semibold text-slate-900">Travail à relancer</h2>
+        <div className="text-[12.5px] text-slate-500 mt-1">À utiliser lorsqu'un client reporte ou refuse un travail. Nexora le garde pour une relance future. Rien n'est envoyé automatiquement.</div>
         <div className="mt-4 space-y-3">
           <div>
             <label className="text-[12px] font-medium text-slate-500">Client</label>
@@ -1143,7 +1143,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
               <input type="number" min="0" step="0.01" value={montantTtc} onChange={(e) => setMontantTtc(e.target.value)} placeholder="Ex. 480" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="text-[12px] font-medium text-slate-500">Date de relance</label>
+              <label className="text-[12px] font-medium text-slate-500">Quand le recontacter ?</label>
               <input type="date" value={dateRelance} onInput={(e) => setDateRelance(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
           </div>
@@ -1156,7 +1156,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
             </select>
           </div>
           <div>
-            <label className="text-[12px] font-medium text-slate-500">Motif (facultatif)</label>
+            <label className="text-[12px] font-medium text-slate-500">Pourquoi le relancer ? (facultatif)</label>
             <input value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Ex. client a reporté faute de budget" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
           </div>
         </div>
@@ -1566,7 +1566,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
                 className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
                 style={{ color: ACCENT }}
               >
-                <Plus size={12} /> Enregistrer un travail différé
+                <Plus size={12} /> Ajouter un travail à relancer
               </button>
             }
           />

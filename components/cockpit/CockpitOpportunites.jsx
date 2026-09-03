@@ -396,7 +396,7 @@ export default function CockpitOpportunites({
             <Phone size={12} /> Ajouter un rappel
           </button>
           <button onClick={() => onOuvrirTravailDiffereModal && onOuvrirTravailDiffereModal()} className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap" style={{ color: ACCENT }}>
-            <Calendar size={12} /> Enregistrer un travail différé
+            <Calendar size={12} /> Ajouter un travail à relancer
           </button>
         </div>
       </div>
