@@ -1004,6 +1004,47 @@ function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHead
   );
 }
 
+// Repère purement visuel du parcours d'une réparation — aucune donnée, aucun état,
+// aucune navigation : juste de quoi comprendre où se situe chaque écran existant.
+function ParcoursEtape({ icon: Icon, label }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 whitespace-nowrap">
+      <Icon size={12} className="text-slate-400 shrink-0" />
+      {label}
+    </span>
+  );
+}
+
+function ParcoursExplique() {
+  return (
+    <details className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3">
+      <summary className="flex items-center gap-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+        <span className="text-[12.5px] font-semibold text-slate-700">Comprendre le parcours d'une réparation</span>
+      </summary>
+      <div className="mt-3 space-y-2.5">
+        <div className="flex items-center gap-1.5 flex-wrap text-[12px] text-slate-600">
+          <ParcoursEtape icon={Calendar} label="Rendez-vous" />
+          <ArrowRight size={13} className="text-slate-300 shrink-0" />
+          <ParcoursEtape icon={ClipboardList} label="Contrôle véhicule" />
+          <ArrowRight size={13} className="text-slate-300 shrink-0" />
+          <ParcoursEtape icon={ReceiptText} label="Devis accepté / travaux validés" />
+          <ArrowRight size={13} className="text-slate-300 shrink-0" />
+          <ParcoursEtape icon={ClipboardCheck} label="Fiche atelier" />
+          <ArrowRight size={13} className="text-slate-300 shrink-0" />
+          <ParcoursEtape icon={Wrench} label="Atelier" />
+          <ArrowRight size={13} className="text-slate-300 shrink-0" />
+          <ParcoursEtape icon={CheckCircle2} label="Facture" />
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap text-[12px] text-slate-500 pt-2 border-t border-slate-100">
+          <ParcoursEtape icon={Clock} label="Travaux reportés ou refusés" />
+          <ArrowRight size={13} className="text-slate-300 shrink-0" />
+          <ParcoursEtape icon={BellRing} label="Travail à relancer" />
+        </div>
+      </div>
+    </details>
+  );
+}
+
 // Nexora Relais Appels V1 — reconnaissance très simple d'un numéro, uniquement pour
 // décider d'afficher un lien d'appel tel:. Aucune validation stricte, aucun envoi.
 function isLikelyPhone(value) {
@@ -1610,6 +1651,8 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
       />
 
       <AccesRapides setView={setView} inspectionsActif={INSPECTIONS_MODULE_ACTIF} />
+
+      <ParcoursExplique />
 
       <details className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3">
         <summary className="flex items-center gap-3 flex-wrap cursor-pointer list-none [&::-webkit-details-marker]:hidden">
