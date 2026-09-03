@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { X, Car, Phone, Mail, Wrench, ReceiptText, CalendarClock, ClipboardList, ArrowRight, AlertTriangle } from "lucide-react";
+import { X, Car, Phone, Mail, Wrench, ReceiptText, CalendarClock, ClipboardList, ClipboardCheck, ArrowRight, AlertTriangle } from "lucide-react";
 import { ACCENT, ACCENT_SOFT, NAVY } from "../garage-os/tokens";
 import { construireDossierVehicule } from "./calculs";
 import {
@@ -63,6 +63,7 @@ export default function VehicleCaseFileView({
   onOuvrirAgenda,
   onOuvrirInspections,
   onOuvrirRendezVous,
+  onOuvrirOrdresReparation,
   inspectionsDisponibles = false,
 }) {
   const fermerRef = useRef(null);
@@ -228,6 +229,17 @@ export default function VehicleCaseFileView({
                 <div className="text-sm font-semibold text-slate-400 mt-1">Aucune facture</div>
               )}
             </button>
+
+            {onOuvrirOrdresReparation && (
+              <button
+                type="button"
+                onClick={() => onOuvrirOrdresReparation(vehicule.id)}
+                className="text-left bg-white rounded-2xl border border-slate-200 p-3.5 col-span-2 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                <div className="text-[12px] text-slate-500 flex items-center gap-1.5"><ClipboardCheck size={12} /> Ordres de réparation</div>
+                <div className="text-sm font-semibold text-slate-800 mt-1 flex items-center gap-1">Consulter ou créer <ArrowRight size={13} /></div>
+              </button>
+            )}
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
