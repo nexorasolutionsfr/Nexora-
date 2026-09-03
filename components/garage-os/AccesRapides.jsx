@@ -28,7 +28,7 @@ export default function AccesRapides({ setView, inspectionsActif = false }) {
         <Raccourci icon={Wrench} label="Atelier" onClick={() => setView("atelier")} />
         <Raccourci icon={Inbox} label="Demandes" onClick={() => setView("demandes")} />
         <Raccourci icon={ReceiptText} label="Devis / Facturation" onClick={() => setView("devis")} />
-        {inspectionsActif && <Raccourci icon={ClipboardList} label="Inspection" onClick={() => setView("inspections")} />}
+        {inspectionsActif && <Raccourci icon={ClipboardList} label="Contrôle véhicule" onClick={() => setView("inspections")} />}
       </div>
     </div>
   );
