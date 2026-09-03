@@ -152,13 +152,15 @@ do $$
 declare
   v_secdef boolean;
   v_volatile "char";
-  v_search_path text;
+  v_proconfig text[];
+  v_entrees_search_path text[];
+  v_entree text;
+  v_valeur text;
+  v_normalisee text;
   v_definition text;
 begin
-  select p.prosecdef, p.provolatile,
-         coalesce(array_to_string(p.proconfig, ','), ''),
-         pg_get_functiondef(p.oid)
-    into v_secdef, v_volatile, v_search_path, v_definition
+  select p.prosecdef, p.provolatile, p.proconfig, pg_get_functiondef(p.oid)
+    into v_secdef, v_volatile, v_proconfig, v_definition
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'current_garage_id';
@@ -167,8 +169,29 @@ begin
     'current_garage_id() doit rester SECURITY DEFINER');
   perform pg_temp.assert(v_volatile = 's',
     'current_garage_id() doit rester STABLE');
-  perform pg_temp.assert(v_search_path = 'search_path=',
-    'current_garage_id() doit avoir un search_path fixe et vide, recu : ' || v_search_path);
+
+  -- Préfixe seul insuffisant (matcherait 'search_path=public') : filtre
+  -- d'abord les entrées candidates, la valeur exacte est vérifiée après —
+  -- même motif que 20260901000500_liens_publics_verification.sql.
+  select array_agg(e) into v_entrees_search_path
+    from unnest(coalesce(v_proconfig, array[]::text[])) as e
+    where e like 'search_path=%';
+
+  perform pg_temp.assert(
+    v_entrees_search_path is not null and array_length(v_entrees_search_path, 1) = 1,
+    'current_garage_id() doit avoir exactement une entree search_path, proconfig=' ||
+      coalesce(array_to_string(v_proconfig, ','), 'aucun'));
+
+  v_entree := v_entrees_search_path[1];
+  v_valeur := substring(v_entree from length('search_path=') + 1);
+  -- Deux seules représentations canoniques acceptées d'un search_path
+  -- vide : chaîne nue vide, ou chaîne vide entre guillemets doubles
+  -- littéraux (forme réellement observée sur cette instance Postgres).
+  v_normalisee := case when v_valeur = '""' then '' else v_valeur end;
+
+  perform pg_temp.assert(v_normalisee = '',
+    'current_garage_id() doit avoir un search_path fixe et vide, recu : ' || v_entree);
+
   perform pg_temp.assert(v_definition ilike '%public.garages%',
     'current_garage_id() doit referencer explicitement public.garages');
   perform pg_temp.assert(v_definition not ilike '%from garages %' and v_definition not ilike '%from garages)%' and v_definition not ilike '%from garages'||chr(10)||'%',

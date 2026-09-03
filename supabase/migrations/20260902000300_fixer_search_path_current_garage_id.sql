@@ -12,7 +12,7 @@
 --
 --   create or replace function public.current_garage_id()
 --   returns uuid
---   language sql security definer
+--   language sql stable security definer
 --   as $$ select id from garages where owner_user_id = auth.uid() $$;
 --
 -- Aucun SET search_path, et `garages` non qualifié par son schéma. Cause
