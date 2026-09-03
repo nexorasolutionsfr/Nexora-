@@ -5,6 +5,7 @@ import React, { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import InspectionsSection from "./inspections/InspectionsSection";
 import OrdresReparationSection from "./ordre-reparation/OrdresReparationSection";
+import NotificationsAVerifierSection from "./notifications-devis/NotificationsAVerifierSection";
 import MorningHeader from "./garage-os/MorningHeader";
 import SyntheseImmediate from "./garage-os/SyntheseImmediate";
 import CentreDecisionnel from "./garage-os/CentreDecisionnel";
@@ -266,6 +267,7 @@ const navGroups = [
       { key: "demandes", label: "Demandes", icon: Inbox },
       { key: "clients", label: "Clients", icon: Users },
       { key: "facturation", label: "Facturation", icon: ReceiptText, match: ["devis", "factures", "historique"] },
+      { key: "notifications-a-verifier", label: "Notifications à vérifier", icon: AlertTriangle },
     ],
   },
   {
@@ -4182,6 +4184,21 @@ function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting,
 // =====================================================================================
 function NexoraDashboardInner({ garageId }) {
   const [view, setView] = useState("aujourdhui");
+  const [notifsAVerifierCount, setNotifsAVerifierCount] = useState(0);
+
+  // Compteur de la pastille : chargé au montage pour que le badge existe
+  // sans avoir à ouvrir la section. La section, une fois ouverte, tient
+  // ce compteur à jour via onCountChange.
+  useEffect(() => {
+    let annule = false;
+    supabase.rpc("notifications_a_verifier").then(({ data, error }) => {
+      if (annule) return;
+      setNotifsAVerifierCount(error ? 0 : (data || []).length);
+    });
+    return () => {
+      annule = true;
+    };
+  }, []);
   const [stats, setStats] = useState({
   pending: 0,
   toValidate: 0,
@@ -5658,6 +5675,7 @@ if (updateError) {
   const navBadgeCounts = {
     aujourdhui: demandes.filter((d) => d.statut === "nouveau").length + propositions.length + devisList.filter((d) => d.statut === "en_attente").length,
     demandes: demandes.filter((d) => d.statut === "nouveau" || d.statut === "infos_manquantes").length,
+    "notifications-a-verifier": notifsAVerifierCount,
   };
 
   const dossierClient = dossierVehiculeId
@@ -5864,6 +5882,12 @@ if (updateError) {
               focusVehiculeId={focusOrdreVehicule?.id || null}
               focusVehiculeLabel={focusOrdreVehicule?.label || ""}
               onFocusVehiculeConsumed={() => setFocusOrdreVehicule(null)}
+            />
+          )}
+          {view === "notifications-a-verifier" && (
+            <NotificationsAVerifierSection
+              onToast={flashToast}
+              onCountChange={setNotifsAVerifierCount}
             />
           )}
           {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
