@@ -137,6 +137,46 @@ insert into _fixture_ids (cle, valeur) values
   ('ligne_a2', gen_random_uuid());
 
 -- =====================================================================
+-- 0b. Vérification de métadonnées : public.current_garage_id() fiabilisée
+--     (migration 20260902000300_fixer_search_path_current_garage_id.sql).
+--     Pure lecture de catalogue système, aucune fixture requise — cause
+--     racine confirmée de l'échec constaté sur Test le 2026-09-03
+--     (42P01 relation "garages" does not exist, levée par la policy
+--     rendez_vous_scope via cette fonction, search_path vide côté
+--     appelant). Ne remplace pas les scénarios fonctionnels qui suivent :
+--     la section 3 reste la preuve que la création d'un OR authenticated
+--     traverse réellement la RLS de rendez_vous sans cette erreur.
+-- =====================================================================
+
+do $$
+declare
+  v_secdef boolean;
+  v_volatile "char";
+  v_search_path text;
+  v_definition text;
+begin
+  select p.prosecdef, p.provolatile,
+         coalesce(array_to_string(p.proconfig, ','), ''),
+         pg_get_functiondef(p.oid)
+    into v_secdef, v_volatile, v_search_path, v_definition
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'current_garage_id';
+
+  perform pg_temp.assert(v_secdef is true,
+    'current_garage_id() doit rester SECURITY DEFINER');
+  perform pg_temp.assert(v_volatile = 's',
+    'current_garage_id() doit rester STABLE');
+  perform pg_temp.assert(v_search_path = 'search_path=',
+    'current_garage_id() doit avoir un search_path fixe et vide, recu : ' || v_search_path);
+  perform pg_temp.assert(v_definition ilike '%public.garages%',
+    'current_garage_id() doit referencer explicitement public.garages');
+  perform pg_temp.assert(v_definition not ilike '%from garages %' and v_definition not ilike '%from garages)%' and v_definition not ilike '%from garages'||chr(10)||'%',
+    'current_garage_id() ne doit plus referencer garages sans le qualifier par son schema');
+end;
+$$;
+
+-- =====================================================================
 -- 1. Utilisateurs synthétiques (rôle opérateur — superutilisateur de
 --    l'éditeur SQL, seul capable d'écrire directement dans auth.users)
 -- =====================================================================
