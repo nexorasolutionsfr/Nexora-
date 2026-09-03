@@ -4183,7 +4183,7 @@ function NexoraDashboardInner({ garageId }) {
   const [dossierVehiculeId, setDossierVehiculeId] = useState(null);
   const [focusOrdreRendezVousId, setFocusOrdreRendezVousId] = useState(null);
   const [focusOrdreDevisId, setFocusOrdreDevisId] = useState(null);
-  const [ordresReparationSearchInitial, setOrdresReparationSearchInitial] = useState("");
+  const [focusOrdreVehicule, setFocusOrdreVehicule] = useState(null); // { id, label } | null
 
   useEffect(() => {
     async function loadPreparedDemandeIds() {
@@ -5818,7 +5818,9 @@ if (updateError) {
               onFocusRendezVousConsumed={() => setFocusOrdreRendezVousId(null)}
               focusDevisId={focusOrdreDevisId}
               onFocusDevisConsumed={() => setFocusOrdreDevisId(null)}
-              initialSearch={ordresReparationSearchInitial}
+              focusVehiculeId={focusOrdreVehicule?.id || null}
+              focusVehiculeLabel={focusOrdreVehicule?.label || ""}
+              onFocusVehiculeConsumed={() => setFocusOrdreVehicule(null)}
             />
           )}
           {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
@@ -5843,7 +5845,16 @@ if (updateError) {
           onOuvrirAgenda={() => { setDossierVehiculeId(null); setView("agenda"); }}
           onOuvrirInspections={() => { setDossierVehiculeId(null); setView("inspections"); }}
           onOuvrirRendezVous={(rdv) => { if (rdv) { setDossierVehiculeId(null); setSelectedAppt(rdv); } }}
-          onOuvrirOrdresReparation={() => { setOrdresReparationSearchInitial(dossierVehicule?.immatriculation || ""); setDossierVehiculeId(null); setView("ordres-reparation"); }}
+          onOuvrirOrdresReparation={(vehiculeId) => {
+            const id = vehiculeId || dossierVehiculeId;
+            const label = [
+              [dossierVehicule?.marque, dossierVehicule?.modele].filter(Boolean).join(" "),
+              dossierVehicule?.immatriculation,
+            ].filter(Boolean).join(" · ");
+            setFocusOrdreVehicule(id ? { id, label: label || "ce véhicule" } : null);
+            setDossierVehiculeId(null);
+            setView("ordres-reparation");
+          }}
         />
       )}
     </div>

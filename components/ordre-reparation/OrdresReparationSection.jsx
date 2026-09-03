@@ -579,6 +579,9 @@ export default function OrdresReparationSection({
   focusDevisId = null,
   onFocusDevisConsumed,
   initialSearch = "",
+  focusVehiculeId = null,
+  focusVehiculeLabel = "",
+  onFocusVehiculeConsumed,
 }) {
   const [ordres, setOrdres] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -588,6 +591,8 @@ export default function OrdresReparationSection({
   const [createInitial, setCreateInitial] = useState({ rendezVousId: null, devisId: null });
   const [submittingCreate, setSubmittingCreate] = useState(false);
   const [detailId, setDetailId] = useState(null);
+  const [vehiculeFiltreId, setVehiculeFiltreId] = useState(focusVehiculeId);
+  const [vehiculeFiltreLabel, setVehiculeFiltreLabel] = useState(focusVehiculeLabel);
 
   const flashToast = (message, tone) => (onToast ? onToast(message, tone) : console.log(message));
 
@@ -643,6 +648,18 @@ export default function OrdresReparationSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusRendezVousId, focusDevisId, loading]);
 
+  // Arrivée depuis le Dossier Véhicule (contrat de cette correction) : la
+  // liste se filtre strictement sur ce véhicule dès l'ouverture. Le filtre
+  // vit ensuite dans l'état local de la section (retirable ici), pas dans le
+  // dashboard parent — un accès direct par la navigation reste non filtré.
+  useEffect(() => {
+    if (!focusVehiculeId) return;
+    setVehiculeFiltreId(focusVehiculeId);
+    setVehiculeFiltreLabel(focusVehiculeLabel || "");
+    onFocusVehiculeConsumed && onFocusVehiculeConsumed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusVehiculeId]);
+
   const handleCreer = async (payload) => {
     setSubmittingCreate(true);
     const { data, error } = await supabase.from("ordres_reparation").insert(payload).select("id").single();
@@ -658,6 +675,7 @@ export default function OrdresReparationSection({
   };
 
   const filtered = ordres.filter((o) => {
+    if (vehiculeFiltreId && o.vehicule_id !== vehiculeFiltreId) return false;
     const matchesStatut = statutFilter === "tous" || o.statut === statutFilter;
     const q = search.trim().toLowerCase();
     const matchesSearch = !q || o.clientLabel.toLowerCase().includes(q) || o.vehiculeLabel.toLowerCase().includes(q) || o.immatriculation.toLowerCase().includes(q);
@@ -675,6 +693,22 @@ export default function OrdresReparationSection({
           <Plus size={15} /> Nouvel ordre
         </button>
       </div>
+
+      {vehiculeFiltreId && (
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[12.5px] font-medium px-3 py-1.5 rounded-full inline-flex items-center gap-1.5" style={{ backgroundColor: ACCENT_SOFT, color: ACCENT }}>
+            Filtré sur {vehiculeFiltreLabel || "ce véhicule"}
+            <button
+              type="button"
+              onClick={() => { setVehiculeFiltreId(null); setVehiculeFiltreLabel(""); }}
+              aria-label="Retirer le filtre véhicule"
+              className="hover:opacity-70"
+            >
+              <X size={12} />
+            </button>
+          </span>
+        </div>
+      )}
 
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="relative flex-1 min-w-[220px]">
