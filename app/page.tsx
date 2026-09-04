@@ -8,6 +8,7 @@ import { PilotOffer } from "@/components/pilot-offer"
 import { Faq } from "@/components/faq"
 import { ContactCta } from "@/components/contact-cta"
 import { SiteFooter } from "@/components/site-footer"
+import { DemoCtaTracker } from "@/components/analytics/demo-cta-tracker"
 
 // Données structurées volontairement minimales : uniquement des faits vérifiables
 // (nom, nature du logiciel, langue). Aucun avis, aucun tarif, aucune donnée légale
@@ -30,6 +31,7 @@ export default function Page() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareJsonLd) }}
       />
+      <DemoCtaTracker />
       <SiteHeader />
       <main className="flex-1">
         <Hero />
