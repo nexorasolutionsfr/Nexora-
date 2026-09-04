@@ -1,27 +1,43 @@
 import { SiteHeader } from "@/components/site-header"
 import { Hero } from "@/components/hero"
-import { TrustedBy } from "@/components/trusted-by"
-import { UseCases } from "@/components/use-cases"
-import { HowItWorks } from "@/components/how-it-works"
-import { Pricing } from "@/components/pricing"
-import { Testimonials } from "@/components/testimonials"
-import { Resources } from "@/components/resources"
+import { Problems } from "@/components/problems"
+import { DayWithNexora } from "@/components/day-with-nexora"
+import { Features } from "@/components/features"
+import { Security } from "@/components/security"
+import { PilotOffer } from "@/components/pilot-offer"
 import { Faq } from "@/components/faq"
 import { ContactCta } from "@/components/contact-cta"
 import { SiteFooter } from "@/components/site-footer"
 
+// Données structurées volontairement minimales : uniquement des faits vérifiables
+// (nom, nature du logiciel, langue). Aucun avis, aucun tarif, aucune donnée légale
+// tant que les mentions légales ne sont pas finalisées.
+const softwareJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Nexora",
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  inLanguage: "fr-FR",
+  description:
+    "Logiciel français pour garages automobiles indépendants : agenda, atelier en direct, contrôle véhicule avec photos, dossier véhicule, clients, devis et factures.",
+}
+
 export default function Page() {
   return (
     <div className="flex min-h-screen flex-col">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareJsonLd) }}
+      />
       <SiteHeader />
       <main className="flex-1">
         <Hero />
-        <TrustedBy />
-        <UseCases />
-        <HowItWorks />
-        <Pricing />
-        <Testimonials />
-        <Resources />
+        <Problems />
+        <DayWithNexora />
+        <Features />
+        <Security />
+        <PilotOffer />
         <Faq />
         <ContactCta />
       </main>

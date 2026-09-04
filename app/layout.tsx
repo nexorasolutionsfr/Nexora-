@@ -15,31 +15,46 @@ const spaceGrotesk = Space_Grotesk({
   display: 'swap',
 })
 
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://nexora-garage.vercel.app'
+
+const SITE_TITLE = 'Nexora — Garage OS pour garages automobiles indépendants'
+const SITE_DESCRIPTION =
+  "Votre garage avance, Nexora garde le fil. Le logiciel français qui réunit agenda, atelier en direct, contrôle véhicule, dossier véhicule, devis et factures pour les garages indépendants."
+
 export const metadata: Metadata = {
-  title: 'Nexora — Automatisations n8n sur-mesure pour PME',
-  description:
-    "Nexora conçoit des automatisations n8n sur-mesure qui font gagner des heures à vos équipes. Connectez vos outils, éliminez les tâches manuelles et boostez votre PME. Demandez votre démo gratuite.",
+  metadataBase: new URL(SITE_URL),
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  applicationName: 'Nexora',
+  alternates: {
+    canonical: '/',
+  },
   keywords: [
-    'automatisation n8n',
-    'automatisation PME',
-    'workflow n8n',
-    'intégration logicielle',
-    'gain de productivité',
-    'automatisation sur-mesure',
+    'logiciel garage automobile',
+    'gestion atelier automobile',
+    'devis garage',
+    'suivi véhicule',
+    'Garage OS',
+    'garage indépendant',
   ],
   openGraph: {
-    title: 'Nexora — Automatisations n8n sur-mesure pour PME',
-    description:
-      "Éliminez les tâches manuelles répétitives. Nexora automatise vos process métier avec n8n. Démo gratuite pour les PME.",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    url: SITE_URL,
+    siteName: 'Nexora',
     type: 'website',
     locale: 'fr_FR',
   },
-  generator: 'v0.app',
+  twitter: {
+    card: 'summary_large_image',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
 }
 
 export const viewport: Viewport = {
-  colorScheme: 'dark',
-  themeColor: '#14161f',
+  colorScheme: 'light',
+  themeColor: '#0F1B33',
 }
 
 export default function RootLayout({
@@ -50,7 +65,7 @@ export default function RootLayout({
   return (
     <html
       lang="fr"
-      className={`dark bg-background ${inter.variable} ${spaceGrotesk.variable}`}
+      className={`bg-background ${inter.variable} ${spaceGrotesk.variable}`}
     >
       <body className="font-sans antialiased">
         {children}
