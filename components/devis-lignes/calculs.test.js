@@ -169,17 +169,24 @@ test('preremplirDepuisPrestation copie nom et prix, garde la provenance', () => 
 
 // --- Reprise vers l'OR : copie par valeur ---------------------------------
 
-test('lignesDevisVersOR : copie par valeur, dans l\'ordre, sans TVA ni durée', () => {
+// Le taux de TVA suivait autrefois le sort de la durée : écarté à la reprise.
+// Il est désormais conservé, parce qu'une facture s'établit depuis les lignes
+// de l'OR terminé (recette du 2026-09-04) et ne peut pas deviner un taux sans
+// retomber sur un repli implicite. La durée, elle, reste écartée : elle
+// appartient au devis, pas à l'exécution.
+test('lignesDevisVersOR : copie par valeur, dans l\'ordre, TVA conservée, sans durée', () => {
   const lignes = [
     { id: 'l2', position: 1, type: 'piece', libelle: 'Filtre', quantite: '3', prix_unitaire_ht: 12.35, taux_tva: 10 },
     { id: 'l1', position: 0, type: 'main_oeuvre', libelle: 'MO', quantite: 1.5, prix_unitaire_ht: 80, taux_tva: 20 },
   ]
   assert.deepEqual(lignesDevisVersOR(lignes), [
-    { type: 'main_oeuvre', libelle: 'MO', quantite: 1.5, prix_unitaire_ht: 80, duree_minutes: null },
-    { type: 'piece', libelle: 'Filtre', quantite: 3, prix_unitaire_ht: 12.35, duree_minutes: null },
+    { type: 'main_oeuvre', libelle: 'MO', quantite: 1.5, prix_unitaire_ht: 80, taux_tva: 20, duree_minutes: null },
+    { type: 'piece', libelle: 'Filtre', quantite: 3, prix_unitaire_ht: 12.35, taux_tva: 10, duree_minutes: null },
   ])
+  // Une ligne sans taux retombe sur le taux par défaut, jamais sur null.
+  assert.equal(lignesDevisVersOR([{ position: 0, type: 'piece', libelle: 'X', quantite: 1, prix_unitaire_ht: 5 }])[0].taux_tva, 20)
   // Aucune référence au devis d'origine ne fuit dans l'OR.
-  assert.ok(lignesDevisVersOR(lignes).every((l) => !('id' in l) && !('devis_id' in l) && !('taux_tva' in l)))
+  assert.ok(lignesDevisVersOR(lignes).every((l) => !('id' in l) && !('devis_id' in l) && !('position' in l)))
 })
 
 // --- Erreurs : sous-chaînes reprises de la migration ----------------------
