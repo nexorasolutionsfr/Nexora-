@@ -4,6 +4,8 @@
 import React, { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import InspectionsSection from "./inspections/InspectionsSection";
+import OrdresReparationSection from "./ordre-reparation/OrdresReparationSection";
+import NotificationsAVerifierSection from "./notifications-devis/NotificationsAVerifierSection";
 import MorningHeader from "./garage-os/MorningHeader";
 import SyntheseImmediate from "./garage-os/SyntheseImmediate";
 import CentreDecisionnel from "./garage-os/CentreDecisionnel";
@@ -67,6 +69,7 @@ import {
   Copy,
   ShieldOff,
   Link2,
+  ClipboardCheck,
 } from "lucide-react";
 // Vercel rebuild trigger
 // =====================================================================================
@@ -254,7 +257,8 @@ const navGroups = [
     items: [
       { key: "agenda", label: "Agenda", icon: Calendar },
       { key: "atelier", label: "Atelier", icon: Wrench },
-      ...(INSPECTIONS_MODULE_ACTIF ? [{ key: "inspections", label: "Inspections", icon: ClipboardList }] : []),
+      { key: "ordres-reparation", label: "Fiches atelier (OR)", icon: ClipboardCheck },
+      ...(INSPECTIONS_MODULE_ACTIF ? [{ key: "inspections", label: "Contrôle véhicule", icon: ClipboardList }] : []),
     ],
   },
   {
@@ -263,6 +267,7 @@ const navGroups = [
       { key: "demandes", label: "Demandes", icon: Inbox },
       { key: "clients", label: "Clients", icon: Users },
       { key: "facturation", label: "Facturation", icon: ReceiptText, match: ["devis", "factures", "historique"] },
+      { key: "notifications-a-verifier", label: "Notifications à vérifier", icon: AlertTriangle },
     ],
   },
   {
@@ -459,7 +464,7 @@ function LienPaiementField({ appt, onSave }) {
   );
 }
 
-function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, onUpdateStatutAtelier, onUpdateLienPaiement, atelierLien, atelierQr, atelierBusy, onGenererLienAtelier, onRevoquerLienAtelier }) {
+function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, onUpdateStatutAtelier, onUpdateLienPaiement, atelierLien, atelierQr, atelierBusy, onGenererLienAtelier, onRevoquerLienAtelier, onOuvrirOrdreReparation }) {
   if (!appt) return null;
 
   const client = appt.client;
@@ -503,6 +508,15 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
           <Phone size={15} className="text-slate-400" /> {formatPhone(appt.telephone)}
           </div>
           {onAssignMecanicien && <label className="block pt-2"><span className="text-[12.5px] font-medium text-slate-500">Mécanicien</span><select value={appt.mecanicien_id || ""} onChange={(e) => onAssignMecanicien(appt.id, e.target.value || null)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"><option value="">Non assigné</option>{mecaniciens.filter((m) => m.actif !== false).map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}</select></label>}
+          {onOuvrirOrdreReparation && (
+            <button
+              type="button"
+              onClick={() => onOuvrirOrdreReparation(appt.id)}
+              className="mt-3 w-full min-h-[44px] rounded-xl border border-slate-200 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 flex items-center justify-center gap-1.5"
+            >
+              <ClipboardCheck size={14} /> Préparer la fiche atelier
+            </button>
+          )}
         </div>
         {estAujourdhui && onGenererLienAtelier && (
           <div className="mt-4 bg-slate-50 rounded-xl p-3">
@@ -992,6 +1006,47 @@ function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHead
   );
 }
 
+// Repère purement visuel du parcours d'une réparation — aucune donnée, aucun état,
+// aucune navigation : juste de quoi comprendre où se situe chaque écran existant.
+function ParcoursEtape({ icon: Icon, label }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 whitespace-nowrap">
+      <Icon size={12} className="text-slate-400 shrink-0" />
+      {label}
+    </span>
+  );
+}
+
+function ParcoursExplique() {
+  return (
+    <details className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3">
+      <summary className="flex items-center gap-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+        <span className="text-[12.5px] font-semibold text-slate-700">Comprendre le parcours d'une réparation</span>
+      </summary>
+      <div className="mt-3 space-y-2.5">
+        <div className="flex items-center gap-1.5 flex-wrap text-[12px] text-slate-600">
+          <ParcoursEtape icon={Calendar} label="Rendez-vous" />
+          <ArrowRight size={13} className="text-slate-300 shrink-0" />
+          <ParcoursEtape icon={ClipboardList} label="Contrôle véhicule" />
+          <ArrowRight size={13} className="text-slate-300 shrink-0" />
+          <ParcoursEtape icon={ReceiptText} label="Devis accepté / travaux validés" />
+          <ArrowRight size={13} className="text-slate-300 shrink-0" />
+          <ParcoursEtape icon={ClipboardCheck} label="Fiche atelier" />
+          <ArrowRight size={13} className="text-slate-300 shrink-0" />
+          <ParcoursEtape icon={Wrench} label="Atelier" />
+          <ArrowRight size={13} className="text-slate-300 shrink-0" />
+          <ParcoursEtape icon={CheckCircle2} label="Facture" />
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap text-[12px] text-slate-500 pt-2 border-t border-slate-100">
+          <ParcoursEtape icon={Clock} label="Travaux reportés ou refusés" />
+          <ArrowRight size={13} className="text-slate-300 shrink-0" />
+          <ParcoursEtape icon={BellRing} label="Travail à relancer" />
+        </div>
+      </div>
+    </details>
+  );
+}
+
 // Nexora Relais Appels V1 — reconnaissance très simple d'un numéro, uniquement pour
 // décider d'afficher un lien d'appel tel:. Aucune validation stricte, aucun envoi.
 function isLikelyPhone(value) {
@@ -1087,8 +1142,8 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl p-6 w-full max-w-md text-slate-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold text-slate-900">Enregistrer un travail différé</h2>
-        <div className="text-[12.5px] text-slate-500 mt-1">Une réparation refusée ou reportée, à relancer plus tard. Rien n'est envoyé.</div>
+        <h2 className="text-lg font-semibold text-slate-900">Travail à relancer</h2>
+        <div className="text-[12.5px] text-slate-500 mt-1">À utiliser lorsqu'un client reporte ou refuse un travail. Nexora le garde pour une relance future. Rien n'est envoyé automatiquement.</div>
         <div className="mt-4 space-y-3">
           <div>
             <label className="text-[12px] font-medium text-slate-500">Client</label>
@@ -1131,7 +1186,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
               <input type="number" min="0" step="0.01" value={montantTtc} onChange={(e) => setMontantTtc(e.target.value)} placeholder="Ex. 480" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="text-[12px] font-medium text-slate-500">Date de relance</label>
+              <label className="text-[12px] font-medium text-slate-500">Quand le recontacter ?</label>
               <input type="date" value={dateRelance} onInput={(e) => setDateRelance(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
           </div>
@@ -1144,7 +1199,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
             </select>
           </div>
           <div>
-            <label className="text-[12px] font-medium text-slate-500">Motif (facultatif)</label>
+            <label className="text-[12px] font-medium text-slate-500">Pourquoi le relancer ? (facultatif)</label>
             <input value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Ex. client a reporté faute de budget" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
           </div>
         </div>
@@ -1554,7 +1609,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
                 className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
                 style={{ color: ACCENT }}
               >
-                <Plus size={12} /> Enregistrer un travail différé
+                <Plus size={12} /> Ajouter un travail à relancer
               </button>
             }
           />
@@ -1598,6 +1653,8 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
       />
 
       <AccesRapides setView={setView} inspectionsActif={INSPECTIONS_MODULE_ACTIF} />
+
+      <ParcoursExplique />
 
       <details className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3">
         <summary className="flex items-center gap-3 flex-wrap cursor-pointer list-none [&::-webkit-details-marker]:hidden">
@@ -2314,7 +2371,7 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
   );
 }
 
-function FacturationView({ view, setView, devisList, clients, prestations, garageData, onAcceptDevis, onRefuseDevis, onUpdateMontant, onCreerDevis, onCreerClient, rendezVous, factures, onGenererFacture, onMarquerPayee, onSauvegarderFacture, garageId, devisLiens, devisBusyId, onGenererLienDevis, onRevoquerLienDevis, facturesLiens, facturesBusyId, onGenererLienFacture, onRevoquerLienFacture }) {
+function FacturationView({ view, setView, devisList, clients, prestations, garageData, onAcceptDevis, onRefuseDevis, onUpdateMontant, onCreerDevis, onCreerClient, rendezVous, factures, onGenererFacture, onMarquerPayee, onSauvegarderFacture, garageId, devisLiens, devisBusyId, onGenererLienDevis, onRevoquerLienDevis, facturesLiens, facturesBusyId, onGenererLienFacture, onRevoquerLienFacture, onCreerOrdreReparation }) {
   const tabs = [
     ["devis", "Devis"],
     ["factures", "Factures"],
@@ -2329,12 +2386,12 @@ function FacturationView({ view, setView, devisList, clients, prestations, garag
       </div>
       {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} />}
       {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={onGenererFacture} onMarquerPayee={onMarquerPayee} onSauvegarder={onSauvegarderFacture} facturesLiens={facturesLiens} facturesBusyId={facturesBusyId} onGenererLien={onGenererLienFacture} onRevoquerLien={onRevoquerLienFacture} />}
-      {view === "historique" && <HistoriqueView devisList={devisList} garageId={garageId} />}
+      {view === "historique" && <HistoriqueView devisList={devisList} garageId={garageId} onCreerOrdreReparation={onCreerOrdreReparation} />}
     </div>
   );
 }
 
-function HistoriqueView({ devisList, garageId }) {
+function HistoriqueView({ devisList, garageId, onCreerOrdreReparation }) {
   const [rdvHistory, setRdvHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filtreType, setFiltreType] = useState("tous");
@@ -2384,6 +2441,7 @@ function HistoriqueView({ devisList, garageId }) {
       detail: [d.vehicule, d.immatriculation].filter(Boolean).join(" · "),
       prestation: d.prestation,
       montant: d.montant_ttc,
+      raw: d,
     })),
   ];
 
@@ -2448,7 +2506,18 @@ function HistoriqueView({ devisList, garageId }) {
                   {it.montant ? ` · ${Number(it.montant).toFixed(2)} €` : ""}
                 </div>
               </div>
-              <div className="text-[12.5px] text-slate-400">{formatDateHeure(it.date)}</div>
+              <div className="flex items-center gap-3">
+                {it.type === "devis" && it.statut === "accepte" && onCreerOrdreReparation && (
+                  <button
+                    type="button"
+                    onClick={() => onCreerOrdreReparation(it.raw)}
+                    className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+                  >
+                    Créer la fiche atelier
+                  </button>
+                )}
+                <div className="text-[12.5px] text-slate-400 whitespace-nowrap">{formatDateHeure(it.date)}</div>
+              </div>
             </div>
           ))}
         </div>
@@ -4115,6 +4184,21 @@ function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting,
 // =====================================================================================
 function NexoraDashboardInner({ garageId }) {
   const [view, setView] = useState("aujourdhui");
+  const [notifsAVerifierCount, setNotifsAVerifierCount] = useState(0);
+
+  // Compteur de la pastille : chargé au montage pour que le badge existe
+  // sans avoir à ouvrir la section. La section, une fois ouverte, tient
+  // ce compteur à jour via onCountChange.
+  useEffect(() => {
+    let annule = false;
+    supabase.rpc("notifications_a_verifier").then(({ data, error }) => {
+      if (annule) return;
+      setNotifsAVerifierCount(error ? 0 : (data || []).length);
+    });
+    return () => {
+      annule = true;
+    };
+  }, []);
   const [stats, setStats] = useState({
   pending: 0,
   toValidate: 0,
@@ -4157,6 +4241,9 @@ function NexoraDashboardInner({ garageId }) {
   const [submittingTravailDiffere, setSubmittingTravailDiffere] = useState(false);
   const [inspectionCibleCockpit, setInspectionCibleCockpit] = useState(null);
   const [dossierVehiculeId, setDossierVehiculeId] = useState(null);
+  const [focusOrdreRendezVousId, setFocusOrdreRendezVousId] = useState(null);
+  const [focusOrdreDevisId, setFocusOrdreDevisId] = useState(null);
+  const [focusOrdreVehicule, setFocusOrdreVehicule] = useState(null); // { id, label } | null
 
   useEffect(() => {
     async function loadPreparedDemandeIds() {
@@ -5588,6 +5675,7 @@ if (updateError) {
   const navBadgeCounts = {
     aujourdhui: demandes.filter((d) => d.statut === "nouveau").length + propositions.length + devisList.filter((d) => d.statut === "en_attente").length,
     demandes: demandes.filter((d) => d.statut === "nouveau" || d.statut === "infos_manquantes").length,
+    "notifications-a-verifier": notifsAVerifierCount,
   };
 
   const dossierClient = dossierVehiculeId
@@ -5766,6 +5854,7 @@ if (updateError) {
               facturesBusyId={factureBusyId}
               onGenererLienFacture={genererLienFacture}
               onRevoquerLienFacture={revoquerLienFacture}
+              onCreerOrdreReparation={(devis) => { setFocusOrdreDevisId(devis.id); setView("ordres-reparation"); }}
             />
           )}
           {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} garageData={garageData} onConnectCalendar={connectGoogleCalendar} clients={clients} prestations={prestations} onCreerRdv={handleCreerRdvManuel} onCreerClient={handleCreerClient} />}
@@ -5778,12 +5867,35 @@ if (updateError) {
           )}
           {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} travauxDifferes={travauxDifferes} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onOuvrirTravailDiffereModal={(clientId) => setTravailDiffereModal({ clientId })} onToast={flashToast} onOuvrirDossierVehicule={(vehiculeId) => setDossierVehiculeId(vehiculeId)} />}
           {INSPECTIONS_MODULE_ACTIF && view === "inspections" && <InspectionsSection garageId={garageId} clients={clients} rendezVous={rendezVous} onToast={flashToast} initialDetailId={inspectionCibleCockpit} onInitialDetailConsumed={() => setInspectionCibleCockpit(null)} />}
+          {view === "ordres-reparation" && (
+            <OrdresReparationSection
+              garageId={garageId}
+              rendezVous={rendezVous}
+              devisList={devisList}
+              mecaniciens={mecaniciens}
+              workshopStages={WORKSHOP_STAGES}
+              onToast={flashToast}
+              focusRendezVousId={focusOrdreRendezVousId}
+              onFocusRendezVousConsumed={() => setFocusOrdreRendezVousId(null)}
+              focusDevisId={focusOrdreDevisId}
+              onFocusDevisConsumed={() => setFocusOrdreDevisId(null)}
+              focusVehiculeId={focusOrdreVehicule?.id || null}
+              focusVehiculeLabel={focusOrdreVehicule?.label || ""}
+              onFocusVehiculeConsumed={() => setFocusOrdreVehicule(null)}
+            />
+          )}
+          {view === "notifications-a-verifier" && (
+            <NotificationsAVerifierSection
+              onToast={flashToast}
+              onCountChange={setNotifsAVerifierCount}
+            />
+          )}
           {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
         </div>
       </main>
 
       <Toast toast={toast} />
-      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} onUpdateStatutAtelier={updateStatutAtelier} onUpdateLienPaiement={updateLienPaiement} atelierLien={selectedAppt ? atelierLiens[selectedAppt.id] : null} atelierQr={selectedAppt ? atelierQr[selectedAppt.id] : null} atelierBusy={selectedAppt ? atelierBusyId === selectedAppt.id : false} onGenererLienAtelier={genererLienAtelier} onRevoquerLienAtelier={revoquerLienAtelier} />
+      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} onUpdateStatutAtelier={updateStatutAtelier} onUpdateLienPaiement={updateLienPaiement} atelierLien={selectedAppt ? atelierLiens[selectedAppt.id] : null} atelierQr={selectedAppt ? atelierQr[selectedAppt.id] : null} atelierBusy={selectedAppt ? atelierBusyId === selectedAppt.id : false} onGenererLienAtelier={genererLienAtelier} onRevoquerLienAtelier={revoquerLienAtelier} onOuvrirOrdreReparation={(rdvId) => { setSelectedAppt(null); setFocusOrdreRendezVousId(rdvId); setView("ordres-reparation"); }} />
       {dossierVehiculeId && dossierClient && dossierVehicule && (
         <VehicleCaseFileView
           vehicule={dossierVehicule}
@@ -5800,6 +5912,16 @@ if (updateError) {
           onOuvrirAgenda={() => { setDossierVehiculeId(null); setView("agenda"); }}
           onOuvrirInspections={() => { setDossierVehiculeId(null); setView("inspections"); }}
           onOuvrirRendezVous={(rdv) => { if (rdv) { setDossierVehiculeId(null); setSelectedAppt(rdv); } }}
+          onOuvrirOrdresReparation={(vehiculeId) => {
+            const id = vehiculeId || dossierVehiculeId;
+            const label = [
+              [dossierVehicule?.marque, dossierVehicule?.modele].filter(Boolean).join(" "),
+              dossierVehicule?.immatriculation,
+            ].filter(Boolean).join(" · ");
+            setFocusOrdreVehicule(id ? { id, label: label || "ce véhicule" } : null);
+            setDossierVehiculeId(null);
+            setView("ordres-reparation");
+          }}
         />
       )}
     </div>
