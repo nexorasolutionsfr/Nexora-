@@ -1,5 +1,7 @@
 
 "use client"; import { supabase } from "@/lib/supabase";
+import DevisLignesEditor from "./devis-lignes/DevisLignesEditor";
+import { devisALignes } from "./devis-lignes/calculs";
 
 import React, { useState, useEffect } from "react";
 import QRCode from "qrcode";
@@ -2371,7 +2373,7 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
   );
 }
 
-function FacturationView({ view, setView, devisList, clients, prestations, garageData, onAcceptDevis, onRefuseDevis, onUpdateMontant, onCreerDevis, onCreerClient, rendezVous, factures, onGenererFacture, onMarquerPayee, onSauvegarderFacture, garageId, devisLiens, devisBusyId, onGenererLienDevis, onRevoquerLienDevis, facturesLiens, facturesBusyId, onGenererLienFacture, onRevoquerLienFacture, onCreerOrdreReparation }) {
+function FacturationView({ view, setView, devisList, clients, prestations, garageData, onAcceptDevis, onRefuseDevis, onUpdateMontant, onCreerDevis, onCreerClient, rendezVous, factures, onGenererFacture, onMarquerPayee, onSauvegarderFacture, garageId, devisLiens, devisBusyId, onGenererLienDevis, onRevoquerLienDevis, facturesLiens, facturesBusyId, onGenererLienFacture, onRevoquerLienFacture, onCreerOrdreReparation, onLignesChange, onToast }) {
   const tabs = [
     ["devis", "Devis"],
     ["factures", "Factures"],
@@ -2384,15 +2386,16 @@ function FacturationView({ view, setView, devisList, clients, prestations, garag
           <button key={key} onClick={() => setView(key)} className="text-[13px] font-medium px-4 py-1.5 rounded-lg" style={view === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>{label}</button>
         ))}
       </div>
-      {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} />}
+      {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} onLignesChange={onLignesChange} onToast={onToast} />}
       {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={onGenererFacture} onMarquerPayee={onMarquerPayee} onSauvegarder={onSauvegarderFacture} facturesLiens={facturesLiens} facturesBusyId={facturesBusyId} onGenererLien={onGenererLienFacture} onRevoquerLien={onRevoquerLienFacture} />}
-      {view === "historique" && <HistoriqueView devisList={devisList} garageId={garageId} onCreerOrdreReparation={onCreerOrdreReparation} />}
+      {view === "historique" && <HistoriqueView devisList={devisList} garageId={garageId} onCreerOrdreReparation={onCreerOrdreReparation} prestations={prestations} />}
     </div>
   );
 }
 
-function HistoriqueView({ devisList, garageId, onCreerOrdreReparation }) {
+function HistoriqueView({ devisList, garageId, onCreerOrdreReparation, prestations = [] }) {
   const [rdvHistory, setRdvHistory] = useState([]);
+  const [lignesOuvertes, setLignesOuvertes] = useState({});
   const [loading, setLoading] = useState(true);
   const [filtreType, setFiltreType] = useState("tous");
   const [filtreStatut, setFiltreStatut] = useState("tous");
@@ -2505,6 +2508,14 @@ function HistoriqueView({ devisList, garageId, onCreerOrdreReparation }) {
                   {[it.detail, it.prestation].filter(Boolean).join(" · ")}
                   {it.montant ? ` · ${Number(it.montant).toFixed(2)} €` : ""}
                 </div>
+                {it.type === "devis" && devisALignes(it.raw) && (
+                  <div className="mt-1">
+                    <button type="button" onClick={() => setLignesOuvertes((o) => ({ ...o, [it.id]: !o[it.id] }))} className="text-[12px] font-medium text-slate-500 hover:text-slate-700 min-h-[32px]">
+                      {lignesOuvertes[it.id] ? "Masquer les lignes" : `Voir les lignes (${it.raw.devis_lignes.length})`}
+                    </button>
+                    {lignesOuvertes[it.id] && <DevisLignesEditor devis={it.raw} lignes={it.raw.devis_lignes} prestations={prestations} readOnly />}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 {it.type === "devis" && it.statut === "accepte" && onCreerOrdreReparation && (
@@ -2526,7 +2537,7 @@ function HistoriqueView({ devisList, garageId, onCreerOrdreReparation }) {
   );
 }
 
-function DevisView({ devisList: devisListToutesSources, clients, prestations, garageData, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient, devisLiens = {}, devisBusyId, onGenererLien, onRevoquerLien }) {
+function DevisView({ devisList: devisListToutesSources, clients, prestations, garageData, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient, devisLiens = {}, devisBusyId, onGenererLien, onRevoquerLien, onLignesChange, onToast }) {
   const devisList = devisListToutesSources.filter((d) => d.statut === "en_attente");
   const [modalOuvert, setModalOuvert] = useState(false);
   return (
@@ -2540,7 +2551,7 @@ function DevisView({ devisList: devisListToutesSources, clients, prestations, ga
         <EmptyState icon={ReceiptText} title="Aucun devis en attente" subtitle="Les demandes de devis apparaîtront ici, prêtes à valider ou ajuster." />
       ) : (
         devisList.map((d) => (
-          <DevisCard key={d.id} d={d} garageData={garageData} onAccept={onAccept} onRefuse={onRefuse} onUpdateMontant={onUpdateMontant} lien={devisLiens[d.id]} busy={devisBusyId === d.id} onGenererLien={onGenererLien} onRevoquerLien={onRevoquerLien} />
+          <DevisCard key={d.id} d={d} garageData={garageData} onAccept={onAccept} onRefuse={onRefuse} onUpdateMontant={onUpdateMontant} lien={devisLiens[d.id]} busy={devisBusyId === d.id} onGenererLien={onGenererLien} onRevoquerLien={onRevoquerLien} prestations={prestations} onLignesChange={onLignesChange} onToast={onToast} />
         ))
       )}
       {modalOuvert && (
@@ -2580,8 +2591,9 @@ function DevisApercuModal({ d, garageData, onClose }) {
   );
 }
 
-function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, busy, onGenererLien, onRevoquerLien }) {
+function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, busy, onGenererLien, onRevoquerLien, prestations = [], onLignesChange, onToast }) {
   const [editing, setEditing] = useState(false);
+  const aDesLignes = devisALignes(d);
   const [montant, setMontant] = useState(d.montant_ht ?? 0);
   const [showMessage, setShowMessage] = useState(false);
   const [apercuOuvert, setApercuOuvert] = useState(false);
@@ -2644,12 +2656,16 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
               <button onClick={saveMontant} className="text-[12px] font-medium text-white px-3 py-1.5 rounded-lg" style={{ backgroundColor: ACCENT }}>Enregistrer</button>
               <button onClick={() => setEditing(false)} className="text-[12px] font-medium text-slate-500 px-3 py-1.5">Annuler</button>
             </div>
+          ) : aDesLignes ? (
+            <span className="text-[12px] text-slate-400">Totaux calculés depuis les lignes</span>
           ) : (
             <button onClick={() => setEditing(true)} className="flex items-center gap-1 text-[12px] font-medium text-slate-500 hover:text-slate-700">
               <Pencil size={12} /> Modifier le montant
             </button>
           )}
         </div>
+
+        <DevisLignesEditor devis={d} lignes={d.devis_lignes || []} prestations={prestations} onChange={onLignesChange} onToast={onToast} />
 
         {d.message_original && (
           <>
@@ -4664,7 +4680,8 @@ setPropositions(formattedPropositions);
           *,
           clients ( nom, telephone, email ),
           vehicules ( marque, modele, annee, immatriculation ),
-          prestations ( nom, categorie )
+          prestations ( nom, categorie ),
+          devis_lignes ( id, devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva, position, prestation_id, montant_ht, montant_tva, created_at, updated_at )
         `)
         .eq("garage_id", garageId)
         .order("created_at", { ascending: false });
@@ -5195,7 +5212,24 @@ if (updateError) {
 
   const handleCloturerRefusTravail = (id) => handleMettreAJourTravailDiffere(id, { statut: "refus_definitif" });
 
+  // Devis multi-lignes V1 : après relecture d'une mutation de lignes, la
+  // base a recalculé montant_ht / montant_ttc — on reflète ses valeurs, on ne
+  // les recalcule jamais ici.
+  const handleLignesDevisChange = (devisId, { lignes, montant_ht, montant_ttc }) => {
+    setDevisList((prev) => prev.map((d) => (
+      d.id === devisId
+        ? { ...d, devis_lignes: lignes, ...(montant_ht != null ? { montant_ht } : {}), ...(montant_ttc != null ? { montant_ttc } : {}) }
+        : d
+    )));
+  };
+
   const handleUpdateDevisMontant = async (id, montantHt) => {
+    // Parcours historique mono-prestation uniquement : dès qu'un devis porte
+    // des lignes, ses totaux viennent de la base et ne se saisissent plus.
+    if (devisALignes(devisList.find((d) => d.id === id))) {
+      flashToast("Ce devis est détaillé en lignes : ses totaux sont calculés automatiquement", "error");
+      return;
+    }
     const montantTtc = Math.round(montantHt * 1.2 * 100) / 100;
     const { error } = await supabase
       .from("devis")
@@ -5228,7 +5262,7 @@ if (updateError) {
         montant_ttc: montantTtc,
         statut: "en_attente",
       })
-      .select(`*, clients (nom, telephone, email), vehicules (marque, modele, annee, immatriculation), prestations (nom, categorie)`)
+      .select(`*, clients (nom, telephone, email), vehicules (marque, modele, annee, immatriculation), prestations (nom, categorie), devis_lignes ( id, devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva, position, prestation_id, montant_ht, montant_tva, created_at, updated_at )`)
       .single();
 
     if (error) {
@@ -5246,6 +5280,7 @@ if (updateError) {
       prestation: data.prestations?.nom || "Prestation",
       categorie: data.prestations?.categorie || "diagnostic",
       date: new Date(data.created_at).toLocaleDateString("fr-FR", { timeZone: APP_TIME_ZONE }),
+      devis_lignes: data.devis_lignes || [],
     };
     setDevisList((prev) => [formatted, ...prev]);
     flashToast("Devis créé");
@@ -5832,6 +5867,8 @@ if (updateError) {
               view={view}
               setView={setView}
               devisList={devisList}
+            onLignesChange={handleLignesDevisChange}
+            onToast={flashToast}
               clients={clients}
               prestations={prestations}
               garageData={garageData}

@@ -11,6 +11,8 @@ import {
   STATUT_OR_TONE,
   TYPE_LIGNE_LABEL,
 } from "./ordreReparationConstants";
+import RepriseLignesDevis from "../devis-lignes/RepriseLignesDevis";
+import { devisALignes, lignesDevisVersOR } from "../devis-lignes/calculs";
 import {
   calculerTotalEstimeHT,
   estDevisCompatible,
@@ -93,8 +95,18 @@ function CreerOrdreModal({ rendezVous, devisList, ordres, garageId, initialRende
 
   const [rendezVousId, setRendezVousId] = useState(rdvInitialValide);
   const [devisId, setDevisId] = useState("");
+  // Reprise des lignes du devis (contrat devis multi-lignes, section I) :
+  // toutes cochées par défaut dès qu'un devis à lignes est choisi.
+  const [selectionLignes, setSelectionLignes] = useState(new Set());
 
   const rdvChoisi = rendezVous.find((r) => r.id === rendezVousId) || null;
+  const devisChoisi = devisId ? devisList.find((d) => d.id === devisId) || null : null;
+  const lignesDevisChoisi = devisALignes(devisChoisi) ? devisChoisi.devis_lignes : [];
+
+  useEffect(() => {
+    setSelectionLignes(new Set(lignesDevisChoisi.map((l) => l.id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [devisId]);
 
   const devisAttachables = rdvChoisi
     ? filtrerDevisAttachables(devisList, { garageId, clientId: rdvChoisi.client_id, vehiculeId: rdvChoisi.vehicule_id })
@@ -153,9 +165,17 @@ function CreerOrdreModal({ rendezVous, devisList, ordres, garageId, initialRende
                 >
                   <option value="">— Aucun —</option>
                   {devisAttachables.map((d) => (
-                    <option key={d.id} value={d.id}>{Number(d.montant_ttc || 0).toFixed(2)} € TTC · accepté</option>
+                    <option key={d.id} value={d.id}>{Number(d.montant_ttc || 0).toFixed(2)} € TTC · accepté{devisALignes(d) ? ` · ${d.devis_lignes.length} ligne${d.devis_lignes.length > 1 ? "s" : ""}` : ""}</option>
                   ))}
                 </select>
+              )}
+              {lignesDevisChoisi.length > 0 && (
+                <RepriseLignesDevis
+                  lignes={lignesDevisChoisi}
+                  selection={selectionLignes}
+                  onToggle={(id) => setSelectionLignes((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })}
+                  onToggleTout={(tout) => setSelectionLignes(tout ? new Set(lignesDevisChoisi.map((l) => l.id)) : new Set())}
+                />
               )}
             </div>
           )}
@@ -164,7 +184,10 @@ function CreerOrdreModal({ rendezVous, devisList, ordres, garageId, initialRende
         <div className="mt-5 flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600">Annuler</button>
           <button
-            onClick={() => rdvChoisi && onSubmit({ garage_id: garageId, rendez_vous_id: rdvChoisi.id, vehicule_id: rdvChoisi.vehicule_id, client_id: rdvChoisi.client_id, devis_id: devisId || null })}
+            onClick={() => rdvChoisi && onSubmit(
+              { garage_id: garageId, rendez_vous_id: rdvChoisi.id, vehicule_id: rdvChoisi.vehicule_id, client_id: rdvChoisi.client_id, devis_id: devisId || null },
+              lignesDevisVersOR(lignesDevisChoisi.filter((l) => selectionLignes.has(l.id))),
+            )}
             disabled={submitting || !peutValider}
             className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
             style={{ backgroundColor: ACCENT }}
@@ -670,15 +693,30 @@ export default function OrdresReparationSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusVehiculeId]);
 
-  const handleCreer = async (payload) => {
+  const handleCreer = async (payload, lignesReprises = []) => {
     setSubmittingCreate(true);
     const { data, error } = await supabase.from("ordres_reparation").insert(payload).select("id").single();
-    setSubmittingCreate(false);
     if (error) {
+      setSubmittingCreate(false);
       console.error("Erreur création ordre de réparation :", error);
       flashToast(traduireErreurOR(error), "error");
       return;
     }
+    // Reprise explicite des lignes du devis, par valeur (contrat devis
+    // multi-lignes, section I). L'OR est créé quoi qu'il arrive : un échec
+    // ici est signalé, jamais masqué, et laisse l'OR consultable.
+    if (lignesReprises.length > 0) {
+      const { error: erreurLignes } = await supabase
+        .from("ordres_reparation_lignes")
+        .insert(lignesReprises.map((l) => ({ ordre_reparation_id: data.id, garage_id: garageId, ...l })));
+      if (erreurLignes) {
+        console.error("Erreur reprise des lignes du devis :", erreurLignes);
+        flashToast(`Fiche atelier créée, mais les lignes du devis n'ont pas pu être reprises : ${traduireErreurOR(erreurLignes)}`, "error");
+      } else {
+        flashToast(`${lignesReprises.length} ligne${lignesReprises.length > 1 ? "s" : ""} reprise${lignesReprises.length > 1 ? "s" : ""} du devis`);
+      }
+    }
+    setSubmittingCreate(false);
     setCreateOpen(false);
     await loadOrdres();
     setDetailId(data.id);
