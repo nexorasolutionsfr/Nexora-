@@ -14,7 +14,7 @@
 // hors réseau (harnais local, tests) — par défaut, le client applicatif.
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Lock, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Lock, Pencil, Plus, Trash2 } from "lucide-react";
 import { supabase as supabaseClient } from "@/lib/supabase";
 import { ACCENT, ACCENT_SOFT } from "../garage-os/tokens";
 import { STATUT_DEVIS_LABEL, TAUX_TVA_COURANTS, TAUX_TVA_DEFAUT, TYPE_LIGNE_LABEL } from "./devisLignesConstants";
@@ -147,29 +147,27 @@ function LigneDevisRow({ ligne, index, total, modifiable, prestations, onUpdate,
   }
 
   return (
-    <div className="border border-slate-200 rounded-xl p-3 sm:grid sm:grid-cols-[minmax(0,1fr)_88px_110px_64px_110px_auto] sm:items-center sm:gap-3">
+    <div className={`border border-slate-200 rounded-xl p-3 ${modifiable ? "md:grid md:grid-cols-[minmax(0,1fr)_56px_92px_56px_100px_168px] md:items-center md:gap-2.5" : "md:grid md:grid-cols-[minmax(0,1fr)_56px_92px_56px_100px] md:items-center md:gap-2.5"}`}>
       <div className="min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{TYPE_LIGNE_LABEL[ligne.type] || ligne.type}</span>
-          <span className="text-[13.5px] font-medium text-slate-900 truncate">{ligne.libelle}</span>
-        </div>
-        <div className="sm:hidden text-[12.5px] text-slate-500 mt-1">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{TYPE_LIGNE_LABEL[ligne.type] || ligne.type}</div>
+        <div className="text-[13.5px] font-medium text-slate-900 break-words">{ligne.libelle}</div>
+        <div className="md:hidden text-[12.5px] text-slate-500 mt-1">
           {Number(ligne.quantite)} × {formatEuro(ligne.prix_unitaire_ht)} HT · TVA {Number(ligne.taux_tva)} %
         </div>
       </div>
-      <div className="hidden sm:block text-[13px] text-slate-700 text-right tabular-nums">{Number(ligne.quantite)}</div>
-      <div className="hidden sm:block text-[13px] text-slate-700 text-right tabular-nums">{formatEuro(ligne.prix_unitaire_ht)}</div>
-      <div className="hidden sm:block text-[13px] text-slate-700 text-right tabular-nums">{Number(ligne.taux_tva)} %</div>
-      <div className="flex items-baseline justify-between sm:block sm:text-right mt-1.5 sm:mt-0">
-        <span className="sm:hidden text-[12px] text-slate-500">Total ligne</span>
-        <span className="text-[13.5px] font-semibold text-slate-900 tabular-nums">{formatEuro(montants.montant_ht)} <span className="text-[11px] font-medium text-slate-400">HT</span></span>
+      <div className="hidden md:block text-[13px] text-slate-700 text-right tabular-nums">{Number(ligne.quantite)}</div>
+      <div className="hidden md:block text-[13px] text-slate-700 text-right tabular-nums whitespace-nowrap">{formatEuro(ligne.prix_unitaire_ht)}</div>
+      <div className="hidden md:block text-[13px] text-slate-700 text-right tabular-nums whitespace-nowrap">{Number(ligne.taux_tva)} %</div>
+      <div className="flex items-baseline justify-between md:block md:text-right mt-1.5 md:mt-0">
+        <span className="md:hidden text-[12px] text-slate-500">Total ligne</span>
+        <span className="text-[13.5px] font-semibold text-slate-900 tabular-nums whitespace-nowrap">{formatEuro(montants.montant_ht)} <span className="text-[11px] font-medium text-slate-400">HT</span></span>
       </div>
       {modifiable && (
-        <div className="flex items-center justify-end gap-1 mt-2 sm:mt-0">
-          <button type="button" aria-label="Monter la ligne" disabled={submitting || index === 0} onClick={() => onMove(index, "haut")} className="min-h-[40px] min-w-[40px] rounded-lg text-slate-500 hover:bg-slate-50 disabled:opacity-30 flex items-center justify-center"><ArrowUp size={15} /></button>
-          <button type="button" aria-label="Descendre la ligne" disabled={submitting || index === total - 1} onClick={() => onMove(index, "bas")} className="min-h-[40px] min-w-[40px] rounded-lg text-slate-500 hover:bg-slate-50 disabled:opacity-30 flex items-center justify-center"><ArrowDown size={15} /></button>
-          <button type="button" onClick={() => setEditing(true)} disabled={submitting} className="min-h-[40px] px-2.5 rounded-lg text-[12.5px] font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">Modifier</button>
-          <button type="button" aria-label="Supprimer la ligne" onClick={() => onDelete(ligne.id)} disabled={submitting} className="min-h-[40px] min-w-[40px] rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50 flex items-center justify-center"><Trash2 size={15} /></button>
+        <div className="flex items-center justify-end gap-0.5 mt-2 md:mt-0">
+          <button type="button" aria-label="Monter la ligne" title="Monter" disabled={submitting || index === 0} onClick={() => onMove(index, "haut")} className="min-h-[40px] min-w-[40px] rounded-lg text-slate-500 hover:bg-slate-50 disabled:opacity-30 flex items-center justify-center"><ArrowUp size={15} /></button>
+          <button type="button" aria-label="Descendre la ligne" title="Descendre" disabled={submitting || index === total - 1} onClick={() => onMove(index, "bas")} className="min-h-[40px] min-w-[40px] rounded-lg text-slate-500 hover:bg-slate-50 disabled:opacity-30 flex items-center justify-center"><ArrowDown size={15} /></button>
+          <button type="button" aria-label="Modifier la ligne" title="Modifier" onClick={() => setEditing(true)} disabled={submitting} className="min-h-[40px] min-w-[40px] rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-50 flex items-center justify-center"><Pencil size={15} /></button>
+          <button type="button" aria-label="Supprimer la ligne" title="Supprimer" onClick={() => onDelete(ligne.id)} disabled={submitting} className="min-h-[40px] min-w-[40px] rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50 flex items-center justify-center"><Trash2 size={15} /></button>
         </div>
       )}
     </div>
@@ -278,8 +276,8 @@ export default function DevisLignesEditor({ devis, lignes: lignesProp, prestatio
       </div>
 
       {lignes.length > 0 && (
-        <div className="hidden sm:grid sm:grid-cols-[minmax(0,1fr)_88px_110px_64px_110px_auto] sm:gap-3 px-3 mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-          <div>Désignation</div><div className="text-right">Qté</div><div className="text-right">PU HT</div><div className="text-right">TVA</div><div className="text-right">Total HT</div><div className={modifiable ? "w-[176px]" : "w-0"} />
+        <div className={`hidden px-3 mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 ${modifiable ? "md:grid md:grid-cols-[minmax(0,1fr)_56px_92px_56px_100px_168px] md:items-center md:gap-2.5" : "md:grid md:grid-cols-[minmax(0,1fr)_56px_92px_56px_100px] md:items-center md:gap-2.5"}`}>
+          <div>Désignation</div><div className="text-right">Qté</div><div className="text-right">PU HT</div><div className="text-right">TVA</div><div className="text-right">Total HT</div>{modifiable && <div />}
         </div>
       )}
 
