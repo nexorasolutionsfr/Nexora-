@@ -3,6 +3,10 @@
 import { use, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+const TYPE_LABEL = { main_oeuvre: "Main d'œuvre", piece: "Pièce" };
+
+const euros = (v) => `${Number(v || 0).toFixed(2).replace(".", ",")} €`;
+
 const RAISON_MESSAGE = {
   inconnu: "Ce lien n'est pas valable. Vérifiez qu'il a été copié en entier.",
   expire: "Ce lien a expiré. Contactez votre garage pour obtenir un nouveau lien.",
@@ -72,6 +76,8 @@ export default function DevisTokenPage({ params }) {
   }
 
   const reponse = confirmation || (info.statut !== "en_attente" ? info.statut : null);
+  const lignes = Array.isArray(info.lignes) ? info.lignes : [];
+  const totalTva = Number(info.montant_ttc || 0) - Number(info.montant_ht || 0);
 
   return (
     <div style={{ minHeight: "100vh", background: "#F5F7FA", padding: 20, fontFamily: "-apple-system, sans-serif" }}>
@@ -80,8 +86,32 @@ export default function DevisTokenPage({ params }) {
           <div style={{ fontSize: 13, opacity: 0.7 }}>{info.garage_nom || "Votre garage"}</div>
           <div style={{ fontSize: 18, fontWeight: 600, marginTop: 4 }}>{info.vehicule || "Véhicule"}</div>
           <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>{info.prestation || "—"}</div>
-          <div style={{ fontSize: 28, fontWeight: 700, marginTop: 12 }}>{Number(info.montant_ttc || 0).toFixed(2)} €</div>
+          <div style={{ fontSize: 28, fontWeight: 700, marginTop: 12 }}>{euros(info.montant_ttc)}</div>
         </div>
+
+        {lignes.length > 0 && (
+          <div style={{ background: "white", borderRadius: 16, padding: 16, marginBottom: 20, border: "1px solid #E7EAF0" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#0F1B33", marginBottom: 10 }}>Détail du devis</div>
+            {lignes.map((l) => (
+              <div key={l.id} style={{ padding: "10px 0", borderBottom: "1px solid #F1F3F7" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 500, color: "#0F1B33" }}>{l.libelle}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: "#0F1B33", whiteSpace: "nowrap" }}>{euros(l.montant_ttc)}</span>
+                </div>
+                <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
+                  {TYPE_LABEL[l.type] || l.type} · {Number(l.quantite)} × {euros(l.prix_unitaire_ht)} HT · TVA {Number(l.taux_tva)} %
+                </div>
+              </div>
+            ))}
+            <div style={{ marginTop: 12, fontSize: 13, color: "#475569" }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}><span>Total HT</span><span>{euros(info.montant_ht)}</span></div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}><span>TVA</span><span>{euros(totalTva)}</span></div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: "1px solid #E7EAF0", fontSize: 15, fontWeight: 700, color: "#0F1B33" }}>
+                <span>Total TTC</span><span>{euros(info.montant_ttc)}</span>
+              </div>
+            </div>
+          </div>
+        )}
         {reponse ? (
           <div style={{ fontSize: 16, fontWeight: 600, color: reponse === "accepte" ? "#16A34A" : "#DC2626", textAlign: "center" }}>
             {reponse === "accepte" ? "Vous avez accepté ce devis." : "Vous avez refusé ce devis."}
