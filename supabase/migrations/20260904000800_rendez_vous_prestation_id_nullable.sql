@@ -1,0 +1,18 @@
+-- Troisième contrainte de la même famille que 20260904000300 et
+-- 20260904000400, trouvée en rejouant la création manuelle de rendez-vous
+-- une fois les deux premières levées : rendez_vous.prestation_id est
+-- NOT NULL sans défaut, alors que handleCreerRdvManuel écrit délibérément
+-- `prestation_id: prestation_id || null` et que le formulaire présente la
+-- prestation comme un choix non obligatoire (aucune validation ne bloque
+-- l'envoi sans prestation). La création échouait donc en 23502 sur une
+-- dépendance qu'aucun écran ne rend visible.
+--
+-- La couche applicative déclare déjà son intention — null est une valeur
+-- légitime pour un rendez-vous pris avant de savoir ce qu'il faudra faire.
+-- Cette migration met la base en accord avec ce contrat, elle n'invente
+-- aucune règle nouvelle.
+--
+-- Additif : retrait d'une contrainte, aucune donnée existante réécrite.
+-- Test uniquement ; la même contrainte existe sur Production et devra y être
+-- revue avec les deux précédentes.
+alter table public.rendez_vous alter column prestation_id drop not null;
