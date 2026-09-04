@@ -374,6 +374,26 @@ trigger de totaux (E.1) peut effectivement écrire dans `devis` sans effet de
 bord, en conditions réelles. C'est le seul point que l'inspection du catalogue
 ne peut pas trancher, parce qu'il dépend de l'exécution.
 
+**H.5 — Fermeture des privilèges EXECUTE : deux migrations, 18 + 6 instructions.**
+La vérification post-migration sur Test a montré que `revoke ... from public`
+ne retire pas les privilèges par défaut que ce projet accorde aux rôles nommés
+(`anon`, `authenticated`, `service_role`), exactement comme pour le lot OR
+(`20260902000200`). Le correctif `20260904000200` compte **18** `REVOKE`, et
+non 20 (5 fonctions × 4 rôles) ni 19 : sur `devis_statut_modifiable`, le
+`from public` avait déjà été posé par `20260904000100` (qui l'a aussi posé sur
+les quatre fonctions trigger — `000200` le répète sur celles-ci, ce qui est
+redondant mais inoffensif). État constaté sur Test après les deux migrations,
+via `aclexplode(proacl)` (seul moyen d'interroger PUBLIC) :
+
+| Fonction | ACL explicite | PUBLIC | anon | authenticated | service_role |
+|---|---|---|---|---|---|
+| `devis_statut_modifiable` | `postgres, authenticated` | non | non | **oui** | non |
+| les 4 fonctions trigger | `postgres` | non | non | non | non |
+
+`authenticated` doit conserver EXECUTE sur le helper : les deux fonctions
+trigger `SECURITY INVOKER` qui l'appellent s'exécutent sous le rôle appelant
+(correctif du P0 de la revue du 2026-09-04).
+
 **H.4 — Constat de sécurité sorti du périmètre.** Les privilèges résiduels de
 `anon` sur `devis` (B.9, `TRUNCATE` notamment, que la RLS ne filtre jamais) sont
 réels mais **ne relèvent pas de ce lot**. Ils sont consignés ici pour mémoire et
