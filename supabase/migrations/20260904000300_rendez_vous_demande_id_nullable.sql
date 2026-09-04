@@ -1,0 +1,18 @@
+-- Corrige un défaut P0 vérifié le 2026-09-04 lors de la recette pilote sur
+-- Supabase Test : la création manuelle d'un rendez-vous depuis l'Agenda
+-- (handleCreerRdvManuel, source='manuel') échoue systématiquement avec
+-- l'erreur Postgres 23502 « null value in column "demande_id" violates
+-- not-null constraint ». Un rendez-vous créé à la main par le garage n'a par
+-- définition aucune demande d'origine — la contrainte NOT NULL est donc
+-- incompatible avec ce chemin, qui est le plus basique du produit.
+--
+-- Vérifié identique sur Test (slawilafseganlbghgwx) et sur Production
+-- (omphppsmhmyllapdqevn) en lecture seule : demande_id est NOT NULL sans
+-- défaut aux deux endroits. Ce correctif est purement additif (retrait
+-- d'une contrainte, aucune donnée existante modifiée, aucune ligne
+-- ré-écrite) : sûr à appliquer sur une table qui contient déjà des données.
+--
+-- Portée de cette migration : Test uniquement à ce stade. Production n'est
+-- pas touchée ; le même correctif devra y être revu et appliqué séparément
+-- avant qu'un vrai garage pilote ne dépende de la création manuelle de RDV.
+alter table public.rendez_vous alter column demande_id drop not null;
