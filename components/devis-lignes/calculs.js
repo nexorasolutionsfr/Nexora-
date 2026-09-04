@@ -188,6 +188,11 @@ export function lignesDevisVersOR(lignes) {
     libelle: l.libelle,
     quantite: Number(l.quantite),
     prix_unitaire_ht: l.prix_unitaire_ht == null ? null : arrondir2(l.prix_unitaire_ht),
+    // Le taux de TVA suit la ligne jusqu'à l'OR : sans lui, une facture
+    // établie depuis un OR terminé ne peut pas calculer sa TVA (recette
+    // pilote du 2026-09-04). Repli sur le taux par défaut seulement si la
+    // ligne d'origine n'en portait pas.
+    taux_tva: l.taux_tva == null ? TAUX_TVA_DEFAUT : Number(l.taux_tva),
     duree_minutes: null,
   }));
 }

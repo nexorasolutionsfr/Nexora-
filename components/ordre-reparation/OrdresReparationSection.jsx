@@ -12,6 +12,7 @@ import {
   TYPE_LIGNE_LABEL,
 } from "./ordreReparationConstants";
 import RepriseLignesDevis from "../devis-lignes/RepriseLignesDevis";
+import { TAUX_TVA_COURANTS, TAUX_TVA_DEFAUT } from "../devis-lignes/devisLignesConstants";
 import { devisALignes, lignesDevisVersOR } from "../devis-lignes/calculs";
 import {
   calculerTotalEstimeHT,
@@ -224,6 +225,7 @@ function LigneForm({ initial, onSave, onCancel, submitting }) {
   const [libelle, setLibelle] = useState(initial?.libelle || "");
   const [quantite, setQuantite] = useState(initial?.quantite ?? 1);
   const [prixUnitaireHt, setPrixUnitaireHt] = useState(initial?.prix_unitaire_ht ?? "");
+  const [tauxTva, setTauxTva] = useState(initial?.taux_tva ?? TAUX_TVA_DEFAUT);
   const [dureeMinutes, setDureeMinutes] = useState(initial?.duree_minutes ?? "");
   const [erreurs, setErreurs] = useState({});
 
@@ -233,6 +235,7 @@ function LigneForm({ initial, onSave, onCancel, submitting }) {
       libelle,
       quantite,
       prix_unitaire_ht: prixUnitaireHt === "" ? null : prixUnitaireHt,
+      taux_tva: Number(tauxTva),
       duree_minutes: type === "piece" ? null : dureeMinutes === "" ? null : dureeMinutes,
     };
     const { valide, erreurs: nouvellesErreurs } = validerLigneForm(champs);
@@ -267,6 +270,12 @@ function LigneForm({ initial, onSave, onCancel, submitting }) {
           <label className="text-[11.5px] font-medium text-slate-500">Prix HT estimé (facultatif)</label>
           <input type="number" min="0" step="0.01" value={prixUnitaireHt} onChange={(e) => setPrixUnitaireHt(e.target.value)} placeholder="—" className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-2 text-[13px] outline-none focus:border-blue-500 bg-white" />
           {erreurs.prix_unitaire_ht && <div className="text-[11px] text-red-600 mt-0.5">{erreurs.prix_unitaire_ht}</div>}
+        </div>
+        <div>
+          <label className="text-[11.5px] font-medium text-slate-500">TVA (%)</label>
+          <select value={tauxTva} onChange={(e) => setTauxTva(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-2 text-[13px] outline-none focus:border-blue-500 bg-white">
+            {TAUX_TVA_COURANTS.map((t) => <option key={t} value={t}>{t} %</option>)}
+          </select>
         </div>
         {type === "main_oeuvre" && (
           <div>
