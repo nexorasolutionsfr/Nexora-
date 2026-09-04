@@ -43,6 +43,30 @@ $$;
 revoke execute on function pg_temp.assert(boolean, text) from public;
 grant execute on function pg_temp.assert(boolean, text) to authenticated;
 
+-- Assertion d'ECHEC STRICTE. Un `exception when others` qui constate qu'« une »
+-- erreur est survenue valide le test pour n'importe quelle raison — y compris un
+-- « permission denied » masquant une fonctionnalite cassee. Chaque echec attendu
+-- est donc verifie sur son SQLSTATE ET sur un motif de son message.
+create function pg_temp.assert_echec(
+  p_cas text, p_state text, p_message text,
+  p_state_attendu text, p_motif_attendu text
+) returns void
+language plpgsql set search_path = '' as $$
+begin
+  if p_state is null then
+    raise exception 'ASSERTION FAILED: % : aucune erreur levee, alors que SQLSTATE % etait attendu', p_cas, p_state_attendu;
+  end if;
+  if p_state <> p_state_attendu then
+    raise exception 'ASSERTION FAILED: % : SQLSTATE attendu %, obtenu % (message : %)', p_cas, p_state_attendu, p_state, p_message;
+  end if;
+  if position(lower(p_motif_attendu) in lower(p_message)) = 0 then
+    raise exception 'ASSERTION FAILED: % : message attendu contenant "%", obtenu "%"', p_cas, p_motif_attendu, p_message;
+  end if;
+end;
+$$;
+revoke execute on function pg_temp.assert_echec(text, text, text, text, text) from public;
+grant execute on function pg_temp.assert_echec(text, text, text, text, text) to authenticated;
+
 insert into _fixture_ids (cle, valeur) values
   ('user_a', gen_random_uuid()),
   ('user_b', gen_random_uuid()),
@@ -63,7 +87,9 @@ insert into _fixture_ids (cle, valeur) values
   ('devis_suppr', gen_random_uuid()),
   ('ligne_1', gen_random_uuid()),
   ('ligne_2', gen_random_uuid()),
-  ('ligne_suppr', gen_random_uuid());
+  ('ligne_suppr', gen_random_uuid()),
+  ('devis_nominal', gen_random_uuid()),
+  ('devis_notif', gen_random_uuid());
 
 -- =====================================================================
 -- 1. Fixtures : deux garages, deux propriétaires
@@ -95,7 +121,9 @@ insert into public.devis (id, garage_id, client_id, vehicule_id, statut, message
   (pg_temp.fid('devis_inconnu'),   pg_temp.fid('garage_a'), pg_temp.fid('client_a'), pg_temp.fid('vehicule_a'), 'en_attente', 'RECETTE DEVIS LIGNES V1'),
   (pg_temp.fid('devis_statut_null'), pg_temp.fid('garage_a'), pg_temp.fid('client_a'), pg_temp.fid('vehicule_a'), 'en_attente', 'RECETTE DEVIS LIGNES V1'),
   (pg_temp.fid('devis_suppr'),     pg_temp.fid('garage_a'), pg_temp.fid('client_a'), pg_temp.fid('vehicule_a'), 'en_attente', 'RECETTE DEVIS LIGNES V1'),
-  (pg_temp.fid('devis_b'),         pg_temp.fid('garage_b'), null, null, 'en_attente', 'RECETTE DEVIS LIGNES V1');
+  (pg_temp.fid('devis_b'),         pg_temp.fid('garage_b'), null, null, 'en_attente', 'RECETTE DEVIS LIGNES V1'),
+  (pg_temp.fid('devis_nominal'),   pg_temp.fid('garage_a'), pg_temp.fid('client_a'), pg_temp.fid('vehicule_a'), 'en_attente', 'RECETTE DEVIS LIGNES V1'),
+  (pg_temp.fid('devis_notif'),     pg_temp.fid('garage_a'), pg_temp.fid('client_a'), pg_temp.fid('vehicule_a'), 'en_attente', 'RECETTE DEVIS LIGNES V1');
 
 -- Devis historique : sans ligne, montant_ht NULL — reproduit le cas relevé en
 -- Production par l'audit (contrat B.7). Il ne doit JAMAIS être recalculé.
@@ -178,57 +206,64 @@ end;
 $$;
 
 -- =====================================================================
--- 4. Contraintes de ligne (contrat D)
+-- 4. Contraintes de ligne (contrat D) — SQLSTATE et contrainte nommee
 -- =====================================================================
 
 do $$
-declare
-  v_cas text;
-  v_leve boolean;
+declare v_cas record; v_state text; v_msg text;
 begin
-  foreach v_cas in array array['quantite_zero','quantite_negative','prix_negatif','tva_negative','tva_sup_100','libelle_vide','type_inconnu']
+  for v_cas in
+    select * from (values
+      ('quantite_zero',     'devis_lignes_quantite_positive'),
+      ('quantite_negative', 'devis_lignes_quantite_positive'),
+      ('prix_negatif',      'devis_lignes_prix_positif'),
+      ('tva_negative',      'devis_lignes_taux_tva_borne'),
+      ('tva_sup_100',       'devis_lignes_taux_tva_borne'),
+      ('libelle_vide',      'devis_lignes_libelle_non_vide'),
+      ('type_inconnu',      'devis_lignes_type_valide')
+    ) as t(cas, contrainte)
   loop
-    v_leve := false;
+    v_state := null; v_msg := null;
     begin
       insert into public.devis_lignes (devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva)
       values (
         pg_temp.fid('devis_attente'), pg_temp.fid('garage_a'),
-        case when v_cas = 'type_inconnu' then 'remise' else 'piece' end,
-        case when v_cas = 'libelle_vide' then '   ' else 'Libelle' end,
-        case when v_cas = 'quantite_zero' then 0 when v_cas = 'quantite_negative' then -1 else 1 end,
-        case when v_cas = 'prix_negatif' then -10 else 10 end,
-        case when v_cas = 'tva_negative' then -1 when v_cas = 'tva_sup_100' then 101 else 20 end
+        case when v_cas.cas = 'type_inconnu' then 'remise' else 'piece' end,
+        case when v_cas.cas = 'libelle_vide' then '   ' else 'Libelle' end,
+        case when v_cas.cas = 'quantite_zero' then 0 when v_cas.cas = 'quantite_negative' then -1 else 1 end,
+        case when v_cas.cas = 'prix_negatif' then -10 else 10 end,
+        case when v_cas.cas = 'tva_negative' then -1 when v_cas.cas = 'tva_sup_100' then 101 else 20 end
       );
-    exception when others then
-      v_leve := true;
+    exception when others then v_state := sqlstate; v_msg := sqlerrm;
     end;
-    perform pg_temp.assert(v_leve, 'cas ' || v_cas || ' : l''insertion aurait du etre refusee');
+    -- 23514 = check_violation
+    perform pg_temp.assert_echec(v_cas.cas, v_state, v_msg, '23514', v_cas.contrainte);
   end loop;
 end;
 $$;
 
 -- =====================================================================
--- 5. Intégrité inter-garage (contrat F.3)
+-- 5. Intégrité inter-garage (contrat F.3) — motif exact
 -- =====================================================================
 
 do $$
-declare v_leve boolean;
+declare v_state text; v_msg text;
 begin
-  v_leve := false;
+  v_state := null;
   begin
     insert into public.devis_lignes (devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva)
     values (pg_temp.fid('devis_attente'), pg_temp.fid('garage_b'), 'piece', 'Garage incoherent', 1, 10, 20);
-  exception when others then v_leve := true;
+  exception when others then v_state := sqlstate; v_msg := sqlerrm;
   end;
-  perform pg_temp.assert(v_leve, 'garage_id incoherent avec le devis parent : aurait du etre refuse');
+  perform pg_temp.assert_echec('garage_id incoherent', v_state, v_msg, 'P0001', 'garage_id incoherent');
 
-  v_leve := false;
+  v_state := null;
   begin
     insert into public.devis_lignes (devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva, prestation_id)
     values (pg_temp.fid('devis_attente'), pg_temp.fid('garage_a'), 'piece', 'Prestation hors garage', 1, 10, 20, pg_temp.fid('prestation_b'));
-  exception when others then v_leve := true;
+  exception when others then v_state := sqlstate; v_msg := sqlerrm;
   end;
-  perform pg_temp.assert(v_leve, 'prestation d''un autre garage : aurait du etre refusee');
+  perform pg_temp.assert_echec('prestation hors garage', v_state, v_msg, 'P0001', 'prestation hors garage');
 end;
 $$;
 
@@ -256,46 +291,42 @@ $$;
 -- =====================================================================
 
 do $$
-declare
-  v_cle text;
-  v_leve boolean;
+declare v_cle text; v_state text; v_msg text;
 begin
   foreach v_cle in array array['devis_accepte','devis_refuse','devis_inconnu','devis_statut_null']
   loop
-    v_leve := false;
+    v_state := null;
     begin
       insert into public.devis_lignes (devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva)
       values (pg_temp.fid(v_cle), pg_temp.fid('garage_a'), 'piece', 'Interdite', 1, 10, 20);
-    exception when others then v_leve := true;
+    exception when others then v_state := sqlstate; v_msg := sqlerrm;
     end;
-    perform pg_temp.assert(v_leve, v_cle || ' : l''ajout de ligne aurait du etre refuse');
+    perform pg_temp.assert_echec('ajout de ligne sur ' || v_cle, v_state, v_msg, 'P0001', 'le devis est verrouille');
   end loop;
 end;
 $$;
 
--- Ligne posée AVANT verrouillage, puis tentatives de modification et de
--- suppression une fois le devis verrouillé.
 do $$
-declare v_leve boolean; v_n integer;
+declare v_state text; v_msg text; v_n integer;
 begin
   insert into public.devis_lignes (id, devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva)
   values (pg_temp.fid('ligne_suppr'), pg_temp.fid('devis_suppr'), pg_temp.fid('garage_a'), 'piece', 'Avant verrouillage', 1, 10, 20);
 
   update public.devis set statut = 'accepte' where id = pg_temp.fid('devis_suppr');
 
-  v_leve := false;
+  v_state := null;
   begin
     update public.devis_lignes set quantite = 5 where id = pg_temp.fid('ligne_suppr');
-  exception when others then v_leve := true;
+  exception when others then v_state := sqlstate; v_msg := sqlerrm;
   end;
-  perform pg_temp.assert(v_leve, 'devis verrouille : la modification d''une ligne existante aurait du etre refusee');
+  perform pg_temp.assert_echec('modification de ligne sur devis verrouille', v_state, v_msg, 'P0001', 'le devis est verrouille');
 
-  v_leve := false;
+  v_state := null;
   begin
     delete from public.devis_lignes where id = pg_temp.fid('ligne_suppr');
-  exception when others then v_leve := true;
+  exception when others then v_state := sqlstate; v_msg := sqlerrm;
   end;
-  perform pg_temp.assert(v_leve, 'devis verrouille : la suppression d''une ligne isolee aurait du etre refusee');
+  perform pg_temp.assert_echec('suppression de ligne sur devis verrouille', v_state, v_msg, 'P0001', 'le devis est verrouille');
 
   select count(*) into v_n from public.devis_lignes where id = pg_temp.fid('ligne_suppr');
   perform pg_temp.assert(v_n = 1, 'devis verrouille : la ligne doit toujours exister');
@@ -307,14 +338,11 @@ $$;
 -- =====================================================================
 
 do $$
-declare
-  v_champ text;
-  v_leve boolean;
-  v_statut_apres text;
+declare v_champ text; v_state text; v_msg text; v_statut_apres text;
 begin
   foreach v_champ in array array['montant_ht','montant_ttc','prestation_id','client_id','vehicule_id','garage_id','demande_id','message_garage','statut','date_validation']
   loop
-    v_leve := false;
+    v_state := null;
     begin
       case v_champ
         when 'montant_ht'      then update public.devis set montant_ht = 999 where id = pg_temp.fid('devis_accepte');
@@ -328,9 +356,9 @@ begin
         when 'statut'          then update public.devis set statut = 'refuse' where id = pg_temp.fid('devis_accepte');
         when 'date_validation' then update public.devis set date_validation = now() where id = pg_temp.fid('devis_accepte');
       end case;
-    exception when others then v_leve := true;
+    exception when others then v_state := sqlstate; v_msg := sqlerrm;
     end;
-    perform pg_temp.assert(v_leve, 'devis accepte : la modification de ' || v_champ || ' aurait du etre refusee');
+    perform pg_temp.assert_echec('modification de devis.' || v_champ, v_state, v_msg, 'P0001', 'ne peut plus etre modifie');
   end loop;
 
   select statut into v_statut_apres from public.devis where id = pg_temp.fid('devis_accepte');
@@ -338,16 +366,15 @@ begin
 end;
 $$;
 
--- Suppression d'un devis verrouillé : refusée, et ses lignes survivent.
 do $$
-declare v_leve boolean; v_n integer;
+declare v_state text; v_msg text; v_n integer;
 begin
-  v_leve := false;
+  v_state := null;
   begin
     delete from public.devis where id = pg_temp.fid('devis_suppr');
-  exception when others then v_leve := true;
+  exception when others then v_state := sqlstate; v_msg := sqlerrm;
   end;
-  perform pg_temp.assert(v_leve, 'devis verrouille : la suppression aurait du etre refusee');
+  perform pg_temp.assert_echec('suppression d''un devis verrouille', v_state, v_msg, 'P0001', 'ne peut pas etre supprime');
 
   select count(*) into v_n from public.devis where id = pg_temp.fid('devis_suppr');
   perform pg_temp.assert(v_n = 1, 'devis verrouille : le devis doit toujours exister');
@@ -389,61 +416,170 @@ end;
 $$;
 
 -- =====================================================================
--- 10. Isolation par garage et absence d'accès anon (contrat F.1, F.2)
+-- 10. CHEMIN NOMINAL COMPLET SOUS RÔLE `authenticated` (regression P0)
 -- =====================================================================
+-- Les sections precedentes s'executent avec le role de session, qui contourne
+-- RLS et privileges : elles ne prouvent RIEN sur ce qu'un garagiste reel peut
+-- faire. Cette section rejoue le parcours nominal ENTIER sous `authenticated`.
+--
+-- `discard plans` est INDISPENSABLE ici, et ce n'est pas une precaution de
+-- confort. PL/pgSQL met en cache les plans de ses requetes, et le privilege
+-- EXECUTE d'une fonction est verifie a la PLANIFICATION, pas a l'execution.
+-- Les sections 2 a 9 ayant deja fait passer les memes triggers sous le role de
+-- session (superutilisateur), leurs plans sont caches : sans purge, l'insertion
+-- ci-dessous reutiliserait ces plans et ne revaliderait AUCUN privilege. Le
+-- test passerait alors meme si `authenticated` n'avait aucun droit — c'est
+-- exactement le faux negatif constate lors du controle negatif du 2026-09-04.
+-- Les sections precedentes s'executent avec le role de session, qui contourne
+-- RLS et privileges : elles ne prouvent RIEN sur ce qu'un garagiste reel peut
+-- faire. Cette section rejoue le parcours nominal ENTIER sous `authenticated`.
+-- C'est elle qui aurait attrape le « permission denied for function
+-- devis_statut_modifiable » passe inapercu a la premiere redaction.
+
+discard plans;
 
 do $$
-declare v_n integer; v_leve boolean;
+declare v_n integer; v_ht numeric; v_ttc numeric;
+begin
+  perform set_config('request.jwt.claim.sub', pg_temp.fid('user_a')::text, true);
+  set local role authenticated;
+
+  insert into public.devis_lignes (devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva)
+  values (pg_temp.fid('devis_nominal'), pg_temp.fid('garage_a'), 'main_oeuvre', 'Nominal MO', 2, 50.00, 20.00);
+  insert into public.devis_lignes (devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva)
+  values (pg_temp.fid('devis_nominal'), pg_temp.fid('garage_a'), 'piece', 'Nominal piece', 1, 20.00, 10.00);
+
+  select count(*) into v_n from public.devis_lignes where devis_id = pg_temp.fid('devis_nominal');
+  perform pg_temp.assert(v_n = 2, 'nominal authenticated : deux lignes attendues, obtenu ' || v_n);
+
+  select montant_ht, montant_ttc into v_ht, v_ttc from public.devis where id = pg_temp.fid('devis_nominal');
+  perform pg_temp.assert(v_ht = 120.00, 'nominal authenticated : HT attendu 120.00, obtenu ' || v_ht);
+  perform pg_temp.assert(v_ttc = 142.00, 'nominal authenticated : TTC attendu 142.00, obtenu ' || v_ttc);
+
+  update public.devis_lignes set quantite = 3
+   where devis_id = pg_temp.fid('devis_nominal') and type = 'main_oeuvre';
+  select montant_ht into v_ht from public.devis where id = pg_temp.fid('devis_nominal');
+  perform pg_temp.assert(v_ht = 170.00, 'nominal authenticated : HT apres modification attendu 170.00, obtenu ' || v_ht);
+
+  delete from public.devis_lignes where devis_id = pg_temp.fid('devis_nominal') and type = 'piece';
+  select montant_ht into v_ht from public.devis where id = pg_temp.fid('devis_nominal');
+  perform pg_temp.assert(v_ht = 150.00, 'nominal authenticated : HT apres suppression attendu 150.00, obtenu ' || v_ht);
+
+  update public.devis set statut = 'accepte', date_validation = now()
+   where id = pg_temp.fid('devis_nominal');
+
+  reset role;
+end;
+$$;
+
+-- =====================================================================
+-- 11. Isolation par garage, sous rôle `authenticated` (contrat F.2)
+-- =====================================================================
+-- Meme raison qu'en section 10 : les plans caches sous le role de session
+-- masqueraient les controles de privileges et de RLS.
+
+discard plans;
+
+do $$
+declare v_n integer; v_state text; v_msg text;
 begin
   insert into public.devis_lignes (devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva)
   values (pg_temp.fid('devis_b'), pg_temp.fid('garage_b'), 'piece', 'Garage B', 1, 10, 20);
 
-  -- Utilisateur A authentifié : ne doit voir que ses propres lignes.
   perform set_config('request.jwt.claim.sub', pg_temp.fid('user_a')::text, true);
-  perform set_config('role', 'authenticated', true);
   set local role authenticated;
 
   select count(*) into v_n from public.devis_lignes where garage_id = pg_temp.fid('garage_b');
-  perform pg_temp.assert(v_n = 0, 'isolation : le garage A ne doit voir aucune ligne du garage B');
+  perform pg_temp.assert(v_n = 0, 'isolation : A ne doit voir aucune ligne de B, vu ' || v_n);
 
-  v_leve := false;
+  v_state := null;
   begin
     insert into public.devis_lignes (devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva)
     values (pg_temp.fid('devis_b'), pg_temp.fid('garage_b'), 'piece', 'Injection', 1, 10, 20);
-  exception when others then v_leve := true;
+  exception when others then v_state := sqlstate; v_msg := sqlerrm;
   end;
-  perform pg_temp.assert(v_leve, 'isolation : le garage A ne doit pas pouvoir ecrire dans le garage B');
+  perform pg_temp.assert_echec('ecriture croisee A vers B', v_state, v_msg, 'P0001', 'devis introuvable ou hors garage');
+
+  update public.devis_lignes set prix_unitaire_ht = 1 where garage_id = pg_temp.fid('garage_b');
+  get diagnostics v_n = row_count;
+  perform pg_temp.assert(v_n = 0, 'isolation : A ne doit modifier aucune ligne de B, touchees ' || v_n);
+
+  delete from public.devis_lignes where garage_id = pg_temp.fid('garage_b');
+  get diagnostics v_n = row_count;
+  perform pg_temp.assert(v_n = 0, 'isolation : A ne doit supprimer aucune ligne de B, touchees ' || v_n);
 
   reset role;
 
-  -- anon : aucun privilège de table, quel que soit le contenu. L'assertion est
-  -- évaluée APRÈS le retour au rôle initial : anon n'a volontairement aucun
-  -- droit EXECUTE sur les fonctions d'échafaudage de ce banc.
-  v_leve := false;
+  select count(*) into v_n from public.devis_lignes where garage_id = pg_temp.fid('garage_b');
+  perform pg_temp.assert(v_n = 1, 'isolation : la ligne du garage B doit etre intacte');
+end;
+$$;
+
+do $$
+declare v_state text; v_msg text;
+begin
+  v_state := null;
   begin
     set local role anon;
     perform 1 from public.devis_lignes;
-  exception when others then v_leve := true;
+  exception when others then v_state := sqlstate; v_msg := sqlerrm;
   end;
   reset role;
-  perform pg_temp.assert(v_leve, 'anon : la lecture de devis_lignes aurait du etre refusee');
+  perform pg_temp.assert_echec('lecture anon', v_state, v_msg, '42501', 'devis_lignes');
 
-  v_leve := false;
+  v_state := null;
   begin
     set local role anon;
     insert into public.devis_lignes (devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva)
     values (pg_temp.fid('devis_b'), pg_temp.fid('garage_b'), 'piece', 'Anon', 1, 10, 20);
-  exception when others then v_leve := true;
+  exception when others then v_state := sqlstate; v_msg := sqlerrm;
   end;
   reset role;
-  perform pg_temp.assert(v_leve, 'anon : l''ecriture dans devis_lignes aurait du etre refusee');
+  perform pg_temp.assert_echec('ecriture anon', v_state, v_msg, '42501', 'devis_lignes');
+end;
+$$;
+
+-- =====================================================================
+-- 12. ZÉRO NOTIFICATION sur écriture de ligne (règle produit)
+-- =====================================================================
+-- Ajouter, modifier ou supprimer une ligne ne doit JAMAIS alimenter
+-- notifications_devis. Seul un geste metier explicite — la transition vers
+-- accepte ou refuse — a le droit d'y ecrire. Ce test verrouille la regle cote
+-- base : si notifier_devis_maj se mettait un jour a reagir a autre chose qu'une
+-- transition de statut, il echouerait ici plutot qu'en production.
+
+do $$
+declare v_avant integer; v_apres integer; v_id uuid;
+begin
+  v_id := pg_temp.fid('devis_notif');
+  select count(*) into v_avant from public.notifications_devis where devis_id = v_id;
+
+  insert into public.devis_lignes (devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva)
+  values (v_id, pg_temp.fid('garage_a'), 'piece', 'Notif ajout', 1, 10, 20);
+  select count(*) into v_apres from public.notifications_devis where devis_id = v_id;
+  perform pg_temp.assert(v_apres = v_avant, 'AJOUT de ligne : aucune notification attendue (avant ' || v_avant || ', apres ' || v_apres || ')');
+
+  update public.devis_lignes set quantite = 4 where devis_id = v_id;
+  select count(*) into v_apres from public.notifications_devis where devis_id = v_id;
+  perform pg_temp.assert(v_apres = v_avant, 'MODIFICATION de ligne : aucune notification attendue (avant ' || v_avant || ', apres ' || v_apres || ')');
+
+  delete from public.devis_lignes where devis_id = v_id;
+  select count(*) into v_apres from public.notifications_devis where devis_id = v_id;
+  perform pg_temp.assert(v_apres = v_avant, 'SUPPRESSION de ligne : aucune notification attendue (avant ' || v_avant || ', apres ' || v_apres || ')');
+
+  -- Contre-epreuve indispensable : le geste metier explicite, lui, DOIT
+  -- notifier. Sans elle, ce test passerait aussi si les notifications etaient
+  -- completement cassees.
+  update public.devis set statut = 'accepte', date_validation = now() where id = v_id;
+  select count(*) into v_apres from public.notifications_devis where devis_id = v_id;
+  perform pg_temp.assert(v_apres = v_avant + 1, 'TRANSITION vers accepte : une notification attendue (avant ' || v_avant || ', apres ' || v_apres || ')');
 end;
 $$;
 
 rollback;
 
 -- =====================================================================
--- 11. Preuve d'absence de résidu, APRÈS rollback (hors transaction)
+-- 13. Preuve d'absence de résidu, APRÈS rollback (hors transaction)
 -- =====================================================================
 
 do $$

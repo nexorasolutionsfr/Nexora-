@@ -52,11 +52,11 @@ create table public.devis_lignes (
   id uuid primary key default gen_random_uuid(),
   devis_id uuid not null references public.devis(id) on delete cascade,
   garage_id uuid not null references public.garages(id) on delete restrict,
-  type text not null check (type in ('main_oeuvre', 'piece')),
-  libelle text not null check (length(btrim(libelle)) > 0),
-  quantite numeric(10,3) not null check (quantite > 0),
-  prix_unitaire_ht numeric(12,2) not null check (prix_unitaire_ht >= 0),
-  taux_tva numeric(5,2) not null check (taux_tva >= 0 and taux_tva <= 100),
+  type text not null constraint devis_lignes_type_valide check (type in ('main_oeuvre', 'piece')),
+  libelle text not null constraint devis_lignes_libelle_non_vide check (length(btrim(libelle)) > 0),
+  quantite numeric(10,3) not null constraint devis_lignes_quantite_positive check (quantite > 0),
+  prix_unitaire_ht numeric(12,2) not null constraint devis_lignes_prix_positif check (prix_unitaire_ht >= 0),
+  taux_tva numeric(5,2) not null constraint devis_lignes_taux_tva_borne check (taux_tva >= 0 and taux_tva <= 100),
   position integer not null default 0,
   prestation_id uuid references public.prestations(id) on delete set null,
   montant_ht numeric(12,2)
@@ -250,19 +250,29 @@ set search_path = ''
 as $$
 declare
   v_devis_id uuid;
+  v_ht numeric;
+  v_ttc numeric;
 begin
   v_devis_id := case when tg_op = 'DELETE' then old.devis_id else new.devis_id end;
 
+  select coalesce(sum(l.montant_ht), 0),
+         coalesce(sum(l.montant_ht + l.montant_tva), 0)
+    into v_ht, v_ttc
+    from public.devis_lignes l
+   where l.devis_id = v_devis_id;
+
+  -- L'UPDATE n'est émis QUE si un total change réellement. Un UPDATE sans
+  -- effet déclencherait quand même les triggers AFTER de devis : c'est le
+  -- couplage que cette clause coupe. Aujourd'hui notifier_devis_maj ne réagit
+  -- qu'aux transitions de statut et resterait donc muette de toute façon ;
+  -- cette clause fait que le lot ne dépend pas de ce détail d'implémentation
+  -- d'une fonction qu'il ne possède pas.
   update public.devis d
-     set montant_ht = coalesce(t.total_ht, 0),
-         montant_ttc = coalesce(t.total_ht, 0) + coalesce(t.total_tva, 0)
-    from (
-      select sum(l.montant_ht) as total_ht,
-             sum(l.montant_tva) as total_tva
-        from public.devis_lignes l
-       where l.devis_id = v_devis_id
-    ) t
-   where d.id = v_devis_id;
+     set montant_ht = v_ht,
+         montant_ttc = v_ttc
+   where d.id = v_devis_id
+     and (d.montant_ht is distinct from v_ht
+          or d.montant_ttc is distinct from v_ttc);
 
   return case when tg_op = 'DELETE' then old else new end;
 end;
@@ -292,6 +302,14 @@ grant select, insert, update, delete on table public.devis_lignes to authenticat
 -- lot ; un besoin futur passera par une migration dédiée qui l'assumera.
 
 revoke execute on function public.devis_statut_modifiable(text) from public;
+-- devis_statut_modifiable est le SEUL helper appelé DEPUIS une autre fonction.
+-- devis_check_immuabilite et devis_lignes_check_integrite sont SECURITY INVOKER :
+-- leur appel imbriqué est vérifié contre le rôle appelant, qui doit donc
+-- détenir EXECUTE. Sans ce grant, un garagiste authentifié ne peut plus écrire
+-- une seule ligne sur son propre devis (permission denied, SQLSTATE 42501).
+-- Les quatre autres fonctions n'ont besoin d'aucun grant : elles ne sont
+-- appelées que par leurs triggers, et déclencher un trigger n'exige pas EXECUTE.
+grant execute on function public.devis_statut_modifiable(text) to authenticated;
 revoke execute on function public.devis_lignes_set_updated_at() from public;
 revoke execute on function public.devis_lignes_check_integrite() from public;
 revoke execute on function public.devis_check_immuabilite() from public;

@@ -435,6 +435,25 @@ d'avertissement.
 - totaux corrects après insertion, modification, suppression, et suppression de
   la dernière ligne (→ `0`, pas `NULL`).
 
+**Exigences de méthode du banc SQL** — issues de la revue du 2026-09-04, qui a
+trouvé un P0 que le banc initial ne voyait pas :
+
+- **Chaque échec attendu est vérifié sur son `SQLSTATE` et sur un motif de son
+  message.** Un `exception when others` qui constate qu'« une » erreur est
+  survenue valide le test pour n'importe quelle raison — y compris un
+  « permission denied » masquant une fonctionnalité cassée.
+- **Le parcours nominal complet est rejoué sous le rôle `authenticated`.** Les
+  sections exécutées avec le rôle de session contournent RLS et privilèges :
+  elles ne prouvent rien sur ce qu'un garagiste réel peut faire.
+- **`discard plans` précède toute section jouée sous `authenticated`.** PL/pgSQL
+  met ses plans en cache et le privilège `EXECUTE` d'une fonction est vérifié à
+  la *planification*, pas à l'exécution. Sans purge, une section jouée sous
+  `authenticated` réutilise les plans construits plus tôt sous le rôle de
+  session et ne revalide aucun privilège : le test passe même sans droits.
+- **Un contrôle négatif est rejoué à chaque évolution** : chaque garde-fou est
+  retiré tour à tour, et le banc doit échouer. Un banc qui ne peut pas échouer
+  ne prouve rien.
+
 **Tests JS déterministes** — `node:test`, au format de `lib/analytics/` :
 
 - arrondi par ligne puis somme, sur cas piégeux (`0.005`, quantités décimales,
