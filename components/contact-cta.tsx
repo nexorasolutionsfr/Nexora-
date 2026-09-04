@@ -3,6 +3,7 @@
 import { useState } from "react"
 import type { FormEvent } from "react"
 import { ArrowRight, Mail, ShieldCheck, Users } from "lucide-react"
+import { track } from "@vercel/analytics"
 import { Button } from "@/components/ui/button"
 
 const CONTACT_EMAIL = "nexorasolutions.france@gmail.com"
@@ -29,6 +30,9 @@ export function ContactCta() {
     const body = encodeURIComponent(
       `Nom : ${name}\nGarage : ${garage}\nEmail : ${email}\nTéléphone : ${phone || "non renseigné"}\n\nPrincipal besoin :\n${need}`,
     )
+    // Événement sans aucune propriété : rien du formulaire ne part avec.
+    track("demo_form_submit")
+
     window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`
 
     setOpened(true)
