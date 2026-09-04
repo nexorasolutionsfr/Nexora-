@@ -95,23 +95,32 @@ insert into _fixture_ids (cle, valeur) values
 -- 1. Fixtures : deux garages, deux propriétaires
 -- =====================================================================
 
-insert into auth.users (id, email) values
-  (pg_temp.fid('user_a'), 'recette-devis-a@exemple.invalid'),
-  (pg_temp.fid('user_b'), 'recette-devis-b@exemple.invalid');
+insert into auth.users
+  (id, aud, role, email, encrypted_password, email_confirmed_at,
+   raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+values
+  (pg_temp.fid('user_a'), 'authenticated', 'authenticated',
+   'recette-devis-lignes-a-' || pg_temp.fid('user_a')::text || '@example.invalid',
+   'not-a-real-credential-synthetic-test-fixture', now(),
+   '{}'::jsonb, '{}'::jsonb, now(), now()),
+  (pg_temp.fid('user_b'), 'authenticated', 'authenticated',
+   'recette-devis-lignes-b-' || pg_temp.fid('user_b')::text || '@example.invalid',
+   'not-a-real-credential-synthetic-test-fixture', now(),
+   '{}'::jsonb, '{}'::jsonb, now(), now());
 
-insert into public.garages (id, nom, owner_user_id) values
-  (pg_temp.fid('garage_a'), 'RECETTE DEVIS LIGNES V1', pg_temp.fid('user_a')),
-  (pg_temp.fid('garage_b'), 'RECETTE DEVIS LIGNES V1', pg_temp.fid('user_b'));
+insert into public.garages (id, owner_user_id, nom_garage) values
+  (pg_temp.fid('garage_a'), pg_temp.fid('user_a'), 'RECETTE DEVIS LIGNES V1 — GARAGE A'),
+  (pg_temp.fid('garage_b'), pg_temp.fid('user_b'), 'RECETTE DEVIS LIGNES V1 — GARAGE B');
 
 insert into public.clients (id, garage_id, nom) values
   (pg_temp.fid('client_a'), pg_temp.fid('garage_a'), 'RECETTE DEVIS LIGNES V1');
 
-insert into public.vehicules (id, garage_id, client_id, immatriculation) values
-  (pg_temp.fid('vehicule_a'), pg_temp.fid('garage_a'), pg_temp.fid('client_a'), 'AA-000-AA');
+insert into public.vehicules (id, garage_id, client_id, marque, modele) values
+  (pg_temp.fid('vehicule_a'), pg_temp.fid('garage_a'), pg_temp.fid('client_a'), 'MarqueTestDevisLignesV1', 'ModeleTest-A');
 
-insert into public.prestations (id, garage_id, nom, prix_ht) values
-  (pg_temp.fid('prestation_a'), pg_temp.fid('garage_a'), 'RECETTE DEVIS LIGNES V1', 100),
-  (pg_temp.fid('prestation_b'), pg_temp.fid('garage_b'), 'RECETTE DEVIS LIGNES V1', 100);
+insert into public.prestations (id, garage_id, nom, duree_minutes) values
+  (pg_temp.fid('prestation_a'), pg_temp.fid('garage_a'), 'RECETTE DEVIS LIGNES V1 — PRESTATION A', 30),
+  (pg_temp.fid('prestation_b'), pg_temp.fid('garage_b'), 'RECETTE DEVIS LIGNES V1 — PRESTATION B', 30);
 
 insert into public.devis (id, garage_id, client_id, vehicule_id, statut, message_garage) values
   (pg_temp.fid('devis_attente'),   pg_temp.fid('garage_a'), pg_temp.fid('client_a'), pg_temp.fid('vehicule_a'), 'en_attente', 'RECETTE DEVIS LIGNES V1'),
@@ -441,7 +450,7 @@ discard plans;
 do $$
 declare v_n integer; v_ht numeric; v_ttc numeric;
 begin
-  perform set_config('request.jwt.claim.sub', pg_temp.fid('user_a')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', pg_temp.fid('user_a')::text, 'role', 'authenticated')::text, true);
   set local role authenticated;
 
   insert into public.devis_lignes (devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva)
@@ -486,7 +495,7 @@ begin
   insert into public.devis_lignes (devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva)
   values (pg_temp.fid('devis_b'), pg_temp.fid('garage_b'), 'piece', 'Garage B', 1, 10, 20);
 
-  perform set_config('request.jwt.claim.sub', pg_temp.fid('user_a')::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', pg_temp.fid('user_a')::text, 'role', 'authenticated')::text, true);
   set local role authenticated;
 
   select count(*) into v_n from public.devis_lignes where garage_id = pg_temp.fid('garage_b');
@@ -587,14 +596,20 @@ declare
   v_n integer;
   v_residus text[] := array[]::text[];
 begin
-  select count(*) into v_n from public.garages where nom = 'RECETTE DEVIS LIGNES V1';
+  select count(*) into v_n from public.garages where nom_garage like 'RECETTE DEVIS LIGNES V1%';
   if v_n > 0 then v_residus := v_residus || ('garages : ' || v_n); end if;
 
   select count(*) into v_n from public.clients where nom = 'RECETTE DEVIS LIGNES V1';
   if v_n > 0 then v_residus := v_residus || ('clients : ' || v_n); end if;
 
-  select count(*) into v_n from public.prestations where nom = 'RECETTE DEVIS LIGNES V1';
+  select count(*) into v_n from public.vehicules where marque = 'MarqueTestDevisLignesV1';
+  if v_n > 0 then v_residus := v_residus || ('vehicules : ' || v_n); end if;
+
+  select count(*) into v_n from public.prestations where nom like 'RECETTE DEVIS LIGNES V1%';
   if v_n > 0 then v_residus := v_residus || ('prestations : ' || v_n); end if;
+
+  select count(*) into v_n from auth.users where email like 'recette-devis-lignes-%@example.invalid';
+  if v_n > 0 then v_residus := v_residus || ('auth.users : ' || v_n); end if;
 
   select count(*) into v_n from public.devis where message_garage = 'RECETTE DEVIS LIGNES V1';
   if v_n > 0 then v_residus := v_residus || ('devis : ' || v_n); end if;
