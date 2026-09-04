@@ -9,7 +9,7 @@ const faqs: QA[] = [
   {
     question: "Nexora remplace-t-il tous les logiciels du garage ?",
     answer:
-      "Non, pas encore. Nexora centralise aujourd'hui les demandes, l'agenda, l'atelier, les inspections, les devis et les factures. Il ne gère pas la comptabilité, le stock de pièces ou l'encaissement en carte.",
+      "Non, pas encore. Nexora réunit aujourd'hui l'agenda, l'atelier en direct, le contrôle véhicule, le dossier véhicule, les clients, les devis et les factures. Il ne gère pas la comptabilité, le stock de pièces ni l'encaissement en carte.",
   },
   {
     question: "Est-ce adapté à un petit garage indépendant ?",
@@ -19,7 +19,7 @@ const faqs: QA[] = [
   {
     question: "Les clients doivent-ils installer une application ?",
     answer:
-      "Non. Les clients accèdent à leur inspection, devis ou facture via un lien sécurisé envoyé par le garage, ouvert dans un navigateur — aucune application ni compte à créer.",
+      "Non. Le client ouvre son contrôle véhicule, son devis ou sa facture via un lien sécurisé transmis par le garage, dans un simple navigateur — aucune application ni compte à créer.",
   },
   {
     question: "Peut-on suivre un véhicule depuis une tablette ?",
@@ -27,7 +27,7 @@ const faqs: QA[] = [
       "Oui. L'interface atelier est pensée pour rester lisible et utilisable sur tablette, pour un mécanicien qui consulte ou met à jour un dossier en direct.",
   },
   {
-    question: "Comment les liens devis / inspection / facture sont-ils protégés ?",
+    question: "Comment les liens devis, contrôle et facture sont-ils protégés ?",
     answer:
       "Chaque lien repose sur un jeton aléatoire de 256 bits, sans rapport avec vos données. Le garage peut le révoquer à tout moment, et aucune donnée métier n'apparaît dans l'URL.",
   },
@@ -58,9 +58,11 @@ export function Faq() {
               <div key={faq.question} className="rounded-2xl border border-border bg-card">
                 <button
                   type="button"
+                  id={`faq-question-${i}`}
                   onClick={() => setOpenIndex(isOpen ? null : i)}
                   className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left"
                   aria-expanded={isOpen}
+                  aria-controls={`faq-answer-${i}`}
                 >
                   <span className="font-display text-base font-semibold">{faq.question}</span>
                   <Plus
@@ -70,6 +72,9 @@ export function Faq() {
                   />
                 </button>
                 <div
+                  id={`faq-answer-${i}`}
+                  role="region"
+                  aria-labelledby={`faq-question-${i}`}
                   className="grid transition-all duration-200"
                   style={{ gridTemplateRows: isOpen ? "1fr" : "0fr" }}
                 >

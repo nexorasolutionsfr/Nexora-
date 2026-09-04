@@ -1,4 +1,15 @@
-import { Home, Inbox, Wrench, ClipboardList, ReceiptText, ListChecks, Link2 } from "lucide-react"
+import {
+  Home,
+  CalendarDays,
+  Wrench,
+  Camera,
+  ClipboardList,
+  Car,
+  Users,
+  ReceiptText,
+  ListChecks,
+  Link2,
+} from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
 type Feature = {
@@ -14,34 +25,49 @@ const features: Feature[] = [
     description: "Une vue du jour : rendez-vous, véhicules en atelier, priorités actives et montant connu à risque, en un coup d'œil.",
   },
   {
-    icon: Inbox,
-    title: "Demandes, agenda et rendez-vous",
-    description: "Les demandes saisies dans Nexora sont regroupées au même endroit, puis rejoignent l'agenda une fois validées. La reprise automatique des demandes reçues par email est en cours de finalisation.",
+    icon: CalendarDays,
+    title: "Agenda et rendez-vous",
+    description: "Les demandes saisies dans Nexora deviennent des dossiers clairs, puis rejoignent l'agenda du garage une fois validées.",
   },
   {
     icon: Wrench,
-    title: "Atelier en direct et affectation",
+    title: "Atelier en direct",
     description: "Suivez la progression de chaque véhicule par étape (dépose, diagnostic, intervention, prêt) et affectez-le à un mécanicien.",
   },
   {
+    icon: Camera,
+    title: "Contrôle véhicule avec photos",
+    description: "Les points contrôlés, les photos et la décision du client sont rattachés au dossier du véhicule.",
+  },
+  {
     icon: ClipboardList,
-    title: "Inspections digitales",
-    description: "Photos et décisions du client sont rattachées au dossier, consultables par le garage et par le client via un lien sécurisé.",
+    title: "Fiche atelier et ordre de réparation",
+    description: "Les travaux à réaliser sur un véhicule sont consignés dans un ordre de réparation rattaché au dossier.",
+  },
+  {
+    icon: Car,
+    title: "Dossier Véhicule 360",
+    description: "Un véhicule, un dossier : rendez-vous, passages en atelier, contrôles, devis et factures réunis sur la même page.",
+  },
+  {
+    icon: Users,
+    title: "Clients",
+    description: "La fiche client regroupe ses coordonnées, ses véhicules et l'historique de ce qui a été fait pour lui.",
   },
   {
     icon: ReceiptText,
-    title: "Devis, factures et réponses à distance",
-    description: "Devis et factures sont générés depuis le dossier, avec une réponse client possible à distance sur les devis.",
+    title: "Devis et factures",
+    description: "Devis et factures sont générés depuis le dossier du véhicule, sans ressaisie des informations déjà présentes.",
+  },
+  {
+    icon: Link2,
+    title: "Devis partagé par lien",
+    description: "Le client consulte son devis ou son contrôle via un lien sécurisé, et répond à distance — sans compte ni application à installer.",
   },
   {
     icon: ListChecks,
     title: "Cockpit Opportunités",
     description: "Une liste priorisée de ce qui attend une décision ou une relance, dérivée des données réelles du garage — jamais inventée.",
-  },
-  {
-    icon: Link2,
-    title: "Liens clients temporaires et sécurisés",
-    description: "Atelier, devis, facture et inspection sont partagés par jeton opaque, avec expiration et révocation possibles.",
   },
 ]
 
@@ -55,7 +81,7 @@ export function Features() {
             Ce que Nexora fait aujourd'hui, réellement
           </h2>
           <p className="mt-4 text-lg text-muted-foreground text-pretty">
-            Pas de promesse pour plus tard : voici les fonctions disponibles dans la version pilote.
+            Pas de promesse pour plus tard : voici les fonctions réellement présentes dans la version pilote.
           </p>
         </div>
 

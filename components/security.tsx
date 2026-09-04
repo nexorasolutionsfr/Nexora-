@@ -21,7 +21,7 @@ const points: Point[] = [
   {
     icon: Link2,
     title: "Liens clients par jetons opaques",
-    description: "Les liens atelier, devis, facture et inspection sont générés à partir de 256 bits aléatoires et n'exposent aucun identifiant métier dans leur URL.",
+    description: "Les liens atelier, devis, facture et contrôle véhicule sont générés à partir de 256 bits aléatoires et n'exposent aucun identifiant métier dans leur URL.",
   },
   {
     icon: TimerOff,

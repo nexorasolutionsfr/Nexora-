@@ -10,7 +10,7 @@ const CONTACT_EMAIL = "nexorasolutions.france@gmail.com"
 const perks = [
   { icon: Users, text: "Démonstration personnalisée avec vos cas concrets" },
   { icon: ShieldCheck, text: "Aucun engagement avant l'échange" },
-  { icon: Mail, text: "Le formulaire ouvre simplement votre messagerie" },
+  { icon: Mail, text: "Le formulaire ouvre simplement votre messagerie — rien n'est envoyé sans vous" },
 ]
 
 export function ContactCta() {
@@ -48,8 +48,8 @@ export function ContactCta() {
                   Découvrez Nexora sur votre propre activité
                 </h2>
                 <p className="mt-4 text-lg text-muted-foreground text-pretty">
-                  Décrivez votre garage en quelques mots. On revient vers vous pour organiser une
-                  démonstration personnalisée.
+                  Décrivez votre garage en quelques mots. Nous revenons vers vous pour organiser
+                  une démonstration sur vos propres cas.
                 </p>
               </div>
 
@@ -133,16 +133,23 @@ export function ContactCta() {
                       name="need"
                       rows={3}
                       placeholder="Ex : mieux suivre les véhicules en atelier, ne plus perdre de devis…"
-                      className="w-full resize-none rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
+                      className="w-full resize-none rounded-lg border border-input bg-background px-3.5 py-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
                     />
                   </div>
                   <Button type="submit" size="lg" className="mt-2 h-11 w-full">
                     Demander une démo
                     <ArrowRight className="h-4 w-4" />
                   </Button>
-                  <p className="text-center text-xs text-muted-foreground">
+                  <p className="text-center text-xs leading-relaxed text-muted-foreground">
                     Les informations saisies servent uniquement à préparer votre message. Rien n'est
-                    envoyé tant que vous ne confirmez pas l'envoi dans votre messagerie.
+                    envoyé tant que vous ne confirmez pas l'envoi dans votre messagerie. Vous
+                    préférez écrire directement ?{" "}
+                    <a
+                      href={`mailto:${CONTACT_EMAIL}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {CONTACT_EMAIL}
+                    </a>
                   </p>
                 </form>
               )}
@@ -175,7 +182,7 @@ function Field({ label, id, name, type = "text", placeholder, required }: FieldP
         type={type}
         placeholder={placeholder}
         required={required}
-        className="w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
+        className="w-full rounded-lg border border-input bg-background px-3.5 py-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
       />
     </div>
   )

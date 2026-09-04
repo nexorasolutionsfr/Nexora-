@@ -31,7 +31,7 @@ const steps: Step[] = [
     icon: Link2,
     step: "04",
     title: "Le client consulte via un lien sécurisé",
-    description: "Inspection ou devis : le client accède aux informations le concernant via un lien temporaire, sans compte à créer.",
+    description: "Contrôle véhicule ou devis : le client accède aux informations le concernant via un lien temporaire, sans compte à créer.",
   },
   {
     icon: ListChecks,

@@ -33,20 +33,20 @@ export function SiteFooter() {
               <SiteLogo />
             </a>
             <p className="max-w-xs text-sm leading-relaxed text-muted-foreground">
-              Le système d'exploitation du garage indépendant : réception, atelier, inspections,
-              devis et factures dans une seule interface.
+              Votre garage avance, Nexora garde le fil. Agenda, atelier en direct, contrôle
+              véhicule, dossier véhicule, devis et factures dans une seule interface.
             </p>
           </div>
 
           {columns.map((col) => (
             <div key={col.title} className="flex flex-col gap-3">
               <h3 className="text-sm font-semibold">{col.title}</h3>
-              <ul className="flex flex-col gap-2">
+              <ul className="flex flex-col gap-0.5 sm:gap-2">
                 {col.links.map((link) => (
                   <li key={link.label}>
                     <a
                       href={link.href}
-                      className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                      className="flex min-h-11 items-center text-sm text-muted-foreground transition-colors hover:text-foreground sm:min-h-0"
                     >
                       {link.label}
                     </a>
@@ -66,9 +66,14 @@ export function SiteFooter() {
 
         <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground sm:text-left">
           Nexora est édité par Nexora Solutions (entreprise individuelle, France). Mentions légales
-          complètes (SIREN/SIRET, adresse de domiciliation, conditions générales) en cours de
-          finalisation — la publication commerciale de cette offre reste suspendue jusqu'à leur
-          disponibilité.
+          et politique de confidentialité en cours de finalisation. Pour toute question relative aux
+          données :{" "}
+          <a
+            href="mailto:nexorasolutions.france@gmail.com"
+            className="text-primary hover:underline"
+          >
+            nexorasolutions.france@gmail.com
+          </a>
         </p>
       </div>
     </footer>

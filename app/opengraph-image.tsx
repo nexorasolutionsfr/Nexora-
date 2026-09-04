@@ -1,6 +1,6 @@
 import { ImageResponse } from 'next/og'
 
-export const alt = 'Nexora — Garage OS pour garages automobiles indépendants'
+export const alt = 'Nexora — Votre garage avance. Nexora garde le fil.'
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'
 
@@ -50,7 +50,7 @@ export default async function OpengraphImage() {
             maxWidth: 900,
           }}
         >
-          Le Garage OS des indépendants
+          Votre garage avance. Nexora garde le fil.
         </div>
         <div
           style={{
@@ -61,7 +61,7 @@ export default async function OpengraphImage() {
             maxWidth: 900,
           }}
         >
-          Atelier, rendez-vous, inspections, devis et factures centralisés.
+          Le Garage OS des garages indépendants : agenda, atelier, contrôle véhicule, devis, factures.
         </div>
       </div>
     ),

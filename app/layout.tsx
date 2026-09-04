@@ -15,10 +15,20 @@ const spaceGrotesk = Space_Grotesk({
   display: 'swap',
 })
 
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://nexora-garage.vercel.app'
+
+const SITE_TITLE = 'Nexora — Garage OS pour garages automobiles indépendants'
+const SITE_DESCRIPTION =
+  "Votre garage avance, Nexora garde le fil. Le logiciel français qui réunit agenda, atelier en direct, contrôle véhicule, dossier véhicule, devis et factures pour les garages indépendants."
+
 export const metadata: Metadata = {
-  title: 'Nexora — Garage OS pour garages automobiles indépendants',
-  description:
-    "Nexora est le Garage OS des indépendants : logiciel de gestion garage automobile qui centralise demandes, rendez-vous, atelier, inspections digitales, devis et factures dans une interface unique.",
+  metadataBase: new URL(SITE_URL),
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  applicationName: 'Nexora',
+  alternates: {
+    canonical: '/',
+  },
   keywords: [
     'logiciel garage automobile',
     'gestion atelier automobile',
@@ -28,17 +38,17 @@ export const metadata: Metadata = {
     'garage indépendant',
   ],
   openGraph: {
-    title: 'Nexora — Garage OS pour garages automobiles indépendants',
-    description:
-      "Le système d'exploitation du garage indépendant : atelier, rendez-vous, inspections, devis et factures centralisés dans une seule interface.",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    url: SITE_URL,
+    siteName: 'Nexora',
     type: 'website',
     locale: 'fr_FR',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Nexora — Garage OS pour garages automobiles indépendants',
-    description:
-      "Le système d'exploitation du garage indépendant : atelier, rendez-vous, inspections, devis et factures centralisés dans une seule interface.",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
   },
 }
 
