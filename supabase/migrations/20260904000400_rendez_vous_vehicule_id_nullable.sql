@@ -1,0 +1,14 @@
+-- Suite du correctif P0 de 20260904000300 : une fois demande_id résolu, la
+-- création manuelle d'un rendez-vous échoue encore avec l'erreur Postgres
+-- 23502 sur vehicule_id — dès que le client n'a pas déjà un véhicule
+-- enregistré, ce qui est le cas de tout nouveau client. Le formulaire
+-- rapide de création (CreerRdvModal) ne propose aucun champ véhicule ; la
+-- contrainte NOT NULL est donc structurellement incompatible avec ce
+-- chemin, le plus basique du produit.
+--
+-- Vérifié identique sur Test (slawilafseganlbghgwx) et sur Production
+-- (omphppsmhmyllapdqevn) en lecture seule. Additif (retrait d'une
+-- contrainte, aucune donnée existante modifiée). Test uniquement à ce
+-- stade ; Production nécessitera le même correctif avant qu'un vrai
+-- garage pilote ne puisse créer un premier rendez-vous à un nouveau client.
+alter table public.rendez_vous alter column vehicule_id drop not null;

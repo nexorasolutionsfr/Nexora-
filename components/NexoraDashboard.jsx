@@ -1,7 +1,7 @@
 
 "use client"; import { supabase } from "@/lib/supabase";
 import DevisLignesEditor from "./devis-lignes/DevisLignesEditor";
-import { devisALignes } from "./devis-lignes/calculs";
+import { calculerLigne, calculerTotaux, devisALignes } from "./devis-lignes/calculs";
 
 import React, { useState, useEffect } from "react";
 import QRCode from "qrcode";
@@ -2163,7 +2163,7 @@ function RescheduleModal({ proposition, garageId, onClose, onConfirm }) {
   );
 }
 
-function CreerRdvModal({ clients, prestations, date, heure, onClose, onCreate, onCreerClient }) {
+function CreerRdvModal({ clients, prestations, date, heure, onClose, onCreate, onCreerClient, onCreerVehicule }) {
   const [query, setQuery] = useState("");
   const [clientId, setClientId] = useState("");
   const [prestationId, setPrestationId] = useState("");
@@ -2173,10 +2173,21 @@ function CreerRdvModal({ clients, prestations, date, heure, onClose, onCreate, o
   const [nomNouveau, setNomNouveau] = useState("");
   const [telNouveau, setTelNouveau] = useState("");
   const [emailNouveau, setEmailNouveau] = useState("");
+  // Véhicule : sélectionnable parmi ceux du client, ou créable ici même.
+  // Reste facultatif — on n'oblige personne à connaître le véhicule dès la
+  // prise de rendez-vous — mais il devient enfin renseignable, ce qui est la
+  // condition pour qu'un ordre de réparation puisse s'y rattacher ensuite.
+  const [vehiculeId, setVehiculeId] = useState("");
+  const [nouveauVehicule, setNouveauVehicule] = useState(false);
+  const [marqueNouveau, setMarqueNouveau] = useState("");
+  const [modeleNouveau, setModeleNouveau] = useState("");
+  const [immatNouveau, setImmatNouveau] = useState("");
 
   const clientChoisi = clients.find((c) => c.id === clientId) || null;
   const vehiculesClient = Array.isArray(clientChoisi?.vehicules) ? clientChoisi.vehicules : clientChoisi?.vehicules ? [clientChoisi.vehicules] : [];
-  const vehiculeChoisi = vehiculesClient[0] || null;
+  const vehiculeChoisi = vehiculesClient.find((v) => v.id === vehiculeId) || null;
+  const libelleVehicule = (v) => [`${v.marque || ""} ${v.modele || ""}`.trim(), v.immatriculation].filter(Boolean).join(" · ") || "Véhicule";
+  const vehiculeNouveauValide = Boolean(marqueNouveau.trim() || modeleNouveau.trim() || immatNouveau.trim());
   const clientsFiltres = clients.filter((c) => !query || c.nom?.toLowerCase().includes(query.toLowerCase()));
   const prestationChoisie = prestations.find((p) => p.id === prestationId) || null;
 
@@ -2192,6 +2203,24 @@ function CreerRdvModal({ clients, prestations, date, heure, onClose, onCreate, o
       idVehicule = null;
     }
     if (!idClient) { setCreating(false); return; }
+    if (nouveauVehicule && vehiculeNouveauValide) {
+      const vehiculeCree = await onCreerVehicule({
+        client_id: idClient,
+        marque: marqueNouveau.trim() || null,
+        modele: modeleNouveau.trim() || null,
+        immatriculation: immatNouveau.trim() || null,
+      });
+      if (!vehiculeCree) { setCreating(false); return; }
+      idVehicule = vehiculeCree.id;
+      // Le véhicule est créé avant le rendez-vous : si l'insertion du
+      // rendez-vous échoue ensuite, on repasse en sélection sur le véhicule
+      // qui vient d'être créé, pour qu'un nouvel essai ne le duplique pas.
+      setNouveauVehicule(false);
+      setVehiculeId(vehiculeCree.id);
+      setMarqueNouveau("");
+      setModeleNouveau("");
+      setImmatNouveau("");
+    }
     await onCreate({
       client_id: idClient,
       vehicule_id: idVehicule,
@@ -2241,6 +2270,34 @@ function CreerRdvModal({ clients, prestations, date, heure, onClose, onCreate, o
             </>
           )}
         </div>
+
+        {(clientChoisi || nouveauClient) && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between">
+              <label className="text-[12px] font-medium text-slate-500">Véhicule (facultatif)</label>
+              {!nouveauVehicule ? (
+                <button type="button" onClick={() => { setNouveauVehicule(true); setVehiculeId(""); }} className="text-[12px] font-medium text-blue-600 hover:underline">+ Nouveau véhicule</button>
+              ) : (
+                <button type="button" onClick={() => { setNouveauVehicule(false); setMarqueNouveau(""); setModeleNouveau(""); setImmatNouveau(""); }} className="text-[12px] text-slate-400 hover:underline">Annuler</button>
+              )}
+            </div>
+            {nouveauVehicule ? (
+              <div className="mt-1.5 grid grid-cols-2 gap-2">
+                <input value={marqueNouveau} onChange={(e) => setMarqueNouveau(e.target.value)} placeholder="Marque" className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                <input value={modeleNouveau} onChange={(e) => setModeleNouveau(e.target.value)} placeholder="Modèle" className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                <input value={immatNouveau} onChange={(e) => setImmatNouveau(e.target.value)} placeholder="Immatriculation" className="col-span-2 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                {!vehiculeNouveauValide && <div className="col-span-2 text-[11.5px] text-slate-400">Renseignez au moins la marque, le modèle ou l'immatriculation.</div>}
+              </div>
+            ) : vehiculesClient.length > 0 ? (
+              <select value={vehiculeId} onChange={(e) => setVehiculeId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500">
+                <option value="">— Aucun véhicule —</option>
+                {vehiculesClient.map((v) => <option key={v.id} value={v.id}>{libelleVehicule(v)}</option>)}
+              </select>
+            ) : (
+              <div className="mt-1.5 text-[12.5px] text-slate-400">Aucun véhicule enregistré pour ce client.</div>
+            )}
+          </div>
+        )}
 
         <label className="block mt-4">
           <span className="text-[12.5px] font-medium text-slate-500">Prestation</span>
@@ -2731,7 +2788,7 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
   );
 }
 
-function AgendaView({ onSelectAppt, rendezVous, garageData, onConnectCalendar, clients = [], prestations = [], onCreerRdv, onCreerClient }) {
+function AgendaView({ onSelectAppt, rendezVous, garageData, onConnectCalendar, clients = [], prestations = [], onCreerRdv, onCreerClient, onCreerVehicule }) {
   const [mode, setMode] = useState("jour");
   const [recherche, setRecherche] = useState("");
   const [nouveauCreneau, setNouveauCreneau] = useState(null);
@@ -2944,6 +3001,7 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
           onClose={() => setNouveauCreneau(null)}
           onCreate={onCreerRdv}
           onCreerClient={onCreerClient}
+          onCreerVehicule={onCreerVehicule}
         />
       )}
     </div>
@@ -5300,26 +5358,75 @@ if (updateError) {
     flashToast("Marqué comme résolu");
   };
 
+  // Source de vérité unique d'une facture : l'ordre de réparation TERMINÉ du
+  // rendez-vous, et ses seules lignes non annulées — ce qui a réellement été
+  // fait, pas ce qui avait été envisagé. L'ancienne version lisait
+  // rendez_vous.devis_id, colonne qui n'a jamais existé sur cette table : la
+  // condition était toujours fausse et le montant retombait sur un prix de
+  // catalogue absent, d'où des factures à 0 € (recette du 2026-09-04).
+  // Voir docs/architecture/recette-pilote-corrections-v1.md, section C.
   const handleGenererFacture = async (rdv) => {
-    const prestation = prestations.find((p) => p.id === rdv.prestation_id);
-    let lignesInitiales;
-
-    if (rdv.devis_id) {
-      const { data: devisAccepte } = await supabase.from("devis").select("montant_ht, statut").eq("id", rdv.devis_id).single();
-      if (devisAccepte?.statut === "accepte") {
-        lignesInitiales = [
-          { type: "main_oeuvre", description: prestation?.nom || "Prestation (devis accepté)", quantite: 1, prix_unitaire_ht: Number(devisAccepte.montant_ht || 0) },
-        ];
-      }
+    const { data: ordre, error: ordreError } = await supabase
+      .from("ordres_reparation")
+      .select("id, statut, devis_id")
+      .eq("garage_id", garageId)
+      .eq("rendez_vous_id", rdv.id)
+      .maybeSingle();
+    if (ordreError) {
+      console.error("Erreur lecture ordre de réparation :", ordreError);
+      flashToast("Impossible de lire l'ordre de réparation de ce rendez-vous", "error");
+      return;
     }
-    if (!lignesInitiales) {
-      lignesInitiales = [
-        { type: "main_oeuvre", description: prestation?.nom || "Main d'œuvre", quantite: 1, prix_unitaire_ht: Number(prestation?.prix_ht || 0) },
-      ];
+    if (!ordre) {
+      flashToast("Aucun ordre de réparation pour ce rendez-vous : créez-le et terminez-le avant de facturer", "error");
+      return;
+    }
+    if (ordre.statut !== "termine") {
+      flashToast("L'ordre de réparation n'est pas terminé : terminez-le avant de facturer", "error");
+      return;
     }
 
-    const montantHt = lignesInitiales.reduce((sum, l) => sum + l.quantite * l.prix_unitaire_ht, 0);
-    const montantTtc = Math.round(montantHt * 1.2 * 100) / 100;
+    const { data: lignesOr, error: lignesError } = await supabase
+      .from("ordres_reparation_lignes")
+      .select("type, libelle, quantite, prix_unitaire_ht, taux_tva, statut")
+      .eq("ordre_reparation_id", ordre.id)
+      .eq("garage_id", garageId)
+      .order("created_at");
+    if (lignesError) {
+      console.error("Erreur lecture lignes OR :", lignesError);
+      flashToast("Impossible de lire les lignes de l'ordre de réparation", "error");
+      return;
+    }
+
+    const lignesRetenues = (lignesOr || []).filter((l) => l.statut !== "annule");
+    if (lignesRetenues.length === 0) {
+      flashToast("Cet ordre de réparation n'a aucune ligne retenue à facturer", "error");
+      return;
+    }
+    // Jamais de repli silencieux à 0 € : une ligne sans prix bloque et se nomme.
+    const sansPrix = lignesRetenues.find((l) => l.prix_unitaire_ht == null);
+    if (sansPrix) {
+      flashToast(`« ${sansPrix.libelle} » n'a pas de prix : complétez la ligne dans l'ordre de réparation avant de facturer`, "error");
+      return;
+    }
+
+    // Instantané figé : la facture ne se recalcule jamais depuis l'OR ensuite.
+    const lignesInitiales = lignesRetenues.map((l) => {
+      const montants = calculerLigne({ quantite: l.quantite, prix_unitaire_ht: l.prix_unitaire_ht, taux_tva: l.taux_tva });
+      return {
+        type: l.type,
+        description: l.libelle,
+        quantite: Number(l.quantite),
+        prix_unitaire_ht: Number(l.prix_unitaire_ht),
+        taux_tva: Number(l.taux_tva),
+        montant_ht: montants.montant_ht,
+        montant_tva: montants.montant_tva,
+        montant_ttc: montants.montant_ttc,
+      };
+    });
+    const totaux = calculerTotaux(lignesInitiales);
+    const montantHt = totaux.total_ht;
+    const montantTtc = totaux.total_ttc;
 
     const { data, error } = await supabase
       .from("factures")
@@ -5328,7 +5435,8 @@ if (updateError) {
         client_id: rdv.client_id,
         vehicule_id: rdv.vehicule_id,
         rendez_vous_id: rdv.id,
-        devis_id: rdv.devis_id || null,
+        ordre_reparation_id: ordre.id,
+        devis_id: ordre.devis_id || null,
         motif: rdv.notes || rdv.prestation || "",
         lignes: lignesInitiales,
         montant_ht: montantHt,
@@ -5549,6 +5657,27 @@ if (updateError) {
       return null;
     }
     setClients((prev) => [...prev, data]);
+    return data;
+  };
+
+  // Création d'un véhicule depuis le formulaire de rendez-vous. Jusqu'ici
+  // aucun écran du dashboard ne permettait d'en créer un : ils n'arrivaient
+  // que par le pipeline n8n, ce qui laissait tout rendez-vous saisi à la main
+  // sans véhicule — et donc impossible à rattacher à un ordre de réparation.
+  const handleCreerVehicule = async ({ client_id, marque, modele, immatriculation }) => {
+    const { data, error } = await supabase
+      .from("vehicules")
+      .insert({ garage_id: garageId, client_id, marque, modele, immatriculation })
+      .select("id, marque, modele, annee, immatriculation")
+      .single();
+    if (error) {
+      console.error("Erreur création véhicule :", error);
+      flashToast("Impossible de créer le véhicule", "error");
+      return null;
+    }
+    setClients((prev) => prev.map((c) => (c.id === client_id
+      ? { ...c, vehicules: [...(Array.isArray(c.vehicules) ? c.vehicules : c.vehicules ? [c.vehicules] : []), data] }
+      : c)));
     return data;
   };
 
@@ -5894,7 +6023,7 @@ if (updateError) {
               onCreerOrdreReparation={(devis) => { setFocusOrdreDevisId(devis.id); setView("ordres-reparation"); }}
             />
           )}
-          {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} garageData={garageData} onConnectCalendar={connectGoogleCalendar} clients={clients} prestations={prestations} onCreerRdv={handleCreerRdvManuel} onCreerClient={handleCreerClient} />}
+          {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} garageData={garageData} onConnectCalendar={connectGoogleCalendar} clients={clients} prestations={prestations} onCreerRdv={handleCreerRdvManuel} onCreerClient={handleCreerClient} onCreerVehicule={handleCreerVehicule} />}
           {view === "demandes" && (
             <DemandesView
               demandes={demandes}
