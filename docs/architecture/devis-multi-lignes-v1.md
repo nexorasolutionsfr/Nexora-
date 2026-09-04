@@ -282,12 +282,39 @@ ne change pas » serait fausse. Le contrat exige donc **les deux volets**.
 `devis_lignes` : refus explicite si le devis parent n'est pas dans un statut
 modifiable. Message d'erreur nommant le statut bloquant.
 
-**G.2 — Sur `devis` lui-même.** Trigger `BEFORE UPDATE` sur `public.devis`
-interdisant la modification de `montant_ht`, `montant_ttc` et `prestation_id`
-dès lors que `old.statut <> 'en_attente'`, tout en **laissant passer les
-transitions de statut légitimes** — au minimum le passage à `accepte` / `refuse`
-avec `date_validation`, qui est le chemin normal de l'application et de la RPC
-de réponse client par lien public.
+**Cas de la suppression en cascade.** `devis_lignes.devis_id` est en
+`ON DELETE CASCADE` (D). Lorsqu'un devis modifiable est supprimé, PostgreSQL
+supprime ses lignes *après* avoir retiré la ligne parente : au moment où le
+trigger de G.1 s'exécute sur chaque ligne, **le devis parent n'existe plus**.
+Le trigger doit donc, sur `DELETE` et parent introuvable, **laisser passer** —
+sans quoi aucun devis ne serait jamais supprimable. Ce n'est pas un trou : la
+suppression d'un devis verrouillé est déjà refusée en amont par G.2, donc une
+cascade ne peut provenir que d'un devis modifiable.
+
+**G.2 — Sur `devis` lui-même : verrouillage total, pas partiel.** Trigger
+`BEFORE UPDATE OR DELETE` sur `public.devis`.
+
+Dès lors que **`old.statut` est un statut verrouillé**, la ligne est
+intégralement figée : **aucune mise à jour d'aucun champ, et aucune
+suppression.** Ne protéger que `montant_ht`, `montant_ttc` et `prestation_id`
+serait un faux garde-fou — un devis accepté pourrait encore être vidé de son
+client, voir son `message_garage` réécrit, son `vehicule_id` déplacé, ou être
+purement et simplement supprimé. La promesse produit « un devis accepté ne
+change pas » exige de couvrir **tous** ses champs métier **et** sa suppression.
+
+Le verrouillage porte sur `old.statut`, jamais sur `new.statut` : c'est l'état
+*avant* modification qui décide. Une ligne dont le statut est modifiable accepte
+donc toute mise à jour, **y compris la transition vers un statut verrouillé** —
+c'est précisément le chemin `en_attente → accepte` / `en_attente → refuse` avec
+`date_validation`, qui doit rester permis et qu'empruntent
+`repondre_devis_par_jeton` et `repondre_devis_public` (B.5).
+
+**Interaction à vérifier au banc** : `repondre_devis_par_jeton` met à jour sans
+clause `and statut = 'en_attente'` dans son `UPDATE` (B.5). Sur un devis déjà
+verrouillé, cette fonction lèvera désormais une exception au lieu de réécrire
+silencieusement le statut. C'est le comportement voulu — un devis accepté ne
+doit pas pouvoir repasser à `refuse` par un second clic sur un lien public —
+mais il doit être constaté, pas supposé.
 
 **G.3 — Condition préalable : levée.** L'audit de la section B a établi que
 les deux seuls chemins d'écriture applicatifs sur `devis` (B.5) ne touchent que
@@ -302,13 +329,17 @@ Production les seuls statuts existants sont `refuse` (7), `en_attente` (4) et
 `accepte` (3), sur 14 devis — **aucun `brouillon`, aucun NULL**. La règle
 produit est donc :
 
-| Statut | Lignes et montants |
-|---|---|
-| `en_attente` | **modifiables** |
-| `brouillon` | **modifiables** — aucune ligne existante ne porte ce statut, l'autoriser ne déverrouille donc rien ; c'est une précaution si l'application venait à en créer |
-| `accepte` | **verrouillés** |
-| `refuse` | **verrouillés** |
-| toute autre valeur, ou NULL | **verrouillés** — `statut` n'ayant aucune contrainte `CHECK` (B.3), la règle est fermée par défaut : ce qui n'est pas explicitement modifiable ne l'est pas |
+| Statut de `devis` | `UPDATE` du devis | `DELETE` du devis | Lignes (INSERT / UPDATE / DELETE) |
+|---|---|---|---|
+| `brouillon` | autorisé | autorisé | autorisées |
+| `en_attente` | autorisé | autorisé | autorisées |
+| `accepte` | **refusé** | **refusé** | **refusées** |
+| `refuse` | **refusé** | **refusé** | **refusées** |
+| toute autre valeur | **refusé** | **refusé** | **refusées** |
+| `NULL` | **refusé** | **refusé** | **refusées** |
+
+`statut` n'ayant aucune contrainte `CHECK` (B.3), la règle est **fermée par
+défaut** : ce qui n'est pas explicitement listé comme modifiable ne l'est pas.
 
 Verrouiller `accepte` et `refuse` couvre 10 des 14 devis de Production. Aucune
 donnée existante ne devient modifiable du fait de cette règle.
@@ -387,8 +418,14 @@ d'avertissement.
   `brouillon` (G.4) ;
 - écriture de lignes rejetée sur un statut inconnu et sur un statut NULL — la
   règle est fermée par défaut (G.4) ;
-- modification directe de `montant_ht`, `montant_ttc` ou `prestation_id` sur un
-  devis `accepte` ou `refuse` rejetée (G.2) ;
+- **toute** mise à jour d'un devis `accepte` ou `refuse` rejetée, champ par
+  champ : `montant_ht`, `montant_ttc`, `prestation_id`, `client_id`,
+  `vehicule_id`, `garage_id`, `demande_id`, `message_garage`, `statut`,
+  `date_validation` (G.2) ;
+- **suppression d'un devis verrouillé rejetée** (G.2) ;
+- suppression d'un devis modifiable autorisée, et **ses lignes supprimées en
+  cascade sans que le trigger G.1 ne bloque** (G.1, cas de la cascade) ;
+- suppression d'une ligne isolée refusée quand le devis parent est verrouillé ;
 - transition de statut `en_attente → accepte` et `en_attente → refuse`
   **toujours possible**, y compris via `repondre_devis_par_jeton` et
   `repondre_devis_public` (G.2, B.5) ;
