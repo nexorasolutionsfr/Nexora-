@@ -6236,12 +6236,144 @@ function UpdatePasswordScreen() {
   );
 }
 
+// Inscription libre. Elle n'existait pas : `signUp` n'était appelé nulle part,
+// donc chaque compte devait être créé à la main dans la console Supabase avant
+// que le garage puisse seulement se connecter. C'était le dernier geste manuel
+// du parcours — tout le reste (garage, prestations, import) est autonome depuis
+// le lot de mise en service.
+//
+// Aucune donnée de garage n'est demandée ici : l'écran de mise en service s'en
+// charge juste après. Demander deux fois les mêmes informations, à deux étapes
+// différentes, fait abandonner.
+function InscriptionScreen({ onBack }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [verifier, setVerifier] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+
+    if (password.length < 8) {
+      setError("Choisissez un mot de passe d'au moins 8 caractères.");
+      return;
+    }
+
+    setLoading(true);
+    const { data, error: erreurInscription } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+    });
+    setLoading(false);
+
+    if (erreurInscription) {
+      console.error("Erreur inscription :", erreurInscription);
+      const brut = erreurInscription.message || "";
+      if (/already registered|already been registered/i.test(brut)) {
+        setError("Un compte existe déjà avec cette adresse. Connectez-vous, ou utilisez « Mot de passe oublié ».");
+      } else if (/password/i.test(brut)) {
+        setError("Ce mot de passe est refusé. Essayez-en un plus long.");
+      } else {
+        setError("La création du compte a échoué. Réessayez dans un instant.");
+      }
+      return;
+    }
+
+    // Selon le réglage du projet, Supabase ouvre la session immédiatement ou
+    // exige une confirmation par e-mail. On lit ce qui s'est passé plutôt que
+    // de le supposer : afficher « vérifiez vos e-mails » à quelqu'un déjà
+    // connecté le ferait attendre un message qui n'arrivera jamais.
+    if (!data?.session) {
+      setVerifier(true);
+    }
+  }
+
+  if (verifier) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG, padding: 24 }}>
+        <div style={{ background: "#fff", padding: 32, borderRadius: 12, width: 340, boxShadow: "0 4px 24px rgba(0,0,0,0.08)", textAlign: "center" }}>
+          <h1 style={{ fontSize: 18, fontWeight: 700, color: NAVY, marginBottom: 8 }}>Vérifiez votre boîte mail</h1>
+          <p style={{ fontSize: 13, color: "#64748B", lineHeight: 1.5 }}>
+            Nous avons envoyé un lien de confirmation à <b style={{ color: NAVY }}>{email}</b>.
+            Ouvrez-le pour activer votre espace.
+          </p>
+          <button type="button" onClick={onBack} style={{ marginTop: 18, background: "none", border: "none", color: ACCENT, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            Revenir à la connexion
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG, padding: 24 }}>
+      <style>{`
+        .nexora-login-field { color: #0F1B33 !important; background: #ffffff !important; -webkit-text-fill-color: #0F1B33 !important; }
+        .nexora-login-field::placeholder { color: #94A3B8 !important; opacity: 1 !important; }
+      `}</style>
+      <form onSubmit={handleSubmit} style={{ background: "#fff", padding: 32, borderRadius: 12, width: 340, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: NAVY, marginBottom: 4 }}>Créer votre espace</h1>
+        <p style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Deux minutes, et votre garage est ouvert.</p>
+
+        <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Email</label>
+        <input
+          type="email"
+          placeholder="vous@garage-dupont.fr"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          autoComplete="email"
+          className="nexora-login-field"
+          style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
+        />
+
+        <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Mot de passe</label>
+        <input
+          type="password"
+          placeholder="8 caractères minimum"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          minLength={8}
+          autoComplete="new-password"
+          className="nexora-login-field"
+          style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
+        />
+
+        {error && <p style={{ color: "#DC2626", fontSize: 13, marginBottom: 10 }}>{error}</p>}
+
+        <button
+          type="submit"
+          disabled={loading}
+          style={{ width: "100%", padding: "10px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: loading ? "not-allowed" : "pointer" }}
+        >
+          {loading ? "Création..." : "Créer mon espace"}
+        </button>
+
+        <button type="button" onClick={onBack} style={{ width: "100%", padding: "10px 12px", background: "none", color: "#64748B", border: "none", fontSize: 13, cursor: "pointer", marginTop: 6 }}>
+          J&apos;ai déjà un compte
+        </button>
+
+        <p style={{ fontSize: 11.5, color: "#94A3B8", lineHeight: 1.5, marginTop: 12, textAlign: "center" }}>
+          En créant votre espace, vous acceptez nos{" "}
+          <a href="/mentions-legales" style={{ color: "#64748B", textDecoration: "underline" }}>mentions légales</a>{" "}
+          et notre{" "}
+          <a href="/confidentialite" style={{ color: "#64748B", textDecoration: "underline" }}>politique de confidentialité</a>.
+        </p>
+      </form>
+    </div>
+  );
+}
+
 function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [forgotPassword, setForgotPassword] = useState(false);
+  const [inscription, setInscription] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -6256,6 +6388,7 @@ function LoginScreen() {
   }
 
   if (forgotPassword) return <ForgotPasswordScreen onBack={() => setForgotPassword(false)} />;
+  if (inscription) return <InscriptionScreen onBack={() => setInscription(false)} />;
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG }}>
@@ -6300,6 +6433,12 @@ function LoginScreen() {
         <button type="button" onClick={() => setForgotPassword(true)} style={{ width: "100%", padding: "10px 12px", background: "none", color: "#64748B", border: "none", fontSize: 13, cursor: "pointer", marginTop: 6 }}>
           Mot de passe oublié ?
         </button>
+        <div style={{ borderTop: "1px solid #E2E8F0", marginTop: 10, paddingTop: 12, textAlign: "center" }}>
+          <span style={{ fontSize: 13, color: "#64748B" }}>Vous n&apos;avez pas encore de compte ? </span>
+          <button type="button" onClick={() => setInscription(true)} style={{ background: "none", border: "none", padding: 0, color: ACCENT, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            Créer mon espace
+          </button>
+        </div>
       </form>
     </div>
   );
