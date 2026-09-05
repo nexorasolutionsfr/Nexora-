@@ -14,6 +14,7 @@ import CentreDecisionnel from "./garage-os/CentreDecisionnel";
 import VotreJournee from "./garage-os/VotreJournee";
 import NexoraARepere from "./garage-os/NexoraARepere";
 import AccesRapides from "./garage-os/AccesRapides";
+import MiseEnRoute from "./garage-os/MiseEnRoute";
 import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier, dateLongueFR } from "./garage-os/calculs";
 import { estFerme, heureReservable, heuresOuvrables } from "./agenda/horaires";
 import ConnexionShell from "./connexion/ConnexionShell";
@@ -1266,7 +1267,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
   );
 }
 
-function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
+function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onAllerConfigurer, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   const [cockpitCompteurs, setCockpitCompteurs] = useState(null);
   if (loading) {
@@ -1577,6 +1578,17 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   return (
     <div className="space-y-5">
       <MorningHeader garageData={garageData} openState={openState} />
+
+      {/* En tête d'accueil, et seulement tant qu'il reste quelque chose à
+          faire : voir garage-os/miseEnRoute.js. Un garage installé ne voit
+          jamais ce bloc. */}
+      <MiseEnRoute
+        garageData={garageData}
+        mecaniciens={mecaniciens}
+        clients={clients}
+        rendezVous={rendezVous}
+        onAller={onAllerConfigurer}
+      />
 
       <SyntheseImmediate
         rdvAujourdhui={todayAppts.length}
@@ -4056,8 +4068,10 @@ const THEMES_DASHBOARD = [
   { key: "automatique", label: "Automatique", description: "S'adapte aux réglages de l'appareil." },
 ];
 
-function ParametresView({ garageId, garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif }) {
-  const [onglet, setOnglet] = useState("garage");
+function ParametresView({ garageId, garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, ongletInitial = "garage" }) {
+  // Ouvert sur l'onglet demandé par l'appelant : la liste de mise en route
+  // envoie vers « Reprise de données » sans faire chercher le bon onglet.
+  const [onglet, setOnglet] = useState(ongletInitial);
   const [newPrestation, setNewPrestation] = useState({ nom: "", categorie: "entretien", duree_minutes: 60 });
   const [newMecanicienNom, setNewMecanicienNom] = useState("");
   const canauxNotifications = garageData.canaux_notifications && typeof garageData.canaux_notifications === "object" ? garageData.canaux_notifications : {};
@@ -4433,6 +4447,14 @@ function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting,
 // =====================================================================================
 function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = null }) {
   const [view, setView] = useState("aujourdhui");
+  // Onglet des Paramètres à ouvrir quand on y arrive depuis un raccourci.
+  // Réinitialisé à « garage » dès qu'on navigue ailleurs, sinon un retour
+  // dans Paramètres rouvrirait la reprise de données sans raison.
+  const [parametresOnglet, setParametresOnglet] = useState("garage");
+  const allerConfigurer = (vue, onglet) => {
+    setParametresOnglet(onglet || "garage");
+    setView(vue);
+  };
   const [notifsAVerifierCount, setNotifsAVerifierCount] = useState(0);
 
   // Compteur de la pastille : chargé au montage pour que le badge existe
@@ -6267,7 +6289,7 @@ if (updateError) {
         )}
 
         <div className="p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
+          {view === "aujourdhui" && <AujourdhuiView stats={stats} onAllerConfigurer={allerConfigurer} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={setDossierVehiculeId} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
@@ -6336,7 +6358,7 @@ if (updateError) {
               onCountChange={setNotifsAVerifierCount}
             />
           )}
-          {view === "parametres" && <ParametresView garageId={garageId} garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} />}
+          {view === "parametres" && <ParametresView ongletInitial={parametresOnglet} key={parametresOnglet} garageId={garageId} garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} />}
         </div>
       </main>
 
