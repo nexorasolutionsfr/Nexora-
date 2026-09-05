@@ -15,7 +15,7 @@ function Indicateur({ icon: Icon, label, value, suffix = "" }) {
       </div>
       <div className="min-w-0">
         <div className="text-[19px] font-bold tabular-nums text-slate-900 leading-tight">{affichage}</div>
-        <div className="text-[11.5px] text-slate-500 leading-tight mt-0.5">{label}</div>
+        <div className="text-[11.5px] text-slate-500 leading-tight mt-0.5 text-balance">{label}</div>
       </div>
     </div>
   );
@@ -23,11 +23,11 @@ function Indicateur({ icon: Icon, label, value, suffix = "" }) {
 
 export default function SyntheseImmediate({ rdvAujourdhui, vehiculesEngages, decisionsEnAttente, montantRisque }) {
   return (
-    <div className="flex flex-wrap gap-3">
-      <Indicateur icon={Calendar} label="Rendez-vous aujourd'hui" value={rdvAujourdhui} />
-      <Indicateur icon={Wrench} label="Véhicules engagés en atelier" value={vehiculesEngages} />
-      <Indicateur icon={ListChecks} label="Priorités actives" value={decisionsEnAttente} />
-      <Indicateur icon={CircleDollarSign} label="Montant connu à risque" value={montantRisque} suffix=" €" />
+    <div className="flex flex-wrap items-stretch gap-3">
+      <Indicateur icon={Calendar} label="Rendez-vous du jour" value={rdvAujourdhui} />
+      <Indicateur icon={Wrench} label="En atelier" value={vehiculesEngages} />
+      <Indicateur icon={ListChecks} label="Priorités" value={decisionsEnAttente} />
+      <Indicateur icon={CircleDollarSign} label="Montant à risque" value={montantRisque} suffix=" €" />
     </div>
   );
 }
