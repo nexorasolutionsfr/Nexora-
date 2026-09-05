@@ -91,6 +91,17 @@ export function equivalentMensuel(o: Offre): number {
   return Math.round(o.prixAnnuel / 12);
 }
 
+/**
+ * Ce que le garage garde en payant à l'année, en euros.
+ *
+ * « 2 mois offerts » sur un bouton ne se vérifie pas : le visiteur voit un prix
+ * mensuel baisser de 79 à 66 € et n'en déduit pas deux mois. On affiche donc
+ * l'écart en clair, et le prix barré à côté du nouveau.
+ */
+export function economieAnnuelle(o: Offre): number {
+  return o.prixMensuel * 12 - o.prixAnnuel;
+}
+
 export function formaterEuros(montant: number): string {
   return new Intl.NumberFormat("fr-FR", {
     style: "currency",

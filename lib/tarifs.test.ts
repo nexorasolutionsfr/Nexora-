@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { JOURS_ESSAI, OFFRES, equivalentMensuel, formaterEuros, offre, prix } from './tarifs.ts'
+import { JOURS_ESSAI, OFFRES, economieAnnuelle, equivalentMensuel, formaterEuros, offre, prix } from './tarifs.ts'
 
 test('les clés d offre sont uniques', () => {
   const cles = OFFRES.map((o) => o.cle)
@@ -63,4 +63,19 @@ test('le formatage euro est français et sans centimes', () => {
 
 test('la durée d essai est celle annoncée partout', () => {
   assert.equal(JOURS_ESSAI, 14)
+})
+
+test('l économie annoncée vaut bien deux mensualités', () => {
+  // La page affiche « vous économisez X ». Si ce X ne vaut pas deux mois, la
+  // promesse du bouton et le chiffre à côté se contredisent sous les yeux du
+  // visiteur.
+  for (const o of OFFRES) {
+    assert.equal(economieAnnuelle(o), o.prixMensuel * 2, `économie fausse pour ${o.nom}`)
+  }
+})
+
+test('le prix barré est toujours supérieur au prix annuel mensualisé', () => {
+  for (const o of OFFRES) {
+    assert.ok(o.prixMensuel > equivalentMensuel(o), `barrer 79 € pour afficher plus cher : ${o.nom}`)
+  }
 })

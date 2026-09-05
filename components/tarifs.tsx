@@ -8,6 +8,7 @@ import {
   JOURS_ESSAI,
   OFFRES,
   type Periodicite,
+  economieAnnuelle,
   equivalentMensuel,
   formaterEuros,
   prix,
@@ -105,7 +106,12 @@ export function Tarifs() {
               <h3 className="font-display text-xl font-semibold">{o.nom}</h3>
               <p className="mt-1 text-sm text-muted-foreground">{o.accroche}</p>
 
-              <div className="mt-5 flex items-baseline gap-1.5">
+              <div className="mt-5 flex items-baseline gap-2">
+                {periodicite === "annuel" && (
+                  <span className="text-xl text-muted-foreground line-through tabular-nums">
+                    {formaterEuros(o.prixMensuel)}
+                  </span>
+                )}
                 <span className="font-display text-4xl font-bold tabular-nums">
                   {formaterEuros(periodicite === "annuel" ? equivalentMensuel(o) : o.prixMensuel)}
                 </span>
@@ -113,7 +119,7 @@ export function Tarifs() {
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 {periodicite === "annuel"
-                  ? `${formaterEuros(prix(o, "annuel"))} par an, en une fois`
+                  ? `${formaterEuros(prix(o, "annuel"))} par an au lieu de ${formaterEuros(o.prixMensuel * 12)} — vous économisez ${formaterEuros(economieAnnuelle(o))}`
                   : "Sans engagement, résiliable à tout moment"}
               </p>
 
@@ -154,8 +160,8 @@ export function Tarifs() {
         <div className="mt-10 rounded-2xl border border-border bg-secondary/40 p-6 sm:p-8">
           <h3 className="font-display text-lg font-semibold">Vous êtes parmi les dix premiers ?</h3>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Les dix premiers garages qui rejoignent Nexora bénéficient de{" "}
-            <span className="font-medium text-foreground">trois mois offerts</span> et de leur{" "}
+            Les dix premiers garages qui rejoignent Nexora bénéficient d&apos;{" "}
+            <span className="font-medium text-foreground">un mois offert</span> et de leur{" "}
             <span className="font-medium text-foreground">tarif bloqué à vie</span>, quelles que
             soient les hausses futures. En échange, on vous demande vos retours — ils orientent
             réellement ce qu&apos;on construit ensuite.
