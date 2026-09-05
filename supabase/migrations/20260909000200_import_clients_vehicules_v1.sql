@@ -311,6 +311,9 @@ comment on function public.importer_clients_vehicules(uuid, jsonb, boolean) is
 
 revoke execute on function public.importer_clients_vehicules(uuid, jsonb, boolean) from public;
 revoke execute on function public.importer_clients_vehicules(uuid, jsonb, boolean) from anon;
+-- Voir la note de 20260909000100 : Supabase accorde EXECUTE à service_role sur
+-- toute fonction neuve de public, par privilège par défaut.
+revoke execute on function public.importer_clients_vehicules(uuid, jsonb, boolean) from service_role;
 grant execute on function public.importer_clients_vehicules(uuid, jsonb, boolean) to authenticated;
 
 -- =====================================================================

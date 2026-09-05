@@ -171,10 +171,19 @@ comment on function public.creer_mon_garage(text, text, text, text, text[]) is
 -- Fermé par défaut, puis ouvert au seul rôle qui en a l'usage.
 revoke execute on function public.creer_mon_garage(text, text, text, text, text[]) from public;
 revoke execute on function public.creer_mon_garage(text, text, text, text, text[]) from anon;
+-- service_role N'EST PAS redondant ici. Supabase pose
+-- `alter default privileges in schema public grant all on functions to service_role`,
+-- si bien que toute fonction neuve lui est accordée à la création. Sans cette
+-- ligne, le bloc de vérification échoue — et il a effectivement échoué au
+-- premier essai d'application sur Test, ce qui est exactement son rôle.
+revoke execute on function public.creer_mon_garage(text, text, text, text, text[]) from service_role;
 grant execute on function public.creer_mon_garage(text, text, text, text, text[]) to authenticated;
 
 revoke execute on function public.profil_activite_valide(text[]) from public;
 grant execute on function public.profil_activite_valide(text[]) to authenticated;
+-- Simple prédicat sans effet de bord, mais on ne laisse pas un droit non
+-- demandé s'installer par défaut.
+revoke execute on function public.profil_activite_valide(text[]) from service_role;
 
 -- =====================================================================
 -- 4. Vérification dans la transaction de la migration
