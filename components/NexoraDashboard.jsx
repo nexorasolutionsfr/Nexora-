@@ -17,6 +17,7 @@ import AccesRapides from "./garage-os/AccesRapides";
 import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier, dateLongueFR } from "./garage-os/calculs";
 import { estFerme, heureReservable, heuresOuvrables } from "./agenda/horaires";
 import ConnexionShell from "./connexion/ConnexionShell";
+import { offre } from "@/lib/tarifs";
 import VehicleCaseFileView from "./vehicle-case-file/VehicleCaseFileView";
 import OnboardingGarage from "./onboarding/OnboardingGarage";
 import ImportClients from "./import/ImportClients";
@@ -6080,6 +6081,32 @@ if (updateError) {
   // Bandeau d'essai. Il n'apparaît que dans la dernière semaine : affiché dès
   // le premier jour, il devient un décor qu'on ne lit plus, et il ne dirait
   // rien le jour où il compte vraiment.
+  // Premier prélèvement à venir. On prévient une semaine avant, avec le
+  // montant et la date — c'est ce que le garage veut savoir, et c'est ce que
+  // Stripe fera de son côté trois jours avant.
+  const joursAvantFacture = joursAvantPrelevement(acces);
+  const offrePayee = acces?.forfait ? offre(acces.forfait) : null;
+  const montantPaye = offrePayee && acces?.periodicite !== "annuel"
+    ? offrePayee.prixMensuel
+    : offrePayee?.prixAnnuel;
+
+  const bandeauPrelevement =
+    acces?.statut === "trialing" && joursAvantFacture !== null && joursAvantFacture <= 7 ? (
+      <div
+        role="status"
+        className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-4 py-2 text-[13px]"
+        style={{ backgroundColor: "#FEF3C7", color: NAVY }}
+      >
+        <span>
+          {joursAvantFacture === 0
+            ? "Votre premier prélèvement a lieu aujourd'hui"
+            : `Premier prélèvement dans ${joursAvantFacture} jour${joursAvantFacture > 1 ? "s" : ""}`}
+          {offrePayee ? ` — ${offrePayee.nom}, ${montantPaye} €` : ""}.
+        </span>
+        <span style={{ color: "#64748B" }}>Vous pouvez arrêter avant, sans rien payer.</span>
+      </div>
+    ) : null;
+
   const bandeauEssai =
     joursEssaiRestants !== null && joursEssaiRestants <= 7 ? (
       <div
@@ -6104,6 +6131,7 @@ if (updateError) {
 
   return (
     <div className="flex min-h-[800px] w-full font-sans flex-col" style={{ backgroundColor: BG }}>
+      {bandeauPrelevement}
       {bandeauEssai}
       <div className="flex w-full flex-1">
       <aside className="w-60 shrink-0 py-5 px-3.5 hidden md:flex flex-col" style={{ backgroundColor: NAVY }}>
@@ -6487,6 +6515,19 @@ function joursRestants(acces) {
 // Le mot juste selon le motif. Annoncer « il vous reste 30 jours d'essai » à un
 // garage à qui on a offert un mois efface le geste commercial ; lui dire « mois
 // offert » le lui rappelle chaque jour.
+// Combien de jours avant le prochain prélèvement, ou null s'il n'y en a pas.
+//
+// Un abonnement avec période d'essai se déclenche TOUT SEUL à l'échéance.
+// C'est le comportement voulu — et c'est aussi celui qui produit les litiges
+// quand personne n'a prévenu. Le garage doit voir arriver la date.
+function joursAvantPrelevement(acces) {
+  if (!acces?.prochaineFacture || !acces.abonnementActif) return null;
+  const restant = new Date(acces.prochaineFacture).getTime() - Date.now();
+  if (Number.isNaN(restant)) return null;
+  if (restant <= 0) return 0;
+  return Math.ceil(restant / 86400000);
+}
+
 const ACCES_LIBELLE = {
   essai: { court: "d'essai", termine: "Votre essai" },
   // « 5 jours de mois offert » ne se dit pas. Le fragment porte donc sa
@@ -6740,7 +6781,7 @@ export default function NexoraDashboard() {
     let cancelled = false;
     supabase
       .from("garages")
-      .select("id, acces_motif, acces_fin, abonnement_actif")
+      .select("id, acces_motif, acces_fin, abonnement_actif, abonnement_statut, forfait, abonnement_prochaine_facture")
       .eq("owner_user_id", session.user.id)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -6758,7 +6799,14 @@ export default function NexoraDashboard() {
           return;
         }
         setGarageId(data.id);
-        setAcces({ motif: data.acces_motif, fin: data.acces_fin, abonnementActif: data.abonnement_actif });
+        setAcces({
+          motif: data.acces_motif,
+          fin: data.acces_fin,
+          abonnementActif: data.abonnement_actif,
+          statut: data.abonnement_statut,
+          forfait: data.forfait,
+          prochaineFacture: data.abonnement_prochaine_facture,
+        });
         setGarageReady(true);
       });
     return () => {

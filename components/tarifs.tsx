@@ -101,6 +101,45 @@ export function Tarifs() {
             Le temps de passer une vraie semaine d&apos;atelier avec Nexora. Rien n&apos;est prélevé
             avant le {JOURS_ESSAI + 1}<sup>e</sup> jour, et vous arrêtez quand vous voulez.
           </p>
+
+          {/*
+            La promesse qui décide, écrite là où le visiteur hésite : au moment
+            de cliquer. Elle n'est pas commerciale, elle est vérifiable — la
+            route de paiement ouvre la session en `payment_method_collection:
+            if_required`, donc Stripe ne demande RIEN pour démarrer, et
+            `missing_payment_method: cancel` arrête l'abonnement à l'échéance
+            au lieu de le facturer. Un essai oublié s'éteint, il ne devient
+            jamais une ligne sur un relevé.
+
+            Ne modifier ce texte QUE si ces deux réglages changent.
+          */}
+          <div className="mx-auto mt-6 max-w-xl rounded-2xl border border-border bg-card px-5 py-4 text-left">
+            <ul className="space-y-2.5 text-[14.5px] text-muted-foreground">
+              <li className="flex items-start gap-2.5">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <span>
+                  <span className="font-medium text-foreground">Aucune carte demandée</span> pour
+                  commencer. Vous n&apos;en renseignez une que si vous décidez de continuer.
+                </span>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <span>
+                  <span className="font-medium text-foreground">Rien ne peut être prélevé sans
+                  votre accord.</span> Si vous ne faites rien au bout des {JOURS_ESSAI} jours,
+                  l&apos;essai s&apos;arrête tout seul.
+                </span>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <span>
+                  <span className="font-medium text-foreground">Nous vous prévenons avant.</span>{" "}
+                  Une semaine avant toute échéance, le montant et la date s&apos;affichent dans
+                  votre espace.
+                </span>
+              </li>
+            </ul>
+          </div>
         </div>
 
         <div className="mt-8 flex justify-center">
