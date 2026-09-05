@@ -17,9 +17,17 @@ const ETAPES_ALERTE = ["attente_client", "attente_piece"];
 const ETAPES_LIMITEES_AUJOURDHUI = ["a_venir", "pret", "restitue"];
 
 export function saluationHoraire(now = new Date()) {
+  // `format()` d'une heure SEULE en fr-FR rend « 11 h », pas « 11 » : le
+  // Number() qui lisait cette chaine valait donc NaN, et comme toute
+  // comparaison avec NaN est fausse, la fonction retombait sur « Bonsoir » à
+  // n'importe quelle heure du jour. On lit la partie `hour` plutot que la
+  // chaine formatée, qui est destinée à l'affichage et dépend de la langue.
   const heure = Number(
-    new Intl.DateTimeFormat("fr-FR", { timeZone: APP_TIME_ZONE, hour: "2-digit", hourCycle: "h23" }).format(now)
+    new Intl.DateTimeFormat("fr-FR", { timeZone: APP_TIME_ZONE, hour: "2-digit", hourCycle: "h23" })
+      .formatToParts(now)
+      .find((part) => part.type === "hour")?.value
   );
+  if (!Number.isFinite(heure)) return "Bonjour";
   if (heure < 6) return "Bonsoir";
   if (heure < 18) return "Bonjour";
   return "Bonsoir";
