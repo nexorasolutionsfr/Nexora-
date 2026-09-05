@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { PROFILS_ACTIVITE } from "./profilsActivite";
+import { catalogueInitial } from "./catalogueParActivite";
 
 // Écran de mise en service, affiché au premier accès d'un compte qui ne
 // possède pas encore de garage. Il remplace le cul-de-sac « Contactez le
@@ -94,12 +95,28 @@ export default function OnboardingGarage({ onGarageCree }) {
       p_email: email,
       p_profil_activite: profil,
     });
-    setEnCours(false);
     if (error) {
+      setEnCours(false);
       console.error("Erreur creation garage :", error);
       setErreur(messageErreur(error));
       return;
     }
+
+    // Le garage arriverait autrement sur une liste de prestations vide, sans
+    // pouvoir planifier ni chiffrer quoi que ce soit avant d'avoir tout saisi.
+    // Un échec ici n'est PAS bloquant : le garage existe, il est propriétaire,
+    // et il peut ajouter ses prestations lui-même dans Paramètres. Perdre la
+    // mise en service pour un catalogue manqué serait hors de proportion.
+    const prestations = catalogueInitial(profil).map((prestation) => ({
+      ...prestation,
+      garage_id: data,
+    }));
+    const { error: erreurCatalogue } = await supabase.from("prestations").insert(prestations);
+    if (erreurCatalogue) {
+      console.error("Catalogue initial non installé :", erreurCatalogue);
+    }
+
+    setEnCours(false);
     onGarageCree(data);
   }
 
@@ -250,7 +267,7 @@ export default function OnboardingGarage({ onGarageCree }) {
                 cursor: profil.length > 0 && !enCours ? "pointer" : "not-allowed",
               }}
             >
-              {enCours ? "Création..." : "Ouvrir mon tableau de bord"}
+              {enCours ? "Préparation de votre atelier..." : "Ouvrir mon tableau de bord"}
             </button>
 
             <button
