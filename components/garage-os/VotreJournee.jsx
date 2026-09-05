@@ -68,7 +68,7 @@ export default function VotreJournee({ todayAppts = [], stageCounts = [], mecani
         <div className="px-5 pt-3 pb-1 text-[12px] font-semibold uppercase tracking-wide text-slate-400">Prochains rendez-vous</div>
         {prochains.length === 0 ? (
           <div className="flex flex-col items-center text-center gap-1.5 py-7 text-slate-500">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-1" style={{ backgroundColor: "#F1F5F9" }}>
+            <div className="hidden sm:flex w-10 h-10 rounded-xl items-center justify-center mb-1" style={{ backgroundColor: "#F1F5F9" }}>
               <Wrench size={17} className="text-slate-400" />
             </div>
             <div className="text-[13px] font-medium text-slate-700">Rien de programmé pour l'instant</div>

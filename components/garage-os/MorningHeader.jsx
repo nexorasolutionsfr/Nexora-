@@ -8,7 +8,7 @@ export default function MorningHeader({ garageData, openState }) {
   const date = dateLongueFR();
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-5 py-4 md:px-6 md:py-5">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3 md:px-6 md:py-5">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <div className="text-[19px] md:text-[21px] font-bold tracking-tight" style={{ color: NAVY }}>
@@ -29,7 +29,6 @@ export default function MorningHeader({ garageData, openState }) {
           </span>
         )}
       </div>
-      <div className="text-[13.5px] text-slate-600 mt-3">Voici ce qui mérite votre attention.</div>
     </div>
   );
 }
