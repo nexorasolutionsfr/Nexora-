@@ -100,7 +100,7 @@ chantier « accès salariés », qui a son propre modèle et ne passe pas par ic
 
 ## E. Le garde-fou central de la migration
 
-`public.garages` **n'est décrite par aucune migration de ce dépôt**. Les 44
+`public.garages` **n'est décrite par aucune migration de ce dépôt**. Les 45
 migrations versionnées couvrent les inspections, les OR, les devis-lignes, les
 jetons — jamais le socle. `garages`, `clients`, `vehicules`, `rendez_vous`,
 `devis`, `factures` et `prestations` n'existent que dans les projets Supabase
@@ -119,6 +119,22 @@ laisser passer une bombe à retardement. C'est le bloc 4.3.
 Cette dépendance disparaîtra avec le lot 2 (versionnement du socle par
 rétro-ingénierie du schéma réel), qui devient de ce fait le prérequis de tout
 travail structurel ultérieur.
+
+**Vérifié depuis, en lecture seule, le 2026-09-05 sur Test et sur Production :**
+`public.garages` compte vingt et une colonnes sur les deux projets, et
+`nom_garage` est la seule `NOT NULL` sans valeur par défaut — elle est
+renseignée par la RPC. Le garde-fou passera donc. Il reste néanmoins dans la
+migration : il ne coûte rien, et il protège les environnements futurs contre une
+divergence qui ne serait plus constatée à l'œil.
+
+### Numéro de version
+
+La migration porte `20260909000100`, et non le numéro du jour. Relevé au même
+audit : `20260905000100` à `20260905001000` sont **déjà appliquées sur Test**
+(chantier accès salariés et import pilote), tout comme `20260906000100` à
+`20260908000100` (lots de sécurité). Aucune n'est fusionnée dans `main`.
+Reprendre l'un de ces numéros aurait fait considérer la migration comme déjà
+appliquée sur Test, et elle aurait été silencieusement sautée.
 
 ## F. Parcours
 
@@ -188,7 +204,7 @@ en service disparaît et le message « Contactez le support Nexora » revient.
 
 Rien de ce qui suit n'a été fait, et rien ne doit l'être sans accord explicite.
 
-1. Appliquer `20260905000100_onboarding_garage_v1.sql` **sur Test seulement**.
+1. Appliquer `20260909000100_onboarding_garage_v1.sql` **sur Test seulement**.
    Si le bloc 4.3 fait échouer la migration, il nomme les colonnes manquantes :
    les ajouter à l'insertion de la RPC, puis recommencer. Cet échec est le
    résultat utile de la migration, pas un incident.

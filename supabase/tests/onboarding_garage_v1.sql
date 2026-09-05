@@ -7,7 +7,7 @@
 -- « RECETTE ONBOARDING V1 ».
 --
 -- Ce fichier N'EST PAS une migration. Il présuppose que
--- supabase/migrations/20260905000100_onboarding_garage_v1.sql a déjà été
+-- supabase/migrations/20260909000100_onboarding_garage_v1.sql a déjà été
 -- appliquée sur l'environnement où on l'exécute — jamais Production.
 --
 -- RÉVERSIBILITÉ : tout se déroule dans la transaction ouverte par le `begin;`

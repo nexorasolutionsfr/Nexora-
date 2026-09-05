@@ -1,5 +1,5 @@
 // Vocabulaire des profils d'activité — miroir exact de
-// public.profil_activite_valide(text[]) (migration 20260905000100).
+// public.profil_activite_valide(text[]) (migration 20260909000100).
 //
 // Les neuf clés doivent rester identiques à celles de la fonction SQL : elles
 // sont écrites telles quelles dans garages.profil_activite, où une contrainte
