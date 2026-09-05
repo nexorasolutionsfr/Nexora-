@@ -577,7 +577,7 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
 // (à accueillir, dans l'atelier, prêts à restituer). N'affiche que les
 // informations déjà chargées, sans téléphone ni email — l'atelier n'a pas
 // besoin de contacter le client directement depuis cet écran.
-function AtelierCarte({ appt, etapeInfo, mecanicien, alertes, onSelectAppt, onOuvrirDossierVehicule }) {
+function AtelierCarte({ appt, etapeInfo, mecanicien, alertes, onSelectAppt, onOuvrirDossierVehicule, lienActif, lienUrl, onCreerLien, lienEnCours }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-3.5 flex flex-col gap-2">
       <div className="flex items-start justify-between gap-2">
@@ -609,6 +609,49 @@ function AtelierCarte({ appt, etapeInfo, mecanicien, alertes, onSelectAppt, onOu
           ))}
         </div>
       )}
+      {/* Suivi client. C'est la contrepartie du travail de déplacement des
+          cartes : sans lui, le garage entretient un tableau et ne reçoit rien
+          en échange. Il était jusqu'ici enterré dans la fenêtre de détail,
+          donc introuvable. */}
+      <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+        {lienActif ? (
+          <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-emerald-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+            Suivi client actif
+          </span>
+        ) : (
+          <span className="text-[11.5px] text-slate-400">Aucun lien de suivi</span>
+        )}
+        {lienActif && lienUrl ? (
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard?.writeText(lienUrl);
+            }}
+            className="text-[11.5px] font-semibold text-slate-600 underline hover:text-slate-900"
+          >
+            Copier
+          </button>
+        ) : !lienActif ? (
+          <button
+            type="button"
+            onClick={() => onCreerLien?.(appt.id)}
+            disabled={lienEnCours}
+            className="text-[11.5px] font-semibold underline disabled:opacity-50"
+            style={{ color: ACCENT }}
+          >
+            {lienEnCours ? "Création…" : "Créer le lien"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSelectAppt(appt)}
+            className="text-[11.5px] font-semibold text-slate-600 underline hover:text-slate-900"
+          >
+            Voir le QR
+          </button>
+        )}
+      </div>
       <div className="flex items-center gap-2 pt-1">
         <button
           type="button"
@@ -665,7 +708,7 @@ function AtelierSection({ titre, sousTitre, count, accent, enfants, vide }) {
   );
 }
 
-function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], atelierLiens = {}, atelierQr = {}, onGenererEtiquettes, onOuvrirDossierVehicule }) {
+function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], atelierLiens = {}, atelierQr = {}, atelierJetonsActifs = {}, onGenererEtiquettes, onGenererLienAtelier, atelierBusyId, onOuvrirDossierVehicule }) {
   const maintenant = new Date();
   const todayAppts = rendezVous.filter((r) => isToday(r.date_debut));
   const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
@@ -698,6 +741,10 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], a
       alertes={determinerAlertesAtelier(appt, maintenant)}
       onSelectAppt={onSelectAppt}
       onOuvrirDossierVehicule={onOuvrirDossierVehicule}
+      lienActif={Boolean(atelierJetonsActifs[appt.id] || atelierLiens[appt.id])}
+      lienUrl={atelierLiens[appt.id] || null}
+      onCreerLien={onGenererLienAtelier}
+      lienEnCours={atelierBusyId === appt.id}
     />
   );
 
@@ -4291,6 +4338,11 @@ function NexoraDashboardInner({ garageId, joursEssaiRestants = null }) {
   const [selectedAppt, setSelectedAppt] = useState(null);
   const [atelierLiens, setAtelierLiens] = useState({});
   const [atelierQr, setAtelierQr] = useState({});
+  // Quels rendez-vous ont DÉJÀ un lien actif, d'après la base et non d'après
+  // l'état local — qui repart vide à chaque rechargement. Sans cette lecture,
+  // « Imprimer les étiquettes » régénère tout et révoque les QR déjà collés
+  // sur les pare-brise.
+  const [atelierJetonsActifs, setAtelierJetonsActifs] = useState({});
   const [atelierBusyId, setAtelierBusyId] = useState(null);
   const [devisLiens, setDevisLiens] = useState({});
   const [devisBusyId, setDevisBusyId] = useState(null);
@@ -5759,6 +5811,21 @@ if (updateError) {
   // seul lien actif par RDV, régénéré à la demande, jamais journalisé. Le QR
   // est généré entièrement dans le navigateur (paquet "qrcode", data URL
   // locale) — le jeton n'est jamais envoyé à un service tiers.
+  useEffect(() => {
+    const ids = rendezVous.map((r) => r.id).filter(Boolean);
+    if (ids.length === 0) return;
+    let annule = false;
+    supabase.rpc("etat_liens_atelier", { p_rdv_ids: ids }).then(({ data, error }) => {
+      if (annule || error) return;
+      const etat = {};
+      for (const ligne of data || []) etat[ligne.rendez_vous_id] = ligne.expires_at;
+      setAtelierJetonsActifs(etat);
+    });
+    return () => {
+      annule = true;
+    };
+  }, [rendezVous]);
+
   const genererLienAtelier = async (rdvId) => {
     setAtelierBusyId(rdvId);
     const { data: token, error } = await supabase.rpc("creer_jeton_atelier", { p_rdv_id: rdvId });
@@ -5771,6 +5838,7 @@ if (updateError) {
     const url = `${window.location.origin}/atelier/${token}`;
     setAtelierLiens((prev) => ({ ...prev, [rdvId]: url }));
     try {
+      setAtelierJetonsActifs((prev) => ({ ...prev, [rdvId]: "actif" }));
       const dataUrl = await QRCode.toDataURL(url, { width: 220, margin: 1 });
       setAtelierQr((prev) => ({ ...prev, [rdvId]: dataUrl }));
     } catch (qrError) {
@@ -5791,14 +5859,41 @@ if (updateError) {
     }
     setAtelierLiens((prev) => { const next = { ...prev }; delete next[rdvId]; return next; });
     setAtelierQr((prev) => { const next = { ...prev }; delete next[rdvId]; return next; });
+    setAtelierJetonsActifs((prev) => { const next = { ...prev }; delete next[rdvId]; return next; });
     flashToast("Lien atelier révoqué");
   };
 
+  const rafraichirEtatLiens = async (ids) => {
+    if (!ids || ids.length === 0) return {};
+    const { data, error } = await supabase.rpc("etat_liens_atelier", { p_rdv_ids: ids });
+    if (error) {
+      console.error("Erreur lecture des liens atelier :", error);
+      return {};
+    }
+    const etat = {};
+    for (const ligne of data || []) etat[ligne.rendez_vous_id] = ligne.expires_at;
+    setAtelierJetonsActifs(etat);
+    return etat;
+  };
+
   const genererEtiquettesAtelier = async (appts) => {
-    const manquants = appts.filter((a) => !atelierLiens[a.id]);
+    // On relit l'état réel AVANT de générer quoi que ce soit : un rendez-vous
+    // dont le lien est actif en base ne doit pas être régénéré, sinon le QR
+    // déjà remis au client cesse de fonctionner.
+    const actifs = await rafraichirEtatLiens(appts.map((a) => a.id));
+    const manquants = appts.filter((a) => !atelierLiens[a.id] && !actifs[a.id]);
     if (manquants.length > 0) {
       const resultats = await Promise.all(manquants.map((a) => genererLienAtelier(a.id)));
       if (resultats.some((url) => !url)) return;
+    }
+
+    const imprimables = appts.filter((a) => atelierQr[a.id] || manquants.some((m) => m.id === a.id));
+    if (imprimables.length === 0) {
+      flashToast(
+        "Les liens de ces véhicules existent déjà. Pour les réimprimer, régénérez le lien depuis la fiche — l'ancien QR cessera alors de fonctionner.",
+        "error",
+      );
+      return;
     }
     setTimeout(() => window.print(), 300);
   };
@@ -6020,7 +6115,7 @@ if (updateError) {
         <div className="p-5 md:p-8">
           {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
-          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} onGenererEtiquettes={genererEtiquettesAtelier} onOuvrirDossierVehicule={setDossierVehiculeId} />}
+          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={setDossierVehiculeId} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
           {["devis", "factures", "historique"].includes(view) && (
             <FacturationView
