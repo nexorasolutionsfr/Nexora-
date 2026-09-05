@@ -11,8 +11,7 @@ import { SiteFooter } from "@/components/site-footer"
 import { DemoCtaTracker } from "@/components/analytics/demo-cta-tracker"
 
 // Données structurées volontairement minimales : uniquement des faits vérifiables
-// (nom, nature du logiciel, langue). Aucun avis, aucun tarif, aucune donnée légale
-// tant que les mentions légales ne sont pas finalisées.
+// (nom, nature du logiciel, langue). Aucun avis, aucun tarif.
 const softwareJsonLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
