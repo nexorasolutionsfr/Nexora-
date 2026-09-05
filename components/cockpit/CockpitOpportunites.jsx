@@ -375,8 +375,8 @@ export default function CockpitOpportunites({
   if (loading) {
     return (
       <div className="space-y-3">
-        <div className="bg-white rounded-2xl border border-slate-200 h-24 animate-pulse" />
-        <div className="bg-white rounded-2xl border border-slate-200 h-24 animate-pulse" />
+        <div className="bg-white rounded-2xl border border-slate-200 h-24 nx-squelette" />
+        <div className="bg-white rounded-2xl border border-slate-200 h-24 nx-squelette" />
       </div>
     );
   }

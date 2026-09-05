@@ -148,3 +148,141 @@
     transform: translateY(-8px);
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MOUVEMENT NEXORA
+   ─────────────────────────────────────────────────────────────────────────
+
+   Une seule source pour tout ce qui bouge dans le produit. Éparpiller des
+   animations dans les composants produit toujours la même dérive : quatre
+   durées différentes pour le même geste, et une correction faite à trois
+   endroits sur quatre.
+
+   TROIS RÈGLES
+
+   1. LE MOUVEMENT SERT À COMPRENDRE, JAMAIS À DÉCORER.
+      Il dit d'où vient un élément, ou qu'une valeur a changé. Ce qui ne dit
+      rien ne bouge pas.
+
+   2. COURT. 150 à 260 ms.
+      Un garagiste ouvre son tableau de bord vingt fois par jour, entre deux
+      voitures. Une animation qu'on remarque à la vingtième est une animation
+      trop lente. On ne fait jamais attendre : tout est déjà lisible pendant
+      que ça finit de se placer.
+
+   3. `prefers-reduced-motion` COUPE TOUT.
+      Ce n'est pas une option. Certaines personnes ont des vertiges avec les
+      animations, et un logiciel de travail n'a pas le droit d'être un
+      obstacle. Sous cette préférence, tout apparaît instantanément et à sa
+      place — jamais masqué, jamais décalé.
+
+   L'ACCÉLÉRATION
+
+   `cubic-bezier(.16,1,.3,1)` : très rapide au départ, arrivée en douceur.
+   L'élément semble arriver à destination avant d'avoir fini de bouger, ce qui
+   donne la sensation de vitesse sans supprimer le mouvement.
+*/
+
+:root {
+  --nx-duree-courte: 150ms;
+  --nx-duree: 220ms;
+  --nx-duree-longue: 260ms;
+  --nx-sortie: cubic-bezier(.16, 1, .3, 1);
+}
+
+/* Apparition d'un bloc : il monte de huit pixels en se révélant. Huit, pas
+   vingt — au-delà, l'œil suit le déplacement au lieu de lire le contenu. */
+@keyframes nx-apparait {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.nx-apparait {
+  animation: nx-apparait var(--nx-duree) var(--nx-sortie) both;
+}
+
+/* Décalage en cascade. Cinq crans suffisent : au-delà, le dernier élément
+   arrive si tard qu'on croit à un défaut de chargement. */
+.nx-cascade > *:nth-child(1) { animation-delay: 0ms; }
+.nx-cascade > *:nth-child(2) { animation-delay: 40ms; }
+.nx-cascade > *:nth-child(3) { animation-delay: 80ms; }
+.nx-cascade > *:nth-child(4) { animation-delay: 120ms; }
+.nx-cascade > *:nth-child(n+5) { animation-delay: 160ms; }
+
+/* Le squelette de chargement. Une onde qui traverse, plutôt qu'un clignotement
+   d'opacité : elle indique un sens de lecture et se lit comme « ça arrive »
+   au lieu de « ça clignote ». */
+@keyframes nx-onde {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+.nx-squelette {
+  background: linear-gradient(90deg, #EEF1F6 25%, #F7F9FC 50%, #EEF1F6 75%);
+  background-size: 200% 100%;
+  animation: nx-onde 1.4s linear infinite;
+}
+
+/* Une valeur qui vient de changer. Un souffle très bref : on remarque le
+   changement sans que l'œil soit tiré hors de sa lecture. */
+@keyframes nx-souffle {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+.nx-souffle { animation: nx-souffle var(--nx-duree-longue) var(--nx-sortie); }
+
+/* Cartes et lignes cliquables : l'enfoncement d'un pixel est le seul retour
+   tactile qu'un écran sache donner. */
+.nx-pressable {
+  transition: transform var(--nx-duree-courte) var(--nx-sortie),
+              box-shadow var(--nx-duree-courte) var(--nx-sortie),
+              border-color var(--nx-duree-courte) var(--nx-sortie);
+}
+.nx-pressable:active { transform: translateY(1px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-apparait,
+  .nx-souffle,
+  .nx-squelette {
+    animation: none !important;
+  }
+  /* Sous cette préférence, un élément animé « both » resterait figé sur son
+     état de départ, donc invisible. On le remet explicitement à sa place. */
+  .nx-apparait { opacity: 1 !important; transform: none !important; }
+  .nx-pressable { transition: none; }
+  .nx-pressable:active { transform: none; }
+}
+
+/* Le toast : il monte depuis le bas, d'où il vient. Un message qui apparaît
+   sans venir de nulle part se lit comme un défaut d'affichage. */
+@keyframes nx-monte {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+.nx-monte { animation: nx-monte var(--nx-duree) var(--nx-sortie) both; }
+
+/* Les modales. Le voile s'installe seul, le panneau arrive avec un très léger
+   agrandissement — 0,98 et pas 0,9 : au-delà, le contenu paraît sauter à la
+   figure au lieu de se poser. */
+@keyframes nx-voile { from { opacity: 0; } to { opacity: 1; } }
+@keyframes nx-panneau {
+  from { opacity: 0; transform: scale(.98) translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.nx-voile   { animation: nx-voile var(--nx-duree-courte) ease-out both; }
+.nx-panneau { animation: nx-panneau var(--nx-duree) var(--nx-sortie) both; }
+
+/* Changement d'onglet. Très court — 120 ms — parce qu'on change d'onglet
+   beaucoup plus souvent qu'on ne charge la page, et qu'une transition qu'on
+   attend devient une lenteur. Aucun déplacement, seulement un fondu : un
+   glissement latéral donnerait le mal de mer à qui navigue vite. */
+@keyframes nx-vue { from { opacity: 0; } to { opacity: 1; } }
+.nx-vue { animation: nx-vue 120ms ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-monte, .nx-voile, .nx-panneau, .nx-vue { animation: none !important; }
+  .nx-monte, .nx-panneau { opacity: 1 !important; transform: none !important; }
+  .nx-voile, .nx-vue { opacity: 1 !important; }
+}

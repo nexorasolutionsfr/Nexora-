@@ -1,4 +1,5 @@
 "use client";
+import { SquelettesListe } from "@/components/garage-os/Squelettes";
 
 import PartagerLien from "@/components/partage/PartagerLien";
 import { pointsAInserer, resumeControle } from "./controleStandard";
@@ -618,11 +619,7 @@ export default function InspectionsSection({ garageId, garageNom, clients = [], 
       </div>
 
       {loading ? (
-        <div className="space-y-2">
-          {[0, 1, 2].map((k) => (
-            <div key={k} className="bg-white rounded-2xl border border-slate-200 h-16 animate-pulse" />
-          ))}
-        </div>
+        <SquelettesListe lignes={3} />
       ) : filtered.length === 0 ? (
         <EmptyState
           title={inspections.length === 0 ? "Aucun contrôle pour l'instant" : "Aucun résultat"}
