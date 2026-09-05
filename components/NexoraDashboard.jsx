@@ -4260,7 +4260,7 @@ function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting,
 // =====================================================================================
 // APP SHELL
 // =====================================================================================
-function NexoraDashboardInner({ garageId }) {
+function NexoraDashboardInner({ garageId, joursEssaiRestants = null }) {
   const [view, setView] = useState("aujourdhui");
   const [notifsAVerifierCount, setNotifsAVerifierCount] = useState(0);
 
@@ -5856,8 +5856,35 @@ if (updateError) {
     ? (Array.isArray(dossierClient.vehicules) ? dossierClient.vehicules : [dossierClient.vehicules]).find((v) => v.id === dossierVehiculeId)
     : null;
 
+  // Bandeau d'essai. Il n'apparaît que dans la dernière semaine : affiché dès
+  // le premier jour, il devient un décor qu'on ne lit plus, et il ne dirait
+  // rien le jour où il compte vraiment.
+  const bandeauEssai =
+    joursEssaiRestants !== null && joursEssaiRestants <= 7 ? (
+      <div
+        role="status"
+        className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-4 py-2 text-[13px]"
+        style={{ backgroundColor: joursEssaiRestants <= 3 ? "#FEF3C7" : "#EAF0FF", color: NAVY }}
+      >
+        <span>
+          {joursEssaiRestants === 0
+            ? "Votre essai se termine aujourd'hui."
+            : `Il vous reste ${joursEssaiRestants} jour${joursEssaiRestants > 1 ? "s" : ""} d'essai.`}
+        </span>
+        <a
+          href="https://nexora-garage.vercel.app/#tarifs"
+          className="font-semibold underline"
+          style={{ color: ACCENT }}
+        >
+          Choisir une offre
+        </a>
+      </div>
+    ) : null;
+
   return (
-    <div className="flex min-h-[800px] w-full font-sans" style={{ backgroundColor: BG }}>
+    <div className="flex min-h-[800px] w-full font-sans flex-col" style={{ backgroundColor: BG }}>
+      {bandeauEssai}
+      <div className="flex w-full flex-1">
       <aside className="w-60 shrink-0 py-5 px-3.5 hidden md:flex flex-col" style={{ backgroundColor: NAVY }}>
         <Logo dark />
         <nav className="mt-8 flex flex-col gap-4">
@@ -6094,6 +6121,7 @@ if (updateError) {
           }}
         />
       )}
+      </div>
     </div>
   );
 }
@@ -6231,6 +6259,52 @@ function UpdatePasswordScreen() {
             </button>
           </form>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Jours entiers restants avant la fin de l'essai, ou null s'il n'y a pas
+// d'échéance. Arrondi vers le haut : à sept heures de la fin, on affiche
+// « 1 jour », pas « 0 jour » — un compteur à zéro alors que l'accès fonctionne
+// encore fait croire à une panne.
+function joursRestants(acces) {
+  if (!acces || acces.abonnementActif || !acces.essaiFin) return null;
+  const restant = new Date(acces.essaiFin).getTime() - Date.now();
+  if (restant <= 0) return 0;
+  return Math.ceil(restant / 86400000);
+}
+
+function EssaiTermineScreen({ essaiFin }) {
+  const fin = new Date(essaiFin).toLocaleDateString("fr-FR", {
+    day: "numeric", month: "long", year: "numeric", timeZone: APP_TIME_ZONE,
+  });
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG, padding: 24 }}>
+      <div style={{ background: "#fff", padding: 32, borderRadius: 12, maxWidth: 460, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: NAVY, marginBottom: 8 }}>
+          Votre essai s&apos;est terminé le {fin}
+        </h1>
+        <p style={{ fontSize: 14, color: "#475569", lineHeight: 1.6, marginBottom: 6 }}>
+          Vos données sont intactes et vous attendent : clients, véhicules, devis,
+          factures, tout est conservé. Choisissez une offre et vous les retrouvez
+          exactement où vous les avez laissées.
+        </p>
+        <p style={{ fontSize: 13, color: "#64748B", lineHeight: 1.6, marginBottom: 20 }}>
+          Besoin de quelques jours de plus pour décider ? Écrivez-nous, on prolonge.
+        </p>
+        <a
+          href="https://nexora-garage.vercel.app/#tarifs"
+          style={{ display: "block", textAlign: "center", padding: "11px 12px", background: ACCENT, color: "#fff", borderRadius: 8, fontWeight: 600, fontSize: 14, textDecoration: "none" }}
+        >
+          Voir les offres
+        </a>
+        <a
+          href="mailto:nexorasolutions.france@gmail.com"
+          style={{ display: "block", textAlign: "center", padding: "10px 12px", color: "#64748B", fontSize: 13, textDecoration: "none", marginTop: 6 }}
+        >
+          nexorasolutions.france@gmail.com
+        </a>
       </div>
     </div>
   );
@@ -6449,6 +6523,7 @@ export default function NexoraDashboard() {
   const [garageReady, setGarageReady] = useState(false);
   const [garageError, setGarageError] = useState("");
   const [besoinOnboarding, setBesoinOnboarding] = useState(false);
+  const [acces, setAcces] = useState(null);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   // Jamais de garage par defaut : l'identifiant ne vaut quelque chose
   // qu'une fois resolu depuis la session. Un UUID de repli en dur
@@ -6464,6 +6539,7 @@ export default function NexoraDashboard() {
       setGarageReady(false);
       setGarageError("");
       setBesoinOnboarding(false);
+      setAcces(null);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -6473,7 +6549,7 @@ export default function NexoraDashboard() {
     let cancelled = false;
     supabase
       .from("garages")
-      .select("id")
+      .select("id, essai_fin, abonnement_actif")
       .eq("owner_user_id", session.user.id)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -6491,6 +6567,7 @@ export default function NexoraDashboard() {
           return;
         }
         setGarageId(data.id);
+        setAcces({ essaiFin: data.essai_fin, abonnementActif: data.abonnement_actif });
         setGarageReady(true);
       });
     return () => {
@@ -6536,5 +6613,20 @@ export default function NexoraDashboard() {
       </div>
     );
   }
-  return <NexoraDashboardInner garageId={garageId} />;
+  // Même règle que public.acces_garage_ouvert() en base : abonnement en cours,
+  // aucune limite, ou essai non échu. Ce garde-ci est un service rendu au
+  // garage — il lui explique la situation et lui donne le moyen de la régler,
+  // au lieu de le laisser devant une application qui refuse ses écritures.
+  // L'autorité reste la base.
+  const essaiEchu =
+    acces &&
+    !acces.abonnementActif &&
+    acces.essaiFin &&
+    new Date(acces.essaiFin).getTime() <= Date.now();
+
+  if (essaiEchu) {
+    return <EssaiTermineScreen essaiFin={acces.essaiFin} />;
+  }
+
+  return <NexoraDashboardInner garageId={garageId} joursEssaiRestants={joursRestants(acces)} />;
 }
