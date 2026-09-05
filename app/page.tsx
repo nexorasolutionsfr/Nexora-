@@ -4,7 +4,7 @@ import { Problems } from "@/components/problems"
 import { DayWithNexora } from "@/components/day-with-nexora"
 import { Features } from "@/components/features"
 import { Security } from "@/components/security"
-import { PilotOffer } from "@/components/pilot-offer"
+import { Tarifs } from "@/components/tarifs"
 import { Faq } from "@/components/faq"
 import { ContactCta } from "@/components/contact-cta"
 import { SiteFooter } from "@/components/site-footer"
@@ -38,7 +38,7 @@ export default function Page() {
         <DayWithNexora />
         <Features />
         <Security />
-        <PilotOffer />
+        <Tarifs />
         <Faq />
         <ContactCta />
       </main>
