@@ -13,7 +13,7 @@ const columns = [
     title: "Garage",
     links: [
       { label: "Espace garage", href: "/dashboard" },
-      { label: "Offre pilote", href: "#tarifs" },
+      { label: "Tarifs", href: "#tarifs" },
       { label: "FAQ", href: "#faq" },
     ],
   },
