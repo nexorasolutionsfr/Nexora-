@@ -118,8 +118,22 @@ export async function POST(request: Request) {
     "line_items[0][price_data][recurring][interval]": intervalle,
     "line_items[0][price_data][product_data][name]": `Nexora ${choisie.nom}`,
     "line_items[0][price_data][product_data][description]": choisie.pour,
-    // Le garage doit pouvoir arrêter sans écrire à personne. Sans cette ligne,
-    // un essai non voulu se transforme en litige.
+    // AUCUNE CARTE DEMANDÉE POUR OUVRIR L'ESSAI
+    //
+    // `if_required` dit à Stripe de ne réclamer un moyen de paiement que s'il
+    // y a quelque chose à encaisser aujourd'hui. Avec une période d'essai, il
+    // n'y a rien : le garage démarre sans sortir sa carte.
+    //
+    // Et à l'échéance, `missing_payment_method: cancel` arrête l'abonnement
+    // au lieu de le facturer. Autrement dit : **rien ne peut être prélevé à
+    // quelqu'un qui n'a rien saisi**. Un essai oublié s'éteint tout seul, il
+    // ne devient jamais une ligne sur un relevé bancaire.
+    //
+    // Ça coûte de la conversion — il faudra revenir pour payer — et c'est un
+    // arbitrage assumé : sur un premier produit vendu à des garages qui ne
+    // connaissent pas encore Nexora, la confiance vaut plus que le taux de
+    // transformation. Une seule facture surprise et la réputation est faite.
+    payment_method_collection: "if_required",
     "subscription_data[trial_settings][end_behavior][missing_payment_method]": "cancel",
     // Ces trois métadonnées voyagent avec l'ABONNEMENT, donc avec chacun de ses
     // événements futurs. C'est ce qui permet à un « paiement échoué » reçu dans
