@@ -18,6 +18,7 @@ import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtel
 import VehicleCaseFileView from "./vehicle-case-file/VehicleCaseFileView";
 import OnboardingGarage from "./onboarding/OnboardingGarage";
 import ImportClients from "./import/ImportClients";
+import { ErreurFacturX, genererXml } from "@/lib/facturx/genererXml";
 import {
   calculerCompteurs as calculerCompteursAtelier,
   calculerTempsPlanifieParMecanicien,
@@ -2483,7 +2484,7 @@ function FacturationView({ view, setView, devisList, clients, prestations, garag
         ))}
       </div>
       {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} onLignesChange={onLignesChange} onToast={onToast} />}
-      {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={onGenererFacture} onMarquerPayee={onMarquerPayee} onSauvegarder={onSauvegarderFacture} facturesLiens={facturesLiens} facturesBusyId={facturesBusyId} onGenererLien={onGenererLienFacture} onRevoquerLien={onRevoquerLienFacture} />}
+      {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={onGenererFacture} onMarquerPayee={onMarquerPayee} onSauvegarder={onSauvegarderFacture} facturesLiens={facturesLiens} facturesBusyId={facturesBusyId} onGenererLien={onGenererLienFacture} onRevoquerLien={onRevoquerLienFacture} onToast={onToast} />}
       {view === "historique" && <HistoriqueView devisList={devisList} garageId={garageId} onCreerOrdreReparation={onCreerOrdreReparation} prestations={prestations} />}
     </div>
   );
@@ -3309,6 +3310,41 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// Télécharge le XML Factur-X de la facture. Le fichier ne quitte pas le
+// navigateur : il est produit ici, à partir de données déjà chargées.
+//
+// L'échéance légale des garages est le 1er septembre 2027. En attendant le
+// raccordement à une plateforme agréée, ce fichier permet déjà de transmettre
+// une facture conforme à un client qui la réclame — ce qui arrive dès
+// aujourd'hui, les grandes entreprises étant tenues d'émettre depuis
+// septembre 2026 et exigeant la réciproque de leurs fournisseurs.
+function telechargerFacturX(facture, garageData, onErreur) {
+  try {
+    const xml = genererXml({
+      facture,
+      garage: garageData,
+      client: facture.clients || {},
+    });
+    const url = URL.createObjectURL(new Blob([xml], { type: "application/xml" }));
+    const lien = document.createElement("a");
+    lien.href = url;
+    lien.download = `facture-${(facture.numero || "sans-numero").replace(/[^\w-]/g, "-")}.xml`;
+    document.body.appendChild(lien);
+    lien.click();
+    document.body.removeChild(lien);
+    URL.revokeObjectURL(url);
+  } catch (erreur) {
+    // Une facture incomplète ne doit pas produire un fichier que la plateforme
+    // rejettera plus tard : on refuse ici, en disant quoi corriger.
+    console.error("Factur-X impossible :", erreur);
+    onErreur?.(
+      erreur instanceof ErreurFacturX
+        ? erreur.message
+        : "Le fichier Factur-X n'a pas pu être produit.",
+    );
+  }
+}
+
 function imprimerFacture(facture, garageData) {
   const client = facture.clients || {};
   const vehicule = facture.vehicules || {};
@@ -3362,7 +3398,7 @@ function imprimerFacture(facture, garageData) {
   w.print();
 }
 
-function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer, onMarquerPayee, onSauvegarder, facturesLiens = {}, facturesBusyId, onGenererLien, onRevoquerLien }) {
+function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer, onMarquerPayee, onSauvegarder, facturesLiens = {}, facturesBusyId, onGenererLien, onRevoquerLien, onToast }) {
   const [factureOuverte, setFactureOuverte] = useState(null);
   const [query, setQuery] = useState("");
   const [periode, setPeriode] = useState("toutes");
@@ -3483,13 +3519,14 @@ function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer
           busy={facturesBusyId === factureOuverte.id}
           onGenererLien={onGenererLien}
           onRevoquerLien={onRevoquerLien}
+          onToast={onToast}
         />
       )}
     </div>
   );
 }
 
-function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien, busy, onGenererLien, onRevoquerLien }) {
+function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien, busy, onGenererLien, onRevoquerLien, onToast }) {
   const [modeEdition, setModeEdition] = useState(false);
   const [motif, setMotif] = useState(facture.motif || "");
   const [lignes, setLignes] = useState(
@@ -3588,7 +3625,7 @@ function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien,
             </>
           ) : (
             <>
-              <button onClick={() => imprimerFacture({ ...facture, motif, lignes, montant_ht: totalHt, montant_ttc: totalTtc }, garageData)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
+              <button onClick={() => telechargerFacturX({ ...facture, motif, lignes, montant_ht: totalHt, montant_ttc: totalTtc }, garageData, (m) => onToast?.(m, "error"))} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600" title="Fichier structuré conforme à la facturation électronique">Factur-X</button><button onClick={() => imprimerFacture({ ...facture, motif, lignes, montant_ht: totalHt, montant_ttc: totalTtc }, garageData)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
                 Imprimer / PDF
               </button>
               <button onClick={() => setModeEdition(true)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
