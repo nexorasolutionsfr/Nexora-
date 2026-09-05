@@ -11,31 +11,41 @@ const CONTACT_EMAIL = "nexorasolutions.france@gmail.com"
 const perks = [
   { icon: Users, text: "Démonstration personnalisée avec vos cas concrets" },
   { icon: ShieldCheck, text: "Aucun engagement avant l'échange" },
-  { icon: Mail, text: "Le formulaire ouvre simplement votre messagerie — rien n'est envoyé sans vous" },
+  { icon: Mail, text: "Réponse sous 24 h ouvrées, par e-mail ou par téléphone" },
 ]
 
 export function ContactCta() {
-  const [opened, setOpened] = useState(false)
+  // "pret" -> "envoi" -> "envoye" | "echec". L'état d'échec n'est pas un
+  // détail : c'est lui qui rend au visiteur le lien direct plutôt que de le
+  // laisser croire que sa demande est partie.
+  const [etat, setEtat] = useState<"pret" | "envoi" | "envoye" | "echec">("pret")
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
-    const name = formData.get("name")
-    const garage = formData.get("garage")
-    const email = formData.get("email")
-    const phone = formData.get("phone")
-    const need = formData.get("need")
+    const donnees = {
+      name: formData.get("name"),
+      garage: formData.get("garage"),
+      email: formData.get("email"),
+      phone: formData.get("phone"),
+      need: formData.get("need"),
+      website: formData.get("website"),
+    }
 
-    const subject = encodeURIComponent(`Demande de démo — ${garage}`)
-    const body = encodeURIComponent(
-      `Nom : ${name}\nGarage : ${garage}\nEmail : ${email}\nTéléphone : ${phone || "non renseigné"}\n\nPrincipal besoin :\n${need}`,
-    )
     // Événement sans aucune propriété : rien du formulaire ne part avec.
     track("demo_form_submit")
+    setEtat("envoi")
 
-    window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`
-
-    setOpened(true)
+    try {
+      const reponse = await fetch("/api/demande-demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(donnees),
+      })
+      setEtat(reponse.ok ? "envoye" : "echec")
+    } catch {
+      setEtat("echec")
+    }
   }
 
   return (
@@ -70,26 +80,34 @@ export function ContactCta() {
             </div>
 
             <div className="rounded-2xl border border-border bg-background p-6 sm:p-8">
-              {opened ? (
+              {etat === "envoye" || etat === "echec" ? (
                 <div className="flex h-full flex-col items-center justify-center gap-4 py-8 text-center">
                   <span className="flex h-14 w-14 items-center justify-center rounded-full bg-secondary text-primary">
                     <Mail className="h-7 w-7" />
                   </span>
-                  <h3 className="font-display text-xl font-semibold">Votre messagerie a dû s'ouvrir</h3>
-                  <p className="max-w-sm text-sm text-muted-foreground">
-                    Envoyez l'email pour finaliser votre demande. Sans envoi de votre part, Nexora ne
-                    reçoit rien.
-                  </p>
-                  <p className="max-w-sm text-sm text-muted-foreground">
-                    Si votre messagerie ne s'est pas ouverte, écrivez-nous directement à{" "}
-                    <a href={`mailto:${CONTACT_EMAIL}`} className="font-medium text-primary hover:underline">
-                      {CONTACT_EMAIL}
-                    </a>
-                    .
-                  </p>
+                  {etat === "envoye" ? (
+                    <>
+                      <h3 className="font-display text-xl font-semibold">Demande bien reçue</h3>
+                      <p className="max-w-sm text-sm text-muted-foreground">
+                        Nous revenons vers vous sous 24 h ouvrées pour convenir d&apos;un créneau.
+                        Vous n&apos;avez rien d&apos;autre à faire.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="font-display text-xl font-semibold">L&apos;envoi n&apos;a pas abouti</h3>
+                      <p className="max-w-sm text-sm text-muted-foreground">
+                        Votre demande n&apos;est pas partie. Écrivez-nous directement à{" "}
+                        <a href={`mailto:${CONTACT_EMAIL}`} className="font-medium text-primary hover:underline">
+                          {CONTACT_EMAIL}
+                        </a>{" "}
+                        : nous répondrons aussi vite.
+                      </p>
+                    </>
+                  )}
                   <button
                     type="button"
-                    onClick={() => setOpened(false)}
+                    onClick={() => setEtat("pret")}
                     className="text-sm font-medium text-primary hover:underline"
                   >
                     Revenir au formulaire
@@ -98,9 +116,19 @@ export function ContactCta() {
               ) : (
                 <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                   <p className="rounded-lg bg-secondary px-3.5 py-2.5 text-xs leading-relaxed text-secondary-foreground">
-                    En validant, votre messagerie habituelle va s'ouvrir avec un email pré-rempli.
-                    Il vous suffira de l'envoyer pour finaliser votre demande.
+                    Votre demande nous parvient directement. Nous revenons vers vous sous 24 h
+                    ouvrées.
                   </p>
+                  {/* Piège à robots : masqué à l'œil et retiré du parcours clavier
+                      et des lecteurs d'écran, donc jamais rempli par un humain. */}
+                  <input
+                    type="text"
+                    name="website"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    aria-hidden="true"
+                    className="hidden"
+                  />
                   <div className="grid gap-4 sm:grid-cols-2">
                     <Field label="Nom" id="name" name="name" placeholder="Jean Dupont" required />
                     <Field
@@ -140,14 +168,13 @@ export function ContactCta() {
                       className="w-full resize-none rounded-lg border border-input bg-background px-3.5 py-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
                     />
                   </div>
-                  <Button type="submit" size="lg" className="mt-2 h-11 w-full">
-                    Demander une démo
-                    <ArrowRight className="h-4 w-4" />
+                  <Button type="submit" size="lg" className="mt-2 h-11 w-full" disabled={etat === "envoi"}>
+                    {etat === "envoi" ? "Envoi en cours…" : "Demander une démo"}
+                    {etat !== "envoi" && <ArrowRight className="h-4 w-4" />}
                   </Button>
                   <p className="text-center text-xs leading-relaxed text-muted-foreground">
-                    Les informations saisies servent uniquement à préparer votre message. Rien n'est
-                    envoyé tant que vous ne confirmez pas l'envoi dans votre messagerie. Vous
-                    préférez écrire directement ?{" "}
+                    Les informations saisies servent uniquement à traiter votre demande de
+                    démonstration. Vous préférez écrire directement ?{" "}
                     <a
                       href={`mailto:${CONTACT_EMAIL}`}
                       className="font-medium text-primary hover:underline"
