@@ -79,3 +79,31 @@ test('le prix barré est toujours supérieur au prix annuel mensualisé', () => 
     assert.ok(o.prixMensuel > equivalentMensuel(o), `barrer 79 € pour afficher plus cher : ${o.nom}`)
   }
 })
+
+// Deux promesses ont dû être retirées de la grille le 2026-09-05 parce
+// qu'elles ne correspondaient à rien de livré : le multi-utilisateurs, et les
+// relances automatiques. Ce test empêche qu'elles reviennent par recopie d'une
+// ancienne version, ce qui est exactement la façon dont ce genre d'erreur
+// revient.
+const PROMESSES_RETIREES = [
+  /utilisateur/i,
+  /relance/i,
+  /sms/i,
+  /whatsapp/i,
+  /paiement en ligne/i,
+  /stock/i,
+]
+
+test('aucune offre ne promet une fonctionnalité non livrée', () => {
+  for (const o of OFFRES) {
+    for (const ligne of o.inclus) {
+      for (const interdit of PROMESSES_RETIREES) {
+        assert.ok(
+          !interdit.test(ligne),
+          `"${ligne}" (offre ${o.nom}) évoque une fonctionnalité absente du produit : ${interdit}`,
+        )
+      }
+    }
+  }
+})
+

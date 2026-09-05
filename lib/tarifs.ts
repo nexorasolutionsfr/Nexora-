@@ -24,6 +24,18 @@ export type Offre = {
   recommandee?: boolean;
 };
 
+// RÈGLE : chaque ligne de `inclus` doit désigner une fonctionnalité qui existe
+// EN PRODUCTION, aujourd'hui. Deux promesses ont dû être retirées le
+// 2026-09-05 parce qu'elles n'existaient nulle part dans le code livré :
+//
+//   - « 1 / 3 / utilisateurs illimités » : aucun multi-utilisateurs. Chaque
+//     garage a un seul compte, celui du propriétaire. Le chantier « accès
+//     salariés » vit sur Test et n'est pas fusionné.
+//   - « Relances automatiques des devis sans réponse » : les tables
+//     revenue_recovery_* existent en base, mais aucun écran ne les utilise.
+//
+// Une grille tarifaire est un engagement contractuel : ce qui y figure doit
+// être livrable le jour où quelqu'un paie.
 export const JOURS_ESSAI = 14;
 
 export const OFFRES: Offre[] = [
@@ -37,10 +49,10 @@ export const OFFRES: Offre[] = [
     inclus: [
       "Agenda et prise de rendez-vous",
       "Fiches clients et véhicules",
+      "Dossier véhicule et historique",
       "Devis détaillés, ligne par ligne",
       "Factures et suivi des règlements",
       "Reprise de votre ancienne base",
-      "1 utilisateur",
     ],
   },
   {
@@ -57,7 +69,7 @@ export const OFFRES: Offre[] = [
       "Lien client sans compte à créer",
       "Tableau atelier en direct",
       "Ordres de réparation",
-      "Jusqu'à 3 utilisateurs",
+      "Demandes entrantes centralisées",
     ],
   },
   {
@@ -69,10 +81,10 @@ export const OFFRES: Offre[] = [
     pour: "Garage de six personnes et plus",
     inclus: [
       "Tout l'Atelier",
-      "Relances automatiques des devis sans réponse",
       "Travaux à reprogrammer",
+      "Opportunités détectées automatiquement",
       "Statistiques d'activité",
-      "Utilisateurs illimités",
+      "Notifications à vérifier",
       "Assistance prioritaire",
     ],
   },
