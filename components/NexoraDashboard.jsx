@@ -4429,7 +4429,7 @@ function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting,
 // =====================================================================================
 // APP SHELL
 // =====================================================================================
-function NexoraDashboardInner({ garageId, joursEssaiRestants = null }) {
+function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = null }) {
   const [view, setView] = useState("aujourdhui");
   const [notifsAVerifierCount, setNotifsAVerifierCount] = useState(0);
 
@@ -6088,8 +6088,8 @@ if (updateError) {
       >
         <span>
           {joursEssaiRestants === 0
-            ? "Votre essai se termine aujourd'hui."
-            : `Il vous reste ${joursEssaiRestants} jour${joursEssaiRestants > 1 ? "s" : ""} d'essai.`}
+            ? `${libelleAcces(acces?.motif).termine} se termine aujourd'hui.`
+            : `Il vous reste ${joursEssaiRestants} jour${joursEssaiRestants > 1 ? "s" : ""} ${libelleAcces(acces?.motif).court}.`}
         </span>
         <a
           href="/#tarifs"
@@ -6489,21 +6489,36 @@ function UpdatePasswordScreen() {
 // « 1 jour », pas « 0 jour » — un compteur à zéro alors que l'accès fonctionne
 // encore fait croire à une panne.
 function joursRestants(acces) {
-  if (!acces || acces.abonnementActif || !acces.essaiFin) return null;
-  const restant = new Date(acces.essaiFin).getTime() - Date.now();
+  if (!acces || acces.abonnementActif || acces.motif === "illimite" || !acces.fin) return null;
+  const restant = new Date(acces.fin).getTime() - Date.now();
   if (restant <= 0) return 0;
   return Math.ceil(restant / 86400000);
 }
 
-function EssaiTermineScreen({ essaiFin }) {
-  const fin = new Date(essaiFin).toLocaleDateString("fr-FR", {
-    day: "numeric", month: "long", year: "numeric", timeZone: APP_TIME_ZONE,
-  });
+// Le mot juste selon le motif. Annoncer « il vous reste 30 jours d'essai » à un
+// garage à qui on a offert un mois efface le geste commercial ; lui dire « mois
+// offert » le lui rappelle chaque jour.
+const ACCES_LIBELLE = {
+  essai: { court: "d'essai", termine: "Votre essai" },
+  // « 5 jours de mois offert » ne se dit pas. Le fragment porte donc sa
+  // préposition, pour que la phrase se tienne dans les deux cas.
+  pilote: { court: "sur votre mois offert", termine: "Votre mois offert" },
+};
+
+function libelleAcces(motif) {
+  return ACCES_LIBELLE[motif] || ACCES_LIBELLE.essai;
+}
+
+function AccesTermineScreen({ motif, fin }) {
+  const mots = libelleAcces(motif);
+  const date = fin
+    ? new Date(fin).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: APP_TIME_ZONE })
+    : null;
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG, padding: 24 }}>
       <div style={{ background: "#fff", padding: 32, borderRadius: 12, maxWidth: 460, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: NAVY, marginBottom: 8 }}>
-          Votre essai s&apos;est terminé le {fin}
+          {date ? `${mots.termine} s'est terminé le ${date}` : `${mots.termine} est terminé`}
         </h1>
         <p style={{ fontSize: 14, color: "#475569", lineHeight: 1.6, marginBottom: 6 }}>
           Vos données sont intactes et vous attendent : clients, véhicules, devis,
@@ -6769,7 +6784,7 @@ export default function NexoraDashboard() {
     let cancelled = false;
     supabase
       .from("garages")
-      .select("id, essai_fin, abonnement_actif")
+      .select("id, acces_motif, acces_fin, abonnement_actif")
       .eq("owner_user_id", session.user.id)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -6787,7 +6802,7 @@ export default function NexoraDashboard() {
           return;
         }
         setGarageId(data.id);
-        setAcces({ essaiFin: data.essai_fin, abonnementActif: data.abonnement_actif });
+        setAcces({ motif: data.acces_motif, fin: data.acces_fin, abonnementActif: data.abonnement_actif });
         setGarageReady(true);
       });
     return () => {
@@ -6838,15 +6853,19 @@ export default function NexoraDashboard() {
   // garage — il lui explique la situation et lui donne le moyen de la régler,
   // au lieu de le laisser devant une application qui refuse ses écritures.
   // L'autorité reste la base.
-  const essaiEchu =
+  // Même règle que public.acces_garage_ouvert() : abonnement en cours, accès
+  // sans limite, ou date de fin non échue. L'autorité reste la base — ce
+  // garde-ci est un service rendu au garage, il lui explique la situation au
+  // lieu de le laisser devant une application qui refuse ses écritures.
+  const accesFerme =
     acces &&
     !acces.abonnementActif &&
-    acces.essaiFin &&
-    new Date(acces.essaiFin).getTime() <= Date.now();
+    acces.motif !== "illimite" &&
+    (!acces.fin || new Date(acces.fin).getTime() <= Date.now());
 
-  if (essaiEchu) {
-    return <EssaiTermineScreen essaiFin={acces.essaiFin} />;
+  if (accesFerme) {
+    return <AccesTermineScreen motif={acces.motif} fin={acces.fin} />;
   }
 
-  return <NexoraDashboardInner garageId={garageId} joursEssaiRestants={joursRestants(acces)} />;
+  return <NexoraDashboardInner garageId={garageId} acces={acces} joursEssaiRestants={joursRestants(acces)} />;
 }

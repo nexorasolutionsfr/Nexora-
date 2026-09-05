@@ -79,7 +79,7 @@ export async function POST(request: Request) {
 
   const { data: garage, error: erreurGarage } = await supabaseUtilisateur
     .from("garages")
-    .select("id, email, essai_fin, stripe_customer_id")
+    .select("id, email, acces_fin, stripe_customer_id")
     .maybeSingle()
 
   if (erreurGarage) {
@@ -139,11 +139,12 @@ export async function POST(request: Request) {
     cancel_url: `${APP_URL}/dashboard`,
   })
 
-  // L'essai est déjà en cours côté Nexora. Le prolonger de quatorze jours de
+  // L'accès est déjà ouvert côté Nexora. Le prolonger de quatorze jours de
   // plus parce que le garage s'abonne au troisième jour offrirait un mois ; le
   // supprimer lui ferait perdre les onze jours qui lui restent. On aligne donc
-  // Stripe sur `essai_fin`, la date qui fait déjà autorité.
-  const finEssai = garage.essai_fin ? new Date(garage.essai_fin).getTime() : 0
+  // Stripe sur `acces_fin`, la date qui fait autorité — essai ou mois offert,
+  // le garage ne perd jamais ce qu'on lui a promis en payant plus tôt.
+  const finEssai = garage.acces_fin ? new Date(garage.acces_fin).getTime() : 0
   if (finEssai - Date.now() > DELAI_MINIMAL_ESSAI_MS) {
     parametres.set("subscription_data[trial_end]", String(Math.floor(finEssai / 1000)))
   }
