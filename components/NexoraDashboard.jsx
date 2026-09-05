@@ -6138,7 +6138,7 @@ if (updateError) {
             : `Il vous reste ${joursEssaiRestants} jour${joursEssaiRestants > 1 ? "s" : ""} d'essai.`}
         </span>
         <a
-          href="https://nexora-garage.vercel.app/#tarifs"
+          href="/#tarifs"
           className="font-semibold underline"
           style={{ color: ACCENT }}
         >
@@ -6560,7 +6560,7 @@ function EssaiTermineScreen({ essaiFin }) {
           Besoin de quelques jours de plus pour décider ? Écrivez-nous, on prolonge.
         </p>
         <a
-          href="https://nexora-garage.vercel.app/#tarifs"
+          href="/#tarifs"
           style={{ display: "block", textAlign: "center", padding: "11px 12px", background: ACCENT, color: "#fff", borderRadius: 8, fontWeight: 600, fontSize: 14, textDecoration: "none" }}
         >
           Voir les offres
