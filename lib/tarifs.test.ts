@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { JOURS_ESSAI, OFFRES, economieAnnuelle, equivalentMensuel, formaterEuros, offre, prix } from './tarifs.ts'
+import { COMPARATIF, JOURS_ESSAI, OFFRES, economieAnnuelle, equivalentMensuel, formaterEuros, lignesIncluses, offre, prix } from './tarifs.ts'
 
 test('les clés d offre sont uniques', () => {
   const cles = OFFRES.map((o) => o.cle)
@@ -103,6 +103,68 @@ test('aucune offre ne promet une fonctionnalité non livrée', () => {
           `"${ligne}" (offre ${o.nom}) évoque une fonctionnalité absente du produit : ${interdit}`,
         )
       }
+    }
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Comparatif
+// ---------------------------------------------------------------------------
+
+test('le comparatif ne promet rien de non livré non plus', () => {
+  // La même règle que pour les cartes : le tableau détaillé est lu par un
+  // visiteur sur le point de payer, il engage autant.
+  for (const g of COMPARATIF) {
+    for (const l of g.lignes) {
+      for (const interdit of PROMESSES_RETIREES) {
+        assert.ok(!interdit.test(l.intitule), `"${l.intitule}" évoque une fonctionnalité absente`)
+        assert.ok(!interdit.test(l.effet), `l'effet de "${l.intitule}" évoque une fonctionnalité absente`)
+      }
+    }
+  }
+})
+
+test('les offres sont bien emboîtées', () => {
+  // Une ligne incluse dans Essentiel doit l'être dans Atelier et Atelier +,
+  // sinon monter de palier ferait PERDRE une fonctionnalité — et les cartes
+  // annoncent « Tout l'Essentiel » puis « Tout l'Atelier ».
+  for (const g of COMPARATIF) {
+    for (const l of g.lignes) {
+      if (l.essentiel) assert.ok(l.atelier && l.atelierPlus, `${l.intitule} disparaît en montant de palier`)
+      if (l.atelier) assert.ok(l.atelierPlus, `${l.intitule} disparaît en Atelier +`)
+    }
+  }
+})
+
+test('chaque palier apporte quelque chose de plus que le précédent', () => {
+  const e = lignesIncluses('essentiel').length
+  const a = lignesIncluses('atelier').length
+  const p = lignesIncluses('atelier-plus').length
+  assert.ok(a > e, "l'Atelier n'apporte rien de plus que l'Essentiel")
+  assert.ok(p > a, "l'Atelier + n'apporte rien de plus que l'Atelier")
+})
+
+test('chaque ligne du comparatif dit ce que ça change, pas ce que c est', () => {
+  for (const g of COMPARATIF) {
+    for (const l of g.lignes) {
+      assert.ok(l.effet.length > 30, `effet trop court pour "${l.intitule}" : il faut une situation, pas un libellé`)
+      assert.ok(l.effet.trim().endsWith('.'), `effet non ponctué pour "${l.intitule}"`)
+    }
+  }
+})
+
+test('chaque intitulé de carte se retrouve dans le comparatif', () => {
+  // Sinon le visiteur clique « voir le détail » et ne retrouve pas ce qui l a
+  // décidé sur la carte.
+  const intitules = COMPARATIF.flatMap((g) => g.lignes.map((l) => l.intitule.toLowerCase()))
+  for (const o of OFFRES) {
+    for (const ligne of o.inclus) {
+      if (ligne.startsWith('Tout ')) continue
+      const mot = ligne.toLowerCase().split(/[ ,]/)[0]
+      assert.ok(
+        intitules.some((i) => i.includes(mot)),
+        `"${ligne}" (${o.nom}) n'a pas de ligne correspondante dans le comparatif`,
+      )
     }
   }
 })

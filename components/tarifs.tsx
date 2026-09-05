@@ -1,10 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { ArrowRight, Check } from "lucide-react"
+import { ArrowRight, Check, ChevronDown, Minus } from "lucide-react"
 import { track } from "@vercel/analytics"
 import { Button } from "@/components/ui/button"
 import {
+  COMPARATIF,
   JOURS_ESSAI,
   OFFRES,
   type Periodicite,
@@ -17,6 +18,7 @@ import {
 export function Tarifs() {
   const [periodicite, setPeriodicite] = useState<Periodicite>("mensuel")
   const [enCours, setEnCours] = useState<string | null>(null)
+  const [comparatif, setComparatif] = useState(false)
   const [erreur, setErreur] = useState("")
 
   async function demarrer(cle: string) {
@@ -155,6 +157,95 @@ export function Tarifs() {
               Demander une démo
             </a>
           </p>
+        )}
+
+        <div className="mt-10 flex justify-center">
+          <button
+            type="button"
+            onClick={() => setComparatif((v) => !v)}
+            aria-expanded={comparatif}
+            aria-controls="comparatif-offres"
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-5 py-2.5 text-sm font-medium transition-colors hover:border-primary hover:text-primary"
+          >
+            {comparatif ? "Masquer le détail" : "Voir le détail des trois offres"}
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${comparatif ? "rotate-180" : ""}`}
+            />
+          </button>
+        </div>
+
+        {comparatif && (
+          <div id="comparatif-offres" className="mt-6 rounded-2xl border border-border bg-card">
+            {/* Le tableau déborde sur un téléphone : il défile dans son propre
+                conteneur, jamais la page entière. */}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] border-collapse text-left">
+                <caption className="sr-only">
+                  Comparatif détaillé des trois offres Nexora
+                </caption>
+                <thead>
+                  <tr className="border-b border-border">
+                    <th scope="col" className="px-5 py-4 text-sm font-semibold">
+                      Ce que ça change
+                    </th>
+                    {OFFRES.map((o) => (
+                      <th
+                        key={o.cle}
+                        scope="col"
+                        className={`w-[110px] px-3 py-4 text-center text-sm font-semibold ${
+                          o.recommandee ? "text-primary" : ""
+                        }`}
+                      >
+                        {o.nom}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                {COMPARATIF.map((groupe) => (
+                  <tbody key={groupe.groupe}>
+                    <tr>
+                      <th
+                        scope="colgroup"
+                        colSpan={4}
+                        className="bg-secondary/50 px-5 py-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground"
+                      >
+                        {groupe.groupe}
+                      </th>
+                    </tr>
+                    {groupe.lignes.map((ligne) => (
+                      <tr key={ligne.intitule} className="border-b border-border/60 last:border-0">
+                        <th scope="row" className="px-5 py-3.5 font-normal">
+                          <span className="block text-sm font-medium text-foreground">
+                            {ligne.intitule}
+                          </span>
+                          <span className="mt-0.5 block text-[13px] leading-snug text-muted-foreground">
+                            {ligne.effet}
+                          </span>
+                        </th>
+                        {([ligne.essentiel, ligne.atelier, ligne.atelierPlus] as const).map(
+                          (inclus, i) => (
+                            <td key={OFFRES[i].cle} className="px-3 py-3.5 text-center align-middle">
+                              {inclus ? (
+                                <>
+                                  <Check className="mx-auto h-4 w-4 text-primary" aria-hidden />
+                                  <span className="sr-only">Inclus</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Minus className="mx-auto h-4 w-4 text-muted-foreground/40" aria-hidden />
+                                  <span className="sr-only">Non inclus</span>
+                                </>
+                              )}
+                            </td>
+                          ),
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                ))}
+              </table>
+            </div>
+          </div>
         )}
 
         <div className="mt-10 rounded-2xl border border-border bg-secondary/40 p-6 sm:p-8">
