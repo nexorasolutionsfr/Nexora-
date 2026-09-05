@@ -16,6 +16,7 @@ import NexoraARepere from "./garage-os/NexoraARepere";
 import AccesRapides from "./garage-os/AccesRapides";
 import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier, dateLongueFR } from "./garage-os/calculs";
 import VehicleCaseFileView from "./vehicle-case-file/VehicleCaseFileView";
+import OnboardingGarage from "./onboarding/OnboardingGarage";
 import {
   calculerCompteurs as calculerCompteursAtelier,
   calculerTempsPlanifieParMecanicien,
@@ -97,7 +98,6 @@ const NAVY_SOFT = "#16264A";
 const ACCENT = "#3D6BE0";
 const ACCENT_SOFT = "#EAF0FF";
 const BG = "#F5F7FA";
-const DEFAULT_GARAGE_ID = "bcd7f692-1c28-435c-87d1-92f84aa0e6bb";
 const APP_TIME_ZONE = "Europe/Paris";
 const WORKSHOP_STAGES = [
   { key: "a_venir", label: "À venir", color: "#64748B" },
@@ -6305,8 +6305,13 @@ export default function NexoraDashboard() {
   const [session, setSession] = useState(undefined);
   const [garageReady, setGarageReady] = useState(false);
   const [garageError, setGarageError] = useState("");
+  const [besoinOnboarding, setBesoinOnboarding] = useState(false);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
-  const [garageId, setGarageId] = useState(DEFAULT_GARAGE_ID);
+  // Jamais de garage par defaut : l'identifiant ne vaut quelque chose
+  // qu'une fois resolu depuis la session. Un UUID de repli en dur
+  // designait un garage reel, et n'attendait qu'un rendu premature pour
+  // devenir une fuite entre clients.
+  const [garageId, setGarageId] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -6315,6 +6320,7 @@ export default function NexoraDashboard() {
       setSession(s);
       setGarageReady(false);
       setGarageError("");
+      setBesoinOnboarding(false);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -6329,8 +6335,16 @@ export default function NexoraDashboard() {
       .maybeSingle()
       .then(({ data, error }) => {
         if (cancelled) return;
-        if (error || !data) {
-          setGarageError("Aucun garage n'est associe a ce compte. Contactez le support Nexora.");
+        // Deux situations distinctes, longtemps confondues sous un meme
+        // message d'erreur : une panne de lecture, et un compte neuf qui n'a
+        // simplement pas encore de garage. La seconde n'est pas une erreur,
+        // c'est le premier acces — elle ouvre la mise en service.
+        if (error) {
+          setGarageError("Impossible de charger votre garage. Reessayez dans un instant.");
+          return;
+        }
+        if (!data) {
+          setBesoinOnboarding(true);
           return;
         }
         setGarageId(data.id);
@@ -6353,6 +6367,17 @@ export default function NexoraDashboard() {
   }
   if (!session) {
     return <LoginScreen />;
+  }
+  if (besoinOnboarding) {
+    return (
+      <OnboardingGarage
+        onGarageCree={(id) => {
+          setGarageId(id);
+          setBesoinOnboarding(false);
+          setGarageReady(true);
+        }}
+      />
+    );
   }
   if (garageError) {
     return (
