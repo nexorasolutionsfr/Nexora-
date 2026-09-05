@@ -752,10 +752,7 @@ export default function OrdresReparationSection({
   return (
     <div>
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Fiches atelier</h1>
-          <div className="text-[13px] text-slate-500 mt-0.5">La fiche interne qui suit chaque réparation, de la préparation à la restitution (ordre de réparation)</div>
-        </div>
+        <div />
         <button onClick={() => { setCreateInitial({ rendezVousId: null, devisId: null }); setCreateOpen(true); }} className="min-h-[44px] px-4 rounded-xl text-sm font-semibold text-white flex items-center gap-1.5" style={{ backgroundColor: ACCENT }}>
           <Plus size={15} /> Créer depuis un rendez-vous
         </button>

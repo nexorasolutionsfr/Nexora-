@@ -1,5 +1,7 @@
 "use client";
 
+import PartagerLien from "@/components/partage/PartagerLien";
+import { pointsAInserer, resumeControle } from "./controleStandard";
 import { useEffect, useState } from "react";
 import { ClipboardList, Copy, Link2, Plus, RotateCcw, Search, ShieldOff, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -78,7 +80,7 @@ function CreerInspectionModal({ clients, rendezVous, onClose, onSubmit, submitti
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl p-6 w-full max-w-md text-slate-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold text-slate-900">Nouvelle inspection</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Nouveau contrôle</h2>
         <div className="text-[12.5px] text-slate-500 mt-1">
           Client et véhicule existants si disponibles, sinon une simple immatriculation ou un libellé véhicule suffit pour démarrer.
         </div>
@@ -157,7 +159,7 @@ function ReouvrirModal({ onClose, onConfirm, submitting }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold text-slate-900">Réouvrir l'inspection</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Rouvrir le contrôle</h2>
         <div className="text-[12.5px] text-slate-500 mt-1">
           Le lien client existant sera révoqué immédiatement. Cette action et son motif sont tracés dans l'historique.
         </div>
@@ -200,7 +202,7 @@ function PointReadRow({ point, photos }) {
   );
 }
 
-function InspectionDetail({ garageId, inspectionId, onClose, onToast, onChanged }) {
+function InspectionDetail({ garageId, garageNom, inspectionId, onClose, onToast, onChanged }) {
   const [data, setData] = useState(null);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [reouvrirOpen, setReouvrirOpen] = useState(false);
@@ -210,13 +212,13 @@ function InspectionDetail({ garageId, inspectionId, onClose, onToast, onChanged 
   const load = async () => {
     const { data: inspection, error } = await supabase
       .from("inspections")
-      .select("*, clients (nom), vehicules (marque, modele, immatriculation)")
+      .select("*, clients (nom, telephone, email), vehicules (marque, modele, immatriculation)")
       .eq("id", inspectionId)
       .eq("garage_id", garageId)
       .single();
     if (error) {
       console.error("Erreur chargement inspection :", error);
-      onToast("Impossible de charger cette inspection", "error");
+      onToast("Impossible de charger ce contrôle", "error");
       return;
     }
     const [{ data: points, error: pointsError }, { data: photosRows, error: photosError }, { data: historique, error: histError }] = await Promise.all([
@@ -226,7 +228,7 @@ function InspectionDetail({ garageId, inspectionId, onClose, onToast, onChanged 
     ]);
     if (pointsError || photosError || histError) {
       console.error("Erreur chargement détail inspection :", pointsError || photosError || histError);
-      onToast("Impossible de charger le détail de cette inspection", "error");
+      onToast("Impossible de charger le détail de ce contrôle", "error");
       return;
     }
     // Bucket privé : URLs signées via la session authenticated du garage
@@ -251,6 +253,7 @@ function InspectionDetail({ garageId, inspectionId, onClose, onToast, onChanged 
         ...inspection,
         vehiculeLabel: inspection.vehicules ? `${inspection.vehicules.marque || ""} ${inspection.vehicules.modele || ""}`.trim() : inspection.vehicule_libelle_libre,
         clientLabel: inspection.clients?.nom || inspection.client_nom_libre || "Client libre",
+        immatriculation: inspection.vehicules?.immatriculation || inspection.immatriculation_libre || "",
       },
       points: points || [],
       photos,
@@ -272,6 +275,46 @@ function InspectionDetail({ garageId, inspectionId, onClose, onToast, onChanged 
     if (error) {
       console.error("Erreur mise à jour inspection :", error);
       onToast("Impossible d'enregistrer cette modification", "error");
+    }
+  };
+
+  // Pose la liste standard d'un coup, tout au vert. C'est le geste qui change
+  // la nature de la saisie : au lieu de créer vingt points un par un, le
+  // mécanicien ne touche plus que ce qui cloche. Voir controleStandard.js.
+  const ajouterControleStandard = async () => {
+    const lignes = pointsAInserer(points).map((l) => ({ ...l, inspection_id: inspectionId, garage_id: garageId }));
+    if (lignes.length === 0) {
+      onToast("Le contrôle standard est déjà en place");
+      return;
+    }
+    const { data: rows, error } = await supabase.from("inspections_points").insert(lignes).select();
+    if (error) {
+      console.error("Erreur contrôle standard :", error);
+      onToast("Impossible de poser le contrôle standard", "error");
+      return;
+    }
+    setData((prev) => ({ ...prev, points: [...prev.points, ...(rows || [])] }));
+    onToast(`${rows.length} point${rows.length > 1 ? "s" : ""} posé${rows.length > 1 ? "s" : ""} — ne corrigez que ce qui cloche`);
+  };
+
+  // « Tout est OK » d'une catégorie : l'inverse du geste par défaut, pour
+  // revenir en arrière aussi vite qu'on a signalé.
+  const toutOkCategorie = async (categorie) => {
+    const cibles = points.filter((p) => p.categorie === categorie && p.etat !== "ok");
+    if (cibles.length === 0) return;
+    const ids = cibles.map((p) => p.id);
+    setData((prev) => ({
+      ...prev,
+      points: prev.points.map((p) => (ids.includes(p.id) ? { ...p, etat: "ok", soumis_client: false } : p)),
+    }));
+    const { error } = await supabase
+      .from("inspections_points")
+      .update({ etat: "ok", soumis_client: false })
+      .in("id", ids)
+      .eq("garage_id", garageId);
+    if (error) {
+      console.error("Erreur remise à OK :", error);
+      onToast("Impossible de tout remettre à OK", "error");
     }
   };
 
@@ -312,13 +355,13 @@ function InspectionDetail({ garageId, inspectionId, onClose, onToast, onChanged 
     const { data: statut, error } = await supabase.rpc("finaliser_inspection", { p_inspection_id: inspectionId });
     if (error) {
       console.error("Erreur finalisation inspection :", error);
-      onToast("Impossible de finaliser cette inspection", "error");
+      onToast("Impossible de finaliser ce contrôle", "error");
       return;
     }
     setCaptureOpen(false);
     await load();
     onChanged();
-    onToast(statut === "finalisee_sans_decision" ? "Inspection finalisée — sans décision client" : "Inspection finalisée, en attente de décision client");
+    onToast(statut === "finalisee_sans_decision" ? "Contrôle finalisé — sans décision client" : "Contrôle finalisé, en attente de la décision du client");
   };
 
   const copierLien = async () => {
@@ -332,11 +375,15 @@ function InspectionDetail({ garageId, inspectionId, onClose, onToast, onChanged 
     }
     const url = `${window.location.origin}/i/${token}`;
     setLastLink(url);
+    // Le lien est prêt : les boutons d'envoi apparaissent juste en dessous.
+    // L'ancien message disait « partagez-le manuellement avec le client » —
+    // Nexora demandait au garage de faire le travail qu'elle est censée lui
+    // épargner.
     try {
       await navigator.clipboard.writeText(url);
-      onToast("Lien copié — partagez-le manuellement avec le client");
+      onToast("Lien prêt — envoyez-le au client d'un geste");
     } catch {
-      onToast("Lien généré, copiez-le manuellement ci-dessous");
+      onToast("Lien prêt — envoyez-le au client d'un geste");
     }
   };
 
@@ -359,14 +406,14 @@ function InspectionDetail({ garageId, inspectionId, onClose, onToast, onChanged 
     setBusy(false);
     if (error) {
       console.error("Erreur réouverture inspection :", error);
-      onToast(error.message?.includes("Motif") ? error.message : "Impossible de réouvrir cette inspection", "error");
+      onToast(error.message?.includes("Motif") ? error.message : "Impossible de rouvrir ce contrôle", "error");
       return;
     }
     setReouvrirOpen(false);
     setLastLink("");
     await load();
     onChanged();
-    onToast("Inspection réouverte, lien précédent révoqué");
+    onToast("Contrôle rouvert, lien précédent révoqué");
   };
 
   const estVerrouillee = !!inspection.verrouille_le;
@@ -401,21 +448,27 @@ function InspectionDetail({ garageId, inspectionId, onClose, onToast, onChanged 
           {estVerrouillee && (
             <div className="flex flex-wrap gap-2">
               <button onClick={copierLien} disabled={busy} className="px-3.5 py-2 rounded-xl text-[13px] font-semibold text-white flex items-center gap-1.5 disabled:opacity-50" style={{ backgroundColor: ACCENT }}>
-                <Copy size={13} /> Copier le lien client
+                <Link2 size={13} /> Préparer le lien client
               </button>
               <button onClick={revoquerLien} disabled={busy} className="px-3.5 py-2 rounded-xl text-[13px] font-medium text-slate-600 border border-slate-200 flex items-center gap-1.5 disabled:opacity-50">
                 <ShieldOff size={13} /> Révoquer le lien
               </button>
               <button onClick={() => setReouvrirOpen(true)} className="px-3.5 py-2 rounded-xl text-[13px] font-medium text-amber-700 border border-amber-200 flex items-center gap-1.5">
-                <RotateCcw size={13} /> Réouvrir l'inspection
+                <RotateCcw size={13} /> Rouvrir le contrôle
               </button>
             </div>
           )}
           {lastLink && (
-            <div className="text-[12px] bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center gap-2">
-              <Link2 size={13} className="text-slate-400 shrink-0" />
-              <span className="truncate flex-1">{lastLink}</span>
-            </div>
+            <PartagerLien
+              url={lastLink}
+              type="controle"
+              garage={garageNom}
+              vehicule={[inspection.vehiculeLabel, inspection.immatriculation].filter(Boolean).join(" · ")}
+              telephone={inspection.clients?.telephone}
+              email={inspection.clients?.email}
+              decisionAttendue={points.some((p) => p.soumis_client)}
+              onCopie={(ok) => onToast(ok === false ? "Copie impossible — le lien est affiché ci-dessous" : "Lien copié")}
+            />
           )}
 
           <div>
@@ -455,6 +508,8 @@ function InspectionDetail({ garageId, inspectionId, onClose, onToast, onChanged 
           onClose={() => setCaptureOpen(false)}
           onUpdateInspectionFields={updateInspectionFields}
           onAddPoint={addPoint}
+          onControleStandard={ajouterControleStandard}
+          onToutOkCategorie={toutOkCategorie}
           onUpdatePoint={updatePoint}
           onDeletePoint={deletePoint}
           onPhotosChange={(newPhotos) => setData((prev) => ({ ...prev, photos: newPhotos }))}
@@ -466,7 +521,7 @@ function InspectionDetail({ garageId, inspectionId, onClose, onToast, onChanged 
   );
 }
 
-export default function InspectionsSection({ garageId, clients = [], rendezVous = [], onToast, initialDetailId = null, onInitialDetailConsumed }) {
+export default function InspectionsSection({ garageId, garageNom, clients = [], rendezVous = [], onToast, initialDetailId = null, onInitialDetailConsumed }) {
   const [inspections, setInspections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -492,7 +547,7 @@ export default function InspectionsSection({ garageId, clients = [], rendezVous 
     setLoading(false);
     if (error) {
       console.error("Erreur chargement inspections :", error);
-      flashToast("Impossible de charger les inspections", "error");
+      flashToast("Impossible de charger les contrôles", "error");
       return;
     }
     setInspections(
@@ -520,7 +575,7 @@ export default function InspectionsSection({ garageId, clients = [], rendezVous 
     setSubmittingCreate(false);
     if (error) {
       console.error("Erreur création inspection :", error);
-      flashToast("Impossible de créer cette inspection", "error");
+      flashToast("Impossible de créer ce contrôle", "error");
       return;
     }
     setCreateOpen(false);
@@ -538,10 +593,7 @@ export default function InspectionsSection({ garageId, clients = [], rendezVous 
   return (
     <div>
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Contrôle avant travaux</h1>
-          <div className="text-[13px] text-slate-500 mt-0.5">Notez les points à vérifier, ajoutez des photos et faites valider les travaux nécessaires avant d'intervenir</div>
-        </div>
+        <div />
         <button onClick={() => setCreateOpen(true)} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center gap-1.5" style={{ backgroundColor: ACCENT }}>
           <Plus size={15} /> Nouveau contrôle
         </button>
@@ -601,6 +653,7 @@ export default function InspectionsSection({ garageId, clients = [], rendezVous 
       {detailId && (
         <InspectionDetail
           garageId={garageId}
+          garageNom={garageNom}
           inspectionId={detailId}
           onClose={() => setDetailId(null)}
           onToast={flashToast}

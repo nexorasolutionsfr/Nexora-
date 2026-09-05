@@ -3357,47 +3357,6 @@ function humanizeWorkflowName(nom = "") {
   return sansPrefixe || nom || "Automatisation";
 }
 
-function ErreursView({ erreurs, onResoudre }) {
-  if (erreurs.length === 0) {
-    return <EmptyState icon={Check} title="Tout fonctionne normalement" subtitle="Aucune erreur automatique détectée. Nexora vous préviendra ici dès qu'un problème survient." />;
-  }
-  return (
-    <div className="space-y-4">
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-[13px] text-amber-800">
-        Une automatisation Nexora n'a pas pu aller jusqu'au bout pour les éléments ci-dessous. Rien n'est perdu côté client, mais vérifiez manuellement si l'action a bien eu lieu (email envoyé, RDV créé...), puis marquez comme vu.
-      </div>
-      {erreurs.map((e) => (
-        <div key={e.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <div className="flex items-start justify-between flex-wrap gap-2">
-            <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <Badge tone="red">À vérifier</Badge>
-                <div className="font-semibold text-slate-900 text-[14px]">{humanizeWorkflowName(e.workflow_nom)}</div>
-              </div>
-              <div className="text-[13px] text-slate-500 mt-1">Bloqué à l'étape « {e.noeud} »</div>
-            </div>
-            <div className="text-[12.5px] text-slate-400">
-              {new Date(e.created_at).toLocaleString("fr-FR", { timeZone: APP_TIME_ZONE })}
-            </div>
-          </div>
-          <details className="mt-3">
-            <summary className="text-[12.5px] text-slate-500 cursor-pointer select-none">Détails techniques</summary>
-            <div className="mt-2 bg-slate-50 rounded-xl p-3 text-[13px] text-slate-700 font-mono">
-              {e.message}
-            </div>
-          </details>
-          <div className="flex items-center gap-2.5 mt-4 flex-wrap">
-            <button onClick={() => onResoudre(e.id)} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl" style={{ backgroundColor: ACCENT }}>
-              <Check size={15} /> Marquer comme vu
-            </button>
-            <span className="text-[12px] text-slate-400">Ceci retire l'alerte de cette liste, sans corriger automatiquement le problème.</span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -4069,7 +4028,11 @@ const PARAMETRES_ONGLETS = [
   ["notifications", "Notifications"],
   ["integrations", "Intégrations"],
   ["apparence", "Apparence"],
-  ["alertes", "Alertes"],
+  // « Alertes » retiré le 2026-09-05 : il dupliquait « Notifications à
+  // vérifier », qui est le vrai écran d'échec d'envoi, et surchargeait
+  // Paramètres d'un journal technique que le garage ne peut pas exploiter.
+  // Le journal `erreurs_automatisation` continue d'être alimenté ; il n'est
+  // simplement plus affiché ici.
 ];
 
 const TYPES_NOTIFICATIONS = [
@@ -4091,7 +4054,7 @@ const THEMES_DASHBOARD = [
   { key: "automatique", label: "Automatique", description: "S'adapte aux réglages de l'appareil." },
 ];
 
-function ParametresView({ garageId, garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, erreurs = [], onResoudre }) {
+function ParametresView({ garageId, garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif }) {
   const [onglet, setOnglet] = useState("garage");
   const [newPrestation, setNewPrestation] = useState({ nom: "", categorie: "entretien", duree_minutes: 60 });
   const [newMecanicienNom, setNewMecanicienNom] = useState("");
@@ -4131,7 +4094,6 @@ function ParametresView({ garageId, garageData, onGarageChange, onSave, prestati
       {PARAMETRES_ONGLETS.map(([key, label]) => (
         <button key={key} type="button" onClick={() => setOnglet(key)} className="flex items-center gap-1.5 text-[13px] font-medium px-3.5 py-1.5 rounded-lg" style={onglet === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>
           {label}
-          {key === "alertes" && erreurs.length > 0 && <span className="text-[10.5px] font-bold text-white rounded-full min-w-[16px] h-4 flex items-center justify-center px-1" style={{ backgroundColor: "#DC2626" }}>{erreurs.length}</span>}
         </button>
       ))}
     </div>
@@ -4301,11 +4263,6 @@ function ParametresView({ garageId, garageData, onGarageChange, onSave, prestati
       </div>
     )}
 
-    {onglet === "alertes" && (
-      <div className="grid grid-cols-1 gap-5">
-        <ErreursView erreurs={erreurs} onResoudre={onResoudre} />
-      </div>
-    )}
   </div>;
 }
 function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting, garageData = garage }) {
@@ -4497,7 +4454,6 @@ function NexoraDashboardInner({ garageId, joursEssaiRestants = null }) {
 });
   const [propositions, setPropositions] = useState([]);
   const [devisList, setDevisList] = useState([]);
-  const [erreurs, setErreurs] = useState([]);
   const [factures, setFactures] = useState([]);
   const [toast, setToast] = useState(null);
   const [selectedAppt, setSelectedAppt] = useState(null);
@@ -5017,23 +4973,6 @@ setPropositions(formattedPropositions);
     loadTravauxDifferes();
   }, []);
 
-  useEffect(() => {
-    async function loadErreurs() {
-      const { data, error } = await supabase
-        .from("erreurs_automatisation")
-        .select("*")
-        .eq("garage_id", garageId)
-        .eq("resolu", false)
-        .order("created_at", { ascending: false });
-      if (error) {
-        console.error("Erreur chargement erreurs_automatisation :", JSON.stringify(error, null, 2));
-        flashToast("Impossible de charger le journal des erreurs", "error");
-        return;
-      }
-      setErreurs(data || []);
-    }
-    loadErreurs();
-  }, []);
 
   useEffect(() => {
     async function loadFactures() {
@@ -5566,18 +5505,6 @@ if (updateError) {
     return formatted;
   };
 
-  const handleResoudreErreur = async (id) => {
-    const { error } = await supabase
-      .from("erreurs_automatisation")
-      .update({ resolu: true })
-      .eq("id", id);
-    if (error) {
-      flashToast("Impossible de marquer comme résolu", "error");
-      return;
-    }
-    setErreurs((prev) => prev.filter((e) => e.id !== id));
-    flashToast("Marqué comme résolu");
-  };
 
   // Source de vérité unique d'une facture : l'ordre de réparation TERMINÉ du
   // rendez-vous, et ses seules lignes non annulées — ce qui a réellement été
@@ -6090,6 +6017,31 @@ if (updateError) {
     flashToast("La connexion à Google Agenda n’est pas encore disponible.", "error");
   };
 
+  // Chaque page dit à quoi elle sert, en une phrase, dans les mots du garage.
+  //
+  // L'en-tête répétait le nom du garage sur les treize écrans. Un garagiste
+  // sait dans quel garage il est ; ce qu'il ne sait pas toujours, c'est ce
+  // qu'on attend de lui sur la page qu'il vient d'ouvrir — surtout sur les
+  // écrans qu'il n'ouvre qu'une fois par semaine. La place est la même, ce
+  // qu'elle porte est utile.
+  const sousTitres = {
+    aujourdhui: "Ce qui vous attend aujourd'hui, et ce qui bloque",
+    atelier: "Où en est chaque voiture, en un coup d'œil",
+    agenda: "Vos rendez-vous et les créneaux qu'il vous reste",
+    valider: "Les demandes de rendez-vous qui attendent votre accord",
+    demandes: "Ce que vos clients vous ont écrit, trié pour vous",
+    clients: "Vos clients, leurs véhicules et leur historique",
+    devis: "Devis, factures et règlements",
+    verifier: "Les envois automatiques qui n'ont pas abouti",
+    factures: "Vos factures et les règlements reçus",
+    facturation: "Devis, factures et règlements",
+    inspections: "Le tour du véhicule en photos, envoyé au client pour accord avant d'intervenir",
+    ordres: "La fiche interne qui suit chaque réparation, de la préparation à la restitution",
+    statistiques: "Ce que le garage a produit, et ce qui progresse",
+    historique: "Tout ce qui s'est passé, retrouvable",
+    parametres: "Vos horaires, vos prestations et vos informations",
+  };
+
   const titles = {
     aujourdhui: "Aujourd'hui",
     atelier: "Atelier en direct",
@@ -6101,6 +6053,8 @@ if (updateError) {
     verifier: "Erreurs à vérifier",
     factures: "Factures",
     facturation: "Facturation",
+    inspections: "Contrôle véhicule",
+    ordres: "Fiches atelier",
     statistiques: "Statistiques",
     historique: "Historique",
     parametres: "Paramètres",
@@ -6224,7 +6178,7 @@ if (updateError) {
             </button>
             <div>
               <div className="text-lg font-semibold text-slate-900">{titles[view]}</div>
-              <div className="text-[13px] text-slate-500">{garageData.nom_garage}</div>
+              <div className="text-[13px] text-slate-500">{sousTitres[view] || garageData.nom_garage}</div>
             </div>
           </div>
         </div>
@@ -6329,7 +6283,7 @@ if (updateError) {
             />
           )}
           {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} travauxDifferes={travauxDifferes} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onOuvrirTravailDiffereModal={(clientId) => setTravailDiffereModal({ clientId })} onToast={flashToast} onOuvrirDossierVehicule={(vehiculeId) => setDossierVehiculeId(vehiculeId)} />}
-          {INSPECTIONS_MODULE_ACTIF && view === "inspections" && <InspectionsSection garageId={garageId} clients={clients} rendezVous={rendezVous} onToast={flashToast} initialDetailId={inspectionCibleCockpit} onInitialDetailConsumed={() => setInspectionCibleCockpit(null)} />}
+          {INSPECTIONS_MODULE_ACTIF && view === "inspections" && <InspectionsSection garageId={garageId} garageNom={garageData?.nom_garage} clients={clients} rendezVous={rendezVous} onToast={flashToast} initialDetailId={inspectionCibleCockpit} onInitialDetailConsumed={() => setInspectionCibleCockpit(null)} />}
           {view === "ordres-reparation" && (
             <OrdresReparationSection
               garageId={garageId}
@@ -6353,7 +6307,7 @@ if (updateError) {
               onCountChange={setNotifsAVerifierCount}
             />
           )}
-          {view === "parametres" && <ParametresView garageId={garageId} garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
+          {view === "parametres" && <ParametresView garageId={garageId} garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} />}
         </div>
       </main>
 
