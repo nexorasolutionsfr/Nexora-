@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ArrowRight, Check, ChevronDown, Minus } from "lucide-react"
 import { track } from "@vercel/analytics"
 import { Button } from "@/components/ui/button"
+import { supabase } from "@/lib/supabase"
 import {
   COMPARATIF,
   JOURS_ESSAI,
@@ -20,20 +21,56 @@ export function Tarifs() {
   const [enCours, setEnCours] = useState<string | null>(null)
   const [comparatif, setComparatif] = useState(false)
   const [erreur, setErreur] = useState("")
+  // `null` tant qu'on ne sait pas : afficher « S'abonner » à un visiteur non
+  // connecté, ou « Essayer » à un garage déjà en essai, serait faux dans les
+  // deux sens. On attend la réponse plutôt que de deviner.
+  const [connecte, setConnecte] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    let annule = false
+    supabase.auth.getSession().then(({ data }) => {
+      if (!annule) setConnecte(!!data.session)
+    })
+    return () => {
+      annule = true
+    }
+  }, [])
 
   async function demarrer(cle: string) {
     setErreur("")
     setEnCours(cle)
-    track("essai_demarre")
     try {
+      const { data } = await supabase.auth.getSession()
+      const jeton = data.session?.access_token
+
+      // Un visiteur ne peut pas s'abonner : il n'y a pas encore de garage à
+      // rattacher au paiement. Et il n'a rien à y perdre — l'inscription ouvre
+      // elle-même les quatorze jours d'essai, ce que le bouton lui promet.
+      if (!jeton) {
+        track("essai_demarre")
+        window.location.href = "/dashboard"
+        return
+      }
+
+      track("abonnement_demarre")
       const reponse = await fetch("/api/abonnement/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${jeton}` },
         body: JSON.stringify({ offre: cle, periodicite }),
       })
       const donnees = await reponse.json()
       if (reponse.ok && donnees.url) {
         window.location.href = donnees.url
+        return
+      }
+      if (donnees.erreur === "connexion_requise") {
+        window.location.href = "/dashboard"
+        return
+      }
+      if (donnees.erreur === "garage_absent") {
+        setErreur(
+          "Terminez d'abord la mise en service de votre garage : l'abonnement s'y rattache.",
+        )
         return
       }
       // Le paiement n'est pas encore branché, ou il a refusé. On ne laisse pas
@@ -49,6 +86,8 @@ export function Tarifs() {
       setEnCours(null)
     }
   }
+
+  const intitule = connecte ? "S'abonner" : `Essayer ${JOURS_ESSAI} jours`
 
   return (
     <section id="tarifs" className="scroll-mt-20">
@@ -143,7 +182,7 @@ export function Tarifs() {
                 disabled={enCours !== null}
                 onClick={() => demarrer(o.cle)}
               >
-                {enCours === o.cle ? "Ouverture…" : `Essayer ${JOURS_ESSAI} jours`}
+                {enCours === o.cle ? "Ouverture…" : intitule}
                 {enCours !== o.cle && <ArrowRight className="h-4 w-4" />}
               </Button>
             </div>
