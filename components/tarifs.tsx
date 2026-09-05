@@ -111,7 +111,13 @@ export function Tarifs() {
             au lieu de le facturer. Un essai oublié s'éteint, il ne devient
             jamais une ligne sur un relevé.
 
-            Ne modifier ce texte QUE si ces deux réglages changent.
+            Les deux dernières lignes dépendent en plus de réglages posés dans
+            le tableau de bord Stripe, le 2026-09-05, et vérifiés sur l'aperçu :
+              · Billing → e-mails client → rappel 7 jours avant la fin d'essai
+              · Billing → portail client → annulations en fin de période
+            Si quelqu'un les désactive, ces deux lignes deviennent fausses.
+
+            Ne modifier ce texte QUE si l'un de ces réglages change.
           */}
           <div className="mx-auto mt-6 max-w-xl rounded-2xl border border-border bg-card px-5 py-4 text-left">
             <ul className="space-y-2.5 text-[14.5px] text-muted-foreground">
@@ -133,9 +139,17 @@ export function Tarifs() {
               <li className="flex items-start gap-2.5">
                 <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                 <span>
-                  <span className="font-medium text-foreground">Nous vous prévenons avant.</span>{" "}
-                  Une semaine avant toute échéance, le montant et la date s&apos;affichent dans
-                  votre espace.
+                  <span className="font-medium text-foreground">Nous vous prévenons 7 jours
+                  avant.</span>{" "}
+                  Le montant et la date s&apos;affichent dans votre espace, et vous recevez un
+                  e-mail.
+                </span>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <span>
+                  <span className="font-medium text-foreground">Vous arrêtez vous-même</span>, en
+                  deux clics, sans nous écrire ni attendre de réponse.
                 </span>
               </li>
             </ul>

@@ -1267,7 +1267,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
   );
 }
 
-function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onAllerConfigurer, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
+function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onAllerConfigurer, onGererAbonnement, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   const [cockpitCompteurs, setCockpitCompteurs] = useState(null);
   if (loading) {
@@ -4068,7 +4068,7 @@ const THEMES_DASHBOARD = [
   { key: "automatique", label: "Automatique", description: "S'adapte aux réglages de l'appareil." },
 ];
 
-function ParametresView({ garageId, garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, ongletInitial = "garage" }) {
+function ParametresView({ garageId, garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, ongletInitial = "garage", onGererAbonnement }) {
   // Ouvert sur l'onglet demandé par l'appelant : la liste de mise en route
   // envoie vers « Reprise de données » sans faire chercher le bon onglet.
   const [onglet, setOnglet] = useState(ongletInitial);
@@ -4143,6 +4143,28 @@ function ParametresView({ garageId, garageData, onGarageChange, onSave, prestati
             </label>
           </div>
         </SettingsSection>
+
+        {/* Le bandeau ne s'affiche que sept jours avant une échéance. Un garage
+            qui veut résilier en dehors de cette fenêtre doit tout de même
+            trouver où le faire — sinon il écrit au support, ce que la page
+            tarifaire lui a promis d'éviter. */}
+        {garageData.stripe_customer_id && (
+          <SettingsSection title="Votre abonnement">
+            <div className="text-[13px] text-slate-600 leading-relaxed">
+              Carte bancaire, factures, résiliation : tout se gère sur la page sécurisée de
+              Stripe, notre prestataire de paiement. La résiliation prend effet à la fin de la
+              période déjà réglée — vous ne perdez aucun jour payé.
+            </div>
+            <button
+              type="button"
+              onClick={onGererAbonnement}
+              className="mt-3 inline-flex items-center gap-1.5 px-4 min-h-[44px] rounded-xl text-[13px] font-semibold text-white"
+              style={{ backgroundColor: ACCENT }}
+            >
+              Gérer mon abonnement
+            </button>
+          </SettingsSection>
+        )}
 
         <SettingsSection title="Objectif & avis">
           <div className="space-y-3">
@@ -4451,6 +4473,35 @@ function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = nul
   // Réinitialisé à « garage » dès qu'on navigue ailleurs, sinon un retour
   // dans Paramètres rouvrirait la reprise de données sans raison.
   const [parametresOnglet, setParametresOnglet] = useState("garage");
+  // Ouvre le portail de facturation Stripe : carte, factures, résiliation.
+  // La page tarifaire promet « vous arrêtez vous-même » — sans cette porte,
+  // la promesse ne tiendrait que depuis les e-mails de Stripe, et un garage
+  // qui cherche à résilier depuis Nexora ne trouverait rien.
+  const ouvrirPortailAbonnement = async () => {
+    const { data } = await supabase.auth.getSession();
+    const jeton = data.session?.access_token;
+    if (!jeton) return;
+    try {
+      const reponse = await fetch("/api/abonnement/portail", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jeton}` },
+      });
+      const resultat = await reponse.json();
+      if (reponse.ok && resultat.url) {
+        window.location.href = resultat.url;
+        return;
+      }
+      flashToast(
+        resultat.erreur === "aucun_abonnement"
+          ? "Vous n'avez pas encore d'abonnement à gérer."
+          : "La gestion de l'abonnement est momentanément indisponible.",
+        "error",
+      );
+    } catch {
+      flashToast("La gestion de l'abonnement est momentanément indisponible.", "error");
+    }
+  };
+
   const allerConfigurer = (vue, onglet) => {
     setParametresOnglet(onglet || "garage");
     setView(vue);
@@ -6126,6 +6177,11 @@ if (updateError) {
           {offrePayee ? ` — ${offrePayee.nom}, ${montantPaye} €` : ""}.
         </span>
         <span style={{ color: "#64748B" }}>Vous pouvez arrêter avant, sans rien payer.</span>
+        {onGererAbonnement && (
+          <button type="button" onClick={onGererAbonnement} className="font-semibold underline" style={{ color: ACCENT }}>
+            Gérer mon abonnement
+          </button>
+        )}
       </div>
     ) : null;
 
@@ -6289,7 +6345,7 @@ if (updateError) {
         )}
 
         <div className="p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView stats={stats} onAllerConfigurer={allerConfigurer} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
+          {view === "aujourdhui" && <AujourdhuiView stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={setDossierVehiculeId} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
@@ -6358,7 +6414,7 @@ if (updateError) {
               onCountChange={setNotifsAVerifierCount}
             />
           )}
-          {view === "parametres" && <ParametresView ongletInitial={parametresOnglet} key={parametresOnglet} garageId={garageId} garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} />}
+          {view === "parametres" && <ParametresView onGererAbonnement={ouvrirPortailAbonnement} ongletInitial={parametresOnglet} key={parametresOnglet} garageId={garageId} garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} />}
         </div>
       </main>
 
