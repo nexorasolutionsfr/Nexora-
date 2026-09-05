@@ -65,8 +65,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ ignore: "hors_sujet" })
   }
 
-  const { cible, champs, evenementLe, ecraserLesNuls } = ecriture
-  const aEcrire: Record<string, unknown> = { abonnement_maj_le: evenementLe.toISOString() }
+  const { cible, champs, evenementLe, ecraserLesNuls, gardeOrdre } = ecriture
+  // `abonnement_maj_le` n'est posée que par les événements qui portent un
+  // statut. Le rattachement de session ne doit ni la poser ni s'y heurter :
+  // voir lib/stripe/webhook.js, il bloquait l'événement d'abonnement qui le
+  // suivait d'une fraction de seconde.
+  const aEcrire: Record<string, unknown> = gardeOrdre
+    ? { abonnement_maj_le: evenementLe.toISOString() }
+    : {}
   for (const [cle, valeur] of Object.entries(champs)) {
     if (valeur === null && !ecraserLesNuls) continue
     aEcrire[cle] = valeur
@@ -78,12 +84,11 @@ export async function POST(request: Request) {
   // « abonnement actif » d'aujourd'hui refermerait un compte payant. Le filtre
   // est dans la requête, pas dans une lecture préalable : deux événements
   // livrés en parallèle ne peuvent donc pas se doubler.
-  const { data, error } = await supabaseAdmin
-    .from("garages")
-    .update(aEcrire)
-    .eq(cible.colonne, cible.valeur)
-    .or(`abonnement_maj_le.is.null,abonnement_maj_le.lt.${evenementLe.toISOString()}`)
-    .select("id")
+  let requete = supabaseAdmin.from("garages").update(aEcrire).eq(cible.colonne, cible.valeur)
+  if (gardeOrdre) {
+    requete = requete.or(`abonnement_maj_le.is.null,abonnement_maj_le.lt.${evenementLe.toISOString()}`)
+  }
+  const { data, error } = await requete.select("id")
 
   if (error) {
     // 500 : Stripe rejouera. Une panne de base ne doit pas faire perdre un
