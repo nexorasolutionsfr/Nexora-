@@ -4006,6 +4006,33 @@ function ParametresView({ garageId, garageData, onGarageChange, onSave, prestati
     {onglet === "garage" && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <SettingsSection title="Informations garage"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{field("Nom du garage", "nom_garage")} {field("Adresse", "adresse")} {field("Téléphone", "telephone")} {field("Email", "email")}</div></SettingsSection>
+        <SettingsSection title="Facturation électronique">
+          <div className="space-y-3">
+            {field("SIREN du garage", "siren")}
+            <div className="text-[12.5px] text-slate-500 -mt-2">
+              Neuf chiffres. Obligatoire sur toutes vos factures, et indispensable à la
+              facturation électronique — obligatoire pour les garages au 1<sup>er</sup> septembre 2027.
+            </div>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!garageData.tva_sur_les_debits}
+                onChange={(e) => onGarageChange("tva_sur_les_debits", e.target.checked)}
+                className="accent-blue-600 mt-0.5"
+              />
+              <span>
+                <span className="text-[13px] font-medium text-slate-700 block">
+                  J&apos;ai opté pour la TVA sur les débits
+                </span>
+                <span className="text-[12.5px] text-slate-500">
+                  À cocher seulement si votre comptable a exercé cette option. Dans le doute,
+                  laissez décoché : c&apos;est le régime par défaut.
+                </span>
+              </span>
+            </label>
+          </div>
+        </SettingsSection>
+
         <SettingsSection title="Objectif & avis">
           <div className="space-y-3">
             {field("Objectif de chiffre d'affaires mensuel (€)", "objectif_ca_mensuel", "number")}
@@ -5633,6 +5660,10 @@ if (updateError) {
       automatisation_active: !!garageData.automatisation_active,
       rappel_confirmation_actif: !!garageData.rappel_confirmation_actif,
       delai_confirmation_rdv_h: Number(garageData.delai_confirmation_rdv_h) || 24,
+      // Chaîne vide envoyée telle quelle, la contrainte de table refuserait
+      // un SIREN mal formé — on renvoie donc null plutôt que "".
+      siren: (garageData.siren || "").replace(/\s/g, "") || null,
+      tva_sur_les_debits: !!garageData.tva_sur_les_debits,
     };
     const { error } = await supabase.from("garages").update(update).eq("id", garageId);
     setSavingSettings(false);
