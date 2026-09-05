@@ -15,6 +15,7 @@ import VotreJournee from "./garage-os/VotreJournee";
 import NexoraARepere from "./garage-os/NexoraARepere";
 import AccesRapides from "./garage-os/AccesRapides";
 import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier, dateLongueFR } from "./garage-os/calculs";
+import { estFerme, heureReservable, heuresOuvrables } from "./agenda/horaires";
 import VehicleCaseFileView from "./vehicle-case-file/VehicleCaseFileView";
 import OnboardingGarage from "./onboarding/OnboardingGarage";
 import ImportClients from "./import/ImportClients";
@@ -290,7 +291,14 @@ const joursLabel = {
   jeudi: "Jeu",
   vendredi: "Ven",
 };
+// Lue au build par Next (NEXT_PUBLIC_*). Tant qu'elle est absente, la
+// connexion Google n'existe pas et l'agenda n'en propose pas.
+const GOOGLE_CALENDAR_CONFIGURE = Boolean(process.env.NEXT_PUBLIC_GOOGLE_CALENDAR_CONNECT_URL);
+
 const heuresGrille = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
+// Cette grille reste celle du planning des ressources, qui montre la journée
+// type de l'atelier. L'agenda du jour, lui, suit les horaires réels du
+// garage — voir components/agenda/horaires.js.
 
 const durationRows = (debut, fin) => {
   const [h1, m1] = debut.split(":").map(Number);
@@ -757,7 +765,7 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], a
           <div>
             <div className="flex items-center gap-2"><Wrench size={18} color="#8FB0FF" /><span className="font-semibold">Atelier en direct</span></div>
             <div className="text-[13px] mt-1 text-blue-200 capitalize">{dateLongueFR(maintenant)}</div>
-            <button disabled={imprimant} onClick={imprimerEtiquettes} className="mt-3 inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl px-3 min-h-[44px] text-[12.5px] font-medium disabled:opacity-50">🖨️ {imprimant ? "Génération des liens…" : "Imprimer les étiquettes du jour"}</button>
+            <button disabled={imprimant} onClick={imprimerEtiquettes} className="mt-3 inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl px-3 min-h-[44px] text-[12.5px] font-medium disabled:opacity-50"><span aria-hidden>🖨️</span> {imprimant ? "Génération des liens…" : "Imprimer les étiquettes du jour"}</button>
           </div>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
@@ -1742,10 +1750,14 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
             WhatsApp — <b className="text-slate-900">canal choisi, activation à finaliser</b>
           </div>
         )}
-        <div className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: garageData?.google_agenda_connecte ? "#16A34A" : "#CBD5E1" }} />
-          Google Calendar — <b className="text-slate-900">{garageData?.google_agenda_connecte ? "connecté" : "non connecté"}</b>
-        </div>
+        {/* Tant que la connexion Google n'existe pas, annoncer « non connecté »
+            désigne un manque là où il n'y a rien à connecter. */}
+        {GOOGLE_CALENDAR_CONFIGURE && (
+          <div className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: garageData?.google_agenda_connecte ? "#16A34A" : "#CBD5E1" }} />
+            Google Calendar — <b className="text-slate-900">{garageData?.google_agenda_connecte ? "connecté" : "non connecté"}</b>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1819,6 +1831,21 @@ function StatistiquesView({ garageData, aiStats, timeline, automationEvents, fac
   const linePath = points.map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
   const areaPath = `${linePath} L${chartWidth},${chartHeight} L0,${chartHeight} Z`;
   const hasChartData = serie.some((v) => v > 0);
+  // La courbe n'avait aucune échelle : ni montant, ni date. Un trait qui monte
+  // sans repère ne dit pas si le garage a fait cent euros ou dix mille, ni
+  // quand. On ne peut pas écrire ces repères DANS le SVG : il est tracé en
+  // preserveAspectRatio="none", qui étire le tracé — et étirerait le texte avec
+  // lui. Ils sont donc posés en HTML autour du graphique.
+  const bornesGraphique = (() => {
+    const fin = new Date(now);
+    if (periode === "12mois") {
+      const debut = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+      const mois = (d) => d.toLocaleDateString("fr-FR", { month: "short", year: "2-digit", timeZone: APP_TIME_ZONE });
+      return { debut: mois(debut), fin: mois(fin) };
+    }
+    const jour = (d) => d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", timeZone: APP_TIME_ZONE });
+    return { debut: jour(periodeStart), fin: jour(fin) };
+  })();
 
   const objectif = Number(garageData.objectif_ca_mensuel || 0);
   const progressionObjectif = objectif > 0 ? Math.min(100, Math.round((caMoisCourant / objectif) * 100)) : null;
@@ -1855,6 +1882,11 @@ function StatistiquesView({ garageData, aiStats, timeline, automationEvents, fac
 
         <div className="mt-5">
           {hasChartData ? (
+            <>
+            <div className="flex items-center justify-between text-[11.5px] text-slate-400 mb-1 tabular-nums">
+              <span>{maxSerie.toLocaleString("fr-FR")} €</span>
+              <span className="text-slate-300">{periode === "12mois" ? "par mois" : "par jour"}</span>
+            </div>
             <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} width="100%" height={chartHeight} preserveAspectRatio="none" style={{ display: "block" }}>
               <defs>
                 <linearGradient id="revGradient" x1="0" y1="0" x2="0" y2="1">
@@ -1867,6 +1899,12 @@ function StatistiquesView({ garageData, aiStats, timeline, automationEvents, fac
               <path d={areaPath} fill="url(#revGradient)" />
               <path d={linePath} fill="none" stroke={ACCENT} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
+            <div className="flex items-center justify-between text-[11.5px] text-slate-400 mt-1.5 border-t border-slate-100 pt-1.5">
+              <span>{bornesGraphique.debut}</span>
+              <span>0 €</span>
+              <span>{bornesGraphique.fin}</span>
+            </div>
+            </>
           ) : (
             <div className="h-[140px] flex items-center justify-center text-[13px] text-slate-400 bg-slate-50 rounded-xl">Pas encore assez de factures sur cette période pour tracer une courbe.</div>
           )}
@@ -1945,10 +1983,12 @@ function StatistiquesView({ garageData, aiStats, timeline, automationEvents, fac
               <span className="flex items-center gap-1.5" style={{ color: "#C3D0EA" }}><span className="w-1.5 h-1.5 rounded-full bg-green-400" />Email actif</span>
               <span className="text-white font-semibold">{emailAujourdhui} envoyé{emailAujourdhui > 1 ? "s" : ""}</span>
             </div>
-            <div className="flex items-center justify-between text-[12.5px]">
-              <span className="flex items-center gap-1.5" style={{ color: "#C3D0EA" }}><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: garageData.google_agenda_connecte ? "#4ADE80" : "#FBBF6B" }} />Google Calendar</span>
-              <span className="font-semibold" style={{ color: garageData.google_agenda_connecte ? "#fff" : "#FBBF6B" }}>{garageData.google_agenda_connecte ? "connecté" : "non connecté"}</span>
-            </div>
+            {GOOGLE_CALENDAR_CONFIGURE && (
+              <div className="flex items-center justify-between text-[12.5px]">
+                <span className="flex items-center gap-1.5" style={{ color: "#C3D0EA" }}><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: garageData.google_agenda_connecte ? "#4ADE80" : "#FBBF6B" }} />Google Calendar</span>
+                <span className="font-semibold" style={{ color: garageData.google_agenda_connecte ? "#fff" : "#FBBF6B" }}>{garageData.google_agenda_connecte ? "connecté" : "non connecté"}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -2863,6 +2903,12 @@ const changeDate = (direction) => {
 
 const selectedDateKey = dateKey(currentDate);
 const dayAppts = rendezVous.filter((r) => r.date_key === selectedDateKey);
+// L'agenda proposait dix créneaux « disponibles » tous les jours, y compris
+// ceux où l'accueil annonce « Fermé aujourd'hui ». Les heures suivent
+// maintenant garages.horaires — mais jamais au prix de masquer un rendez-vous
+// déjà pris, d'où les heures occupées passées en second argument.
+const horairesGarage = garageData?.horaires;
+const heuresDuJour = heuresOuvrables(horairesGarage, currentDate, dayAppts.map((a) => a.debut).filter(Boolean));
 const startOfWeek = new Date(currentDate);
 startOfWeek.setDate(currentDate.getDate() - currentDate.getDay() + 1);
 const endOfWeek = new Date(startOfWeek);
@@ -2924,10 +2970,28 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
               </button>
             ))}
           </div>
-          {/* Préparé pour une future synchronisation bidirectionnelle Google Calendar */}
-          <button onClick={onConnectCalendar} className="flex items-center justify-center gap-1.5 text-[13px] font-medium text-white px-3.5 py-1.5 rounded-xl w-full sm:w-auto" style={{ backgroundColor: garageData.google_agenda_connecte ? "#16A34A" : ACCENT }}>
-            <CalendarPlus size={14} /> {garageData.google_agenda_connecte ? "Google synchronisé" : "Connecter Google"}
-          </button>
+          {/*
+            « Connecter Google » était le bouton le plus visible de l'agenda —
+            pleine largeur, bleu, au-dessus de la recherche — et il ne menait
+            nulle part : NEXT_PUBLIC_GOOGLE_CALENDAR_CONNECT_URL n'est pas
+            renseignée, et le clic affichait au garagiste « Ajoutez
+            NEXT_PUBLIC_GOOGLE_CALENDAR_CONNECT_URL après avoir configuré
+            l'autorisation Google dans n8n ». Un message d'ingénieur, sur
+            l'écran d'un garage, en démonstration.
+
+            Il ne s'affiche donc que lorsque la connexion existe vraiment. Un
+            bouton qui ne peut pas tenir sa promesse vaut moins que pas de
+            bouton du tout.
+
+            (Le libellé lisait aussi garageData.google_agenda_connecte, une
+            colonne qui n'existe sur aucun des deux projets : l'état
+            « synchronisé » était inatteignable.)
+          */}
+          {GOOGLE_CALENDAR_CONFIGURE && (
+            <button onClick={onConnectCalendar} className="flex items-center justify-center gap-1.5 text-[13px] font-medium text-white px-3.5 py-1.5 rounded-xl w-full sm:w-auto" style={{ backgroundColor: ACCENT }}>
+              <CalendarPlus size={14} /> Connecter Google
+            </button>
+          )}
         </div>
       </div>
 
@@ -2964,21 +3028,48 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
           ))}
         </div>
       ) : mode === "jour" ? (
+        heuresDuJour.length === 0 ? (
+          <div className="px-5 py-10 text-center">
+            <div className="text-[14px] font-medium text-slate-700">Fermé ce jour-là</div>
+            <div className="mt-1 mx-auto max-w-xs text-[12.5px] text-slate-500">
+              Vos horaires n&apos;ouvrent pas ce jour. Vous pouvez quand même prendre un
+              rendez-vous — un dépannage n&apos;attend pas la semaine.
+            </div>
+            {onCreerRdv && (
+              <button
+                type="button"
+                onClick={() => setNouveauCreneau({ date: selectedDateKey, heure: "09:00" })}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-xl px-4 min-h-[44px] text-[13px] font-medium text-white"
+                style={{ backgroundColor: ACCENT }}
+              >
+                <Plus size={15} /> Ajouter quand même
+              </button>
+            )}
+            <div className="mt-3 text-[12px] text-slate-400">Vos horaires se règlent dans Paramètres.</div>
+          </div>
+        ) : (
         <div className="grid" style={{ gridTemplateColumns: "70px 1fr" }}>
-          {heuresGrille.map((h) => {
+          {heuresDuJour.map((h) => {
             const slotAppts = dayAppts.filter((a) => a.debut?.slice(0, 2) === h.slice(0, 2));
+            const reservable = heureReservable(horairesGarage, currentDate, h);
             return (
               <React.Fragment key={h}>
                 <div className="text-[12px] text-slate-400 px-3 py-3 border-t border-slate-100">{h}</div>
                 <div className="border-t border-l border-slate-100 py-1.5 px-2 min-h-[52px] relative">
                   {slotAppts.length === 0 && (
-                    <button
-                      type="button"
-                      onClick={() => onCreerRdv && setNouveauCreneau({ date: selectedDateKey, heure: `${h}` })}
-                      className="w-full text-left text-[11.5px] text-slate-300 hover:text-blue-500 hover:bg-blue-50/40 rounded-lg px-1 py-1.5"
-                    >
-                      Créneau disponible {onCreerRdv && <span className="text-blue-400">· + Ajouter</span>}
-                    </button>
+                    reservable ? (
+                      <button
+                        type="button"
+                        onClick={() => onCreerRdv && setNouveauCreneau({ date: selectedDateKey, heure: `${h}` })}
+                        className="w-full text-left text-[11.5px] text-slate-300 hover:text-blue-500 hover:bg-blue-50/40 rounded-lg px-1 py-1.5"
+                      >
+                        Créneau disponible {onCreerRdv && <span className="text-blue-400">· + Ajouter</span>}
+                      </button>
+                    ) : (
+                      // Heure affichée parce qu'un rendez-vous voisin l'exige,
+                      // mais hors ouverture : on ne la propose pas.
+                      <div className="px-1 py-1.5 text-[11.5px] text-slate-300">Hors ouverture</div>
+                    )
                   )}
                   {slotAppts.map((a) => {
                     const c = catColor(a.categorie);
@@ -3003,6 +3094,7 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
             );
           })}
         </div>
+        )
       ) : mode === "semaine" ? (
         <div className="grid grid-cols-7 divide-x divide-slate-100">
           {weekDays.map((day) => {
@@ -3746,18 +3838,22 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
       <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-3 border-b border-slate-100 flex items-center gap-2">
-          <div className="flex-1 flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2">
+        {/* La recherche prend toute la largeur sur téléphone. Auparavant, le
+            select de tri imposait sa largeur intrinsèque — celle de « Plus
+            fidèle → moins fidèle » — et ne laissait au champ qu'une
+            soixantaine de pixels, où le mot « Rechercher » tenait en « Re ». */}
+        <div className="p-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
+          <div className="order-1 basis-full sm:basis-auto sm:flex-1 flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2">
             <Search size={15} className="text-slate-400" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher un client..." className="bg-transparent text-sm text-slate-900 outline-none w-full placeholder:text-slate-400" />
           </div>
-          <select value={tri} onChange={(e) => setTri(e.target.value)} className="shrink-0 text-[12.5px] font-medium border border-slate-200 rounded-xl px-2.5 py-2 text-slate-600 outline-none focus:border-blue-500">
+          <select value={tri} onChange={(e) => setTri(e.target.value)} className="order-2 min-w-0 flex-1 sm:flex-none sm:shrink-0 text-[12.5px] font-medium border border-slate-200 rounded-xl px-2.5 py-2 text-slate-600 outline-none focus:border-blue-500">
             <option value="nom">Nom (A→Z)</option>
             <option value="fidele">Plus fidèle → moins fidèle</option>
             <option value="recent">Plus récent → moins récent</option>
             <option value="ancien">Moins récent → plus récent</option>
           </select>
-          <button onClick={() => setNouveauClientOuvert(true)} className="shrink-0 p-2 rounded-xl text-white" style={{ backgroundColor: ACCENT }} title="Nouveau client">
+          <button onClick={() => setNouveauClientOuvert(true)} className="order-3 shrink-0 p-2 rounded-xl text-white" style={{ backgroundColor: ACCENT }} title="Nouveau client">
             <Plus size={16} />
           </button>
         </div>
@@ -4172,8 +4268,13 @@ function ParametresView({ garageId, garageData, onGarageChange, onSave, prestati
               )
             }
           />
-          <SettingsRow label="Google Agenda" right={<Badge tone={garageData.google_agenda_connecte ? "green" : "amber"}>{garageData.google_agenda_connecte ? "Connecté" : "À connecter dans n8n"}</Badge>} />
-          <div className="mt-3 text-[12px] text-slate-500">La connexion Gmail permet à Nexora de lire automatiquement les demandes de vos clients — aucune configuration technique de votre côté. La connexion Google Calendar doit encore être autorisée dans le workflow n8n.</div>
+          {/* « À connecter dans n8n » nommait au garagiste un outil interne
+              qu'il ne connaît pas et sur lequel il ne peut rien. La ligne
+              n'apparaît que si la connexion existe. */}
+          {GOOGLE_CALENDAR_CONFIGURE && (
+            <SettingsRow label="Google Agenda" right={<Badge tone={garageData.google_agenda_connecte ? "green" : "amber"}>{garageData.google_agenda_connecte ? "Connecté" : "À connecter"}</Badge>} />
+          )}
+          <div className="mt-3 text-[12px] text-slate-500">La connexion Gmail permet à Nexora de lire automatiquement les demandes de vos clients — aucune configuration technique de votre côté.</div>
         </SettingsSection>
         <SettingsSection title="Paiement en ligne (Stripe)">
           <StripeKeyField />
@@ -5656,7 +5757,7 @@ if (updateError) {
       setPropositions((prev) => [formatted, ...prev]);
       setStats((s) => ({ ...s, toValidate: s.toValidate + 1 }));
       setSelectedDemande(null);
-      flashToast("Proposition créée — prête à être envoyée par votre workflow n8n");
+      flashToast("Proposition créée — prête à être envoyée au client");
     } catch (error) {
       console.error("Erreur création proposition :", error);
       flashToast("La proposition n’a pas pu être créée", "error");
@@ -5984,7 +6085,9 @@ if (updateError) {
       window.open(connectUrl, "_blank", "noopener,noreferrer");
       return;
     }
-    flashToast("Ajoutez NEXT_PUBLIC_GOOGLE_CALENDAR_CONNECT_URL après avoir configuré l’autorisation Google dans n8n", "error");
+    // Inatteignable : le bouton n'est rendu que si l'URL existe. On garde un
+    // message compréhensible plutôt qu'un nom de variable d'environnement.
+    flashToast("La connexion à Google Agenda n’est pas encore disponible.", "error");
   };
 
   const titles = {
