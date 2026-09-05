@@ -1,4 +1,5 @@
 "use client";
+import { SquelettesListe } from "@/components/garage-os/Squelettes";
 
 import { useEffect, useState } from "react";
 import { ClipboardCheck, Plus, Search, Trash2, X } from "lucide-react";
@@ -793,11 +794,7 @@ export default function OrdresReparationSection({
       </div>
 
       {loading ? (
-        <div className="space-y-2">
-          {[0, 1, 2].map((k) => (
-            <div key={k} className="bg-white rounded-2xl border border-slate-200 h-16 animate-pulse" />
-          ))}
-        </div>
+        <SquelettesListe lignes={3} />
       ) : filtered.length === 0 ? (
         ordres.length === 0 && rendezVous.length === 0 ? (
           <EmptyState

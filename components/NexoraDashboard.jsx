@@ -3,7 +3,7 @@
 import DevisLignesEditor from "./devis-lignes/DevisLignesEditor";
 import { calculerLigne, calculerTotaux, devisALignes } from "./devis-lignes/calculs";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import QRCode from "qrcode";
 import InspectionsSection from "./inspections/InspectionsSection";
 import OrdresReparationSection from "./ordre-reparation/OrdresReparationSection";
@@ -15,6 +15,7 @@ import VotreJournee from "./garage-os/VotreJournee";
 import NexoraARepere from "./garage-os/NexoraARepere";
 import AccesRapides from "./garage-os/AccesRapides";
 import MiseEnRoute from "./garage-os/MiseEnRoute";
+import { SquelettesListe, SquelettteAccueil } from "./garage-os/Squelettes";
 import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier, dateLongueFR } from "./garage-os/calculs";
 import { estFerme, heureReservable, heuresOuvrables } from "./agenda/horaires";
 import ConnexionShell from "./connexion/ConnexionShell";
@@ -395,8 +396,12 @@ function EmptyState({ icon: Icon, title, subtitle }) {
   );
 }
 
+// Conservé pour les quelques appels restants ailleurs dans le fichier. Les
+// squelettes qui ont la forme de ce qu'ils annoncent vivent dans
+// garage-os/Squelettes.jsx — un rectangle de la mauvaise hauteur promet une
+// mise en page puis la contredit, ce qui fait sauter la page au chargement.
 function SkeletonCard({ h = "h-24" }) {
-  return <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm ${h} animate-pulse`} />;
+  return <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm ${h} nx-squelette`} />;
 }
 
 function Toast({ toast }) {
@@ -404,7 +409,8 @@ function Toast({ toast }) {
   const isError = toast.tone === "error";
   return (
     <div
-      className="fixed bottom-6 right-6 text-white text-sm px-4 py-3 rounded-xl shadow-lg z-50 flex items-center gap-2"
+      role="status"
+      className="nx-monte fixed bottom-6 right-6 left-6 sm:left-auto text-white text-sm px-4 py-3 rounded-xl shadow-lg z-50 flex items-center gap-2"
       style={{ backgroundColor: isError ? "#B91C1C" : "#0F1B33" }}
     >
       <CheckCircle2 size={15} color={isError ? "#fff" : "#8FB0FF"} />
@@ -591,7 +597,7 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
 // besoin de contacter le client directement depuis cet écran.
 function AtelierCarte({ appt, etapeInfo, mecanicien, alertes, onSelectAppt, onOuvrirDossierVehicule, lienActif, lienUrl, onCreerLien, lienEnCours }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-3.5 flex flex-col gap-2">
+    <div className="nx-apparait nx-pressable bg-white rounded-2xl border border-slate-200 p-3.5 flex flex-col gap-2 hover:border-slate-300">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-[13.5px] font-semibold text-slate-900 truncate">{appt.vehicule || "Véhicule"}</div>
@@ -692,17 +698,37 @@ function AtelierCompteur({ label, value, tone = "slate" }) {
     green: { bg: "#E7F6EC", text: "#15803D", sub: "#15803D" },
   };
   const t = tones[tone] || tones.slate;
+
+  // L'atelier en direct est le seul écran qu'on laisse ouvert sur un coin de
+  // l'établi. Quand une voiture change d'étape, le chiffre bouge sans que
+  // personne ne regarde : ce souffle est ce qui le fait remarquer au coup
+  // d'œil suivant.
+  const [souffle, setSouffle] = useState(false);
+  const precedent = useRef(value);
+  useEffect(() => {
+    if (precedent.current === value) return;
+    precedent.current = value;
+    setSouffle(true);
+    const t = setTimeout(() => setSouffle(false), 300);
+    return () => clearTimeout(t);
+  }, [value]);
+
   return (
     <div className="rounded-xl p-3" style={{ backgroundColor: t.bg }}>
       <div className="text-[11px]" style={{ color: t.sub }}>{label}</div>
-      <div className="text-xl font-semibold mt-1" style={{ color: t.text }}>{value}</div>
+      <div
+        className={`text-xl font-semibold mt-1 tabular-nums origin-left${souffle ? " nx-souffle" : ""}`}
+        style={{ color: t.text }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
 
 function AtelierSection({ titre, sousTitre, count, accent, enfants, vide }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+    <div className="nx-apparait bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
         <div>
           <div className="font-semibold text-slate-900 text-[15px] flex items-center gap-2">
@@ -760,8 +786,8 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], a
     />
   );
 
-  return <div className="space-y-5">
-    <div className="print:hidden rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}>
+  return <div className="space-y-5 nx-cascade">
+    <div className="nx-apparait print:hidden rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}>
       <div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" />
       <div className="relative">
         <div className="flex items-start justify-between flex-wrap gap-4">
@@ -975,7 +1001,7 @@ function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHead
 
   if (rows.length === 0) {
     return (
-      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-2.5 flex items-center gap-2.5 flex-wrap">
+      <section className="nx-apparait bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-2.5 flex items-center gap-2.5 flex-wrap">
         <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: iconBg, color: iconColor }}>
           <Icon size={13} />
         </div>
@@ -987,7 +1013,7 @@ function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHead
   }
 
   return (
-    <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <section className="nx-apparait bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="flex items-center gap-2.5 px-5 py-4 border-b border-slate-100 flex-wrap">
         <div className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center shrink-0" style={{ backgroundColor: iconBg, color: iconColor }}>
           <Icon size={16} />
@@ -1128,8 +1154,8 @@ function AjouterRappelModal({ onClose, onSubmit, submitting }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Ajouter un appel à rappeler</h2>
         <div className="text-[12.5px] text-slate-500 mt-1">Un pense-bête manuel — rien n'est envoyé ni appelé automatiquement.</div>
         <div className="mt-4 space-y-3">
@@ -1193,8 +1219,8 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md text-slate-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-md text-slate-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Travail à relancer</h2>
         <div className="text-[12.5px] text-slate-500 mt-1">À utiliser lorsqu'un client reporte ou refuse un travail. Nexora le garde pour une relance future. Rien n'est envoyé automatiquement.</div>
         <div className="mt-4 space-y-3">
@@ -1271,14 +1297,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   const [cockpitCompteurs, setCockpitCompteurs] = useState(null);
   if (loading) {
-    return (
-      <div className="space-y-6">
-        <SkeletonCard h="h-24" />
-        <SkeletonCard h="h-28" />
-        <SkeletonCard h="h-24" />
-        <SkeletonCard h="h-72" />
-      </div>
-    );
+    return <SquelettteAccueil />;
   }
 
   const now = new Date();
@@ -1577,7 +1596,9 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
 
   return (
     <div className="space-y-5">
-      <MorningHeader garageData={garageData} openState={openState} />
+      <div className="nx-apparait">
+        <MorningHeader garageData={garageData} openState={openState} />
+      </div>
 
       {/* En tête d'accueil, et seulement tant qu'il reste quelque chose à
           faire : voir garage-os/miseEnRoute.js. Un garage installé ne voit
@@ -1622,7 +1643,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
           onToast={onToast}
         />
       ) : (
-        <>
+        <div className="space-y-4 nx-cascade">
           <CommandZone
             icon={AlertTriangle}
             iconBg="#FDECEC"
@@ -1677,7 +1698,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
               </button>
             }
           />
-        </>
+        </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -2066,8 +2087,8 @@ function depuisLabel(dateStr) {
 function RefuseConfirmModal({ onClose, onConfirm }) {
   const [neReplusDemander, setNeReplusDemander] = useState(false);
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Refuser ce créneau ?</h2>
         <p className="text-[13.5px] text-slate-600 mt-2">Le client recevra un message l'informant que ce créneau n'est pas possible, sans nouvelle proposition. Si le client n'est simplement pas disponible à cette heure, utilisez plutôt "Modifier la date".</p>
         <label className="flex items-center gap-2 mt-4 text-[13px] text-slate-600">
@@ -2209,8 +2230,8 @@ function RescheduleModal({ proposition, garageId, onClose, onConfirm }) {
     onConfirm(startDate.toISOString(), endDate.toISOString());
   };
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
           <Calendar size={18} /> Modifier la date — {proposition.client}
         </h2>
@@ -2328,8 +2349,8 @@ function CreerRdvModal({ clients, prestations, date, heure, onClose, onCreate, o
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Nouveau rendez-vous</h2>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-[13px] text-slate-500">{date} à</span>
@@ -2457,8 +2478,8 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Créer un devis</h2>
 
         {!clientPreselectionne && (
@@ -2714,8 +2735,8 @@ function DevisView({ devisList: devisListToutesSources, clients, prestations, ga
 
 function DevisApercuModal({ d, garageData, onClose }) {
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-md text-slate-900" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-lg font-semibold text-slate-900">Aperçu client</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
@@ -3309,8 +3330,8 @@ L'équipe du garage`)}`
     : null;
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Informations manquantes — {client.nom || "Client"}</h2>
 
         <div className="mt-4">
@@ -3620,8 +3641,8 @@ function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien,
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-2xl text-slate-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-2xl text-slate-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Facture {facture.numero}</h2>
           <Badge tone={facture.statut === "payee" ? "green" : "amber"}>{facture.statut === "payee" ? "Payée" : "En attente"}</Badge>
@@ -3756,8 +3777,8 @@ function NouveauClientModal({ onClose, onCreerClient }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Nouveau client</h2>
         <div className="mt-4 space-y-2.5">
           <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom du client" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
@@ -4323,9 +4344,9 @@ function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting,
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
 
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(event) => event.stopPropagation()}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(event) => event.stopPropagation()}>
 
         <h2 className="text-lg font-semibold text-slate-900">
           Proposer un rendez-vous
@@ -6344,7 +6365,7 @@ if (updateError) {
           </div>
         )}
 
-        <div className="p-5 md:p-8">
+        <div key={view} className="nx-vue p-5 md:p-8">
           {view === "aujourdhui" && <AujourdhuiView stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={setDossierVehiculeId} />}
