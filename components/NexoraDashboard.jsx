@@ -9,7 +9,6 @@ import InspectionsSection from "./inspections/InspectionsSection";
 import OrdresReparationSection from "./ordre-reparation/OrdresReparationSection";
 import NotificationsAVerifierSection from "./notifications-devis/NotificationsAVerifierSection";
 import MorningHeader from "./garage-os/MorningHeader";
-import SyntheseImmediate from "./garage-os/SyntheseImmediate";
 import CentreDecisionnel from "./garage-os/CentreDecisionnel";
 import VotreJournee from "./garage-os/VotreJournee";
 import NexoraARepere from "./garage-os/NexoraARepere";
@@ -995,7 +994,7 @@ function ReprogrammerDateControl({ onReprogrammer }) {
   );
 }
 
-function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHeaderInfo, headerAction, countBg, countColor, rows, emptyLabel }) {
+function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHeaderInfo, headerAction, countBg, countColor, rows, emptyLabel, accentue = false }) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? rows : rows.slice(0, 3);
 
@@ -1012,8 +1011,26 @@ function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHead
     );
   }
 
+  // UNE ZONE QUI A QUELQUE CHOSE À DIRE DOIT LE MONTRER.
+  //
+  // Toutes les cartes de l'accueil avaient le même fond blanc, la même
+  // bordure, le même rayon : le jour où une urgence apparaissait, elle
+  // ressemblait exactement à une carte vide. L'écran ne savait pas hausser la
+  // voix.
+  //
+  // `accentue` est passé par la zone la plus grave — « À traiter maintenant ».
+  // Elle prend alors la couleur de son icône en bordure et un liseré épais à
+  // gauche. Une seule zone porte cet accent à la fois : deux urgences
+  // simultanées ne sont plus une urgence, c'est un décor.
+  const contour = accentue
+    ? { borderColor: iconColor, boxShadow: `inset 4px 0 0 0 ${iconColor}` }
+    : undefined;
+
   return (
-    <section className="nx-apparait bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <section
+      className={`nx-apparait bg-white rounded-2xl border shadow-sm overflow-hidden ${accentue ? "" : "border-slate-200"}`}
+      style={contour}
+    >
       <div className="flex items-center gap-2.5 px-5 py-4 border-b border-slate-100 flex-wrap">
         <div className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center shrink-0" style={{ backgroundColor: iconBg, color: iconColor }}>
           <Icon size={16} />
@@ -1597,7 +1614,15 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   return (
     <div className="space-y-5">
       <div className="nx-apparait">
-        <MorningHeader garageData={garageData} openState={openState} />
+        <MorningHeader
+          garageData={garageData}
+          openState={openState}
+          rdvAujourdhui={todayAppts.length}
+          vehiculesEngages={vehiculesEngages}
+          decisionsEnAttente={decisionsEnAttente}
+          montantRisque={montantRisque}
+          setView={setView}
+        />
       </div>
 
       {/* En tête d'accueil, et seulement tant qu'il reste quelque chose à
@@ -1609,13 +1634,6 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
         clients={clients}
         rendezVous={rendezVous}
         onAller={onAllerConfigurer}
-      />
-
-      <SyntheseImmediate
-        rdvAujourdhui={todayAppts.length}
-        vehiculesEngages={vehiculesEngages}
-        decisionsEnAttente={decisionsEnAttente}
-        montantRisque={montantRisque}
       />
 
       {COCKPIT_OPPORTUNITES_ACTIF ? (
@@ -1642,6 +1660,29 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
           onOuvrirInspection={onOuvrirInspection}
           onToast={onToast}
         />
+      ) : zone1Rows.length + zone2Rows.length + zone3Rows.length === 0 ? (
+        // JOURNÉE CALME. Les trois zones vides occupaient 275 px pour dire
+        // trois fois « rien », sur la meilleure place du tableau de bord. Et la
+        // phrase de l'en-tête l'annonce déjà : le répéter ici en ferait trois
+        // fois la même information, en comptant la pastille d'ouverture.
+        // Ne restent que les deux actions d'ajout, seule chose utile de ces
+        // cartes.
+        <div className="nx-apparait flex items-center gap-4 flex-wrap px-1">
+          <button
+            onClick={() => onAjouterRappel && onAjouterRappel()}
+            className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
+            style={{ color: ACCENT }}
+          >
+            <Phone size={12} /> Un appel à rappeler
+          </button>
+          <button
+            onClick={() => onOuvrirTravailDiffereModal && onOuvrirTravailDiffereModal()}
+            className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
+            style={{ color: ACCENT }}
+          >
+            <Plus size={12} /> Un travail à relancer
+          </button>
+        </div>
       ) : (
         <div className="space-y-4 nx-cascade">
           <CommandZone
@@ -1654,6 +1695,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
             countColor="#B91C1C"
             rows={zone1Rows}
             emptyLabel="Rien à traiter pour l'instant."
+            accentue={zone1Rows.length > 0}
             headerAction={
               <button
                 onClick={() => onAjouterRappel && onAjouterRappel()}
