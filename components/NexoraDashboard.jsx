@@ -16,6 +16,7 @@ import NexoraARepere from "./garage-os/NexoraARepere";
 import AccesRapides from "./garage-os/AccesRapides";
 import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier, dateLongueFR } from "./garage-os/calculs";
 import { estFerme, heureReservable, heuresOuvrables } from "./agenda/horaires";
+import ConnexionShell from "./connexion/ConnexionShell";
 import VehicleCaseFileView from "./vehicle-case-file/VehicleCaseFileView";
 import OnboardingGarage from "./onboarding/OnboardingGarage";
 import ImportClients from "./import/ImportClients";
@@ -6348,8 +6349,8 @@ if (updateError) {
 
 function ForgotPasswordScreen({ onBack }) {
   const [email, setEmail] = useState("");
-  const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e) {
@@ -6357,56 +6358,55 @@ function ForgotPasswordScreen({ onBack }) {
     setError("");
     setLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin,
+      redirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
     });
     setLoading(false);
     if (error) {
-      setError("Impossible d'envoyer le lien de réinitialisation.");
+      setError("Impossible d'envoyer l'e-mail. Réessayez dans un instant.");
       return;
     }
     setSent(true);
   }
 
+  if (sent) {
+    return (
+      <ConnexionShell
+        titre="C'est parti"
+        sousTitre={`Si un compte existe pour ${email}, un lien de réinitialisation vient d'y être envoyé.`}
+      >
+        <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.55, margin: 0 }}>
+          Le lien est valable une heure. Pensez à regarder vos indésirables.
+        </p>
+        <button type="button" onClick={onBack} className="nx-bouton" style={{ marginTop: 20 }}>
+          Revenir à la connexion
+        </button>
+      </ConnexionShell>
+    );
+  }
+
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG }}>
-      <div style={{ background: "#fff", padding: 32, borderRadius: 12, width: 320, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: NAVY, marginBottom: 4 }}>Mot de passe oublié</h1>
-        {sent ? (
-          <>
-            <p style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Si un compte existe pour cet email, un lien de réinitialisation vient de vous être envoyé.</p>
-            <button type="button" onClick={onBack} style={{ width: "100%", padding: "10px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" }}>
-              Retour à la connexion
-            </button>
-          </>
-        ) : (
-          <form onSubmit={handleSubmit}>
-            <p style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Recevez un lien pour réinitialiser votre mot de passe.</p>
-            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Email</label>
-            <input
-              type="email"
-              placeholder="vous@exemple.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              className="nexora-login-field"
-              style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
-            />
-            {error && <p style={{ color: "#DC2626", fontSize: 13, marginBottom: 10 }}>{error}</p>}
-            <button
-              type="submit"
-              disabled={loading}
-              style={{ width: "100%", padding: "10px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" }}
-            >
-              {loading ? "Envoi..." : "Envoyer le lien"}
-            </button>
-            <button type="button" onClick={onBack} style={{ width: "100%", padding: "10px 12px", background: "none", color: "#64748B", border: "none", fontSize: 13, cursor: "pointer", marginTop: 10 }}>
-              Retour à la connexion
-            </button>
-          </form>
-        )}
-      </div>
-    </div>
+    <ConnexionShell
+      titre="Mot de passe oublié"
+      sousTitre="Indiquez votre adresse, nous vous envoyons un lien pour en choisir un nouveau."
+    >
+      <form onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="nx-oubli" className="nx-label">Adresse e-mail</label>
+          <input id="nx-oubli" type="email" placeholder="vous@exemple.com" value={email}
+            onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className="nx-champ" />
+        </div>
+        <div aria-live="polite" style={{ marginTop: error ? 16 : 0 }}>
+          {error && <div className="nx-erreur"><span aria-hidden>!</span><span>{error}</span></div>}
+        </div>
+        <button type="submit" disabled={loading} className="nx-bouton" style={{ marginTop: 20 }}>
+          {loading && <span className="nx-rond" />}
+          {loading ? "Envoi…" : "Envoyer le lien"}
+        </button>
+        <div style={{ textAlign: "center", marginTop: 8 }}>
+          <button type="button" onClick={onBack} className="nx-lien">Revenir à la connexion</button>
+        </div>
+      </form>
+    </ConnexionShell>
   );
 }
 
@@ -6438,49 +6438,38 @@ function UpdatePasswordScreen() {
     setDone(true);
   }
 
+  if (done) {
+    return (
+      <ConnexionShell titre="Mot de passe enregistré" sousTitre="Vous pouvez désormais vous connecter avec.">
+        <button type="button" onClick={() => window.location.reload()} className="nx-bouton" style={{ marginTop: 4 }}>
+          Entrer dans mon espace
+        </button>
+      </ConnexionShell>
+    );
+  }
+
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG }}>
-      <div style={{ background: "#fff", padding: 32, borderRadius: 12, width: 320, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: NAVY, marginBottom: 4 }}>Nouveau mot de passe</h1>
-        {done ? (
-          <p style={{ fontSize: 13, color: "#64748B", marginBottom: 4 }}>Mot de passe mis à jour. Vous pouvez fermer cette page et vous reconnecter.</p>
-        ) : (
-          <form onSubmit={handleSubmit}>
-            <p style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Choisissez un nouveau mot de passe pour votre compte.</p>
-            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Nouveau mot de passe</label>
-            <input
-              type="password"
-              placeholder="********"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="new-password"
-              className="nexora-login-field"
-              style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
-            />
-            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Confirmer le mot de passe</label>
-            <input
-              type="password"
-              placeholder="********"
-              value={confirmation}
-              onChange={(e) => setConfirmation(e.target.value)}
-              required
-              autoComplete="new-password"
-              className="nexora-login-field"
-              style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
-            />
-            {error && <p style={{ color: "#DC2626", fontSize: 13, marginBottom: 10 }}>{error}</p>}
-            <button
-              type="submit"
-              disabled={loading}
-              style={{ width: "100%", padding: "10px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" }}
-            >
-              {loading ? "Enregistrement..." : "Enregistrer"}
-            </button>
-          </form>
-        )}
-      </div>
-    </div>
+    <ConnexionShell titre="Nouveau mot de passe" sousTitre="Choisissez-en un d'au moins huit caractères.">
+      <form onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="nx-nouveau" className="nx-label">Nouveau mot de passe</label>
+          <input id="nx-nouveau" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+            required autoComplete="new-password" className="nx-champ" placeholder="Au moins 8 caractères" />
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <label htmlFor="nx-confirme" className="nx-label">Confirmation</label>
+          <input id="nx-confirme" type="password" value={confirmation} onChange={(e) => setConfirmation(e.target.value)}
+            required autoComplete="new-password" className="nx-champ" placeholder="Le même, pour vérifier" />
+        </div>
+        <div aria-live="polite" style={{ marginTop: error ? 16 : 0 }}>
+          {error && <div className="nx-erreur"><span aria-hidden>!</span><span>{error}</span></div>}
+        </div>
+        <button type="submit" disabled={loading} className="nx-bouton" style={{ marginTop: 20 }}>
+          {loading && <span className="nx-rond" />}
+          {loading ? "Enregistrement…" : "Enregistrer"}
+        </button>
+      </form>
+    </ConnexionShell>
   );
 }
 
@@ -6586,78 +6575,56 @@ function InscriptionScreen({ onBack }) {
 
   if (verifier) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG, padding: 24 }}>
-        <div style={{ background: "#fff", padding: 32, borderRadius: 12, width: 340, boxShadow: "0 4px 24px rgba(0,0,0,0.08)", textAlign: "center" }}>
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: NAVY, marginBottom: 8 }}>Vérifiez votre boîte mail</h1>
-          <p style={{ fontSize: 13, color: "#64748B", lineHeight: 1.5 }}>
-            Nous avons envoyé un lien de confirmation à <b style={{ color: NAVY }}>{email}</b>.
-            Ouvrez-le pour activer votre espace.
-          </p>
-          <button type="button" onClick={onBack} style={{ marginTop: 18, background: "none", border: "none", color: ACCENT, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-            Revenir à la connexion
-          </button>
-        </div>
-      </div>
+      <ConnexionShell
+        titre="Vérifiez vos e-mails"
+        sousTitre={`Un message vient de partir vers ${email}. Ouvrez-le pour activer votre espace.`}
+      >
+        <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.55, margin: 0 }}>
+          Rien reçu au bout de quelques minutes ? Regardez dans vos indésirables.
+        </p>
+        <button type="button" onClick={onBack} className="nx-bouton" style={{ marginTop: 20 }}>
+          Revenir à la connexion
+        </button>
+      </ConnexionShell>
     );
   }
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG, padding: 24 }}>
-      <style>{`
-        .nexora-login-field { color: #0F1B33 !important; background: #ffffff !important; -webkit-text-fill-color: #0F1B33 !important; }
-        .nexora-login-field::placeholder { color: #94A3B8 !important; opacity: 1 !important; }
-      `}</style>
-      <form onSubmit={handleSubmit} style={{ background: "#fff", padding: 32, borderRadius: 12, width: 340, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: NAVY, marginBottom: 4 }}>Créer votre espace</h1>
-        <p style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Deux minutes, et votre garage est ouvert.</p>
-
-        <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Email</label>
-        <input
-          type="email"
-          placeholder="vous@garage-dupont.fr"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          autoComplete="email"
-          className="nexora-login-field"
-          style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
-        />
-
-        <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Mot de passe</label>
-        <input
-          type="password"
-          placeholder="8 caractères minimum"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          minLength={8}
-          autoComplete="new-password"
-          className="nexora-login-field"
-          style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
-        />
-
-        {error && <p style={{ color: "#DC2626", fontSize: 13, marginBottom: 10 }}>{error}</p>}
-
-        <button
-          type="submit"
-          disabled={loading}
-          style={{ width: "100%", padding: "10px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: loading ? "not-allowed" : "pointer" }}
-        >
-          {loading ? "Création..." : "Créer mon espace"}
+    <ConnexionShell
+      titre="Créer votre espace"
+      sousTitre={`Quatorze jours d'essai. Aucune carte bancaire demandée.`}
+      bas={
+        <div style={{ borderTop: "1px solid #E2E8F0", paddingTop: 16, textAlign: "center" }}>
+          <span style={{ fontSize: 13.5, color: "#64748B" }}>Vous avez déjà un compte ? </span>
+          <button type="button" onClick={onBack} className="nx-lien" style={{ color: ACCENT, fontWeight: 600 }}>
+            Se connecter
+          </button>
+        </div>
+      }
+    >
+      <form onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="nx-i-email" className="nx-label">Adresse e-mail</label>
+          <input id="nx-i-email" type="email" placeholder="vous@exemple.com" value={email}
+            onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className="nx-champ" />
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <label htmlFor="nx-i-mdp" className="nx-label">Mot de passe</label>
+          <input id="nx-i-mdp" type="password" placeholder="Au moins 8 caractères" value={password}
+            onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" className="nx-champ" />
+        </div>
+        <div aria-live="polite" style={{ marginTop: error ? 16 : 0 }}>
+          {error && <div className="nx-erreur"><span aria-hidden>!</span><span>{error}</span></div>}
+        </div>
+        <button type="submit" disabled={loading} className="nx-bouton" style={{ marginTop: 20 }}>
+          {loading && <span className="nx-rond" />}
+          {loading ? "Création…" : "Créer mon espace"}
         </button>
-
-        <button type="button" onClick={onBack} style={{ width: "100%", padding: "10px 12px", background: "none", color: "#64748B", border: "none", fontSize: 13, cursor: "pointer", marginTop: 6 }}>
-          J&apos;ai déjà un compte
-        </button>
-
-        <p style={{ fontSize: 11.5, color: "#94A3B8", lineHeight: 1.5, marginTop: 12, textAlign: "center" }}>
-          En créant votre espace, vous acceptez nos{" "}
-          <a href="/mentions-legales" style={{ color: "#64748B", textDecoration: "underline" }}>mentions légales</a>{" "}
-          et notre{" "}
-          <a href="/confidentialite" style={{ color: "#64748B", textDecoration: "underline" }}>politique de confidentialité</a>.
+        <p style={{ fontSize: 12, color: "#94A3B8", textAlign: "center", marginTop: 12, lineHeight: 1.5 }}>
+          La mise en service de votre garage se fait juste après, en quelques minutes.
         </p>
       </form>
-    </div>
+    </ConnexionShell>
   );
 }
 
@@ -6676,7 +6643,7 @@ function LoginScreen() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
-      setError("Email ou mot de passe incorrect.");
+      setError("E-mail ou mot de passe incorrect.");
       return;
     }
   }
@@ -6685,56 +6652,45 @@ function LoginScreen() {
   if (inscription) return <InscriptionScreen onBack={() => setInscription(false)} />;
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG }}>
-      <style>{`
-        .nexora-login-field { color: #0F1B33 !important; background: #ffffff !important; -webkit-text-fill-color: #0F1B33 !important; }
-        .nexora-login-field::placeholder { color: #94A3B8 !important; opacity: 1 !important; }
-        .nexora-login-field:-webkit-autofill { -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important; -webkit-text-fill-color: #0F1B33 !important; }
-      `}</style>
-      <form onSubmit={handleSubmit} style={{ background: "#fff", padding: 32, borderRadius: 12, width: 320, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: NAVY, marginBottom: 4 }}>Nexora</h1>
-        <p style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Connexion a votre espace garage</p>
-        <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Email</label>
-        <input
-          type="email"
-          placeholder="vous@exemple.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          autoComplete="email"
-          className="nexora-login-field"
-          style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
-        />
-        <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Mot de passe</label>
-        <input
-          type="password"
-          placeholder="********"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          autoComplete="current-password"
-          className="nexora-login-field"
-          style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
-        />
-        {error && <p style={{ color: "#DC2626", fontSize: 13, marginBottom: 10 }}>{error}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          style={{ width: "100%", padding: "10px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" }}
-        >
-          {loading ? "Connexion..." : "Se connecter"}
-        </button>
-        <button type="button" onClick={() => setForgotPassword(true)} style={{ width: "100%", padding: "10px 12px", background: "none", color: "#64748B", border: "none", fontSize: 13, cursor: "pointer", marginTop: 6 }}>
-          Mot de passe oublié ?
-        </button>
-        <div style={{ borderTop: "1px solid #E2E8F0", marginTop: 10, paddingTop: 12, textAlign: "center" }}>
-          <span style={{ fontSize: 13, color: "#64748B" }}>Vous n&apos;avez pas encore de compte ? </span>
-          <button type="button" onClick={() => setInscription(true)} style={{ background: "none", border: "none", padding: 0, color: ACCENT, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+    <ConnexionShell
+      titre="Bon retour"
+      sousTitre="Connectez-vous à votre espace garage."
+      bas={
+        <div style={{ borderTop: "1px solid #E2E8F0", paddingTop: 16, textAlign: "center" }}>
+          <span style={{ fontSize: 13.5, color: "#64748B" }}>Vous n&apos;avez pas encore de compte ? </span>
+          <button type="button" onClick={() => setInscription(true)} className="nx-lien" style={{ color: ACCENT, fontWeight: 600 }}>
             Créer mon espace
           </button>
         </div>
+      }
+    >
+      <form onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="nx-email" className="nx-label">Adresse e-mail</label>
+          <input id="nx-email" type="email" placeholder="vous@exemple.com" value={email}
+            onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className="nx-champ" />
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <label htmlFor="nx-mdp" className="nx-label">Mot de passe</label>
+          <input id="nx-mdp" type="password" placeholder="Votre mot de passe" value={password}
+            onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" className="nx-champ" />
+        </div>
+        {/* aria-live : sans lui, un lecteur d'ecran ne dit jamais que la
+            connexion a echoue, et la personne attend devant un ecran muet. */}
+        <div aria-live="polite" style={{ marginTop: error ? 16 : 0 }}>
+          {error && <div className="nx-erreur"><span aria-hidden>!</span><span>{error}</span></div>}
+        </div>
+        <button type="submit" disabled={loading} className="nx-bouton" style={{ marginTop: 20 }}>
+          {loading && <span className="nx-rond" />}
+          {loading ? "Connexion…" : "Se connecter"}
+        </button>
+        <div style={{ textAlign: "center", marginTop: 8 }}>
+          <button type="button" onClick={() => setForgotPassword(true)} className="nx-lien">
+            Mot de passe oublié ?
+          </button>
+        </div>
       </form>
-    </div>
+    </ConnexionShell>
   );
 }
 
