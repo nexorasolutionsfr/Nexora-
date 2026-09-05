@@ -100,9 +100,10 @@ n'a été appliqué sur Test ni sur Production.
    `ensure_rls` n'est ni créé, ni modifié, ni supprimé.
 2. **`20260906000200`** redéclare les deux fonctions Stripe avec
    `search_path = ''` et des objets qualifiés par leur schéma, **sans
-   changer leur logique**, puis ferme `PUBLIC`, `anon` et `service_role` et
-   ne conserve que `authenticated`. La migration vérifie elle-même le
-   résultat et échoue si un privilège subsiste.
+   changer leur logique**, puis ferme strictement `PUBLIC` et `anon`, en
+   conservant `authenticated` et `service_role`. La migration vérifie
+   elle-même le résultat et échoue si `anon` subsiste ou si un rôle
+   légitime a été perdu.
 3. **`20260906000300`** retire `TRUNCATE` sur la table des secrets pour
    `anon` et `authenticated`, après audit d'impact.
 
@@ -117,21 +118,21 @@ correction de `current_garage_id()` le 2026-09-02. Ce lot applique la même
 règle. Les corps sont repris ligne à ligne, seules les références de tables
 sont qualifiées.
 
-### Pourquoi `authenticated` seulement
+### Qui garde le droit
 
-Les deux fonctions ne sont appelées que par le composant de réglages du
-tableau de bord, dans `NexoraDashboard.jsx`, sous session authentifiée. Aucun
-appel anonyme, aucun appel depuis une route serveur, aucun appel avec le rôle
-de service dans le dépôt.
+`authenticated` est le seul appelant constaté : le composant de réglages du
+tableau de bord, sous session authentifiée. Aucune page publique, aucune
+route serveur, aucun appel avec le rôle de service dans le dépôt.
 
-**Une hypothèse reste à confirmer par le porteur du projet** : les workflows
-n8n vivent hors du dépôt et n'ont pas été inspectés, conformément aux
-consignes. Si l'un d'eux appelait ces fonctions avec le rôle de service, la
-révocation de `service_role` le casserait. Le geste métier — saisir sa clé
-Stripe — est un geste d'interface, ce qui rend l'hypothèse peu probable,
-mais elle n'est pas vérifiée. La migration isole cette révocation sur deux
-lignes commentées, faciles à retirer si vous préférez conserver
-`service_role`.
+`service_role` est **conservé temporairement**, sur décision du porteur du
+projet du 2026-09-05, en attendant un audit séparé des workflows n8n, qui
+vivent hors du dépôt.
+
+Un détail rend le `grant` à `service_role` indispensable plutôt que
+redondant : en Production, ce rôle n'a aucun droit nominatif sur ces deux
+fonctions et passe par le `GRANT` à `PUBLIC`. Fermer `PUBLIC` sans regrant
+explicite lui retirerait l'accès en Production, alors qu'il le conserverait
+sur Test où le droit est nominatif. Le regrant aligne les deux projets.
 
 ### Audit du privilège `TRUNCATE`
 

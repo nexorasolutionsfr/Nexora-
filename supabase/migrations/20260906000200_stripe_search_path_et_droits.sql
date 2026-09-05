@@ -4,8 +4,8 @@
 --   1. les verser dans l'historique versionné — elles n'existaient qu'en
 --      base, comme `rls_auto_enable` ;
 --   2. fixer `search_path = ''` et qualifier les objets par leur schéma ;
---   3. fermer `PUBLIC`, `anon` et `service_role`, ne garder que
---      `authenticated`.
+--   3. fermer strictement `PUBLIC` et `anon`, en conservant `authenticated`
+--      et `service_role`.
 --
 -- **La logique fonctionnelle est inchangée.** Les corps sont repris ligne à
 -- ligne de la définition relevée le 2026-09-05, identique sur Test et sur
@@ -24,14 +24,20 @@
 -- a tranché en faveur de `search_path = ''` avec objets qualifiés lors de la
 -- correction de `current_garage_id()` (20260902000300).
 --
--- Pourquoi `authenticated` seulement : les deux fonctions ne sont appelées
--- que par le composant de réglages du tableau de bord
--- (`components/NexoraDashboard.jsx`, sous session authentifiée). Aucune page
+-- Qui garde le droit, et pourquoi. `authenticated` : c'est le seul appelant
+-- constaté, le composant de réglages du tableau de bord
+-- (`components/NexoraDashboard.jsx`), sous session authentifiée. Aucune page
 -- publique, aucune route serveur, aucun appel avec le rôle de service dans
--- le dépôt. La révocation de `service_role` repose sur une hypothèse non
--- vérifiable ici — les workflows n8n vivent hors du dépôt : si l'un d'eux
--- appelait ces fonctions, retirer les deux lignes marquées ci-dessous suffit
--- à la lever.
+-- le dépôt. `service_role` : conservé **temporairement**, sur décision du
+-- porteur du projet, en attendant un audit séparé des workflows n8n, qui
+-- vivent hors du dépôt et n'ont pas été inspectés.
+--
+-- Attention au détail qui rend le `grant` à `service_role` indispensable :
+-- en Production, ce rôle n'a aucun droit nominatif sur ces deux fonctions,
+-- il passe aujourd'hui par le `GRANT` à `PUBLIC`. Fermer `PUBLIC` sans
+-- regrant explicite lui retirerait donc l'accès en Production, alors qu'il
+-- le conserverait sur Test où le droit est nominatif. Le `grant` ci-dessous
+-- aligne les deux projets sur le même état.
 
 create or replace function public.set_stripe_secret_key(p_key text)
 returns void
@@ -84,12 +90,14 @@ revoke execute on function public.set_stripe_secret_key(text) from anon;
 revoke execute on function public.stripe_configure_pour_mon_garage() from public;
 revoke execute on function public.stripe_configure_pour_mon_garage() from anon;
 
--- Les deux lignes à retirer si un automate n8n devait conserver l'accès.
-revoke execute on function public.set_stripe_secret_key(text) from service_role;
-revoke execute on function public.stripe_configure_pour_mon_garage() from service_role;
-
 grant execute on function public.set_stripe_secret_key(text) to authenticated;
 grant execute on function public.stripe_configure_pour_mon_garage() to authenticated;
+
+-- Conservé temporairement, à réexaminer après l'audit n8n. Ce `grant` est
+-- nécessaire et non redondant : sans lui, la fermeture de `PUBLIC`
+-- ci-dessus retirerait l'accès à `service_role` en Production.
+grant execute on function public.set_stripe_secret_key(text) to service_role;
+grant execute on function public.stripe_configure_pour_mon_garage() to service_role;
 
 -- Vérification dans la transaction de la migration : si l'un des privilèges
 -- subsistait, ou si le search_path n'avait pas pris, la migration échoue au
@@ -109,8 +117,8 @@ begin
     if has_function_privilege('anon', v_oid, 'EXECUTE') then
       v_restants := v_restants || v_fn || ' encore ouverte a anon; ';
     end if;
-    if has_function_privilege('service_role', v_oid, 'EXECUTE') then
-      v_restants := v_restants || v_fn || ' encore ouverte a service_role; ';
+    if not has_function_privilege('service_role', v_oid, 'EXECUTE') then
+      v_restants := v_restants || v_fn || ' a perdu service_role, conserve volontairement; ';
     end if;
     if not has_function_privilege('authenticated', v_oid, 'EXECUTE') then
       v_restants := v_restants || v_fn || ' n''est plus appelable par authenticated; ';

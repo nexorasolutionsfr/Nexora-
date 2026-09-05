@@ -85,9 +85,12 @@ begin
     perform pg_temp.assert(
       not has_function_privilege('anon', v_fn::regprocedure, 'EXECUTE'),
       v_fn || ' ne doit plus être exécutable par anon');
+    -- service_role est conservé volontairement, en attendant l'audit n8n :
+    -- le banc vérifie qu'il n'a PAS été perdu au passage, la fermeture de
+    -- PUBLIC le lui aurait retiré en Production sans regrant explicite.
     perform pg_temp.assert(
-      not has_function_privilege('service_role', v_fn::regprocedure, 'EXECUTE'),
-      v_fn || ' ne doit plus être exécutable par service_role');
+      has_function_privilege('service_role', v_fn::regprocedure, 'EXECUTE'),
+      v_fn || ' doit conserver service_role');
     perform pg_temp.assert(
       has_function_privilege('authenticated', v_fn::regprocedure, 'EXECUTE'),
       v_fn || ' doit rester exécutable par authenticated');
