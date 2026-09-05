@@ -48,7 +48,7 @@ export const OFFRES: Offre[] = [
     pour: "Garage d'une à deux personnes",
     inclus: [
       "Agenda et prise de rendez-vous",
-      "Fiches clients et véhicules",
+      "Clients et véhicules",
       "Dossier véhicule et historique",
       "Devis détaillés, ligne par ligne",
       "Factures et suivi des règlements",
@@ -120,4 +120,131 @@ export function formaterEuros(montant: number): string {
     currency: "EUR",
     maximumFractionDigits: 0,
   }).format(montant);
+}
+
+// ---------------------------------------------------------------------------
+// Comparatif détaillé
+// ---------------------------------------------------------------------------
+//
+// Les trois cartes disent CE QU'ON A ; le comparatif dit CE QUE ÇA CHANGE. Un
+// garagiste ne choisit pas entre « ordres de réparation » et « tableau atelier »
+// — il choisit entre « je continue à répondre au téléphone toute la journée » et
+// « le client voit où en est sa voiture ». Chaque ligne porte donc une phrase
+// qui décrit la situation, pas la fonctionnalité.
+//
+// Même règle que pour `inclus` : rien ici qui ne soit livré en production.
+
+export type LigneComparatif = {
+  intitule: string;
+  /** Ce que ça change au quotidien, dans les mots du garage. */
+  effet: string;
+  essentiel: boolean;
+  atelier: boolean;
+  atelierPlus: boolean;
+};
+
+export type GroupeComparatif = { groupe: string; lignes: LigneComparatif[] };
+
+export const COMPARATIF: GroupeComparatif[] = [
+  {
+    groupe: "Tenir la boutique",
+    lignes: [
+      {
+        intitule: "Agenda et rendez-vous",
+        effet: "Vos créneaux au même endroit, plus de double réservation sur un carnet.",
+        essentiel: true, atelier: true, atelierPlus: true,
+      },
+      {
+        intitule: "Clients et véhicules",
+        effet: "L'immatriculation suffit pour retrouver qui c'est et ce qu'on lui a fait.",
+        essentiel: true, atelier: true, atelierPlus: true,
+      },
+      {
+        intitule: "Dossier véhicule et historique",
+        effet: "Tout ce qui a été fait sur la voiture, à montrer au client qui doute.",
+        essentiel: true, atelier: true, atelierPlus: true,
+      },
+      {
+        intitule: "Devis ligne par ligne",
+        effet: "Main-d'œuvre et pièces détaillées, avec les totaux calculés pour vous.",
+        essentiel: true, atelier: true, atelierPlus: true,
+      },
+      {
+        intitule: "Factures et règlements",
+        effet: "La facture reprend l'intervention terminée. Vous voyez ce qui reste à encaisser.",
+        essentiel: true, atelier: true, atelierPlus: true,
+      },
+      {
+        intitule: "Reprise de votre ancienne base",
+        effet: "Vous déposez l'export de votre ancien logiciel, on reconnaît les colonnes.",
+        essentiel: true, atelier: true, atelierPlus: true,
+      },
+    ],
+  },
+  {
+    groupe: "Le client voit, et décide",
+    lignes: [
+      {
+        intitule: "Contrôle véhicule avec photos",
+        effet: "Vous consignez l'état constaté en photos. Le client comprend au lieu de vous croire.",
+        essentiel: false, atelier: true, atelierPlus: true,
+      },
+      {
+        intitule: "Lien client sans compte à créer",
+        effet: "Il reçoit un lien, il ouvre, il répond. Rien à installer, aucun mot de passe.",
+        essentiel: false, atelier: true, atelierPlus: true,
+      },
+      {
+        intitule: "Tableau atelier en direct",
+        effet: "Où en est chaque voiture, d'un coup d'œil. « Vous en êtes où ? » trouve sa réponse.",
+        essentiel: false, atelier: true, atelierPlus: true,
+      },
+      {
+        intitule: "Ordres de réparation",
+        effet: "Le devis accepté devient l'ordre de travail, sans le retaper.",
+        essentiel: false, atelier: true, atelierPlus: true,
+      },
+      {
+        intitule: "Demandes entrantes centralisées",
+        effet: "Les demandes arrivent au même endroit, aucune ne se perd entre deux voitures.",
+        essentiel: false, atelier: true, atelierPlus: true,
+      },
+    ],
+  },
+  {
+    groupe: "Rattraper ce qui dort",
+    lignes: [
+      {
+        intitule: "Travaux à reprogrammer",
+        effet: "Le client a refusé les plaquettes en mars ? Vous le savez, et vous le rappelez.",
+        essentiel: false, atelier: false, atelierPlus: true,
+      },
+      {
+        intitule: "Opportunités détectées",
+        effet: "Devis sans réponse, véhicules jamais revenus : ce qui mérite un appel remonte tout seul.",
+        essentiel: false, atelier: false, atelierPlus: true,
+      },
+      {
+        intitule: "Statistiques d'activité",
+        effet: "Ce que vous facturez, ce qui traîne, d'où vient le travail.",
+        essentiel: false, atelier: false, atelierPlus: true,
+      },
+      {
+        intitule: "Notifications à vérifier",
+        effet: "Un message client qui n'est pas parti ne reste pas invisible.",
+        essentiel: false, atelier: false, atelierPlus: true,
+      },
+      {
+        intitule: "Assistance prioritaire",
+        effet: "Vous nous écrivez, on répond en priorité — pas dans la file commune.",
+        essentiel: false, atelier: false, atelierPlus: true,
+      },
+    ],
+  },
+];
+
+/** Les lignes du comparatif incluses dans une offre donnée. */
+export function lignesIncluses(cle: string): LigneComparatif[] {
+  const champ = cle === "essentiel" ? "essentiel" : cle === "atelier" ? "atelier" : "atelierPlus";
+  return COMPARATIF.flatMap((g) => g.lignes).filter((l) => l[champ]);
 }
