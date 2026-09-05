@@ -140,6 +140,10 @@ export default function ConfidentialitePage() {
                 <span className="text-foreground">Brevo</span> — envoi des e-mails liés à la
                 connexion (lien de connexion, réinitialisation).
               </li>
+              <li>
+                <span className="text-foreground">Resend</span> (États-Unis) — acheminement des
+                demandes de démonstration envoyées depuis le formulaire de ce site.
+              </li>
             </ul>
             <p className="text-base leading-relaxed text-muted-foreground">
               Lorsque des données sont hébergées hors de l&rsquo;Union européenne, le transfert
