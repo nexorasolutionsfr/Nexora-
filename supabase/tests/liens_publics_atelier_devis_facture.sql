@@ -219,9 +219,15 @@ values
 --    tout superutilisateur — comportement normal, pas une faille)
 -- =====================================================================
 
-insert into garages (id, owner_user_id, nom_garage) values
-  (pg_temp.fid('garage_a'), pg_temp.fid('user_a'), 'RECETTE SYNTHÉTIQUE — GARAGE A'),
-  (pg_temp.fid('garage_b'), pg_temp.fid('user_b'), 'RECETTE SYNTHÉTIQUE — GARAGE B');
+-- `abonnement_actif` vaut `false` par défaut depuis 20260909000300, et le
+-- verrou 20260909000900 fait alors renvoyer NULL à `current_garage_id()` :
+-- sans ces deux colonnes, les garages de ce banc sont « à l'accès échu » et
+-- les assertions échouent sur une cause étrangère à ce qu'elles éprouvent.
+-- Le garage B est ouvert lui aussi, sinon l'étanchéité entre garages
+-- passerait pour la mauvaise raison.
+insert into garages (id, owner_user_id, nom_garage, abonnement_actif, acces_motif) values
+  (pg_temp.fid('garage_a'), pg_temp.fid('user_a'), 'RECETTE SYNTHÉTIQUE — GARAGE A', true, 'abonnement'),
+  (pg_temp.fid('garage_b'), pg_temp.fid('user_b'), 'RECETTE SYNTHÉTIQUE — GARAGE B', true, 'abonnement');
 
 insert into clients (id, garage_id, nom) values
   (pg_temp.fid('client_a'), pg_temp.fid('garage_a'), 'RECETTE SYNTHÉTIQUE — CLIENT A'),
