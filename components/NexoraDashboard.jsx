@@ -4322,8 +4322,22 @@ function ParametresView({ garageId, garageData, onGarageChange, onSave, prestati
           <SettingsRow
             label="Boîte Gmail"
             right={
-              garageData.gmail_connecte ? (
-                <Badge tone="green">Connectée{garageData.gmail_adresse ? ` · ${garageData.gmail_adresse}` : ""}</Badge>
+              garageData.gmail_etat?.connectee && !garageData.gmail_etat?.en_panne ? (
+                <Badge tone="green">Connectée{garageData.gmail_etat?.adresse ? ` · ${garageData.gmail_etat.adresse}` : ""}</Badge>
+              ) : garageData.gmail_etat?.connectee ? (
+                /* Connectée mais plus rien ne remonte : on le dit, plutôt que
+                   de laisser croire au garage que ses demandes sont lues. */
+                <div className="text-right">
+                  <Badge tone="amber">Ne reçoit plus vos e-mails</Badge>
+                  <button
+                    type="button"
+                    onClick={onConnecterGmail}
+                    className="block ml-auto mt-1.5 text-[12px] font-semibold underline"
+                    style={{ color: ACCENT }}
+                  >
+                    Reconnecter ma boîte mail
+                  </button>
+                </div>
               ) : (
                 <button
                   type="button"
@@ -4758,6 +4772,14 @@ setLoading(false);
         return;
       }
       if (data) setGarageData((previous) => ({ ...previous, ...data }));
+
+      // `gmail_connecte` n'est qu'un drapeau posé au moment de l'autorisation
+      // et jamais remis à jour : il affichait « Connectée » sur des boîtes
+      // dont le relevé était arrêté depuis dix jours. On demande l'état réel,
+      // qui ne renvoie aucun jeton — voir 20260912000100.
+      const { data: etat } = await supabase.rpc("etat_connexion_email", { p_garage_id: garageId });
+      const ligne = Array.isArray(etat) ? etat[0] : etat;
+      if (ligne) setGarageData((previous) => ({ ...previous, gmail_etat: ligne }));
     }
     loadGarage();
   }, []);
