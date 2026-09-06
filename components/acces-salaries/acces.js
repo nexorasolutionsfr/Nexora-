@@ -44,6 +44,31 @@ export async function inviterMembre(supabase, { garageId, userId, role, mecanici
   return data;
 }
 
+// Rattachement par adresse e-mail. `inviter_membre_garage` prend un UUID que
+// personne ne connaît hors console Supabase ; la fonction appelée ici le
+// résout côté base, pour le dirigeant du garage uniquement. Elle ne crée
+// aucun compte et n'envoie aucun e-mail : le salarié crée le sien.
+export async function inviterMembreParEmail(supabase, { garageId, email, role, mecanicienId = null }) {
+  if (!estRoleConnu(role)) {
+    throw new Error("Rôle inconnu");
+  }
+  if (role === ROLE_MECANICIEN && !mecanicienId) {
+    throw new Error("Une fiche mécanicien est obligatoire pour ce rôle");
+  }
+  const adresse = (email ?? "").trim();
+  if (!adresse) {
+    throw new Error("Adresse e-mail manquante");
+  }
+  const { data, error } = await supabase.rpc("inviter_membre_par_email", {
+    p_garage_id: garageId,
+    p_email: adresse,
+    p_role: role,
+    p_mecanicien_id: role === ROLE_MECANICIEN ? mecanicienId : null,
+  });
+  if (error) throw error;
+  return data;
+}
+
 export async function changerRoleMembre(supabase, { membreId, role, mecanicienId = null }) {
   if (!estRoleConnu(role)) {
     throw new Error("Rôle inconnu");

@@ -3,7 +3,7 @@
 import DevisLignesEditor from "./devis-lignes/DevisLignesEditor";
 import { calculerLigne, calculerTotaux, devisALignes } from "./devis-lignes/calculs";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import QRCode from "qrcode";
 import InspectionsSection from "./inspections/InspectionsSection";
 import OrdresReparationSection from "./ordre-reparation/OrdresReparationSection";
@@ -21,6 +21,13 @@ import ConnexionShell from "./connexion/ConnexionShell";
 import { offre } from "@/lib/tarifs";
 import VehicleCaseFileView from "./vehicle-case-file/VehicleCaseFileView";
 import OnboardingGarage from "./onboarding/OnboardingGarage";
+import MembresSection from "./acces-salaries/MembresSection";
+import {
+  ROLE_DIRIGEANT,
+  ROLE_MECANICIEN,
+  peutGererLesAcces,
+  vuesAutorisees,
+} from "./acces-salaries/accesConstants";
 import ImportClients from "./import/ImportClients";
 import { ErreurFacturX, genererXml } from "@/lib/facturx/genererXml";
 import {
@@ -278,6 +285,35 @@ const navGroups = [
   },
 ];
 const navItems = navGroups.flatMap((g) => g.items);
+
+// Les clés de la barre latérale et celles de la carte des rôles
+// (`accesConstants`) ont été écrites séparément et ne coïncident pas. Plutôt
+// que de renommer l'une des deux — la première est lue par tout le tableau
+// de bord, la seconde par la base — on écrit la correspondance une fois ici.
+// Une vue absente de cette table n'est ouverte qu'au dirigeant.
+const NAV_VERS_VUE_ROLE = {
+  aujourdhui: "accueil",
+  agenda: "agenda",
+  atelier: "atelier",
+  "ordres-reparation": "ordres_reparation",
+  inspections: "inspections",
+  demandes: "demandes",
+  clients: "clients",
+};
+
+// La barre latérale telle que ce rôle peut réellement s'en servir. On ne
+// masque pas pour protéger — la base refuse déjà tout ce qui n'est pas dû —
+// mais pour ne pas offrir des écrans qui reviendraient vides.
+function navGroupesPourRole(role) {
+  const autorisees = vuesAutorisees(role);
+  if (autorisees === null) return navGroups;
+  return navGroups
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((item) => autorisees.includes(NAV_VERS_VUE_ROLE[item.key])),
+    }))
+    .filter((g) => g.items.length > 0);
+}
 
 const joursSemaine = [
   "lundi",
@@ -4101,6 +4137,7 @@ function SettingsRow({ label, value, right }) {
 
 const PARAMETRES_ONGLETS = [
   ["garage", "Mon garage"],
+  ["acces", "Accès de l'équipe"],
   ["import", "Reprise de données"],
   ["notifications", "Notifications"],
   ["integrations", "Intégrations"],
@@ -4131,7 +4168,7 @@ const THEMES_DASHBOARD = [
   { key: "automatique", label: "Automatique", description: "S'adapte aux réglages de l'appareil." },
 ];
 
-function ParametresView({ garageId, garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, ongletInitial = "garage", onGererAbonnement, onConnecterGmail }) {
+function ParametresView({ garageId, garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, ongletInitial = "garage", onGererAbonnement, onConnecterGmail, onImportTermine, monRole = ROLE_DIRIGEANT }) {
   // Ouvert sur l'onglet demandé par l'appelant : la liste de mise en route
   // envoie vers « Reprise de données » sans faire chercher le bon onglet.
   const [onglet, setOnglet] = useState(ongletInitial);
@@ -4170,7 +4207,7 @@ function ParametresView({ garageId, garageData, onGarageChange, onSave, prestati
     <div className="flex items-center justify-between flex-wrap gap-3"><div><div className="text-lg font-semibold text-slate-900">Paramètres du garage</div><div className="text-[13px] text-slate-500">Vos changements alimentent directement le dashboard et les automatisations.</div></div><button onClick={onSave} disabled={saving} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: ACCENT }}><Save size={15} />{saving ? "Enregistrement…" : "Enregistrer"}</button></div>
 
     <div className="flex flex-wrap gap-1.5 bg-slate-100 rounded-[10px] p-[3px] w-fit">
-      {PARAMETRES_ONGLETS.map(([key, label]) => (
+      {PARAMETRES_ONGLETS.filter(([key]) => key !== "acces" || peutGererLesAcces(monRole)).map(([key, label]) => (
         <button key={key} type="button" onClick={() => setOnglet(key)} className="flex items-center gap-1.5 text-[13px] font-medium px-3.5 py-1.5 rounded-lg" style={onglet === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>
           {label}
         </button>
@@ -4243,9 +4280,14 @@ function ParametresView({ garageId, garageData, onGarageChange, onSave, prestati
       </div>
     )}
 
+    {onglet === "acces" && peutGererLesAcces(monRole) && (
+      <div className="max-w-3xl">
+        <MembresSection garageId={garageId} monRole={monRole} mecaniciens={mecaniciens} />
+      </div>
+    )}
     {onglet === "import" && (
       <div className="rounded-2xl border border-slate-200 bg-white p-5">
-        <ImportClients garageId={garageId} />
+        <ImportClients garageId={garageId} onTermine={onImportTermine} />
       </div>
     )}
 
@@ -4549,7 +4591,8 @@ function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting,
 // =====================================================================================
 // APP SHELL
 // =====================================================================================
-function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = null }) {
+function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = null, monRole = ROLE_DIRIGEANT }) {
+  const navGroupesVisibles = useMemo(() => navGroupesPourRole(monRole), [monRole]);
   const [view, setView] = useState("aujourdhui");
   // Onglet des Paramètres à ouvrir quand on y arrive depuis un raccourci.
   // Réinitialisé à « garage » dès qu'on navigue ailleurs, sinon un retour
@@ -4684,6 +4727,10 @@ function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = nul
   const [focusOrdreRendezVousId, setFocusOrdreRendezVousId] = useState(null);
   const [focusOrdreDevisId, setFocusOrdreDevisId] = useState(null);
   const [focusOrdreVehicule, setFocusOrdreVehicule] = useState(null); // { id, label } | null
+  // Incrémenté après une reprise de données : sans lui, le garage vient
+  // d'importer sa base et trouve un écran « Aucun client » tant qu'il n'a pas
+  // rechargé la page lui-même. Observé en recette le 2026-09-06.
+  const [rechargementClients, setRechargementClients] = useState(0);
 
   useEffect(() => {
     async function loadPreparedDemandeIds() {
@@ -4799,7 +4846,7 @@ setLoading(false);
       setClients(data || []);
     }
     loadClients();
-  }, []);
+  }, [rechargementClients]);
 
 
 useEffect(() => {
@@ -6337,7 +6384,7 @@ if (updateError) {
       <aside className="w-60 shrink-0 py-5 px-3.5 hidden md:flex flex-col" style={{ backgroundColor: NAVY }}>
         <Logo dark />
         <nav className="mt-8 flex flex-col gap-4">
-          {navGroups.map((group) => (
+          {navGroupesVisibles.map((group) => (
             <div key={group.label || "main"}>
               {group.label && <div className="px-3 mb-1 text-[10.5px] font-semibold tracking-wide uppercase" style={{ color: "#5C6B92" }}>{group.label}</div>}
               <div className="flex flex-col gap-1">
@@ -6423,7 +6470,7 @@ if (updateError) {
                 </button>
               </div>
               <nav className="mt-8 flex flex-col gap-4">
-                {navGroups.map((group) => (
+                {navGroupesVisibles.map((group) => (
                   <div key={group.label || "main"}>
                     {group.label && <div className="px-3 mb-1 text-[10.5px] font-semibold tracking-wide uppercase" style={{ color: "#5C6B92" }}>{group.label}</div>}
                     <div className="flex flex-col gap-1">
@@ -6536,7 +6583,7 @@ if (updateError) {
               onCountChange={setNotifsAVerifierCount}
             />
           )}
-          {view === "parametres" && <ParametresView onGererAbonnement={ouvrirPortailAbonnement} onConnecterGmail={connecterBoiteGmail} ongletInitial={parametresOnglet} key={parametresOnglet} garageId={garageId} garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} />}
+          {view === "parametres" && <ParametresView monRole={monRole} onImportTermine={() => setRechargementClients((n) => n + 1)} onGererAbonnement={ouvrirPortailAbonnement} onConnecterGmail={connecterBoiteGmail} ongletInitial={parametresOnglet} key={parametresOnglet} garageId={garageId} garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} />}
         </div>
       </main>
 
@@ -6737,6 +6784,28 @@ const ACCES_LIBELLE = {
 
 function libelleAcces(motif) {
   return ACCES_LIBELLE[motif] || ACCES_LIBELLE.essai;
+}
+
+function RoleSansEcranScreen() {
+  return (
+    <ConnexionShell
+      titre="Votre espace mécanicien arrive"
+      sousTitre="Votre accès est bien enregistré. L'écran atelier qui vous est destiné n'est pas encore ouvert."
+    >
+      <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.55, margin: 0 }}>
+        En attendant, demandez à votre dirigeant de vous passer en accès
+        « Accueil » si vous devez saisir des rendez-vous ou des clients.
+      </p>
+      <button
+        type="button"
+        onClick={() => supabase.auth.signOut()}
+        className="nx-bouton"
+        style={{ marginTop: 20 }}
+      >
+        Se déconnecter
+      </button>
+    </ConnexionShell>
+  );
 }
 
 function AccesTermineScreen({ motif, fin }) {
@@ -6962,6 +7031,10 @@ export default function NexoraDashboard() {
   // designait un garage reel, et n'attendait qu'un rendu premature pour
   // devenir une fuite entre clients.
   const [garageId, setGarageId] = useState(null);
+  // Le rôle de l'appelant sur ce garage. `dirigeant` par défaut : c'est le
+  // cas du propriétaire, et c'est le seul rôle qui existait avant l'entrée
+  // des salariés.
+  const [monRole, setMonRole] = useState(ROLE_DIRIGEANT);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -6972,6 +7045,7 @@ export default function NexoraDashboard() {
       setGarageError("");
       setBesoinOnboarding(false);
       setAcces(null);
+      setMonRole(ROLE_DIRIGEANT);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -6995,10 +7069,15 @@ export default function NexoraDashboard() {
           return;
         }
         if (!data) {
-          setBesoinOnboarding(true);
+          // Aucun garage possédé ne veut pas encore dire compte neuf : un
+          // salarié n'est propriétaire de rien. Avant de lui proposer de
+          // créer un garage — ce qui en créait un second, observé en
+          // recette le 2026-09-06 — on regarde s'il en a rejoint un.
+          resoudreParAdhesion();
           return;
         }
         setGarageId(data.id);
+        setMonRole(ROLE_DIRIGEANT);
         setAcces({
           motif: data.acces_motif,
           fin: data.acces_fin,
@@ -7009,6 +7088,53 @@ export default function NexoraDashboard() {
         });
         setGarageReady(true);
       });
+
+    async function resoudreParAdhesion() {
+      const { data: adhesions, error: erreurAdhesions } = await supabase.rpc("mes_adhesions");
+      if (cancelled) return;
+      if (erreurAdhesions) {
+        // PGRST202 = la fonction n'existe pas sur cet environnement, faute
+        // d'y avoir appliqué 20260913000100. Dans ce cas seulement, on
+        // retombe sur l'ancien comportement : un compte neuf doit pouvoir
+        // créer son garage même si la base n'a pas encore reçu la
+        // migration. Toute autre erreur est une panne, pas une absence.
+        if (erreurAdhesions.code === "PGRST202") {
+          setBesoinOnboarding(true);
+          return;
+        }
+        setGarageError("Impossible de charger votre garage. Reessayez dans un instant.");
+        return;
+      }
+      const adhesion = (adhesions || [])[0];
+      if (!adhesion) {
+        setBesoinOnboarding(true);
+        return;
+      }
+      const { data: garage, error: erreurGarage } = await supabase
+        .from("garages")
+        .select("id, acces_motif, acces_fin, abonnement_actif, abonnement_statut, forfait, abonnement_prochaine_facture")
+        .eq("id", adhesion.garage_id)
+        .maybeSingle();
+      if (cancelled) return;
+      // La ligne est lisible depuis la migration 20260913000100. Si elle ne
+      // l'est pas, c'est que cet environnement ne l'a pas reçue : le dire,
+      // plutôt que de renvoyer le salarié créer un garage de plus.
+      if (erreurGarage || !garage) {
+        setGarageError("Votre compte est rattache a un garage, mais son espace n'a pas pu etre ouvert. Prevenez le dirigeant du garage.");
+        return;
+      }
+      setGarageId(garage.id);
+      setMonRole(adhesion.role);
+      setAcces({
+        motif: garage.acces_motif,
+        fin: garage.acces_fin,
+        abonnementActif: garage.abonnement_actif,
+        statut: garage.abonnement_statut,
+        forfait: garage.forfait,
+        prochaineFacture: garage.abonnement_prochaine_facture,
+      });
+      setGarageReady(true);
+    }
     return () => {
       cancelled = true;
     };
@@ -7071,5 +7197,14 @@ export default function NexoraDashboard() {
     return <AccesTermineScreen motif={acces.motif} fin={acces.fin} />;
   }
 
-  return <NexoraDashboardInner garageId={garageId} acces={acces} joursEssaiRestants={joursRestants(acces)} />;
+  // Le rôle « mécanicien » existe en base — périmètre, RPC d'atelier et
+  // révocation sont éprouvés — mais aucun écran ne s'en sert encore. Le
+  // laisser entrer dans le tableau de bord complet lui donnerait une barre
+  // latérale vide et des listes refusées par la base. Lui dire est plus
+  // honnête que le laisser chercher.
+  if (monRole === ROLE_MECANICIEN) {
+    return <RoleSansEcranScreen />;
+  }
+
+  return <NexoraDashboardInner garageId={garageId} acces={acces} joursEssaiRestants={joursRestants(acces)} monRole={monRole} />;
 }
