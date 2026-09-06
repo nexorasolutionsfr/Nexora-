@@ -4813,7 +4813,26 @@ setLoading(false);
 
   useEffect(() => {
     async function loadGarage() {
-      const { data, error } = await supabase.from("garages").select("*").eq("id", garageId).maybeSingle();
+      // Le propriétaire lit sa ligne ; un salarié ne la lit plus depuis
+      // 20260913000300, et passe par la projection opérationnelle. Sans ce
+      // détour il resterait devant le nom et les horaires de démonstration
+      // codés en dur — observé en recette le 2026-09-06.
+      const proprietaire = monRole === ROLE_DIRIGEANT;
+      let data = null;
+      let error = null;
+      if (proprietaire) {
+        ({ data, error } = await supabase.from("garages").select("*").eq("id", garageId).maybeSingle());
+      } else {
+        const reponse = await supabase.rpc("mon_garage_operationnel", { p_garage_id: garageId });
+        error = reponse.error;
+        data = Array.isArray(reponse.data) ? reponse.data[0] : reponse.data;
+        // Environnement resté sans 20260913000400 : la table répondra vide
+        // pour un salarié, mais au moins on n'affiche pas une erreur pour une
+        // fonction absente.
+        if (error?.code === "PGRST202") {
+          ({ data, error } = await supabase.from("garages").select("*").eq("id", garageId).maybeSingle());
+        }
+      }
       if (error) {
         console.error("Erreur chargement garage :", error);
         flashToast("Impossible de charger les informations du garage", "error");

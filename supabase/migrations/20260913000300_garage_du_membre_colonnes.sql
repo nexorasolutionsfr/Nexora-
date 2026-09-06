@@ -28,7 +28,14 @@
 
 drop policy if exists garages_membre_select on public.garages;
 
-create or replace function public.mes_adhesions()
+-- `create or replace` refuse d'élargir le type de retour d'une fonction table
+-- (SQLSTATE 42P13, rencontré à l'application du 2026-09-13). La fonction est
+-- donc supprimée puis recréée. C'est sans risque ici : aucune policy, aucune
+-- vue et aucune autre fonction ne la référence — elle n'est appelée que par
+-- l'application, et ses droits sont reposés plus bas dans ce même fichier.
+drop function if exists public.mes_adhesions();
+
+create function public.mes_adhesions()
 returns table (
   garage_id uuid,
   nom_garage text,
