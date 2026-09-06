@@ -62,9 +62,12 @@ from (values
   (pg_temp.fid('user_prop_b'))
 ) as v(id);
 
-insert into garages (id, owner_user_id, nom_garage) values
-  (pg_temp.fid('garage_a'), pg_temp.fid('user_prop_a'), 'RECETTE IMPORT V1 — GARAGE A'),
-  (pg_temp.fid('garage_b'), pg_temp.fid('user_prop_b'), 'RECETTE IMPORT V1 — GARAGE B');
+-- Accès posé explicitement : `abonnement_actif` vaut `false` par défaut
+-- depuis 20260909000300, et le verrou 20260909000900 refuse alors tout. Voir
+-- la note plus détaillée dans supabase/tests/acces_salaries_v1.sql.
+insert into garages (id, owner_user_id, nom_garage, abonnement_actif, acces_motif) values
+  (pg_temp.fid('garage_a'), pg_temp.fid('user_prop_a'), 'RECETTE IMPORT V1 — GARAGE A', true, 'abonnement'),
+  (pg_temp.fid('garage_b'), pg_temp.fid('user_prop_b'), 'RECETTE IMPORT V1 — GARAGE B', true, 'abonnement');
 
 insert into mecaniciens (id, garage_id, nom) values
   (pg_temp.fid('mecanicien_a'), pg_temp.fid('garage_a'), 'RECETTE IMPORT V1 — MECA A');

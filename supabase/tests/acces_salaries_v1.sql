@@ -100,9 +100,16 @@ from (values
 -- 2. Fixtures métier (rôle opérateur : contourne RLS, comportement normal)
 -- =====================================================================
 
-insert into garages (id, owner_user_id, nom_garage, objectif_ca_mensuel) values
-  (pg_temp.fid('garage_a'), pg_temp.fid('user_prop_a'), 'RECETTE ACCES V1 — GARAGE A', 12345),
-  (pg_temp.fid('garage_b'), pg_temp.fid('user_prop_b'), 'RECETTE ACCES V1 — GARAGE B', 999);
+-- `abonnement_actif` vaut `false` par défaut depuis 20260909000300. Sans le
+-- poser ici, les deux garages seraient à l'accès échu et le verrou
+-- 20260909000900 ferait renvoyer NULL à `current_garage_id()` : ce banc
+-- échouerait sur des assertions qui ne parlent pas d'accès. Le garage B est
+-- ouvert lui aussi, sinon l'étanchéité entre garages passerait pour la
+-- mauvaise raison — refusé parce qu'échu, et non parce qu'il appartient à
+-- quelqu'un d'autre.
+insert into garages (id, owner_user_id, nom_garage, objectif_ca_mensuel, abonnement_actif, acces_motif) values
+  (pg_temp.fid('garage_a'), pg_temp.fid('user_prop_a'), 'RECETTE ACCES V1 — GARAGE A', 12345, true, 'abonnement'),
+  (pg_temp.fid('garage_b'), pg_temp.fid('user_prop_b'), 'RECETTE ACCES V1 — GARAGE B', 999, true, 'abonnement');
 
 insert into clients (id, garage_id, nom, email, telephone) values
   (pg_temp.fid('client_a'), pg_temp.fid('garage_a'), 'RECETTE ACCES V1 — CLIENT A',
