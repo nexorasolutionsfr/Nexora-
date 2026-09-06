@@ -242,6 +242,15 @@ export function Tarifs() {
           ))}
         </div>
 
+        {/* Les cartes annoncent un effectif (« trois à cinq personnes ») sans
+            dire qui compte. L'ambiguïté déplace la frontière entre deux
+            tarifs : elle se lève ici, une fois, plutôt que sur chaque carte. */}
+        <p className="mx-auto mt-6 max-w-2xl text-center text-xs text-muted-foreground">
+          L&apos;effectif correspond aux personnes qui travaillent dans le garage, dirigeant
+          compris s&apos;il y exerce son activité. Il ne correspond pas au nombre de comptes
+          créés dans Nexora.
+        </p>
+
         {erreur && (
           <p className="mt-6 text-center text-sm text-muted-foreground">
             {erreur}{" "}
@@ -342,12 +351,22 @@ export function Tarifs() {
 
         <div className="mt-10 rounded-2xl border border-border bg-secondary/40 p-6 sm:p-8">
           <h3 className="font-display text-lg font-semibold">Vous êtes parmi les dix premiers ?</h3>
+          {/* « Tarif bloqué à vie » engageait sans limite : ni continuité
+              d'abonnement, ni périmètre de forfait. Un garage passé d'une
+              tranche à l'autre pouvait s'en prévaloir indéfiniment. La
+              promesse dit désormais ce qu'elle couvre, et ce qui la suspend. */}
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Les dix premiers garages qui rejoignent Nexora bénéficient d&apos;{" "}
-            <span className="font-medium text-foreground">un mois offert</span> et de leur{" "}
-            <span className="font-medium text-foreground">tarif bloqué à vie</span>, quelles que
-            soient les hausses futures. En échange, on vous demande vos retours — ils orientent
-            réellement ce qu&apos;on construit ensuite.
+            Pour les dix premiers garages pilotes, le premier mois est offert en échange de
+            retours d&apos;utilisation. Cette offre remplace l&apos;essai standard de{" "}
+            {JOURS_ESSAI} jours ; les deux périodes ne se cumulent pas.
+          </p>
+          <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">
+              Tarif fondateur maintenu pour le forfait souscrit, tant que votre abonnement reste
+              actif sans interruption.
+            </span>{" "}
+            En cas de changement de forfait, le nouveau tarif vous est communiqué et soumis à
+            votre accord avant le changement.
           </p>
           <Button
             render={<a href="#contact" />}
