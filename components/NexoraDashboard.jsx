@@ -213,16 +213,22 @@ const SOURCE_META = {
 // =====================================================================================
 
 // Table: garages
+// L'état de départ, le temps que la vraie ligne arrive. Il portait un garage
+// de démonstration — nom « Garage Demo Nexora », adresse « Saint-Dizier »,
+// Gmail annoncé connecté. Tant que la lecture aboutissait, personne ne le
+// voyait ; le jour où elle a cessé d'aboutir pour un salarié (20260913000300),
+// l'écran a affiché ces valeurs comme si elles étaient les siennes. Un repli
+// qui ment est pire qu'un repli vide : celui-ci ne prétend rien.
 const garage = {
-  id: "garage_1",
-  nom_garage: "Garage Demo Nexora",
-  adresse: "Saint-Dizier",
-  horaire_ouverture: "08:00",
-  horaire_fermeture: "18:00",
-  ouvert_aujourdhui: true,
-  gmail_connecte: true,
+  id: null,
+  nom_garage: "",
+  adresse: "",
+  horaire_ouverture: "",
+  horaire_fermeture: "",
+  ouvert_aujourdhui: false,
+  gmail_connecte: false,
   google_agenda_connecte: false,
-  notifications_email: true,
+  notifications_email: false,
   notifications_sms: false,
 };
 
@@ -4838,7 +4844,21 @@ setLoading(false);
         flashToast("Impossible de charger les informations du garage", "error");
         return;
       }
-      if (data) setGarageData((previous) => ({ ...previous, ...data }));
+      // Zéro ligne n'est pas « rien à mettre à jour » : c'est un accès refusé
+      // ou échu, et l'écran doit le dire au lieu de rester sur son état de
+      // départ. Le repli ne ment plus, mais un écran vide sans explication
+      // enverrait chercher la panne au mauvais endroit.
+      if (!data) {
+        console.error("Garage illisible pour ce compte :", garageId);
+        flashToast(
+          proprietaire
+            ? "Impossible de charger les informations du garage"
+            : "Vos réglages de garage ne sont plus accessibles. Prévenez le dirigeant.",
+          "error",
+        );
+        return;
+      }
+      setGarageData((previous) => ({ ...previous, ...data }));
 
       // `gmail_connecte` n'est qu'un drapeau posé au moment de l'autorisation
       // et jamais remis à jour : il affichait « Connectée » sur des boîtes
