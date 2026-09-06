@@ -192,8 +192,14 @@ begin
   perform pg_temp.assert(v_normalisee = '',
     'current_garage_id() doit avoir un search_path fixe et vide, recu : ' || v_entree);
 
-  perform pg_temp.assert(v_definition ilike '%public.garages%',
-    'current_garage_id() doit referencer explicitement public.garages');
+  -- Le verrou d'accès (20260909000900) a déplacé la lecture de `garages`
+  -- dans `mes_garages_ouverts()`, qui porte le contrôle d'accès. Ce qui est
+  -- éprouvé ici ne change pas — avec un search_path vide, toute référence
+  -- doit être qualifiée par son schéma — mais la référence attendue a suivi
+  -- la définition. Continuer d'exiger `public.garages` reviendrait à exiger
+  -- que le contrôle d'accès soit contourné.
+  perform pg_temp.assert(v_definition ilike '%public.mes_garages_ouverts%',
+    'current_garage_id() doit passer par public.mes_garages_ouverts()');
   perform pg_temp.assert(v_definition not ilike '%from garages %' and v_definition not ilike '%from garages)%' and v_definition not ilike '%from garages'||chr(10)||'%',
     'current_garage_id() ne doit plus referencer garages sans le qualifier par son schema');
 end;
@@ -226,9 +232,15 @@ values
 --    "RECETTE OR V1".
 -- =====================================================================
 
-insert into garages (id, owner_user_id, nom_garage) values
-  (pg_temp.fid('garage_a'), pg_temp.fid('user_a'), 'RECETTE OR V1 — GARAGE A'),
-  (pg_temp.fid('garage_b'), pg_temp.fid('user_b'), 'RECETTE OR V1 — GARAGE B');
+-- `abonnement_actif` vaut `false` par défaut depuis 20260909000300, et le
+-- verrou 20260909000900 fait alors renvoyer NULL à `current_garage_id()` :
+-- sans ces deux colonnes, les garages de ce banc sont « à l'accès échu » et
+-- les assertions échouent sur une cause étrangère à ce qu'elles éprouvent.
+-- Le garage B est ouvert lui aussi, sinon l'étanchéité entre garages
+-- passerait pour la mauvaise raison.
+insert into garages (id, owner_user_id, nom_garage, abonnement_actif, acces_motif) values
+  (pg_temp.fid('garage_a'), pg_temp.fid('user_a'), 'RECETTE OR V1 — GARAGE A', true, 'abonnement'),
+  (pg_temp.fid('garage_b'), pg_temp.fid('user_b'), 'RECETTE OR V1 — GARAGE B', true, 'abonnement');
 
 insert into clients (id, garage_id, nom) values
   (pg_temp.fid('client_a'), pg_temp.fid('garage_a'), 'RECETTE OR V1 — CLIENT A'),
@@ -711,10 +723,10 @@ select pg_temp.assert(not has_function_privilege('authenticated', 'public.ordres
 select pg_temp.assert(not has_function_privilege('service_role', 'public.ordres_reparation_log_historique()', 'EXECUTE'), 'service_role ne doit pas avoir EXECUTE sur ordres_reparation_log_historique');
 
 -- =====================================================================
--- 14. Annulation d'un OR après que le devis rattaché a changé de statut
---     APRÈS la création : doit réussir, conserver lignes et historique,
---     et écrire l'événement 'annulation' — jamais revalider un devis dont
---     le lien (devis_id) n'a pas changé.
+-- 14. Un devis accepté et rattaché à un OR est verrouillé ; l'annulation de
+--     l'OR réussit néanmoins, conserve lignes et historique, et écrit
+--     l'événement 'annulation' — sans jamais revalider un devis dont le
+--     lien (devis_id) n'a pas changé.
 -- =====================================================================
 
 select set_config('request.jwt.claims', json_build_object('sub', pg_temp.fid('user_a')::text, 'role', 'authenticated')::text, true);
@@ -726,13 +738,28 @@ values (pg_temp.fid('or_a2'), pg_temp.fid('garage_a'), pg_temp.fid('rdv_a2'), pg
 insert into ordres_reparation_lignes (id, ordre_reparation_id, garage_id, type, libelle, quantite, duree_minutes)
 values (pg_temp.fid('ligne_a2'), pg_temp.fid('or_a2'), pg_temp.fid('garage_a'), 'main_oeuvre', 'RECETTE OR V1 — Controle', 1, 20);
 
--- Le devis change de statut APRÈS la création de l'OR (dérive), sans
--- toucher à or_a2.devis_id : autorisé côté ACL (authenticated a UPDATE sur
--- devis) et côté RLS (devis_a_accepte2 appartient à garage_a).
-update devis set statut = 'refuse' where id = pg_temp.fid('devis_a_accepte2');
+-- Cette section faisait dériver le devis de `accepte` vers `refuse` après la
+-- création de l'OR. Le lot d'immuabilité des devis a depuis verrouillé un
+-- devis accepté : la dérive n'est plus atteignable, et le scénario qu'elle
+-- servait à construire ne peut plus se produire en base.
+--
+-- Plutôt que de retirer la section, on éprouve ici la règle qui l'a rendue
+-- impossible — un devis accepté et rattaché à un OR est protégé — puis on
+-- rejoue l'annulation, dont les assertions ne dépendaient pas de la dérive.
+do $$
+begin
+  update public.devis set statut = 'refuse' where id = pg_temp.fid('devis_a_accepte2');
+  perform pg_temp.assert(false,
+    'un devis accepte ne devrait plus pouvoir changer de statut');
+exception when others then
+  perform pg_temp.assert(sqlerrm ilike '%verrouille%',
+    'exception inattendue pour la modification d''un devis accepte : ' || sqlerrm);
+end;
+$$;
+
 select pg_temp.assert(
-  (select statut from public.devis where id = pg_temp.fid('devis_a_accepte2')) = 'refuse',
-  'le devis rattache doit reellement avoir change de statut avant le test d''annulation'
+  (select statut from public.devis where id = pg_temp.fid('devis_a_accepte2')) = 'accepte',
+  'le devis rattache doit etre reste accepte : le verrou a tenu'
 );
 
 update ordres_reparation set statut = 'annule' where id = pg_temp.fid('or_a2');
