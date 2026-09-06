@@ -69,7 +69,7 @@ export const OFFRES: Offre[] = [
       "Lien client sans compte à créer",
       "Tableau atelier en direct",
       "Ordres de réparation",
-      "Demandes entrantes centralisées",
+      "Suivi centralisé des demandes saisies dans Nexora",
     ],
   },
   {
@@ -205,8 +205,8 @@ export const COMPARATIF: GroupeComparatif[] = [
         essentiel: false, atelier: true, atelierPlus: true,
       },
       {
-        intitule: "Demandes entrantes centralisées",
-        effet: "Les demandes arrivent au même endroit, aucune ne se perd entre deux voitures.",
+        intitule: "Suivi centralisé des demandes saisies dans Nexora",
+        effet: "Les demandes saisies dans Nexora sont suivies au même endroit, aucune ne se perd entre deux voitures.",
         essentiel: false, atelier: true, atelierPlus: true,
       },
     ],
