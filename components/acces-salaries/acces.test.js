@@ -27,6 +27,7 @@ import {
   changerRoleMembre,
   chargerMonRole,
   inviterMembre,
+  inviterMembreParEmail,
 } from "./acces.js";
 
 function supabaseFactice(reponses = {}) {
@@ -149,4 +150,42 @@ test("une erreur de la base est remontée telle quelle", async () => {
     mon_role_garage: { data: null, error: new Error("Accès refusé") },
   });
   await assert.rejects(() => chargerMonRole(client, "g-1"), /Accès refusé/);
+});
+
+test("inviterMembreParEmail applique les mêmes garde-fous, sans appel inutile", async () => {
+  const client = supabaseFactice();
+  await assert.rejects(
+    () => inviterMembreParEmail(client, { garageId: "g", email: "a@b.fr", role: "patron" }),
+    /Rôle inconnu/
+  );
+  await assert.rejects(
+    () => inviterMembreParEmail(client, { garageId: "g", email: "a@b.fr", role: ROLE_MECANICIEN }),
+    /fiche mécanicien/
+  );
+  await assert.rejects(
+    () => inviterMembreParEmail(client, { garageId: "g", email: "   ", role: ROLE_ACCUEIL }),
+    /Adresse e-mail manquante/
+  );
+  assert.equal(client.appels.length, 0, "aucun appel réseau tant qu'une règle locale échoue");
+});
+
+test("inviterMembreParEmail envoie l'adresse nettoyée et la fiche du bon rôle", async () => {
+  const client = supabaseFactice({ inviter_membre_par_email: { data: "m-9", error: null } });
+  await inviterMembreParEmail(client, {
+    garageId: "g",
+    email: "  chef@garage.fr  ",
+    role: ROLE_ACCUEIL,
+    mecanicienId: "meca-1",
+  });
+  assert.equal(client.appels[0].nom, "inviter_membre_par_email");
+  assert.equal(client.appels[0].args.p_email, "chef@garage.fr");
+  assert.equal(client.appels[0].args.p_mecanicien_id, null);
+
+  await inviterMembreParEmail(client, {
+    garageId: "g",
+    email: "meca@garage.fr",
+    role: ROLE_MECANICIEN,
+    mecanicienId: "meca-1",
+  });
+  assert.equal(client.appels[1].args.p_mecanicien_id, "meca-1");
 });

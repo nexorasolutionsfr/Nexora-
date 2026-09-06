@@ -24,7 +24,7 @@ import {
 } from "./accesConstants";
 import {
   changerRoleMembre,
-  inviterMembre,
+  inviterMembreParEmail,
   listerMembres,
   revoquerMembre,
 } from "./acces";
@@ -46,12 +46,23 @@ function Badge({ children, tone = "slate" }) {
   );
 }
 
+// Un message brut de PostgREST — « Could not find the function … in the
+// schema cache » — envoie le garage chercher une faute de sa part alors que
+// c'est l'environnement qui n'a pas reçu la migration. Chaque cause connue a
+// donc sa phrase, et le repli ne prétend rien savoir.
+function messageErreur(e) {
+  if (e?.code === "PGRST202") {
+    return "Le rattachement par adresse n'est pas encore activé sur votre espace. Écrivez-nous, on s'en occupe.";
+  }
+  return e?.message || "Rattachement impossible";
+}
+
 export default function MembresSection({ garageId, monRole, mecaniciens = [] }) {
   const [membres, setMembres] = useState([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
   const [formOuvert, setFormOuvert] = useState(false);
-  const [userId, setUserId] = useState("");
+  const [emailMembre, setEmailMembre] = useState("");
   const [role, setRole] = useState(ROLE_ACCUEIL);
   const [mecanicienId, setMecanicienId] = useState("");
   const [enCours, setEnCours] = useState(false);
@@ -82,19 +93,19 @@ export default function MembresSection({ garageId, monRole, mecaniciens = [] }) 
     setEnCours(true);
     setErreur(null);
     try {
-      await inviterMembre(supabase, {
+      await inviterMembreParEmail(supabase, {
         garageId,
-        userId: userId.trim(),
+        email: emailMembre,
         role,
         mecanicienId: mecanicienId || null,
       });
-      setUserId("");
+      setEmailMembre("");
       setMecanicienId("");
       setRole(ROLE_ACCUEIL);
       setFormOuvert(false);
       await recharger();
     } catch (e2) {
-      setErreur(e2?.message || "Rattachement impossible");
+      setErreur(messageErreur(e2));
     } finally {
       setEnCours(false);
     }
@@ -155,16 +166,18 @@ export default function MembresSection({ garageId, monRole, mecaniciens = [] }) 
       {formOuvert && (
         <form onSubmit={soumettre} className="border border-slate-200 rounded-xl p-4 mb-5 grid gap-3">
           <p className="text-[13px] text-slate-500">
-            Le compte doit déjà exister. Aucune invitation n'est envoyée depuis
-            cet écran.
+            La personne crée d'abord son propre espace sur Nexora, avec son
+            adresse e-mail. Vous la rattachez ensuite ici. Aucun message n'est
+            envoyé depuis cet écran.
           </p>
           <label className="grid gap-1 text-sm">
-            <span className="font-medium text-slate-700">Identifiant du compte</span>
+            <span className="font-medium text-slate-700">Adresse e-mail du compte</span>
             <input
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
+              type="email"
+              value={emailMembre}
+              onChange={(e) => setEmailMembre(e.target.value)}
               required
-              placeholder="00000000-0000-0000-0000-000000000000"
+              placeholder="prenom@votre-garage.fr"
               className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
             />
           </label>
