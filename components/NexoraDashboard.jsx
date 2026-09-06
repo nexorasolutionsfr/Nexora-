@@ -4131,7 +4131,7 @@ const THEMES_DASHBOARD = [
   { key: "automatique", label: "Automatique", description: "S'adapte aux réglages de l'appareil." },
 ];
 
-function ParametresView({ garageId, garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, ongletInitial = "garage", onGererAbonnement }) {
+function ParametresView({ garageId, garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, ongletInitial = "garage", onGererAbonnement, onConnecterGmail }) {
   // Ouvert sur l'onglet demandé par l'appelant : la liste de mise en route
   // envoie vers « Reprise de données » sans faire chercher le bon onglet.
   const [onglet, setOnglet] = useState(ongletInitial);
@@ -4325,9 +4325,14 @@ function ParametresView({ garageId, garageData, onGarageChange, onSave, prestati
               garageData.gmail_connecte ? (
                 <Badge tone="green">Connectée{garageData.gmail_adresse ? ` · ${garageData.gmail_adresse}` : ""}</Badge>
               ) : (
-                /* SÉCURITÉ (audit 2026-09-01) : connexion Gmail désactivée temporairement,
-                   voir app/api/auth/google/connect/route.ts */
-                <Badge tone="amber">Connexion temporairement indisponible (sécurisation en cours)</Badge>
+                <button
+                  type="button"
+                  onClick={onConnecterGmail}
+                  className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg text-white inline-block"
+                  style={{ backgroundColor: ACCENT }}
+                >
+                  Connecter ma boîte mail
+                </button>
               )
             }
           />
@@ -4562,6 +4567,38 @@ function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = nul
       );
     } catch {
       flashToast("La gestion de l'abonnement est momentanément indisponible.", "error");
+    }
+  };
+
+  // La connexion Gmail part en POST avec le jeton de session en en-tête, et
+  // jamais avec le garage dans l'URL : c'est le serveur qui vérifie que
+  // l'appelant possède bien ce garage avant de composer l'URL Google. La
+  // version précédente mettait garage_id en query string sans rien vérifier,
+  // ce qui permettait de rattacher sa propre boîte au garage d'autrui — voir
+  // app/api/auth/google/connect/route.ts.
+  const connecterBoiteGmail = async () => {
+    const { data } = await supabase.auth.getSession();
+    const jeton = data.session?.access_token;
+    if (!jeton) return;
+    try {
+      const reponse = await fetch("/api/auth/google/connect", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jeton}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ garageId }),
+      });
+      const resultat = await reponse.json();
+      if (reponse.ok && resultat.url) {
+        window.location.href = resultat.url;
+        return;
+      }
+      flashToast(
+        resultat.error === "acces_refuse"
+          ? "Seul le propriétaire du garage peut connecter la boîte mail."
+          : "La connexion Gmail est momentanément indisponible.",
+        "error",
+      );
+    } catch {
+      flashToast("La connexion Gmail est momentanément indisponible.", "error");
     }
   };
 
@@ -6477,7 +6514,7 @@ if (updateError) {
               onCountChange={setNotifsAVerifierCount}
             />
           )}
-          {view === "parametres" && <ParametresView onGererAbonnement={ouvrirPortailAbonnement} ongletInitial={parametresOnglet} key={parametresOnglet} garageId={garageId} garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} />}
+          {view === "parametres" && <ParametresView onGererAbonnement={ouvrirPortailAbonnement} onConnecterGmail={connecterBoiteGmail} ongletInitial={parametresOnglet} key={parametresOnglet} garageId={garageId} garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} />}
         </div>
       </main>
 
