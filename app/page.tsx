@@ -4,15 +4,14 @@ import { Problems } from "@/components/problems"
 import { DayWithNexora } from "@/components/day-with-nexora"
 import { Features } from "@/components/features"
 import { Security } from "@/components/security"
-import { PilotOffer } from "@/components/pilot-offer"
+import { Tarifs } from "@/components/tarifs"
 import { Faq } from "@/components/faq"
 import { ContactCta } from "@/components/contact-cta"
 import { SiteFooter } from "@/components/site-footer"
 import { DemoCtaTracker } from "@/components/analytics/demo-cta-tracker"
 
 // Données structurées volontairement minimales : uniquement des faits vérifiables
-// (nom, nature du logiciel, langue). Aucun avis, aucun tarif, aucune donnée légale
-// tant que les mentions légales ne sont pas finalisées.
+// (nom, nature du logiciel, langue). Aucun avis, aucun tarif.
 const softwareJsonLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
@@ -39,7 +38,7 @@ export default function Page() {
         <DayWithNexora />
         <Features />
         <Security />
-        <PilotOffer />
+        <Tarifs />
         <Faq />
         <ContactCta />
       </main>

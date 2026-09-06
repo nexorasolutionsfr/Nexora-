@@ -1,4 +1,5 @@
 "use client";
+import { SquelettesListe } from "@/components/garage-os/Squelettes";
 
 import { useEffect, useState } from "react";
 import { ClipboardCheck, Plus, Search, Trash2, X } from "lucide-react";
@@ -68,6 +69,16 @@ function formatDateHeureRdv(rdv) {
   const date = new Date(rdv.date_debut);
   if (Number.isNaN(date.getTime())) return "Date non renseignée";
   return date.toLocaleString("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+// Version courte pour les listes : dans une ligne serrée, l'année est du bruit
+// et c'est pourtant elle qui poussait l'heure hors du cadre — « 04 sept. 2… ».
+// Le détail d'une fiche, lui, garde la date complète.
+function formatDateHeureCourte(rdv) {
+  if (!rdv?.date_debut) return "Date non renseignée";
+  const date = new Date(rdv.date_debut);
+  if (Number.isNaN(date.getTime())) return "Date non renseignée";
+  return date.toLocaleString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 function labelRendezVous(rdv) {
@@ -742,10 +753,7 @@ export default function OrdresReparationSection({
   return (
     <div>
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Fiches atelier</h1>
-          <div className="text-[13px] text-slate-500 mt-0.5">La fiche interne qui suit chaque réparation, de la préparation à la restitution (ordre de réparation)</div>
-        </div>
+        <div />
         <button onClick={() => { setCreateInitial({ rendezVousId: null, devisId: null }); setCreateOpen(true); }} className="min-h-[44px] px-4 rounded-xl text-sm font-semibold text-white flex items-center gap-1.5" style={{ backgroundColor: ACCENT }}>
           <Plus size={15} /> Créer depuis un rendez-vous
         </button>
@@ -773,7 +781,7 @@ export default function OrdresReparationSection({
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher un client, véhicule, immatriculation…"
+            placeholder="Client, véhicule, immatriculation…"
             className="w-full rounded-xl border border-slate-200 pl-9 pr-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
           />
         </div>
@@ -786,11 +794,7 @@ export default function OrdresReparationSection({
       </div>
 
       {loading ? (
-        <div className="space-y-2">
-          {[0, 1, 2].map((k) => (
-            <div key={k} className="bg-white rounded-2xl border border-slate-200 h-16 animate-pulse" />
-          ))}
-        </div>
+        <SquelettesListe lignes={3} />
       ) : filtered.length === 0 ? (
         ordres.length === 0 && rendezVous.length === 0 ? (
           <EmptyState
@@ -812,9 +816,19 @@ export default function OrdresReparationSection({
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100">
           {filtered.map((o) => (
             <button key={o.id} onClick={() => setDetailId(o.id)} className="w-full min-h-[64px] flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-slate-50">
+              {/* L'immatriculation était en fin de ligne, dans un truncate : sur
+                  téléphone elle se lisait « Peugeot 308 SW · DM-… ». C'est
+                  précisément ce qu'on cherche quand on a la voiture devant soi.
+                  Elle passe donc en premier, sans troncature possible, et le
+                  modèle cède la place s'il faut couper quelque chose. */}
               <div className="min-w-0">
-                <div className="text-[13.5px] font-medium text-slate-900 truncate">{o.vehiculeLabel} {o.immatriculation && `· ${o.immatriculation}`}</div>
-                <div className="text-[12.5px] text-slate-500 truncate">{o.clientLabel} · {o.rendez_vous ? formatDateHeureRdv(o.rendez_vous) : "—"}</div>
+                <div className="flex items-baseline gap-2 min-w-0">
+                  {o.immatriculation && (
+                    <span className="text-[13.5px] font-semibold text-slate-900 tabular-nums shrink-0">{o.immatriculation}</span>
+                  )}
+                  <span className={`text-[13.5px] truncate ${o.immatriculation ? "text-slate-500" : "font-medium text-slate-900"}`}>{o.vehiculeLabel}</span>
+                </div>
+                <div className="text-[12.5px] text-slate-500 truncate">{o.clientLabel} · {o.rendez_vous ? formatDateHeureCourte(o.rendez_vous) : "—"}</div>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 {o.devis_id && <Badge tone="slate">Devis</Badge>}

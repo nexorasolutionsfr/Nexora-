@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Calendar, Wrench, ListChecks, CircleDollarSign } from "lucide-react";
 import { ACCENT_SOFT, ACCENT } from "./tokens";
 
@@ -8,14 +9,33 @@ import { ACCENT_SOFT, ACCENT } from "./tokens";
 // mode" — affichée honnêtement en "—", jamais estimée.
 function Indicateur({ icon: Icon, label, value, suffix = "" }) {
   const affichage = value === null || value === undefined ? "—" : `${value.toLocaleString("fr-FR")}${suffix}`;
+
+  // Un souffle très bref quand le chiffre change : une voiture qui arrive à
+  // l'atelier, un devis qui bascule. Le garagiste regarde rarement l'écran au
+  // moment exact du changement — ce mouvement est ce qui le lui apprend au
+  // coup d'œil suivant, sans notification ni badge de plus.
+  const [souffle, setSouffle] = useState(false);
+  const precedent = useRef(affichage);
+  useEffect(() => {
+    if (precedent.current === affichage) return;
+    precedent.current = affichage;
+    setSouffle(true);
+    const t = setTimeout(() => setSouffle(false), 300);
+    return () => clearTimeout(t);
+  }, [affichage]);
+
   return (
-    <div className="flex-1 min-w-[140px] bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3.5 flex items-center gap-3">
+    <div className="nx-apparait flex-1 min-w-[140px] bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3.5 flex items-center gap-3">
       <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: ACCENT_SOFT }}>
         <Icon size={17} color={ACCENT} />
       </div>
       <div className="min-w-0">
-        <div className="text-[19px] font-bold tabular-nums text-slate-900 leading-tight">{affichage}</div>
-        <div className="text-[11.5px] text-slate-500 leading-tight mt-0.5">{label}</div>
+        <div
+          className={`text-[19px] font-bold tabular-nums text-slate-900 leading-tight origin-left${souffle ? " nx-souffle" : ""}`}
+        >
+          {affichage}
+        </div>
+        <div className="text-[11.5px] text-slate-500 leading-tight mt-0.5 text-balance">{label}</div>
       </div>
     </div>
   );
@@ -23,11 +43,11 @@ function Indicateur({ icon: Icon, label, value, suffix = "" }) {
 
 export default function SyntheseImmediate({ rdvAujourdhui, vehiculesEngages, decisionsEnAttente, montantRisque }) {
   return (
-    <div className="flex flex-wrap gap-3">
-      <Indicateur icon={Calendar} label="Rendez-vous aujourd'hui" value={rdvAujourdhui} />
-      <Indicateur icon={Wrench} label="Véhicules engagés en atelier" value={vehiculesEngages} />
-      <Indicateur icon={ListChecks} label="Priorités actives" value={decisionsEnAttente} />
-      <Indicateur icon={CircleDollarSign} label="Montant connu à risque" value={montantRisque} suffix=" €" />
+    <div className="flex flex-wrap items-stretch gap-3 nx-cascade">
+      <Indicateur icon={Calendar} label="Rendez-vous du jour" value={rdvAujourdhui} />
+      <Indicateur icon={Wrench} label="En atelier" value={vehiculesEngages} />
+      <Indicateur icon={ListChecks} label="Priorités" value={decisionsEnAttente} />
+      <Indicateur icon={CircleDollarSign} label="Montant à risque" value={montantRisque} suffix=" €" />
     </div>
   );
 }

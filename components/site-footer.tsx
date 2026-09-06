@@ -13,7 +13,7 @@ const columns = [
     title: "Garage",
     links: [
       { label: "Espace garage", href: "/dashboard" },
-      { label: "Offre pilote", href: "#tarifs" },
+      { label: "Tarifs", href: "#tarifs" },
       { label: "FAQ", href: "#faq" },
     ],
   },
@@ -65,9 +65,15 @@ export function SiteFooter() {
         </div>
 
         <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground sm:text-left">
-          Nexora est édité par Nexora Solutions (entreprise individuelle, France). Mentions légales
-          et politique de confidentialité en cours de finalisation. Pour toute question relative aux
-          données :{" "}
+          Nexora est édité par Nexora Solutions (entreprise individuelle, France).{" "}
+          <a href="/mentions-legales" className="text-primary hover:underline">
+            Mentions légales
+          </a>{" "}
+          ·{" "}
+          <a href="/confidentialite" className="text-primary hover:underline">
+            Politique de confidentialité
+          </a>
+          . Pour toute question relative aux données :{" "}
           <a
             href="mailto:nexorasolutions.france@gmail.com"
             className="text-primary hover:underline"

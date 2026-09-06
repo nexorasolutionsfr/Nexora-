@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Camera, ChevronLeft, ChevronRight, Plus, Trash2, X } from "lucide-react";
+import { Camera, Check, ChevronLeft, ChevronRight, ListChecks, Plus, Trash2, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
   ACCENT,
@@ -17,6 +17,7 @@ import {
   PHOTOS_BUCKET,
   SUGGESTIONS_PAR_CATEGORIE,
 } from "./inspectionsConstants";
+import { compterASignaler } from "./controleStandard";
 
 const ETATS = ["ok", "a_surveiller", "a_valider_client", "dommage"];
 
@@ -52,14 +53,40 @@ function PointCard({ point, photos, onUpdate, onDelete, onUploadPhoto, onDeleteP
   const pointPhotos = photos.filter((p) => p.point_id === point.id && p.url);
   const atLimitPoint = pointPhotos.length >= MAX_PHOTOS_PAR_POINT;
   const atLimitTotal = totalPhotosCount >= MAX_PHOTOS_PAR_INSPECTION;
+  // Un point conforme tient en une ligne. Déplié, chaque point occupait
+  // 275 px : vingt points faisaient cinq mille pixels de défilement pour dire
+  // vingt fois « rien à signaler ». Ce qui mérite de la place, c'est
+  // l'exception — elle s'ouvre d'elle-même et le reste.
+  const conforme = point.etat === "ok" && !point.commentaire && pointPhotos.length === 0;
+  const [ouvert, setOuvert] = useState(!conforme);
+
+  if (conforme && !ouvert) {
+    return (
+      <div className="bg-white rounded-xl border border-slate-200 flex items-center gap-2 pl-3 pr-2 min-h-[46px]">
+        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: "#16A34A" }} />
+        <button type="button" onClick={() => setOuvert(true)} className="flex-1 text-left text-[13.5px] text-slate-800 py-2.5 min-w-0 truncate">
+          {point.libelle}
+        </button>
+        <span className="text-[11.5px] font-medium px-2 py-0.5 rounded-full shrink-0" style={{ backgroundColor: "#E7F6EC", color: "#15803D" }}>OK</span>
+        <button type="button" onClick={() => setOuvert(true)} className="text-[12px] font-medium px-2.5 py-1.5 rounded-lg text-slate-500 shrink-0">
+          Signaler
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="text-sm font-semibold text-slate-900">{point.libelle}</div>
-        <button onClick={() => onDelete(point.id)} className="text-slate-400 hover:text-red-600 shrink-0" title="Retirer ce point">
-          <Trash2 size={15} />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          {conforme && (
+            <button onClick={() => setOuvert(false)} className="text-[12px] font-medium text-slate-400 px-2 py-1">Replier</button>
+          )}
+          <button onClick={() => onDelete(point.id)} className="text-slate-400 hover:text-red-600 shrink-0" title="Retirer ce point">
+            <Trash2 size={15} />
+          </button>
+        </div>
       </div>
       <EtatPicker
         value={point.etat}
@@ -112,18 +139,43 @@ function PointCard({ point, photos, onUpdate, onDelete, onUploadPhoto, onDeleteP
   );
 }
 
-function CategorieStep({ categorie, points, photos, onAddPoint, onUpdatePoint, onDeletePoint, onUploadPhoto, onDeletePhoto, uploadingId, totalPhotosCount }) {
+function CategorieStep({ categorie, points, photos, onAddPoint, onUpdatePoint, onDeletePoint, onUploadPhoto, onDeletePhoto, uploadingId, totalPhotosCount, onToutOkCategorie }) {
   const [libelle, setLibelle] = useState("");
   const suggestions = SUGGESTIONS_PAR_CATEGORIE[categorie] || [];
   const pointsCategorie = points.filter((p) => p.categorie === categorie);
-  const dejaAjoutes = new Set(pointsCategorie.map((p) => p.libelle));
+  // Comparaison tolérante, comme dans controleStandard.js : sinon un espace de
+  // bord ou une majuscule fait reproposer une puce pour un point déjà posé.
+  const clef = (l) => String(l || "").trim().toLowerCase();
+  const dejaAjoutes = new Set(pointsCategorie.map((p) => clef(p.libelle)));
+  const aSignaler = compterASignaler(pointsCategorie);
 
   return (
     <div>
-      <div className="text-[13px] text-slate-500 mb-3">Ajoutez un point pour chaque élément vérifié. Classez-le OK, à surveiller, à valider avec le client, ou dommage constaté.</div>
-      {suggestions.filter((s) => !dejaAjoutes.has(s)).length > 0 && (
+      {/* La consigne a changé de sens. Elle disait « ajoutez un point pour
+          chaque élément vérifié » — c'est-à-dire : faites tout le travail. La
+          liste étant maintenant posée d'avance, on ne demande plus que
+          l'exception. */}
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        <div className="text-[13px] text-slate-500">
+          {pointsCategorie.length === 0
+            ? "Aucun point ici. Ajoutez-en un ci-dessous si besoin."
+            : aSignaler === 0
+              ? "Tout est OK ici. Ne touchez que ce qui cloche."
+              : `${aSignaler} point${aSignaler > 1 ? "s" : ""} à signaler.`}
+        </div>
+        {aSignaler > 0 && onToutOkCategorie && (
+          <button
+            type="button"
+            onClick={() => onToutOkCategorie(categorie)}
+            className="text-[12px] font-medium px-3 py-1.5 rounded-full border border-slate-200 text-slate-600 flex items-center gap-1.5 shrink-0"
+          >
+            <Check size={12} /> Tout remettre à OK
+          </button>
+        )}
+      </div>
+      {suggestions.filter((s) => !dejaAjoutes.has(clef(s))).length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3">
-          {suggestions.filter((s) => !dejaAjoutes.has(s)).map((s) => (
+          {suggestions.filter((s) => !dejaAjoutes.has(clef(s))).map((s) => (
             <button key={s} onClick={() => onAddPoint(categorie, s)} className="text-[12px] font-medium px-3 py-1.5 rounded-full border border-slate-200 text-slate-600 flex items-center gap-1">
               <Plus size={11} /> {s}
             </button>
@@ -179,7 +231,7 @@ function ReviewStep({ points, onToggleSoumis }) {
       </div>
       {eligibles.length === 0 && (
         <div className="text-[13px] text-slate-400 bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4">
-          Aucun point classé « à valider avec le client ». L'inspection pourra être finalisée sans décision client.
+          Aucun point classé « à valider avec le client ». Le contrôle pourra être finalisé sans décision du client.
         </div>
       )}
       <div className="space-y-2 mb-5">
@@ -209,7 +261,7 @@ function ReviewStep({ points, onToggleSoumis }) {
   );
 }
 
-export default function InspectionCaptureFlow({ inspection, points, photos, garageId, onClose, onToast, onUpdateInspectionFields, onAddPoint, onUpdatePoint, onDeletePoint, onPhotosChange, onFinaliser }) {
+export default function InspectionCaptureFlow({ inspection, points, photos, garageId, onClose, onToast, onUpdateInspectionFields, onAddPoint, onUpdatePoint, onDeletePoint, onPhotosChange, onFinaliser, onControleStandard, onToutOkCategorie }) {
   const steps = useMemo(() => ["infos", ...CATEGORIES_ORDRE, "revue"], []);
   const [stepIndex, setStepIndex] = useState(0);
   const [uploadingId, setUploadingId] = useState(null);
@@ -218,7 +270,7 @@ export default function InspectionCaptureFlow({ inspection, points, photos, gara
 
   const uploadPhoto = async (pointId, file) => {
     if (photos.length >= MAX_PHOTOS_PAR_INSPECTION) {
-      onToast("Limite de photos atteinte pour cette inspection", "error");
+      onToast("Limite de photos atteinte pour ce contrôle", "error");
       return;
     }
     setUploadingId(pointId);
@@ -279,7 +331,7 @@ export default function InspectionCaptureFlow({ inspection, points, photos, gara
       <div className="bg-white w-full sm:max-w-lg sm:rounded-2xl sm:max-h-[92vh] h-full sm:h-auto flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
           <div>
-            <div className="text-sm font-semibold text-slate-900">Saisie de l'inspection</div>
+            <div className="text-sm font-semibold text-slate-900">Saisie du contrôle</div>
             <div className="text-[11.5px] text-slate-400">{inspection.vehiculeLabel || "Véhicule non renseigné"}</div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
@@ -300,6 +352,34 @@ export default function InspectionCaptureFlow({ inspection, points, photos, gara
         <div className="flex-1 overflow-y-auto px-4 py-4">
           {step === "infos" && (
             <div className="space-y-3">
+              {/*
+                Le geste qui change tout. La saisie partait d'une page vide : il
+                fallait créer chaque élément, puis lui choisir un état, sur sept
+                écrans — plus de quarante gestes pour un contrôle de vingt
+                points, debout à côté d'une voiture. Plus long qu'une feuille de
+                papier, donc jamais fait.
+
+                Un contrôle réel est presque entièrement « rien à signaler ».
+                On pose donc la liste d'un coup, tout au vert, et le mécanicien
+                ne touche que l'exception.
+              */}
+              {onControleStandard && (
+                <button
+                  type="button"
+                  onClick={onControleStandard}
+                  className="w-full rounded-xl px-4 min-h-[52px] text-[13.5px] font-semibold text-white flex items-center justify-center gap-2"
+                  style={{ backgroundColor: ACCENT }}
+                >
+                  <ListChecks size={16} />
+                  {points.length === 0 ? "Démarrer le contrôle standard" : "Compléter avec le contrôle standard"}
+                </button>
+              )}
+              <div className="text-[12px] text-slate-500 text-center -mt-1">
+                {points.length === 0
+                  ? "Pose le tour du véhicule en une fois, tout au vert. Vous ne corrigez que ce qui cloche."
+                  : `${points.length} point${points.length > 1 ? "s" : ""} déjà en place — rien ne sera écrasé.`}
+              </div>
+              <div className="h-px bg-slate-100 my-1" />
               <div>
                 <label className="text-[12px] font-medium text-slate-500">Kilométrage</label>
                 <input
@@ -340,6 +420,7 @@ export default function InspectionCaptureFlow({ inspection, points, photos, gara
               onDeletePhoto={deletePhoto}
               uploadingId={uploadingId}
               totalPhotosCount={photos.length}
+              onToutOkCategorie={onToutOkCategorie}
             />
           )}
           {step === "revue" && <ReviewStep points={points} onToggleSoumis={toggleSoumis} />}
@@ -363,7 +444,7 @@ export default function InspectionCaptureFlow({ inspection, points, photos, gara
             </button>
           ) : (
             <button onClick={finaliser} disabled={finalizing} className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: "#16A34A" }}>
-              {finalizing ? "Finalisation…" : "Finaliser l'inspection"}
+              {finalizing ? "Finalisation…" : "Finaliser le contrôle"}
             </button>
           )}
         </div>

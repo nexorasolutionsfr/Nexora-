@@ -3,19 +3,26 @@
 import DevisLignesEditor from "./devis-lignes/DevisLignesEditor";
 import { calculerLigne, calculerTotaux, devisALignes } from "./devis-lignes/calculs";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import QRCode from "qrcode";
 import InspectionsSection from "./inspections/InspectionsSection";
 import OrdresReparationSection from "./ordre-reparation/OrdresReparationSection";
 import NotificationsAVerifierSection from "./notifications-devis/NotificationsAVerifierSection";
 import MorningHeader from "./garage-os/MorningHeader";
-import SyntheseImmediate from "./garage-os/SyntheseImmediate";
 import CentreDecisionnel from "./garage-os/CentreDecisionnel";
 import VotreJournee from "./garage-os/VotreJournee";
 import NexoraARepere from "./garage-os/NexoraARepere";
 import AccesRapides from "./garage-os/AccesRapides";
+import MiseEnRoute from "./garage-os/MiseEnRoute";
+import { SquelettesListe, SquelettteAccueil } from "./garage-os/Squelettes";
 import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier, dateLongueFR } from "./garage-os/calculs";
+import { estFerme, heureReservable, heuresOuvrables } from "./agenda/horaires";
+import ConnexionShell from "./connexion/ConnexionShell";
+import { offre } from "@/lib/tarifs";
 import VehicleCaseFileView from "./vehicle-case-file/VehicleCaseFileView";
+import OnboardingGarage from "./onboarding/OnboardingGarage";
+import ImportClients from "./import/ImportClients";
+import { ErreurFacturX, genererXml } from "@/lib/facturx/genererXml";
 import {
   calculerCompteurs as calculerCompteursAtelier,
   calculerTempsPlanifieParMecanicien,
@@ -97,7 +104,6 @@ const NAVY_SOFT = "#16264A";
 const ACCENT = "#3D6BE0";
 const ACCENT_SOFT = "#EAF0FF";
 const BG = "#F5F7FA";
-const DEFAULT_GARAGE_ID = "bcd7f692-1c28-435c-87d1-92f84aa0e6bb";
 const APP_TIME_ZONE = "Europe/Paris";
 const WORKSHOP_STAGES = [
   { key: "a_venir", label: "À venir", color: "#64748B" },
@@ -227,15 +233,6 @@ const TIMELINE_ICON = {
 };
 
 // Table (future): prestations — catalogue garage, utilisé en page Paramètres
-const prestationsCatalogue = [
-  { nom: "Vidange", categorie: "entretien", duree_min: 45 },
-  { nom: "Révision complète", categorie: "entretien", duree_min: 90 },
-  { nom: "Contrôle technique", categorie: "entretien", duree_min: 30 },
-  { nom: "Diagnostic panne", categorie: "diagnostic", duree_min: 60 },
-  { nom: "Changement pneus", categorie: "reparation", duree_min: 45 },
-  { nom: "Freins", categorie: "reparation", duree_min: 75 },
-  { nom: "Urgence dépannage", categorie: "urgence", duree_min: 60 },
-];
 
 // Stat du jour pour Nexora Intelligence — proviendra d'une table logs_assistant plus tard
 const aiStatsToday = {
@@ -297,7 +294,14 @@ const joursLabel = {
   jeudi: "Jeu",
   vendredi: "Ven",
 };
+// Lue au build par Next (NEXT_PUBLIC_*). Tant qu'elle est absente, la
+// connexion Google n'existe pas et l'agenda n'en propose pas.
+const GOOGLE_CALENDAR_CONFIGURE = Boolean(process.env.NEXT_PUBLIC_GOOGLE_CALENDAR_CONNECT_URL);
+
 const heuresGrille = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
+// Cette grille reste celle du planning des ressources, qui montre la journée
+// type de l'atelier. L'agenda du jour, lui, suit les horaires réels du
+// garage — voir components/agenda/horaires.js.
 
 const durationRows = (debut, fin) => {
   const [h1, m1] = debut.split(":").map(Number);
@@ -391,8 +395,12 @@ function EmptyState({ icon: Icon, title, subtitle }) {
   );
 }
 
+// Conservé pour les quelques appels restants ailleurs dans le fichier. Les
+// squelettes qui ont la forme de ce qu'ils annoncent vivent dans
+// garage-os/Squelettes.jsx — un rectangle de la mauvaise hauteur promet une
+// mise en page puis la contredit, ce qui fait sauter la page au chargement.
 function SkeletonCard({ h = "h-24" }) {
-  return <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm ${h} animate-pulse`} />;
+  return <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm ${h} nx-squelette`} />;
 }
 
 function Toast({ toast }) {
@@ -400,7 +408,8 @@ function Toast({ toast }) {
   const isError = toast.tone === "error";
   return (
     <div
-      className="fixed bottom-6 right-6 text-white text-sm px-4 py-3 rounded-xl shadow-lg z-50 flex items-center gap-2"
+      role="status"
+      className="nx-monte fixed bottom-6 right-6 left-6 sm:left-auto text-white text-sm px-4 py-3 rounded-xl shadow-lg z-50 flex items-center gap-2"
       style={{ backgroundColor: isError ? "#B91C1C" : "#0F1B33" }}
     >
       <CheckCircle2 size={15} color={isError ? "#fff" : "#8FB0FF"} />
@@ -585,9 +594,9 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
 // (à accueillir, dans l'atelier, prêts à restituer). N'affiche que les
 // informations déjà chargées, sans téléphone ni email — l'atelier n'a pas
 // besoin de contacter le client directement depuis cet écran.
-function AtelierCarte({ appt, etapeInfo, mecanicien, alertes, onSelectAppt, onOuvrirDossierVehicule }) {
+function AtelierCarte({ appt, etapeInfo, mecanicien, alertes, onSelectAppt, onOuvrirDossierVehicule, lienActif, lienUrl, onCreerLien, lienEnCours }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-3.5 flex flex-col gap-2">
+    <div className="nx-apparait nx-pressable bg-white rounded-2xl border border-slate-200 p-3.5 flex flex-col gap-2 hover:border-slate-300">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-[13.5px] font-semibold text-slate-900 truncate">{appt.vehicule || "Véhicule"}</div>
@@ -617,6 +626,49 @@ function AtelierCarte({ appt, etapeInfo, mecanicien, alertes, onSelectAppt, onOu
           ))}
         </div>
       )}
+      {/* Suivi client. C'est la contrepartie du travail de déplacement des
+          cartes : sans lui, le garage entretient un tableau et ne reçoit rien
+          en échange. Il était jusqu'ici enterré dans la fenêtre de détail,
+          donc introuvable. */}
+      <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+        {lienActif ? (
+          <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-emerald-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+            Suivi client actif
+          </span>
+        ) : (
+          <span className="text-[11.5px] text-slate-400">Aucun lien de suivi</span>
+        )}
+        {lienActif && lienUrl ? (
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard?.writeText(lienUrl);
+            }}
+            className="text-[11.5px] font-semibold text-slate-600 underline hover:text-slate-900"
+          >
+            Copier
+          </button>
+        ) : !lienActif ? (
+          <button
+            type="button"
+            onClick={() => onCreerLien?.(appt.id)}
+            disabled={lienEnCours}
+            className="text-[11.5px] font-semibold underline disabled:opacity-50"
+            style={{ color: ACCENT }}
+          >
+            {lienEnCours ? "Création…" : "Créer le lien"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSelectAppt(appt)}
+            className="text-[11.5px] font-semibold text-slate-600 underline hover:text-slate-900"
+          >
+            Voir le QR
+          </button>
+        )}
+      </div>
       <div className="flex items-center gap-2 pt-1">
         <button
           type="button"
@@ -645,17 +697,37 @@ function AtelierCompteur({ label, value, tone = "slate" }) {
     green: { bg: "#E7F6EC", text: "#15803D", sub: "#15803D" },
   };
   const t = tones[tone] || tones.slate;
+
+  // L'atelier en direct est le seul écran qu'on laisse ouvert sur un coin de
+  // l'établi. Quand une voiture change d'étape, le chiffre bouge sans que
+  // personne ne regarde : ce souffle est ce qui le fait remarquer au coup
+  // d'œil suivant.
+  const [souffle, setSouffle] = useState(false);
+  const precedent = useRef(value);
+  useEffect(() => {
+    if (precedent.current === value) return;
+    precedent.current = value;
+    setSouffle(true);
+    const t = setTimeout(() => setSouffle(false), 300);
+    return () => clearTimeout(t);
+  }, [value]);
+
   return (
     <div className="rounded-xl p-3" style={{ backgroundColor: t.bg }}>
       <div className="text-[11px]" style={{ color: t.sub }}>{label}</div>
-      <div className="text-xl font-semibold mt-1" style={{ color: t.text }}>{value}</div>
+      <div
+        className={`text-xl font-semibold mt-1 tabular-nums origin-left${souffle ? " nx-souffle" : ""}`}
+        style={{ color: t.text }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
 
 function AtelierSection({ titre, sousTitre, count, accent, enfants, vide }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+    <div className="nx-apparait bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
         <div>
           <div className="font-semibold text-slate-900 text-[15px] flex items-center gap-2">
@@ -673,7 +745,7 @@ function AtelierSection({ titre, sousTitre, count, accent, enfants, vide }) {
   );
 }
 
-function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], atelierLiens = {}, atelierQr = {}, onGenererEtiquettes, onOuvrirDossierVehicule }) {
+function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], atelierLiens = {}, atelierQr = {}, atelierJetonsActifs = {}, onGenererEtiquettes, onGenererLienAtelier, atelierBusyId, onOuvrirDossierVehicule }) {
   const maintenant = new Date();
   const todayAppts = rendezVous.filter((r) => isToday(r.date_debut));
   const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
@@ -706,18 +778,22 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], a
       alertes={determinerAlertesAtelier(appt, maintenant)}
       onSelectAppt={onSelectAppt}
       onOuvrirDossierVehicule={onOuvrirDossierVehicule}
+      lienActif={Boolean(atelierJetonsActifs[appt.id] || atelierLiens[appt.id])}
+      lienUrl={atelierLiens[appt.id] || null}
+      onCreerLien={onGenererLienAtelier}
+      lienEnCours={atelierBusyId === appt.id}
     />
   );
 
-  return <div className="space-y-5">
-    <div className="print:hidden rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}>
+  return <div className="space-y-5 nx-cascade">
+    <div className="nx-apparait print:hidden rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}>
       <div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" />
       <div className="relative">
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-2"><Wrench size={18} color="#8FB0FF" /><span className="font-semibold">Atelier en direct</span></div>
             <div className="text-[13px] mt-1 text-blue-200 capitalize">{dateLongueFR(maintenant)}</div>
-            <button disabled={imprimant} onClick={imprimerEtiquettes} className="mt-3 inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl px-3 min-h-[44px] text-[12.5px] font-medium disabled:opacity-50">🖨️ {imprimant ? "Génération des liens…" : "Imprimer les étiquettes du jour"}</button>
+            <button disabled={imprimant} onClick={imprimerEtiquettes} className="mt-3 inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl px-3 min-h-[44px] text-[12.5px] font-medium disabled:opacity-50"><span aria-hidden>🖨️</span> {imprimant ? "Génération des liens…" : "Imprimer les étiquettes du jour"}</button>
           </div>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
@@ -918,13 +994,13 @@ function ReprogrammerDateControl({ onReprogrammer }) {
   );
 }
 
-function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHeaderInfo, headerAction, countBg, countColor, rows, emptyLabel }) {
+function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHeaderInfo, headerAction, countBg, countColor, rows, emptyLabel, accentue = false }) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? rows : rows.slice(0, 3);
 
   if (rows.length === 0) {
     return (
-      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-2.5 flex items-center gap-2.5 flex-wrap">
+      <section className="nx-apparait bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-2.5 flex items-center gap-2.5 flex-wrap">
         <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: iconBg, color: iconColor }}>
           <Icon size={13} />
         </div>
@@ -935,8 +1011,26 @@ function CommandZone({ icon: Icon, iconBg, iconColor, title, subtitle, extraHead
     );
   }
 
+  // UNE ZONE QUI A QUELQUE CHOSE À DIRE DOIT LE MONTRER.
+  //
+  // Toutes les cartes de l'accueil avaient le même fond blanc, la même
+  // bordure, le même rayon : le jour où une urgence apparaissait, elle
+  // ressemblait exactement à une carte vide. L'écran ne savait pas hausser la
+  // voix.
+  //
+  // `accentue` est passé par la zone la plus grave — « À traiter maintenant ».
+  // Elle prend alors la couleur de son icône en bordure et un liseré épais à
+  // gauche. Une seule zone porte cet accent à la fois : deux urgences
+  // simultanées ne sont plus une urgence, c'est un décor.
+  const contour = accentue
+    ? { borderColor: iconColor, boxShadow: `inset 4px 0 0 0 ${iconColor}` }
+    : undefined;
+
   return (
-    <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <section
+      className={`nx-apparait bg-white rounded-2xl border shadow-sm overflow-hidden ${accentue ? "" : "border-slate-200"}`}
+      style={contour}
+    >
       <div className="flex items-center gap-2.5 px-5 py-4 border-b border-slate-100 flex-wrap">
         <div className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center shrink-0" style={{ backgroundColor: iconBg, color: iconColor }}>
           <Icon size={16} />
@@ -1077,8 +1171,8 @@ function AjouterRappelModal({ onClose, onSubmit, submitting }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Ajouter un appel à rappeler</h2>
         <div className="text-[12.5px] text-slate-500 mt-1">Un pense-bête manuel — rien n'est envoyé ni appelé automatiquement.</div>
         <div className="mt-4 space-y-3">
@@ -1142,8 +1236,8 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md text-slate-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-md text-slate-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Travail à relancer</h2>
         <div className="text-[12.5px] text-slate-500 mt-1">À utiliser lorsqu'un client reporte ou refuse un travail. Nexora le garde pour une relance future. Rien n'est envoyé automatiquement.</div>
         <div className="mt-4 space-y-3">
@@ -1216,18 +1310,11 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
   );
 }
 
-function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
+function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onAllerConfigurer, onGererAbonnement, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   const [cockpitCompteurs, setCockpitCompteurs] = useState(null);
   if (loading) {
-    return (
-      <div className="space-y-6">
-        <SkeletonCard h="h-24" />
-        <SkeletonCard h="h-28" />
-        <SkeletonCard h="h-24" />
-        <SkeletonCard h="h-72" />
-      </div>
-    );
+    return <SquelettteAccueil />;
   }
 
   const now = new Date();
@@ -1526,13 +1613,27 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
 
   return (
     <div className="space-y-5">
-      <MorningHeader garageData={garageData} openState={openState} />
+      <div className="nx-apparait">
+        <MorningHeader
+          garageData={garageData}
+          openState={openState}
+          rdvAujourdhui={todayAppts.length}
+          vehiculesEngages={vehiculesEngages}
+          decisionsEnAttente={decisionsEnAttente}
+          montantRisque={montantRisque}
+          setView={setView}
+        />
+      </div>
 
-      <SyntheseImmediate
-        rdvAujourdhui={todayAppts.length}
-        vehiculesEngages={vehiculesEngages}
-        decisionsEnAttente={decisionsEnAttente}
-        montantRisque={montantRisque}
+      {/* En tête d'accueil, et seulement tant qu'il reste quelque chose à
+          faire : voir garage-os/miseEnRoute.js. Un garage installé ne voit
+          jamais ce bloc. */}
+      <MiseEnRoute
+        garageData={garageData}
+        mecaniciens={mecaniciens}
+        clients={clients}
+        rendezVous={rendezVous}
+        onAller={onAllerConfigurer}
       />
 
       {COCKPIT_OPPORTUNITES_ACTIF ? (
@@ -1559,8 +1660,31 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
           onOuvrirInspection={onOuvrirInspection}
           onToast={onToast}
         />
+      ) : zone1Rows.length + zone2Rows.length + zone3Rows.length === 0 ? (
+        // JOURNÉE CALME. Les trois zones vides occupaient 275 px pour dire
+        // trois fois « rien », sur la meilleure place du tableau de bord. Et la
+        // phrase de l'en-tête l'annonce déjà : le répéter ici en ferait trois
+        // fois la même information, en comptant la pastille d'ouverture.
+        // Ne restent que les deux actions d'ajout, seule chose utile de ces
+        // cartes.
+        <div className="nx-apparait flex items-center gap-4 flex-wrap px-1">
+          <button
+            onClick={() => onAjouterRappel && onAjouterRappel()}
+            className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
+            style={{ color: ACCENT }}
+          >
+            <Phone size={12} /> Un appel à rappeler
+          </button>
+          <button
+            onClick={() => onOuvrirTravailDiffereModal && onOuvrirTravailDiffereModal()}
+            className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
+            style={{ color: ACCENT }}
+          >
+            <Plus size={12} /> Un travail à relancer
+          </button>
+        </div>
       ) : (
-        <>
+        <div className="space-y-4 nx-cascade">
           <CommandZone
             icon={AlertTriangle}
             iconBg="#FDECEC"
@@ -1571,6 +1695,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
             countColor="#B91C1C"
             rows={zone1Rows}
             emptyLabel="Rien à traiter pour l'instant."
+            accentue={zone1Rows.length > 0}
             headerAction={
               <button
                 onClick={() => onAjouterRappel && onAjouterRappel()}
@@ -1615,7 +1740,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
               </button>
             }
           />
-        </>
+        </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -1702,10 +1827,14 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
             WhatsApp — <b className="text-slate-900">canal choisi, activation à finaliser</b>
           </div>
         )}
-        <div className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: garageData?.google_agenda_connecte ? "#16A34A" : "#CBD5E1" }} />
-          Google Calendar — <b className="text-slate-900">{garageData?.google_agenda_connecte ? "connecté" : "non connecté"}</b>
-        </div>
+        {/* Tant que la connexion Google n'existe pas, annoncer « non connecté »
+            désigne un manque là où il n'y a rien à connecter. */}
+        {GOOGLE_CALENDAR_CONFIGURE && (
+          <div className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: garageData?.google_agenda_connecte ? "#16A34A" : "#CBD5E1" }} />
+            Google Calendar — <b className="text-slate-900">{garageData?.google_agenda_connecte ? "connecté" : "non connecté"}</b>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1779,6 +1908,21 @@ function StatistiquesView({ garageData, aiStats, timeline, automationEvents, fac
   const linePath = points.map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
   const areaPath = `${linePath} L${chartWidth},${chartHeight} L0,${chartHeight} Z`;
   const hasChartData = serie.some((v) => v > 0);
+  // La courbe n'avait aucune échelle : ni montant, ni date. Un trait qui monte
+  // sans repère ne dit pas si le garage a fait cent euros ou dix mille, ni
+  // quand. On ne peut pas écrire ces repères DANS le SVG : il est tracé en
+  // preserveAspectRatio="none", qui étire le tracé — et étirerait le texte avec
+  // lui. Ils sont donc posés en HTML autour du graphique.
+  const bornesGraphique = (() => {
+    const fin = new Date(now);
+    if (periode === "12mois") {
+      const debut = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+      const mois = (d) => d.toLocaleDateString("fr-FR", { month: "short", year: "2-digit", timeZone: APP_TIME_ZONE });
+      return { debut: mois(debut), fin: mois(fin) };
+    }
+    const jour = (d) => d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", timeZone: APP_TIME_ZONE });
+    return { debut: jour(periodeStart), fin: jour(fin) };
+  })();
 
   const objectif = Number(garageData.objectif_ca_mensuel || 0);
   const progressionObjectif = objectif > 0 ? Math.min(100, Math.round((caMoisCourant / objectif) * 100)) : null;
@@ -1815,6 +1959,11 @@ function StatistiquesView({ garageData, aiStats, timeline, automationEvents, fac
 
         <div className="mt-5">
           {hasChartData ? (
+            <>
+            <div className="flex items-center justify-between text-[11.5px] text-slate-400 mb-1 tabular-nums">
+              <span>{maxSerie.toLocaleString("fr-FR")} €</span>
+              <span className="text-slate-300">{periode === "12mois" ? "par mois" : "par jour"}</span>
+            </div>
             <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} width="100%" height={chartHeight} preserveAspectRatio="none" style={{ display: "block" }}>
               <defs>
                 <linearGradient id="revGradient" x1="0" y1="0" x2="0" y2="1">
@@ -1827,6 +1976,12 @@ function StatistiquesView({ garageData, aiStats, timeline, automationEvents, fac
               <path d={areaPath} fill="url(#revGradient)" />
               <path d={linePath} fill="none" stroke={ACCENT} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
+            <div className="flex items-center justify-between text-[11.5px] text-slate-400 mt-1.5 border-t border-slate-100 pt-1.5">
+              <span>{bornesGraphique.debut}</span>
+              <span>0 €</span>
+              <span>{bornesGraphique.fin}</span>
+            </div>
+            </>
           ) : (
             <div className="h-[140px] flex items-center justify-center text-[13px] text-slate-400 bg-slate-50 rounded-xl">Pas encore assez de factures sur cette période pour tracer une courbe.</div>
           )}
@@ -1905,10 +2060,12 @@ function StatistiquesView({ garageData, aiStats, timeline, automationEvents, fac
               <span className="flex items-center gap-1.5" style={{ color: "#C3D0EA" }}><span className="w-1.5 h-1.5 rounded-full bg-green-400" />Email actif</span>
               <span className="text-white font-semibold">{emailAujourdhui} envoyé{emailAujourdhui > 1 ? "s" : ""}</span>
             </div>
-            <div className="flex items-center justify-between text-[12.5px]">
-              <span className="flex items-center gap-1.5" style={{ color: "#C3D0EA" }}><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: garageData.google_agenda_connecte ? "#4ADE80" : "#FBBF6B" }} />Google Calendar</span>
-              <span className="font-semibold" style={{ color: garageData.google_agenda_connecte ? "#fff" : "#FBBF6B" }}>{garageData.google_agenda_connecte ? "connecté" : "non connecté"}</span>
-            </div>
+            {GOOGLE_CALENDAR_CONFIGURE && (
+              <div className="flex items-center justify-between text-[12.5px]">
+                <span className="flex items-center gap-1.5" style={{ color: "#C3D0EA" }}><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: garageData.google_agenda_connecte ? "#4ADE80" : "#FBBF6B" }} />Google Calendar</span>
+                <span className="font-semibold" style={{ color: garageData.google_agenda_connecte ? "#fff" : "#FBBF6B" }}>{garageData.google_agenda_connecte ? "connecté" : "non connecté"}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1972,8 +2129,8 @@ function depuisLabel(dateStr) {
 function RefuseConfirmModal({ onClose, onConfirm }) {
   const [neReplusDemander, setNeReplusDemander] = useState(false);
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Refuser ce créneau ?</h2>
         <p className="text-[13.5px] text-slate-600 mt-2">Le client recevra un message l'informant que ce créneau n'est pas possible, sans nouvelle proposition. Si le client n'est simplement pas disponible à cette heure, utilisez plutôt "Modifier la date".</p>
         <label className="flex items-center gap-2 mt-4 text-[13px] text-slate-600">
@@ -2115,8 +2272,8 @@ function RescheduleModal({ proposition, garageId, onClose, onConfirm }) {
     onConfirm(startDate.toISOString(), endDate.toISOString());
   };
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
           <Calendar size={18} /> Modifier la date — {proposition.client}
         </h2>
@@ -2234,8 +2391,8 @@ function CreerRdvModal({ clients, prestations, date, heure, onClose, onCreate, o
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Nouveau rendez-vous</h2>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-[13px] text-slate-500">{date} à</span>
@@ -2363,8 +2520,8 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Créer un devis</h2>
 
         {!clientPreselectionne && (
@@ -2444,7 +2601,7 @@ function FacturationView({ view, setView, devisList, clients, prestations, garag
         ))}
       </div>
       {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} onLignesChange={onLignesChange} onToast={onToast} />}
-      {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={onGenererFacture} onMarquerPayee={onMarquerPayee} onSauvegarder={onSauvegarderFacture} facturesLiens={facturesLiens} facturesBusyId={facturesBusyId} onGenererLien={onGenererLienFacture} onRevoquerLien={onRevoquerLienFacture} />}
+      {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={onGenererFacture} onMarquerPayee={onMarquerPayee} onSauvegarder={onSauvegarderFacture} facturesLiens={facturesLiens} facturesBusyId={facturesBusyId} onGenererLien={onGenererLienFacture} onRevoquerLien={onRevoquerLienFacture} onToast={onToast} />}
       {view === "historique" && <HistoriqueView devisList={devisList} garageId={garageId} onCreerOrdreReparation={onCreerOrdreReparation} prestations={prestations} />}
     </div>
   );
@@ -2620,8 +2777,8 @@ function DevisView({ devisList: devisListToutesSources, clients, prestations, ga
 
 function DevisApercuModal({ d, garageData, onClose }) {
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-md text-slate-900" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-lg font-semibold text-slate-900">Aperçu client</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
@@ -2823,6 +2980,12 @@ const changeDate = (direction) => {
 
 const selectedDateKey = dateKey(currentDate);
 const dayAppts = rendezVous.filter((r) => r.date_key === selectedDateKey);
+// L'agenda proposait dix créneaux « disponibles » tous les jours, y compris
+// ceux où l'accueil annonce « Fermé aujourd'hui ». Les heures suivent
+// maintenant garages.horaires — mais jamais au prix de masquer un rendez-vous
+// déjà pris, d'où les heures occupées passées en second argument.
+const horairesGarage = garageData?.horaires;
+const heuresDuJour = heuresOuvrables(horairesGarage, currentDate, dayAppts.map((a) => a.debut).filter(Boolean));
 const startOfWeek = new Date(currentDate);
 startOfWeek.setDate(currentDate.getDate() - currentDate.getDay() + 1);
 const endOfWeek = new Date(startOfWeek);
@@ -2884,10 +3047,28 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
               </button>
             ))}
           </div>
-          {/* Préparé pour une future synchronisation bidirectionnelle Google Calendar */}
-          <button onClick={onConnectCalendar} className="flex items-center justify-center gap-1.5 text-[13px] font-medium text-white px-3.5 py-1.5 rounded-xl w-full sm:w-auto" style={{ backgroundColor: garageData.google_agenda_connecte ? "#16A34A" : ACCENT }}>
-            <CalendarPlus size={14} /> {garageData.google_agenda_connecte ? "Google synchronisé" : "Connecter Google"}
-          </button>
+          {/*
+            « Connecter Google » était le bouton le plus visible de l'agenda —
+            pleine largeur, bleu, au-dessus de la recherche — et il ne menait
+            nulle part : NEXT_PUBLIC_GOOGLE_CALENDAR_CONNECT_URL n'est pas
+            renseignée, et le clic affichait au garagiste « Ajoutez
+            NEXT_PUBLIC_GOOGLE_CALENDAR_CONNECT_URL après avoir configuré
+            l'autorisation Google dans n8n ». Un message d'ingénieur, sur
+            l'écran d'un garage, en démonstration.
+
+            Il ne s'affiche donc que lorsque la connexion existe vraiment. Un
+            bouton qui ne peut pas tenir sa promesse vaut moins que pas de
+            bouton du tout.
+
+            (Le libellé lisait aussi garageData.google_agenda_connecte, une
+            colonne qui n'existe sur aucun des deux projets : l'état
+            « synchronisé » était inatteignable.)
+          */}
+          {GOOGLE_CALENDAR_CONFIGURE && (
+            <button onClick={onConnectCalendar} className="flex items-center justify-center gap-1.5 text-[13px] font-medium text-white px-3.5 py-1.5 rounded-xl w-full sm:w-auto" style={{ backgroundColor: ACCENT }}>
+              <CalendarPlus size={14} /> Connecter Google
+            </button>
+          )}
         </div>
       </div>
 
@@ -2924,21 +3105,48 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
           ))}
         </div>
       ) : mode === "jour" ? (
+        heuresDuJour.length === 0 ? (
+          <div className="px-5 py-10 text-center">
+            <div className="text-[14px] font-medium text-slate-700">Fermé ce jour-là</div>
+            <div className="mt-1 mx-auto max-w-xs text-[12.5px] text-slate-500">
+              Vos horaires n&apos;ouvrent pas ce jour. Vous pouvez quand même prendre un
+              rendez-vous — un dépannage n&apos;attend pas la semaine.
+            </div>
+            {onCreerRdv && (
+              <button
+                type="button"
+                onClick={() => setNouveauCreneau({ date: selectedDateKey, heure: "09:00" })}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-xl px-4 min-h-[44px] text-[13px] font-medium text-white"
+                style={{ backgroundColor: ACCENT }}
+              >
+                <Plus size={15} /> Ajouter quand même
+              </button>
+            )}
+            <div className="mt-3 text-[12px] text-slate-400">Vos horaires se règlent dans Paramètres.</div>
+          </div>
+        ) : (
         <div className="grid" style={{ gridTemplateColumns: "70px 1fr" }}>
-          {heuresGrille.map((h) => {
+          {heuresDuJour.map((h) => {
             const slotAppts = dayAppts.filter((a) => a.debut?.slice(0, 2) === h.slice(0, 2));
+            const reservable = heureReservable(horairesGarage, currentDate, h);
             return (
               <React.Fragment key={h}>
                 <div className="text-[12px] text-slate-400 px-3 py-3 border-t border-slate-100">{h}</div>
                 <div className="border-t border-l border-slate-100 py-1.5 px-2 min-h-[52px] relative">
                   {slotAppts.length === 0 && (
-                    <button
-                      type="button"
-                      onClick={() => onCreerRdv && setNouveauCreneau({ date: selectedDateKey, heure: `${h}` })}
-                      className="w-full text-left text-[11.5px] text-slate-300 hover:text-blue-500 hover:bg-blue-50/40 rounded-lg px-1 py-1.5"
-                    >
-                      Créneau disponible {onCreerRdv && <span className="text-blue-400">· + Ajouter</span>}
-                    </button>
+                    reservable ? (
+                      <button
+                        type="button"
+                        onClick={() => onCreerRdv && setNouveauCreneau({ date: selectedDateKey, heure: `${h}` })}
+                        className="w-full text-left text-[11.5px] text-slate-300 hover:text-blue-500 hover:bg-blue-50/40 rounded-lg px-1 py-1.5"
+                      >
+                        Créneau disponible {onCreerRdv && <span className="text-blue-400">· + Ajouter</span>}
+                      </button>
+                    ) : (
+                      // Heure affichée parce qu'un rendez-vous voisin l'exige,
+                      // mais hors ouverture : on ne la propose pas.
+                      <div className="px-1 py-1.5 text-[11.5px] text-slate-300">Hors ouverture</div>
+                    )
                   )}
                   {slotAppts.map((a) => {
                     const c = catColor(a.categorie);
@@ -2963,6 +3171,7 @@ const monthLabel = currentDate.toLocaleDateString("fr-FR", { month: "long", year
             );
           })}
         </div>
+        )
       ) : mode === "semaine" ? (
         <div className="grid grid-cols-7 divide-x divide-slate-100">
           {weekDays.map((day) => {
@@ -3163,8 +3372,8 @@ L'équipe du garage`)}`
     : null;
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Informations manquantes — {client.nom || "Client"}</h2>
 
         <div className="mt-4">
@@ -3225,49 +3434,43 @@ function humanizeWorkflowName(nom = "") {
   return sansPrefixe || nom || "Automatisation";
 }
 
-function ErreursView({ erreurs, onResoudre }) {
-  if (erreurs.length === 0) {
-    return <EmptyState icon={Check} title="Tout fonctionne normalement" subtitle="Aucune erreur automatique détectée. Nexora vous préviendra ici dès qu'un problème survient." />;
-  }
-  return (
-    <div className="space-y-4">
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-[13px] text-amber-800">
-        Une automatisation Nexora n'a pas pu aller jusqu'au bout pour les éléments ci-dessous. Rien n'est perdu côté client, mais vérifiez manuellement si l'action a bien eu lieu (email envoyé, RDV créé...), puis marquez comme vu.
-      </div>
-      {erreurs.map((e) => (
-        <div key={e.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <div className="flex items-start justify-between flex-wrap gap-2">
-            <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <Badge tone="red">À vérifier</Badge>
-                <div className="font-semibold text-slate-900 text-[14px]">{humanizeWorkflowName(e.workflow_nom)}</div>
-              </div>
-              <div className="text-[13px] text-slate-500 mt-1">Bloqué à l'étape « {e.noeud} »</div>
-            </div>
-            <div className="text-[12.5px] text-slate-400">
-              {new Date(e.created_at).toLocaleString("fr-FR", { timeZone: APP_TIME_ZONE })}
-            </div>
-          </div>
-          <details className="mt-3">
-            <summary className="text-[12.5px] text-slate-500 cursor-pointer select-none">Détails techniques</summary>
-            <div className="mt-2 bg-slate-50 rounded-xl p-3 text-[13px] text-slate-700 font-mono">
-              {e.message}
-            </div>
-          </details>
-          <div className="flex items-center gap-2.5 mt-4 flex-wrap">
-            <button onClick={() => onResoudre(e.id)} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl" style={{ backgroundColor: ACCENT }}>
-              <Check size={15} /> Marquer comme vu
-            </button>
-            <span className="text-[12px] text-slate-400">Ceci retire l'alerte de cette liste, sans corriger automatiquement le problème.</span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Télécharge le XML Factur-X de la facture. Le fichier ne quitte pas le
+// navigateur : il est produit ici, à partir de données déjà chargées.
+//
+// L'échéance légale des garages est le 1er septembre 2027. En attendant le
+// raccordement à une plateforme agréée, ce fichier permet déjà de transmettre
+// une facture conforme à un client qui la réclame — ce qui arrive dès
+// aujourd'hui, les grandes entreprises étant tenues d'émettre depuis
+// septembre 2026 et exigeant la réciproque de leurs fournisseurs.
+function telechargerFacturX(facture, garageData, onErreur) {
+  try {
+    const xml = genererXml({
+      facture,
+      garage: garageData,
+      client: facture.clients || {},
+    });
+    const url = URL.createObjectURL(new Blob([xml], { type: "application/xml" }));
+    const lien = document.createElement("a");
+    lien.href = url;
+    lien.download = `facture-${(facture.numero || "sans-numero").replace(/[^\w-]/g, "-")}.xml`;
+    document.body.appendChild(lien);
+    lien.click();
+    document.body.removeChild(lien);
+    URL.revokeObjectURL(url);
+  } catch (erreur) {
+    // Une facture incomplète ne doit pas produire un fichier que la plateforme
+    // rejettera plus tard : on refuse ici, en disant quoi corriger.
+    console.error("Factur-X impossible :", erreur);
+    onErreur?.(
+      erreur instanceof ErreurFacturX
+        ? erreur.message
+        : "Le fichier Factur-X n'a pas pu être produit.",
+    );
+  }
 }
 
 function imprimerFacture(facture, garageData) {
@@ -3323,7 +3526,7 @@ function imprimerFacture(facture, garageData) {
   w.print();
 }
 
-function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer, onMarquerPayee, onSauvegarder, facturesLiens = {}, facturesBusyId, onGenererLien, onRevoquerLien }) {
+function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer, onMarquerPayee, onSauvegarder, facturesLiens = {}, facturesBusyId, onGenererLien, onRevoquerLien, onToast }) {
   const [factureOuverte, setFactureOuverte] = useState(null);
   const [query, setQuery] = useState("");
   const [periode, setPeriode] = useState("toutes");
@@ -3444,13 +3647,14 @@ function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer
           busy={facturesBusyId === factureOuverte.id}
           onGenererLien={onGenererLien}
           onRevoquerLien={onRevoquerLien}
+          onToast={onToast}
         />
       )}
     </div>
   );
 }
 
-function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien, busy, onGenererLien, onRevoquerLien }) {
+function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien, busy, onGenererLien, onRevoquerLien, onToast }) {
   const [modeEdition, setModeEdition] = useState(false);
   const [motif, setMotif] = useState(facture.motif || "");
   const [lignes, setLignes] = useState(
@@ -3479,8 +3683,8 @@ function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien,
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-2xl text-slate-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-2xl text-slate-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Facture {facture.numero}</h2>
           <Badge tone={facture.statut === "payee" ? "green" : "amber"}>{facture.statut === "payee" ? "Payée" : "En attente"}</Badge>
@@ -3549,7 +3753,7 @@ function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien,
             </>
           ) : (
             <>
-              <button onClick={() => imprimerFacture({ ...facture, motif, lignes, montant_ht: totalHt, montant_ttc: totalTtc }, garageData)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
+              <button onClick={() => telechargerFacturX({ ...facture, motif, lignes, montant_ht: totalHt, montant_ttc: totalTtc }, garageData, (m) => onToast?.(m, "error"))} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600" title="Fichier structuré conforme à la facturation électronique">Factur-X</button><button onClick={() => imprimerFacture({ ...facture, motif, lignes, montant_ht: totalHt, montant_ttc: totalTtc }, garageData)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
                 Imprimer / PDF
               </button>
               <button onClick={() => setModeEdition(true)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
@@ -3615,8 +3819,8 @@ function NouveauClientModal({ onClose, onCreerClient }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Nouveau client</h2>
         <div className="mt-4 space-y-2.5">
           <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom du client" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
@@ -3670,18 +3874,22 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
       <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-3 border-b border-slate-100 flex items-center gap-2">
-          <div className="flex-1 flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2">
+        {/* La recherche prend toute la largeur sur téléphone. Auparavant, le
+            select de tri imposait sa largeur intrinsèque — celle de « Plus
+            fidèle → moins fidèle » — et ne laissait au champ qu'une
+            soixantaine de pixels, où le mot « Rechercher » tenait en « Re ». */}
+        <div className="p-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
+          <div className="order-1 basis-full sm:basis-auto sm:flex-1 flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2">
             <Search size={15} className="text-slate-400" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher un client..." className="bg-transparent text-sm text-slate-900 outline-none w-full placeholder:text-slate-400" />
           </div>
-          <select value={tri} onChange={(e) => setTri(e.target.value)} className="shrink-0 text-[12.5px] font-medium border border-slate-200 rounded-xl px-2.5 py-2 text-slate-600 outline-none focus:border-blue-500">
+          <select value={tri} onChange={(e) => setTri(e.target.value)} className="order-2 min-w-0 flex-1 sm:flex-none sm:shrink-0 text-[12.5px] font-medium border border-slate-200 rounded-xl px-2.5 py-2 text-slate-600 outline-none focus:border-blue-500">
             <option value="nom">Nom (A→Z)</option>
             <option value="fidele">Plus fidèle → moins fidèle</option>
             <option value="recent">Plus récent → moins récent</option>
             <option value="ancien">Moins récent → plus récent</option>
           </select>
-          <button onClick={() => setNouveauClientOuvert(true)} className="shrink-0 p-2 rounded-xl text-white" style={{ backgroundColor: ACCENT }} title="Nouveau client">
+          <button onClick={() => setNouveauClientOuvert(true)} className="order-3 shrink-0 p-2 rounded-xl text-white" style={{ backgroundColor: ACCENT }} title="Nouveau client">
             <Plus size={16} />
           </button>
         </div>
@@ -3893,10 +4101,15 @@ function SettingsRow({ label, value, right }) {
 
 const PARAMETRES_ONGLETS = [
   ["garage", "Mon garage"],
+  ["import", "Reprise de données"],
   ["notifications", "Notifications"],
   ["integrations", "Intégrations"],
   ["apparence", "Apparence"],
-  ["alertes", "Alertes"],
+  // « Alertes » retiré le 2026-09-05 : il dupliquait « Notifications à
+  // vérifier », qui est le vrai écran d'échec d'envoi, et surchargeait
+  // Paramètres d'un journal technique que le garage ne peut pas exploiter.
+  // Le journal `erreurs_automatisation` continue d'être alimenté ; il n'est
+  // simplement plus affiché ici.
 ];
 
 const TYPES_NOTIFICATIONS = [
@@ -3918,14 +4131,21 @@ const THEMES_DASHBOARD = [
   { key: "automatique", label: "Automatique", description: "S'adapte aux réglages de l'appareil." },
 ];
 
-function ParametresView({ garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, erreurs = [], onResoudre }) {
-  const [onglet, setOnglet] = useState("garage");
+function ParametresView({ garageId, garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, ongletInitial = "garage", onGererAbonnement }) {
+  // Ouvert sur l'onglet demandé par l'appelant : la liste de mise en route
+  // envoie vers « Reprise de données » sans faire chercher le bon onglet.
+  const [onglet, setOnglet] = useState(ongletInitial);
   const [newPrestation, setNewPrestation] = useState({ nom: "", categorie: "entretien", duree_minutes: 60 });
   const [newMecanicienNom, setNewMecanicienNom] = useState("");
   const canauxNotifications = garageData.canaux_notifications && typeof garageData.canaux_notifications === "object" ? garageData.canaux_notifications : {};
   const choisirCanal = (typeKey, canalKey) => onGarageChange("canaux_notifications", { ...canauxNotifications, [typeKey]: canalKey });
   const themeActuel = garageData.theme || "clair";
-  const catalogue = prestations.length ? prestations : prestationsCatalogue;
+  // Les prestations réellement enregistrées, et rien d'autre. Ce repli montrait
+  // sept prestations codées en dur quand la liste était vide : le garage croyait
+  // posséder un catalogue absent de sa base, et ne comprenait pas pourquoi le
+  // formulaire de rendez-vous n'en proposait aucune. Une liste vide, elle, se
+  // corrige ; une liste fausse se découvre devant un client.
+  const catalogue = prestations;
   const field = (label, name, type = "text") => <label className="block"><span className="text-[12.5px] font-medium text-slate-500">{label}</span><input type={type} value={garageData[name] ?? ""} onChange={(event) => onGarageChange(name, type === "number" ? Number(event.target.value) : event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" /></label>;
   const JOURS_SEMAINE = [["1", "Lundi"], ["2", "Mardi"], ["3", "Mercredi"], ["4", "Jeudi"], ["5", "Vendredi"], ["6", "Samedi"], ["7", "Dimanche"]];
   const horaires = garageData.horaires && typeof garageData.horaires === "object" ? garageData.horaires : {};
@@ -3953,7 +4173,6 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
       {PARAMETRES_ONGLETS.map(([key, label]) => (
         <button key={key} type="button" onClick={() => setOnglet(key)} className="flex items-center gap-1.5 text-[13px] font-medium px-3.5 py-1.5 rounded-lg" style={onglet === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>
           {label}
-          {key === "alertes" && erreurs.length > 0 && <span className="text-[10.5px] font-bold text-white rounded-full min-w-[16px] h-4 flex items-center justify-center px-1" style={{ backgroundColor: "#DC2626" }}>{erreurs.length}</span>}
         </button>
       ))}
     </div>
@@ -3961,6 +4180,55 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
     {onglet === "garage" && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <SettingsSection title="Informations garage"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{field("Nom du garage", "nom_garage")} {field("Adresse", "adresse")} {field("Téléphone", "telephone")} {field("Email", "email")}</div></SettingsSection>
+        <SettingsSection title="Facturation électronique">
+          <div className="space-y-3">
+            {field("SIREN du garage", "siren")}
+            <div className="text-[12.5px] text-slate-500 -mt-2">
+              Neuf chiffres. Obligatoire sur toutes vos factures, et indispensable à la
+              facturation électronique — obligatoire pour les garages au 1<sup>er</sup> septembre 2027.
+            </div>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!garageData.tva_sur_les_debits}
+                onChange={(e) => onGarageChange("tva_sur_les_debits", e.target.checked)}
+                className="accent-blue-600 mt-0.5"
+              />
+              <span>
+                <span className="text-[13px] font-medium text-slate-700 block">
+                  J&apos;ai opté pour la TVA sur les débits
+                </span>
+                <span className="text-[12.5px] text-slate-500">
+                  À cocher seulement si votre comptable a exercé cette option. Dans le doute,
+                  laissez décoché : c&apos;est le régime par défaut.
+                </span>
+              </span>
+            </label>
+          </div>
+        </SettingsSection>
+
+        {/* Le bandeau ne s'affiche que sept jours avant une échéance. Un garage
+            qui veut résilier en dehors de cette fenêtre doit tout de même
+            trouver où le faire — sinon il écrit au support, ce que la page
+            tarifaire lui a promis d'éviter. */}
+        {garageData.stripe_customer_id && (
+          <SettingsSection title="Votre abonnement">
+            <div className="text-[13px] text-slate-600 leading-relaxed">
+              Carte bancaire, factures, résiliation : tout se gère sur la page sécurisée de
+              Stripe, notre prestataire de paiement. La résiliation prend effet à la fin de la
+              période déjà réglée — vous ne perdez aucun jour payé.
+            </div>
+            <button
+              type="button"
+              onClick={onGererAbonnement}
+              className="mt-3 inline-flex items-center gap-1.5 px-4 min-h-[44px] rounded-xl text-[13px] font-semibold text-white"
+              style={{ backgroundColor: ACCENT }}
+            >
+              Gérer mon abonnement
+            </button>
+          </SettingsSection>
+        )}
+
         <SettingsSection title="Objectif & avis">
           <div className="space-y-3">
             {field("Objectif de chiffre d'affaires mensuel (€)", "objectif_ca_mensuel", "number")}
@@ -3969,9 +4237,15 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
             <div className="text-[12.5px] text-slate-500 -mt-2">Utilisé automatiquement dans l'email de demande d'avis envoyé après chaque rendez-vous terminé.</div>
           </div>
         </SettingsSection>
-        <SettingsSection title="Horaires d’ouverture"><div className="space-y-2">{JOURS_SEMAINE.map(([jour, libelle]) => { const plages = plagesDuJour(jour); const ouvert = plages.length > 0; return <div key={jour} className="flex flex-wrap items-center gap-2 py-1.5 border-b border-slate-100 last:border-0"><label className="flex items-center gap-2 w-[132px] shrink-0"><input type="checkbox" checked={ouvert} onChange={(e) => basculerJour(jour, e.target.checked)} className="accent-blue-600" /><span className="text-[13px] font-medium text-slate-700">{libelle}</span></label>{ouvert ? <div className="flex flex-wrap items-center gap-1.5">{champHeure(jour, 0, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 0, 1)}{plages.length > 1 ? <><span className="text-slate-300 px-1">|</span>{champHeure(jour, 1, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 1, 1)}<button type="button" onClick={() => retirerApresMidi(jour)} className="text-[11px] text-slate-400 hover:text-red-500 px-1">retirer</button></> : <button type="button" onClick={() => ajouterApresMidi(jour)} className="text-[11px] text-blue-600 hover:underline px-1">+ après-midi</button>}</div> : <span className="text-[13px] text-slate-400">Fermé</span>}</div>; })}</div><div className="mt-4 rounded-xl bg-slate-50 p-3 text-[12.5px] text-slate-600">Ces horaires servent au calcul des créneaux proposés aux clients. Laissez un jour décoché pour le déclarer fermé.</div></SettingsSection>
-        <SettingsSection title="Mécaniciens"><div className="space-y-2">{mecaniciens.length === 0 && <div className="text-[13px] text-slate-400">Aucun mécanicien pour l’instant.</div>}{mecaniciens.map((m) => <div key={m.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-slate-100 last:border-0"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: m.couleur || "#3D6BE0" }} /><span className="text-[13px] font-medium text-slate-700">{m.nom}</span></div><label className="flex items-center gap-1.5 text-[12px] text-slate-500"><input type="checkbox" checked={m.actif !== false} onChange={(e) => onToggleMecanicienActif(m.id, e.target.checked)} className="accent-blue-600" />Actif</label></div>)}</div><div className="mt-3 flex gap-2"><input type="text" value={newMecanicienNom} onChange={(e) => setNewMecanicienNom(e.target.value)} placeholder="Nom du mécanicien" className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" /><button type="button" onClick={() => { if (newMecanicienNom.trim()) { onAddMecanicien(newMecanicienNom.trim()); setNewMecanicienNom(""); } }} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}>Ajouter</button></div></SettingsSection>
-        <SettingsSection title="Prestations disponibles"><div className="space-y-1.5 max-h-[230px] overflow-y-auto">{catalogue.map((p) => <div key={p.id || p.nom} className="flex items-center gap-2 text-sm py-2 border-b border-slate-100 last:border-0"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(p.categorie).bar }} /><span className="flex-1 text-slate-700">{p.nom}</span><span className="text-slate-500 text-[12px]">{p.duree_minutes || p.duree_min || p.duree} min</span>{p.id && <button onClick={() => onDeletePrestation(p.id)} className="ml-1 text-slate-400 hover:text-red-600" title="Supprimer"><Trash2 size={14} /></button>}</div>)}</div><div className="grid grid-cols-[1fr_110px_74px] gap-2 mt-4"><input value={newPrestation.nom} onChange={(event) => setNewPrestation((prev) => ({ ...prev, nom: event.target.value }))} className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900" placeholder="Nouvelle prestation" /><input type="number" min="15" step="15" value={newPrestation.duree_minutes} onChange={(event) => setNewPrestation((prev) => ({ ...prev, duree_minutes: Number(event.target.value) }))} className="rounded-xl border border-slate-200 px-2 py-2 text-sm text-slate-900" /><button onClick={createPrestation} className="rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}><Plus size={15} className="inline" /> Ajouter</button></div></SettingsSection>
+        <SettingsSection title="Horaires d’ouverture"><div className="space-y-2">{JOURS_SEMAINE.map(([jour, libelle]) => { const plages = plagesDuJour(jour); const ouvert = plages.length > 0; return <div key={jour} className="flex flex-wrap items-center gap-2 py-1.5 border-b border-slate-100 last:border-0"><label className="flex items-center gap-2 w-[112px] sm:w-[132px] shrink-0"><input type="checkbox" checked={ouvert} onChange={(e) => basculerJour(jour, e.target.checked)} className="accent-blue-600" /><span className="text-[13px] font-medium text-slate-700">{libelle}</span></label>{ouvert ? <div className="flex flex-wrap items-center gap-1.5">{champHeure(jour, 0, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 0, 1)}{plages.length > 1 ? <><span className="text-slate-300 px-1">|</span>{champHeure(jour, 1, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 1, 1)}<button type="button" onClick={() => retirerApresMidi(jour)} className="text-[11px] text-slate-400 hover:text-red-500 px-1">retirer</button></> : <button type="button" onClick={() => ajouterApresMidi(jour)} className="text-[11px] text-blue-600 hover:underline px-1">+ après-midi</button>}</div> : <span className="text-[13px] text-slate-400">Fermé</span>}</div>; })}</div><div className="mt-4 rounded-xl bg-slate-50 p-3 text-[12.5px] text-slate-600">Ces horaires servent au calcul des créneaux proposés aux clients. Laissez un jour décoché pour le déclarer fermé.</div></SettingsSection>
+        <SettingsSection title="Mécaniciens"><div className="space-y-2">{mecaniciens.length === 0 && <div className="text-[13px] text-slate-400">Aucun mécanicien pour l’instant.</div>}{mecaniciens.map((m) => <div key={m.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-slate-100 last:border-0"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: m.couleur || "#3D6BE0" }} /><span className="text-[13px] font-medium text-slate-700">{m.nom}</span></div><label className="flex items-center gap-1.5 text-[12px] text-slate-500"><input type="checkbox" checked={m.actif !== false} onChange={(e) => onToggleMecanicienActif(m.id, e.target.checked)} className="accent-blue-600" />Actif</label></div>)}</div><div className="mt-3 flex gap-2"><input type="text" value={newMecanicienNom} onChange={(e) => setNewMecanicienNom(e.target.value)} placeholder="Nom du mécanicien" className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" /><button type="button" onClick={() => { if (newMecanicienNom.trim()) { onAddMecanicien(newMecanicienNom.trim()); setNewMecanicienNom(""); } }} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}>Ajouter</button></div></SettingsSection>
+        <SettingsSection title="Prestations disponibles"><div className="space-y-1.5 max-h-[230px] overflow-y-auto">{catalogue.length === 0 && <div className="text-[13px] text-slate-400 py-3">Aucune prestation pour l&apos;instant. Ajoutez la première ci-dessous : elle apparaîtra aussitôt dans vos rendez-vous et vos devis.</div>}{catalogue.map((p) => <div key={p.id || p.nom} className="flex items-center gap-2 text-sm py-2 border-b border-slate-100 last:border-0"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(p.categorie).bar }} /><span className="flex-1 text-slate-700">{p.nom}</span><span className="text-slate-500 text-[12px]">{p.duree_minutes || p.duree_min || p.duree} min</span>{p.id && <button onClick={() => onDeletePrestation(p.id)} className="ml-1 text-slate-400 hover:text-red-600" title="Supprimer"><Trash2 size={14} /></button>}</div>)}</div><div className="grid grid-cols-1 sm:grid-cols-[1fr_110px_74px] gap-2 mt-4"><input value={newPrestation.nom} onChange={(event) => setNewPrestation((prev) => ({ ...prev, nom: event.target.value }))} className="min-w-0 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900" placeholder="Nouvelle prestation" /><input type="number" min="15" step="15" value={newPrestation.duree_minutes} onChange={(event) => setNewPrestation((prev) => ({ ...prev, duree_minutes: Number(event.target.value) }))} className="rounded-xl border border-slate-200 px-2 py-2 text-sm text-slate-900" /><button onClick={createPrestation} className="rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}><Plus size={15} className="inline" /> Ajouter</button></div></SettingsSection>
+      </div>
+    )}
+
+    {onglet === "import" && (
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <ImportClients garageId={garageId} />
       </div>
     )}
 
@@ -4057,8 +4331,13 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
               )
             }
           />
-          <SettingsRow label="Google Agenda" right={<Badge tone={garageData.google_agenda_connecte ? "green" : "amber"}>{garageData.google_agenda_connecte ? "Connecté" : "À connecter dans n8n"}</Badge>} />
-          <div className="mt-3 text-[12px] text-slate-500">La connexion Gmail permet à Nexora de lire automatiquement les demandes de vos clients — aucune configuration technique de votre côté. La connexion Google Calendar doit encore être autorisée dans le workflow n8n.</div>
+          {/* « À connecter dans n8n » nommait au garagiste un outil interne
+              qu'il ne connaît pas et sur lequel il ne peut rien. La ligne
+              n'apparaît que si la connexion existe. */}
+          {GOOGLE_CALENDAR_CONFIGURE && (
+            <SettingsRow label="Google Agenda" right={<Badge tone={garageData.google_agenda_connecte ? "green" : "amber"}>{garageData.google_agenda_connecte ? "Connecté" : "À connecter"}</Badge>} />
+          )}
+          <div className="mt-3 text-[12px] text-slate-500">La connexion Gmail permet à Nexora de lire automatiquement les demandes de vos clients — aucune configuration technique de votre côté.</div>
         </SettingsSection>
         <SettingsSection title="Paiement en ligne (Stripe)">
           <StripeKeyField />
@@ -4085,11 +4364,6 @@ function ParametresView({ garageData, onGarageChange, onSave, prestations = [], 
       </div>
     )}
 
-    {onglet === "alertes" && (
-      <div className="grid grid-cols-1 gap-5">
-        <ErreursView erreurs={erreurs} onResoudre={onResoudre} />
-      </div>
-    )}
   </div>;
 }
 function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting, garageData = garage }) {
@@ -4112,9 +4386,9 @@ function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting,
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
 
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(event) => event.stopPropagation()}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(event) => event.stopPropagation()}>
 
         <h2 className="text-lg font-semibold text-slate-900">
           Proposer un rendez-vous
@@ -4256,8 +4530,45 @@ function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting,
 // =====================================================================================
 // APP SHELL
 // =====================================================================================
-function NexoraDashboardInner({ garageId }) {
+function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = null }) {
   const [view, setView] = useState("aujourdhui");
+  // Onglet des Paramètres à ouvrir quand on y arrive depuis un raccourci.
+  // Réinitialisé à « garage » dès qu'on navigue ailleurs, sinon un retour
+  // dans Paramètres rouvrirait la reprise de données sans raison.
+  const [parametresOnglet, setParametresOnglet] = useState("garage");
+  // Ouvre le portail de facturation Stripe : carte, factures, résiliation.
+  // La page tarifaire promet « vous arrêtez vous-même » — sans cette porte,
+  // la promesse ne tiendrait que depuis les e-mails de Stripe, et un garage
+  // qui cherche à résilier depuis Nexora ne trouverait rien.
+  const ouvrirPortailAbonnement = async () => {
+    const { data } = await supabase.auth.getSession();
+    const jeton = data.session?.access_token;
+    if (!jeton) return;
+    try {
+      const reponse = await fetch("/api/abonnement/portail", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jeton}` },
+      });
+      const resultat = await reponse.json();
+      if (reponse.ok && resultat.url) {
+        window.location.href = resultat.url;
+        return;
+      }
+      flashToast(
+        resultat.erreur === "aucun_abonnement"
+          ? "Vous n'avez pas encore d'abonnement à gérer."
+          : "La gestion de l'abonnement est momentanément indisponible.",
+        "error",
+      );
+    } catch {
+      flashToast("La gestion de l'abonnement est momentanément indisponible.", "error");
+    }
+  };
+
+  const allerConfigurer = (vue, onglet) => {
+    setParametresOnglet(onglet || "garage");
+    setView(vue);
+  };
   const [notifsAVerifierCount, setNotifsAVerifierCount] = useState(0);
 
   // Compteur de la pastille : chargé au montage pour que le badge existe
@@ -4281,12 +4592,16 @@ function NexoraDashboardInner({ garageId }) {
 });
   const [propositions, setPropositions] = useState([]);
   const [devisList, setDevisList] = useState([]);
-  const [erreurs, setErreurs] = useState([]);
   const [factures, setFactures] = useState([]);
   const [toast, setToast] = useState(null);
   const [selectedAppt, setSelectedAppt] = useState(null);
   const [atelierLiens, setAtelierLiens] = useState({});
   const [atelierQr, setAtelierQr] = useState({});
+  // Quels rendez-vous ont DÉJÀ un lien actif, d'après la base et non d'après
+  // l'état local — qui repart vide à chaque rechargement. Sans cette lecture,
+  // « Imprimer les étiquettes » régénère tout et révoque les QR déjà collés
+  // sur les pare-brise.
+  const [atelierJetonsActifs, setAtelierJetonsActifs] = useState({});
   const [atelierBusyId, setAtelierBusyId] = useState(null);
   const [devisLiens, setDevisLiens] = useState({});
   const [devisBusyId, setDevisBusyId] = useState(null);
@@ -4796,23 +5111,6 @@ setPropositions(formattedPropositions);
     loadTravauxDifferes();
   }, []);
 
-  useEffect(() => {
-    async function loadErreurs() {
-      const { data, error } = await supabase
-        .from("erreurs_automatisation")
-        .select("*")
-        .eq("garage_id", garageId)
-        .eq("resolu", false)
-        .order("created_at", { ascending: false });
-      if (error) {
-        console.error("Erreur chargement erreurs_automatisation :", JSON.stringify(error, null, 2));
-        flashToast("Impossible de charger le journal des erreurs", "error");
-        return;
-      }
-      setErreurs(data || []);
-    }
-    loadErreurs();
-  }, []);
 
   useEffect(() => {
     async function loadFactures() {
@@ -5345,18 +5643,6 @@ if (updateError) {
     return formatted;
   };
 
-  const handleResoudreErreur = async (id) => {
-    const { error } = await supabase
-      .from("erreurs_automatisation")
-      .update({ resolu: true })
-      .eq("id", id);
-    if (error) {
-      flashToast("Impossible de marquer comme résolu", "error");
-      return;
-    }
-    setErreurs((prev) => prev.filter((e) => e.id !== id));
-    flashToast("Marqué comme résolu");
-  };
 
   // Source de vérité unique d'une facture : l'ordre de réparation TERMINÉ du
   // rendez-vous, et ses seules lignes non annulées — ce qui a réellement été
@@ -5536,7 +5822,7 @@ if (updateError) {
       setPropositions((prev) => [formatted, ...prev]);
       setStats((s) => ({ ...s, toValidate: s.toValidate + 1 }));
       setSelectedDemande(null);
-      flashToast("Proposition créée — prête à être envoyée par votre workflow n8n");
+      flashToast("Proposition créée — prête à être envoyée au client");
     } catch (error) {
       console.error("Erreur création proposition :", error);
       flashToast("La proposition n’a pas pu être créée", "error");
@@ -5577,6 +5863,10 @@ if (updateError) {
       automatisation_active: !!garageData.automatisation_active,
       rappel_confirmation_actif: !!garageData.rappel_confirmation_actif,
       delai_confirmation_rdv_h: Number(garageData.delai_confirmation_rdv_h) || 24,
+      // Chaîne vide envoyée telle quelle, la contrainte de table refuserait
+      // un SIREN mal formé — on renvoie donc null plutôt que "".
+      siren: (garageData.siren || "").replace(/\s/g, "") || null,
+      tva_sur_les_debits: !!garageData.tva_sur_les_debits,
     };
     const { error } = await supabase.from("garages").update(update).eq("id", garageId);
     setSavingSettings(false);
@@ -5755,6 +6045,21 @@ if (updateError) {
   // seul lien actif par RDV, régénéré à la demande, jamais journalisé. Le QR
   // est généré entièrement dans le navigateur (paquet "qrcode", data URL
   // locale) — le jeton n'est jamais envoyé à un service tiers.
+  useEffect(() => {
+    const ids = rendezVous.map((r) => r.id).filter(Boolean);
+    if (ids.length === 0) return;
+    let annule = false;
+    supabase.rpc("etat_liens_atelier", { p_rdv_ids: ids }).then(({ data, error }) => {
+      if (annule || error) return;
+      const etat = {};
+      for (const ligne of data || []) etat[ligne.rendez_vous_id] = ligne.expires_at;
+      setAtelierJetonsActifs(etat);
+    });
+    return () => {
+      annule = true;
+    };
+  }, [rendezVous]);
+
   const genererLienAtelier = async (rdvId) => {
     setAtelierBusyId(rdvId);
     const { data: token, error } = await supabase.rpc("creer_jeton_atelier", { p_rdv_id: rdvId });
@@ -5767,6 +6072,7 @@ if (updateError) {
     const url = `${window.location.origin}/atelier/${token}`;
     setAtelierLiens((prev) => ({ ...prev, [rdvId]: url }));
     try {
+      setAtelierJetonsActifs((prev) => ({ ...prev, [rdvId]: "actif" }));
       const dataUrl = await QRCode.toDataURL(url, { width: 220, margin: 1 });
       setAtelierQr((prev) => ({ ...prev, [rdvId]: dataUrl }));
     } catch (qrError) {
@@ -5787,14 +6093,41 @@ if (updateError) {
     }
     setAtelierLiens((prev) => { const next = { ...prev }; delete next[rdvId]; return next; });
     setAtelierQr((prev) => { const next = { ...prev }; delete next[rdvId]; return next; });
+    setAtelierJetonsActifs((prev) => { const next = { ...prev }; delete next[rdvId]; return next; });
     flashToast("Lien atelier révoqué");
   };
 
+  const rafraichirEtatLiens = async (ids) => {
+    if (!ids || ids.length === 0) return {};
+    const { data, error } = await supabase.rpc("etat_liens_atelier", { p_rdv_ids: ids });
+    if (error) {
+      console.error("Erreur lecture des liens atelier :", error);
+      return {};
+    }
+    const etat = {};
+    for (const ligne of data || []) etat[ligne.rendez_vous_id] = ligne.expires_at;
+    setAtelierJetonsActifs(etat);
+    return etat;
+  };
+
   const genererEtiquettesAtelier = async (appts) => {
-    const manquants = appts.filter((a) => !atelierLiens[a.id]);
+    // On relit l'état réel AVANT de générer quoi que ce soit : un rendez-vous
+    // dont le lien est actif en base ne doit pas être régénéré, sinon le QR
+    // déjà remis au client cesse de fonctionner.
+    const actifs = await rafraichirEtatLiens(appts.map((a) => a.id));
+    const manquants = appts.filter((a) => !atelierLiens[a.id] && !actifs[a.id]);
     if (manquants.length > 0) {
       const resultats = await Promise.all(manquants.map((a) => genererLienAtelier(a.id)));
       if (resultats.some((url) => !url)) return;
+    }
+
+    const imprimables = appts.filter((a) => atelierQr[a.id] || manquants.some((m) => m.id === a.id));
+    if (imprimables.length === 0) {
+      flashToast(
+        "Les liens de ces véhicules existent déjà. Pour les réimprimer, régénérez le lien depuis la fiche — l'ancien QR cessera alors de fonctionner.",
+        "error",
+      );
+      return;
     }
     setTimeout(() => window.print(), 300);
   };
@@ -5817,7 +6150,34 @@ if (updateError) {
       window.open(connectUrl, "_blank", "noopener,noreferrer");
       return;
     }
-    flashToast("Ajoutez NEXT_PUBLIC_GOOGLE_CALENDAR_CONNECT_URL après avoir configuré l’autorisation Google dans n8n", "error");
+    // Inatteignable : le bouton n'est rendu que si l'URL existe. On garde un
+    // message compréhensible plutôt qu'un nom de variable d'environnement.
+    flashToast("La connexion à Google Agenda n’est pas encore disponible.", "error");
+  };
+
+  // Chaque page dit à quoi elle sert, en une phrase, dans les mots du garage.
+  //
+  // L'en-tête répétait le nom du garage sur les treize écrans. Un garagiste
+  // sait dans quel garage il est ; ce qu'il ne sait pas toujours, c'est ce
+  // qu'on attend de lui sur la page qu'il vient d'ouvrir — surtout sur les
+  // écrans qu'il n'ouvre qu'une fois par semaine. La place est la même, ce
+  // qu'elle porte est utile.
+  const sousTitres = {
+    aujourdhui: "Ce qui vous attend aujourd'hui, et ce qui bloque",
+    atelier: "Où en est chaque voiture, en un coup d'œil",
+    agenda: "Vos rendez-vous et les créneaux qu'il vous reste",
+    valider: "Les demandes de rendez-vous qui attendent votre accord",
+    demandes: "Ce que vos clients vous ont écrit, trié pour vous",
+    clients: "Vos clients, leurs véhicules et leur historique",
+    devis: "Devis, factures et règlements",
+    verifier: "Les envois automatiques qui n'ont pas abouti",
+    factures: "Vos factures et les règlements reçus",
+    facturation: "Devis, factures et règlements",
+    inspections: "Le tour du véhicule en photos, envoyé au client pour accord avant d'intervenir",
+    ordres: "La fiche interne qui suit chaque réparation, de la préparation à la restitution",
+    statistiques: "Ce que le garage a produit, et ce qui progresse",
+    historique: "Tout ce qui s'est passé, retrouvable",
+    parametres: "Vos horaires, vos prestations et vos informations",
   };
 
   const titles = {
@@ -5831,6 +6191,8 @@ if (updateError) {
     verifier: "Erreurs à vérifier",
     factures: "Factures",
     facturation: "Facturation",
+    inspections: "Contrôle véhicule",
+    ordres: "Fiches atelier",
     statistiques: "Statistiques",
     historique: "Historique",
     parametres: "Paramètres",
@@ -5852,8 +6214,67 @@ if (updateError) {
     ? (Array.isArray(dossierClient.vehicules) ? dossierClient.vehicules : [dossierClient.vehicules]).find((v) => v.id === dossierVehiculeId)
     : null;
 
+  // Bandeau d'essai. Il n'apparaît que dans la dernière semaine : affiché dès
+  // le premier jour, il devient un décor qu'on ne lit plus, et il ne dirait
+  // rien le jour où il compte vraiment.
+  // Premier prélèvement à venir. On prévient une semaine avant, avec le
+  // montant et la date — c'est ce que le garage veut savoir, et c'est ce que
+  // Stripe fera de son côté trois jours avant.
+  const joursAvantFacture = joursAvantPrelevement(acces);
+  const offrePayee = acces?.forfait ? offre(acces.forfait) : null;
+  const montantPaye = offrePayee && acces?.periodicite !== "annuel"
+    ? offrePayee.prixMensuel
+    : offrePayee?.prixAnnuel;
+
+  const bandeauPrelevement =
+    acces?.statut === "trialing" && joursAvantFacture !== null && joursAvantFacture <= 7 ? (
+      <div
+        role="status"
+        className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-4 py-2 text-[13px]"
+        style={{ backgroundColor: "#FEF3C7", color: NAVY }}
+      >
+        <span>
+          {joursAvantFacture === 0
+            ? "Votre premier prélèvement a lieu aujourd'hui"
+            : `Premier prélèvement dans ${joursAvantFacture} jour${joursAvantFacture > 1 ? "s" : ""}`}
+          {offrePayee ? ` — ${offrePayee.nom}, ${montantPaye} €` : ""}.
+        </span>
+        <span style={{ color: "#64748B" }}>Vous pouvez arrêter avant, sans rien payer.</span>
+        {onGererAbonnement && (
+          <button type="button" onClick={onGererAbonnement} className="font-semibold underline" style={{ color: ACCENT }}>
+            Gérer mon abonnement
+          </button>
+        )}
+      </div>
+    ) : null;
+
+  const bandeauEssai =
+    joursEssaiRestants !== null && joursEssaiRestants <= 7 ? (
+      <div
+        role="status"
+        className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-4 py-2 text-[13px]"
+        style={{ backgroundColor: joursEssaiRestants <= 3 ? "#FEF3C7" : "#EAF0FF", color: NAVY }}
+      >
+        <span>
+          {joursEssaiRestants === 0
+            ? `${libelleAcces(acces?.motif).termine} se termine aujourd'hui.`
+            : `Il vous reste ${joursEssaiRestants} jour${joursEssaiRestants > 1 ? "s" : ""} ${libelleAcces(acces?.motif).court}.`}
+        </span>
+        <a
+          href="/#tarifs"
+          className="font-semibold underline"
+          style={{ color: ACCENT }}
+        >
+          Choisir une offre
+        </a>
+      </div>
+    ) : null;
+
   return (
-    <div className="flex min-h-[800px] w-full font-sans" style={{ backgroundColor: BG }}>
+    <div className="flex min-h-[800px] w-full font-sans flex-col" style={{ backgroundColor: BG }}>
+      {bandeauPrelevement}
+      {bandeauEssai}
+      <div className="flex w-full flex-1">
       <aside className="w-60 shrink-0 py-5 px-3.5 hidden md:flex flex-col" style={{ backgroundColor: NAVY }}>
         <Logo dark />
         <nav className="mt-8 flex flex-col gap-4">
@@ -5920,14 +6341,14 @@ if (updateError) {
   />
 )}
       <main className="flex-1 min-w-0">
-        <div className="flex items-center justify-between px-5 md:px-8 py-5 border-b border-slate-200 bg-white">
+        <div className="sticky top-0 z-30 flex items-center justify-between px-5 md:px-8 py-5 border-b border-slate-200 bg-white">
           <div className="flex items-center gap-3">
             <button onClick={() => setMobileMenuOpen(true)} className="md:hidden -ml-1 p-1.5 rounded-lg text-slate-500 hover:bg-slate-100">
               <Menu size={22} />
             </button>
             <div>
               <div className="text-lg font-semibold text-slate-900">{titles[view]}</div>
-              <div className="text-[13px] text-slate-500">{garageData.nom_garage}</div>
+              <div className="text-[13px] text-slate-500">{sousTitres[view] || garageData.nom_garage}</div>
             </div>
           </div>
         </div>
@@ -5986,10 +6407,10 @@ if (updateError) {
           </div>
         )}
 
-        <div className="p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView stats={stats} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
+        <div key={view} className="nx-vue p-5 md:p-8">
+          {view === "aujourdhui" && <AujourdhuiView stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
-          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} onGenererEtiquettes={genererEtiquettesAtelier} onOuvrirDossierVehicule={setDossierVehiculeId} />}
+          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={setDossierVehiculeId} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
           {["devis", "factures", "historique"].includes(view) && (
             <FacturationView
@@ -6032,7 +6453,7 @@ if (updateError) {
             />
           )}
           {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} travauxDifferes={travauxDifferes} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onOuvrirTravailDiffereModal={(clientId) => setTravailDiffereModal({ clientId })} onToast={flashToast} onOuvrirDossierVehicule={(vehiculeId) => setDossierVehiculeId(vehiculeId)} />}
-          {INSPECTIONS_MODULE_ACTIF && view === "inspections" && <InspectionsSection garageId={garageId} clients={clients} rendezVous={rendezVous} onToast={flashToast} initialDetailId={inspectionCibleCockpit} onInitialDetailConsumed={() => setInspectionCibleCockpit(null)} />}
+          {INSPECTIONS_MODULE_ACTIF && view === "inspections" && <InspectionsSection garageId={garageId} garageNom={garageData?.nom_garage} clients={clients} rendezVous={rendezVous} onToast={flashToast} initialDetailId={inspectionCibleCockpit} onInitialDetailConsumed={() => setInspectionCibleCockpit(null)} />}
           {view === "ordres-reparation" && (
             <OrdresReparationSection
               garageId={garageId}
@@ -6056,7 +6477,7 @@ if (updateError) {
               onCountChange={setNotifsAVerifierCount}
             />
           )}
-          {view === "parametres" && <ParametresView garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} erreurs={erreurs} onResoudre={handleResoudreErreur} />}
+          {view === "parametres" && <ParametresView onGererAbonnement={ouvrirPortailAbonnement} ongletInitial={parametresOnglet} key={parametresOnglet} garageId={garageId} garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} />}
         </div>
       </main>
 
@@ -6090,14 +6511,15 @@ if (updateError) {
           }}
         />
       )}
+      </div>
     </div>
   );
 }
 
 function ForgotPasswordScreen({ onBack }) {
   const [email, setEmail] = useState("");
-  const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e) {
@@ -6105,56 +6527,55 @@ function ForgotPasswordScreen({ onBack }) {
     setError("");
     setLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin,
+      redirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
     });
     setLoading(false);
     if (error) {
-      setError("Impossible d'envoyer le lien de réinitialisation.");
+      setError("Impossible d'envoyer l'e-mail. Réessayez dans un instant.");
       return;
     }
     setSent(true);
   }
 
+  if (sent) {
+    return (
+      <ConnexionShell
+        titre="C'est parti"
+        sousTitre={`Si un compte existe pour ${email}, un lien de réinitialisation vient d'y être envoyé.`}
+      >
+        <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.55, margin: 0 }}>
+          Le lien est valable une heure. Pensez à regarder vos indésirables.
+        </p>
+        <button type="button" onClick={onBack} className="nx-bouton" style={{ marginTop: 20 }}>
+          Revenir à la connexion
+        </button>
+      </ConnexionShell>
+    );
+  }
+
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG }}>
-      <div style={{ background: "#fff", padding: 32, borderRadius: 12, width: 320, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: NAVY, marginBottom: 4 }}>Mot de passe oublié</h1>
-        {sent ? (
-          <>
-            <p style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Si un compte existe pour cet email, un lien de réinitialisation vient de vous être envoyé.</p>
-            <button type="button" onClick={onBack} style={{ width: "100%", padding: "10px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" }}>
-              Retour à la connexion
-            </button>
-          </>
-        ) : (
-          <form onSubmit={handleSubmit}>
-            <p style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Recevez un lien pour réinitialiser votre mot de passe.</p>
-            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Email</label>
-            <input
-              type="email"
-              placeholder="vous@exemple.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              className="nexora-login-field"
-              style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
-            />
-            {error && <p style={{ color: "#DC2626", fontSize: 13, marginBottom: 10 }}>{error}</p>}
-            <button
-              type="submit"
-              disabled={loading}
-              style={{ width: "100%", padding: "10px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" }}
-            >
-              {loading ? "Envoi..." : "Envoyer le lien"}
-            </button>
-            <button type="button" onClick={onBack} style={{ width: "100%", padding: "10px 12px", background: "none", color: "#64748B", border: "none", fontSize: 13, cursor: "pointer", marginTop: 10 }}>
-              Retour à la connexion
-            </button>
-          </form>
-        )}
-      </div>
-    </div>
+    <ConnexionShell
+      titre="Mot de passe oublié"
+      sousTitre="Indiquez votre adresse, nous vous envoyons un lien pour en choisir un nouveau."
+    >
+      <form onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="nx-oubli" className="nx-label">Adresse e-mail</label>
+          <input id="nx-oubli" type="email" placeholder="vous@exemple.com" value={email}
+            onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className="nx-champ" />
+        </div>
+        <div aria-live="polite" style={{ marginTop: error ? 16 : 0 }}>
+          {error && <div className="nx-erreur"><span aria-hidden>!</span><span>{error}</span></div>}
+        </div>
+        <button type="submit" disabled={loading} className="nx-bouton" style={{ marginTop: 20 }}>
+          {loading && <span className="nx-rond" />}
+          {loading ? "Envoi…" : "Envoyer le lien"}
+        </button>
+        <div style={{ textAlign: "center", marginTop: 8 }}>
+          <button type="button" onClick={onBack} className="nx-lien">Revenir à la connexion</button>
+        </div>
+      </form>
+    </ConnexionShell>
   );
 }
 
@@ -6186,49 +6607,221 @@ function UpdatePasswordScreen() {
     setDone(true);
   }
 
+  if (done) {
+    return (
+      <ConnexionShell titre="Mot de passe enregistré" sousTitre="Vous pouvez désormais vous connecter avec.">
+        <button type="button" onClick={() => window.location.reload()} className="nx-bouton" style={{ marginTop: 4 }}>
+          Entrer dans mon espace
+        </button>
+      </ConnexionShell>
+    );
+  }
+
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG }}>
-      <div style={{ background: "#fff", padding: 32, borderRadius: 12, width: 320, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: NAVY, marginBottom: 4 }}>Nouveau mot de passe</h1>
-        {done ? (
-          <p style={{ fontSize: 13, color: "#64748B", marginBottom: 4 }}>Mot de passe mis à jour. Vous pouvez fermer cette page et vous reconnecter.</p>
-        ) : (
-          <form onSubmit={handleSubmit}>
-            <p style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Choisissez un nouveau mot de passe pour votre compte.</p>
-            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Nouveau mot de passe</label>
-            <input
-              type="password"
-              placeholder="********"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="new-password"
-              className="nexora-login-field"
-              style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
-            />
-            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Confirmer le mot de passe</label>
-            <input
-              type="password"
-              placeholder="********"
-              value={confirmation}
-              onChange={(e) => setConfirmation(e.target.value)}
-              required
-              autoComplete="new-password"
-              className="nexora-login-field"
-              style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
-            />
-            {error && <p style={{ color: "#DC2626", fontSize: 13, marginBottom: 10 }}>{error}</p>}
-            <button
-              type="submit"
-              disabled={loading}
-              style={{ width: "100%", padding: "10px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" }}
-            >
-              {loading ? "Enregistrement..." : "Enregistrer"}
-            </button>
-          </form>
-        )}
+    <ConnexionShell titre="Nouveau mot de passe" sousTitre="Choisissez-en un d'au moins huit caractères.">
+      <form onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="nx-nouveau" className="nx-label">Nouveau mot de passe</label>
+          <input id="nx-nouveau" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+            required autoComplete="new-password" className="nx-champ" placeholder="Au moins 8 caractères" />
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <label htmlFor="nx-confirme" className="nx-label">Confirmation</label>
+          <input id="nx-confirme" type="password" value={confirmation} onChange={(e) => setConfirmation(e.target.value)}
+            required autoComplete="new-password" className="nx-champ" placeholder="Le même, pour vérifier" />
+        </div>
+        <div aria-live="polite" style={{ marginTop: error ? 16 : 0 }}>
+          {error && <div className="nx-erreur"><span aria-hidden>!</span><span>{error}</span></div>}
+        </div>
+        <button type="submit" disabled={loading} className="nx-bouton" style={{ marginTop: 20 }}>
+          {loading && <span className="nx-rond" />}
+          {loading ? "Enregistrement…" : "Enregistrer"}
+        </button>
+      </form>
+    </ConnexionShell>
+  );
+}
+
+// Jours entiers restants avant la fin de l'essai, ou null s'il n'y a pas
+// d'échéance. Arrondi vers le haut : à sept heures de la fin, on affiche
+// « 1 jour », pas « 0 jour » — un compteur à zéro alors que l'accès fonctionne
+// encore fait croire à une panne.
+function joursRestants(acces) {
+  if (!acces || acces.abonnementActif || acces.motif === "illimite" || !acces.fin) return null;
+  const restant = new Date(acces.fin).getTime() - Date.now();
+  if (restant <= 0) return 0;
+  return Math.ceil(restant / 86400000);
+}
+
+// Le mot juste selon le motif. Annoncer « il vous reste 30 jours d'essai » à un
+// garage à qui on a offert un mois efface le geste commercial ; lui dire « mois
+// offert » le lui rappelle chaque jour.
+// Combien de jours avant le prochain prélèvement, ou null s'il n'y en a pas.
+//
+// Un abonnement avec période d'essai se déclenche TOUT SEUL à l'échéance.
+// C'est le comportement voulu — et c'est aussi celui qui produit les litiges
+// quand personne n'a prévenu. Le garage doit voir arriver la date.
+function joursAvantPrelevement(acces) {
+  if (!acces?.prochaineFacture || !acces.abonnementActif) return null;
+  const restant = new Date(acces.prochaineFacture).getTime() - Date.now();
+  if (Number.isNaN(restant)) return null;
+  if (restant <= 0) return 0;
+  return Math.ceil(restant / 86400000);
+}
+
+const ACCES_LIBELLE = {
+  essai: { court: "d'essai", termine: "Votre essai" },
+  // « 5 jours de mois offert » ne se dit pas. Le fragment porte donc sa
+  // préposition, pour que la phrase se tienne dans les deux cas.
+  pilote: { court: "sur votre mois offert", termine: "Votre mois offert" },
+};
+
+function libelleAcces(motif) {
+  return ACCES_LIBELLE[motif] || ACCES_LIBELLE.essai;
+}
+
+function AccesTermineScreen({ motif, fin }) {
+  const mots = libelleAcces(motif);
+  const date = fin
+    ? new Date(fin).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: APP_TIME_ZONE })
+    : null;
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG, padding: 24 }}>
+      <div style={{ background: "#fff", padding: 32, borderRadius: 12, maxWidth: 460, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: NAVY, marginBottom: 8 }}>
+          {date ? `${mots.termine} s'est terminé le ${date}` : `${mots.termine} est terminé`}
+        </h1>
+        <p style={{ fontSize: 14, color: "#475569", lineHeight: 1.6, marginBottom: 6 }}>
+          Vos données sont intactes et vous attendent : clients, véhicules, devis,
+          factures, tout est conservé. Choisissez une offre et vous les retrouvez
+          exactement où vous les avez laissées.
+        </p>
+        <p style={{ fontSize: 13, color: "#64748B", lineHeight: 1.6, marginBottom: 20 }}>
+          Besoin de quelques jours de plus pour décider ? Écrivez-nous, on prolonge.
+        </p>
+        <a
+          href="/#tarifs"
+          style={{ display: "block", textAlign: "center", padding: "11px 12px", background: ACCENT, color: "#fff", borderRadius: 8, fontWeight: 600, fontSize: 14, textDecoration: "none" }}
+        >
+          Voir les offres
+        </a>
+        <a
+          href="mailto:nexorasolutions.france@gmail.com"
+          style={{ display: "block", textAlign: "center", padding: "10px 12px", color: "#64748B", fontSize: 13, textDecoration: "none", marginTop: 6 }}
+        >
+          nexorasolutions.france@gmail.com
+        </a>
       </div>
     </div>
+  );
+}
+
+// Inscription libre. Elle n'existait pas : `signUp` n'était appelé nulle part,
+// donc chaque compte devait être créé à la main dans la console Supabase avant
+// que le garage puisse seulement se connecter. C'était le dernier geste manuel
+// du parcours — tout le reste (garage, prestations, import) est autonome depuis
+// le lot de mise en service.
+//
+// Aucune donnée de garage n'est demandée ici : l'écran de mise en service s'en
+// charge juste après. Demander deux fois les mêmes informations, à deux étapes
+// différentes, fait abandonner.
+function InscriptionScreen({ onBack }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [verifier, setVerifier] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+
+    if (password.length < 8) {
+      setError("Choisissez un mot de passe d'au moins 8 caractères.");
+      return;
+    }
+
+    setLoading(true);
+    const { data, error: erreurInscription } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+    });
+    setLoading(false);
+
+    if (erreurInscription) {
+      console.error("Erreur inscription :", erreurInscription);
+      const brut = erreurInscription.message || "";
+      if (/already registered|already been registered/i.test(brut)) {
+        setError("Un compte existe déjà avec cette adresse. Connectez-vous, ou utilisez « Mot de passe oublié ».");
+      } else if (/password/i.test(brut)) {
+        setError("Ce mot de passe est refusé. Essayez-en un plus long.");
+      } else {
+        setError("La création du compte a échoué. Réessayez dans un instant.");
+      }
+      return;
+    }
+
+    // Selon le réglage du projet, Supabase ouvre la session immédiatement ou
+    // exige une confirmation par e-mail. On lit ce qui s'est passé plutôt que
+    // de le supposer : afficher « vérifiez vos e-mails » à quelqu'un déjà
+    // connecté le ferait attendre un message qui n'arrivera jamais.
+    if (!data?.session) {
+      setVerifier(true);
+    }
+  }
+
+  if (verifier) {
+    return (
+      <ConnexionShell
+        titre="Vérifiez vos e-mails"
+        sousTitre={`Un message vient de partir vers ${email}. Ouvrez-le pour activer votre espace.`}
+      >
+        <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.55, margin: 0 }}>
+          Rien reçu au bout de quelques minutes ? Regardez dans vos indésirables.
+        </p>
+        <button type="button" onClick={onBack} className="nx-bouton" style={{ marginTop: 20 }}>
+          Revenir à la connexion
+        </button>
+      </ConnexionShell>
+    );
+  }
+
+  return (
+    <ConnexionShell
+      titre="Créer votre espace"
+      sousTitre={`Quatorze jours d'essai. Aucune carte bancaire demandée.`}
+      bas={
+        <div style={{ borderTop: "1px solid #E2E8F0", paddingTop: 16, textAlign: "center" }}>
+          <span style={{ fontSize: 13.5, color: "#64748B" }}>Vous avez déjà un compte ? </span>
+          <button type="button" onClick={onBack} className="nx-lien" style={{ color: ACCENT, fontWeight: 600 }}>
+            Se connecter
+          </button>
+        </div>
+      }
+    >
+      <form onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="nx-i-email" className="nx-label">Adresse e-mail</label>
+          <input id="nx-i-email" type="email" placeholder="vous@exemple.com" value={email}
+            onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className="nx-champ" />
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <label htmlFor="nx-i-mdp" className="nx-label">Mot de passe</label>
+          <input id="nx-i-mdp" type="password" placeholder="Au moins 8 caractères" value={password}
+            onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" className="nx-champ" />
+        </div>
+        <div aria-live="polite" style={{ marginTop: error ? 16 : 0 }}>
+          {error && <div className="nx-erreur"><span aria-hidden>!</span><span>{error}</span></div>}
+        </div>
+        <button type="submit" disabled={loading} className="nx-bouton" style={{ marginTop: 20 }}>
+          {loading && <span className="nx-rond" />}
+          {loading ? "Création…" : "Créer mon espace"}
+        </button>
+        <p style={{ fontSize: 12, color: "#94A3B8", textAlign: "center", marginTop: 12, lineHeight: 1.5 }}>
+          La mise en service de votre garage se fait juste après, en quelques minutes.
+        </p>
+      </form>
+    </ConnexionShell>
   );
 }
 
@@ -6238,6 +6831,7 @@ function LoginScreen() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [forgotPassword, setForgotPassword] = useState(false);
+  const [inscription, setInscription] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -6246,58 +6840,54 @@ function LoginScreen() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
-      setError("Email ou mot de passe incorrect.");
+      setError("E-mail ou mot de passe incorrect.");
       return;
     }
   }
 
   if (forgotPassword) return <ForgotPasswordScreen onBack={() => setForgotPassword(false)} />;
+  if (inscription) return <InscriptionScreen onBack={() => setInscription(false)} />;
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG }}>
-      <style>{`
-        .nexora-login-field { color: #0F1B33 !important; background: #ffffff !important; -webkit-text-fill-color: #0F1B33 !important; }
-        .nexora-login-field::placeholder { color: #94A3B8 !important; opacity: 1 !important; }
-        .nexora-login-field:-webkit-autofill { -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important; -webkit-text-fill-color: #0F1B33 !important; }
-      `}</style>
-      <form onSubmit={handleSubmit} style={{ background: "#fff", padding: 32, borderRadius: 12, width: 320, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: NAVY, marginBottom: 4 }}>Nexora</h1>
-        <p style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Connexion a votre espace garage</p>
-        <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Email</label>
-        <input
-          type="email"
-          placeholder="vous@exemple.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          autoComplete="email"
-          className="nexora-login-field"
-          style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
-        />
-        <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 4 }}>Mot de passe</label>
-        <input
-          type="password"
-          placeholder="********"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          autoComplete="current-password"
-          className="nexora-login-field"
-          style={{ width: "100%", padding: "10px 12px", marginBottom: 14, border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14 }}
-        />
-        {error && <p style={{ color: "#DC2626", fontSize: 13, marginBottom: 10 }}>{error}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          style={{ width: "100%", padding: "10px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer" }}
-        >
-          {loading ? "Connexion..." : "Se connecter"}
+    <ConnexionShell
+      titre="Bon retour"
+      sousTitre="Connectez-vous à votre espace garage."
+      bas={
+        <div style={{ borderTop: "1px solid #E2E8F0", paddingTop: 16, textAlign: "center" }}>
+          <span style={{ fontSize: 13.5, color: "#64748B" }}>Vous n&apos;avez pas encore de compte ? </span>
+          <button type="button" onClick={() => setInscription(true)} className="nx-lien" style={{ color: ACCENT, fontWeight: 600 }}>
+            Créer mon espace
+          </button>
+        </div>
+      }
+    >
+      <form onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="nx-email" className="nx-label">Adresse e-mail</label>
+          <input id="nx-email" type="email" placeholder="vous@exemple.com" value={email}
+            onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className="nx-champ" />
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <label htmlFor="nx-mdp" className="nx-label">Mot de passe</label>
+          <input id="nx-mdp" type="password" placeholder="Votre mot de passe" value={password}
+            onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" className="nx-champ" />
+        </div>
+        {/* aria-live : sans lui, un lecteur d'ecran ne dit jamais que la
+            connexion a echoue, et la personne attend devant un ecran muet. */}
+        <div aria-live="polite" style={{ marginTop: error ? 16 : 0 }}>
+          {error && <div className="nx-erreur"><span aria-hidden>!</span><span>{error}</span></div>}
+        </div>
+        <button type="submit" disabled={loading} className="nx-bouton" style={{ marginTop: 20 }}>
+          {loading && <span className="nx-rond" />}
+          {loading ? "Connexion…" : "Se connecter"}
         </button>
-        <button type="button" onClick={() => setForgotPassword(true)} style={{ width: "100%", padding: "10px 12px", background: "none", color: "#64748B", border: "none", fontSize: 13, cursor: "pointer", marginTop: 6 }}>
-          Mot de passe oublié ?
-        </button>
+        <div style={{ textAlign: "center", marginTop: 8 }}>
+          <button type="button" onClick={() => setForgotPassword(true)} className="nx-lien">
+            Mot de passe oublié ?
+          </button>
+        </div>
       </form>
-    </div>
+    </ConnexionShell>
   );
 }
 
@@ -6305,8 +6895,14 @@ export default function NexoraDashboard() {
   const [session, setSession] = useState(undefined);
   const [garageReady, setGarageReady] = useState(false);
   const [garageError, setGarageError] = useState("");
+  const [besoinOnboarding, setBesoinOnboarding] = useState(false);
+  const [acces, setAcces] = useState(null);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
-  const [garageId, setGarageId] = useState(DEFAULT_GARAGE_ID);
+  // Jamais de garage par defaut : l'identifiant ne vaut quelque chose
+  // qu'une fois resolu depuis la session. Un UUID de repli en dur
+  // designait un garage reel, et n'attendait qu'un rendu premature pour
+  // devenir une fuite entre clients.
+  const [garageId, setGarageId] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -6315,6 +6911,8 @@ export default function NexoraDashboard() {
       setSession(s);
       setGarageReady(false);
       setGarageError("");
+      setBesoinOnboarding(false);
+      setAcces(null);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -6324,16 +6922,32 @@ export default function NexoraDashboard() {
     let cancelled = false;
     supabase
       .from("garages")
-      .select("id")
+      .select("id, acces_motif, acces_fin, abonnement_actif, abonnement_statut, forfait, abonnement_prochaine_facture")
       .eq("owner_user_id", session.user.id)
       .maybeSingle()
       .then(({ data, error }) => {
         if (cancelled) return;
-        if (error || !data) {
-          setGarageError("Aucun garage n'est associe a ce compte. Contactez le support Nexora.");
+        // Deux situations distinctes, longtemps confondues sous un meme
+        // message d'erreur : une panne de lecture, et un compte neuf qui n'a
+        // simplement pas encore de garage. La seconde n'est pas une erreur,
+        // c'est le premier acces — elle ouvre la mise en service.
+        if (error) {
+          setGarageError("Impossible de charger votre garage. Reessayez dans un instant.");
+          return;
+        }
+        if (!data) {
+          setBesoinOnboarding(true);
           return;
         }
         setGarageId(data.id);
+        setAcces({
+          motif: data.acces_motif,
+          fin: data.acces_fin,
+          abonnementActif: data.abonnement_actif,
+          statut: data.abonnement_statut,
+          forfait: data.forfait,
+          prochaineFacture: data.abonnement_prochaine_facture,
+        });
         setGarageReady(true);
       });
     return () => {
@@ -6354,6 +6968,17 @@ export default function NexoraDashboard() {
   if (!session) {
     return <LoginScreen />;
   }
+  if (besoinOnboarding) {
+    return (
+      <OnboardingGarage
+        onGarageCree={(id) => {
+          setGarageId(id);
+          setBesoinOnboarding(false);
+          setGarageReady(true);
+        }}
+      />
+    );
+  }
   if (garageError) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#DC2626", padding: 24, textAlign: "center" }}>
@@ -6368,5 +6993,24 @@ export default function NexoraDashboard() {
       </div>
     );
   }
-  return <NexoraDashboardInner garageId={garageId} />;
+  // Même règle que public.acces_garage_ouvert() en base : abonnement en cours,
+  // aucune limite, ou essai non échu. Ce garde-ci est un service rendu au
+  // garage — il lui explique la situation et lui donne le moyen de la régler,
+  // au lieu de le laisser devant une application qui refuse ses écritures.
+  // L'autorité reste la base.
+  // Même règle que public.acces_garage_ouvert() : abonnement en cours, accès
+  // sans limite, ou date de fin non échue. L'autorité reste la base — ce
+  // garde-ci est un service rendu au garage, il lui explique la situation au
+  // lieu de le laisser devant une application qui refuse ses écritures.
+  const accesFerme =
+    acces &&
+    !acces.abonnementActif &&
+    acces.motif !== "illimite" &&
+    (!acces.fin || new Date(acces.fin).getTime() <= Date.now());
+
+  if (accesFerme) {
+    return <AccesTermineScreen motif={acces.motif} fin={acces.fin} />;
+  }
+
+  return <NexoraDashboardInner garageId={garageId} acces={acces} joursEssaiRestants={joursRestants(acces)} />;
 }

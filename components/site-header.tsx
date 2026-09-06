@@ -8,6 +8,7 @@ import { SiteLogo } from "@/components/site-logo"
 const navLinks = [
   { label: "Produit", href: "#produit" },
   { label: "Parcours client", href: "#parcours" },
+  { label: "Tarifs", href: "#tarifs" },
   { label: "Sécurité", href: "#securite" },
   { label: "FAQ", href: "#faq" },
 ]
