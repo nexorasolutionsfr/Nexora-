@@ -124,6 +124,28 @@ export async function avancerEtape(supabase, { rdvId, statut }) {
   return true;
 }
 
+export async function chargerMesNotes(supabase, ordreId) {
+  const { data, error } = await supabase.rpc("atelier_mes_notes", {
+    p_ordre_id: ordreId,
+  });
+  if (error) throw error;
+  return data ?? [];
+}
+
+// Changer l'étape d'atelier demande l'identifiant du RENDEZ-VOUS, que
+// `atelier_mes_ordres()` ne projette pas : le mécanicien n'a aucun moyen de
+// le connaître. La fonction appelée ici part de l'ordre, qu'il connaît.
+// Tant que la migration qui la crée n'est pas appliquée, l'appel remonte
+// PGRST202 et l'écran masque simplement l'action.
+export async function avancerEtapeParOrdre(supabase, { ordreId, statut }) {
+  const { error } = await supabase.rpc("atelier_avancer_etape_par_ordre", {
+    p_ordre_id: ordreId,
+    p_statut: statut,
+  });
+  if (error) throw error;
+  return true;
+}
+
 export async function ajouterNote(supabase, { ordreId, note }) {
   const texte = (note ?? "").trim();
   if (!texte) throw new Error("Une note vide ne peut pas être enregistrée");

@@ -22,6 +22,7 @@ import { offre } from "@/lib/tarifs";
 import VehicleCaseFileView from "./vehicle-case-file/VehicleCaseFileView";
 import OnboardingGarage from "./onboarding/OnboardingGarage";
 import MembresSection from "./acces-salaries/MembresSection";
+import AtelierMecanicienScreen from "./acces-salaries/AtelierMecanicienScreen";
 import {
   ROLE_DIRIGEANT,
   ROLE_MECANICIEN,
@@ -6786,28 +6787,6 @@ function libelleAcces(motif) {
   return ACCES_LIBELLE[motif] || ACCES_LIBELLE.essai;
 }
 
-function RoleSansEcranScreen() {
-  return (
-    <ConnexionShell
-      titre="Votre espace mécanicien arrive"
-      sousTitre="Votre accès est bien enregistré. L'écran atelier qui vous est destiné n'est pas encore ouvert."
-    >
-      <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.55, margin: 0 }}>
-        En attendant, demandez à votre dirigeant de vous passer en accès
-        « Accueil » si vous devez saisir des rendez-vous ou des clients.
-      </p>
-      <button
-        type="button"
-        onClick={() => supabase.auth.signOut()}
-        className="nx-bouton"
-        style={{ marginTop: 20 }}
-      >
-        Se déconnecter
-      </button>
-    </ConnexionShell>
-  );
-}
-
 function AccesTermineScreen({ motif, fin }) {
   const mots = libelleAcces(motif);
   const date = fin
@@ -7110,28 +7089,33 @@ export default function NexoraDashboard() {
         setBesoinOnboarding(true);
         return;
       }
-      const { data: garage, error: erreurGarage } = await supabase
-        .from("garages")
-        .select("id, acces_motif, acces_fin, abonnement_actif, abonnement_statut, forfait, abonnement_prochaine_facture")
-        .eq("id", adhesion.garage_id)
-        .maybeSingle();
-      if (cancelled) return;
-      // La ligne est lisible depuis la migration 20260913000100. Si elle ne
-      // l'est pas, c'est que cet environnement ne l'a pas reçue : le dire,
-      // plutôt que de renvoyer le salarié créer un garage de plus.
-      if (erreurGarage || !garage) {
-        setGarageError("Votre compte est rattache a un garage, mais son espace n'a pas pu etre ouvert. Prevenez le dirigeant du garage.");
-        return;
+      // Depuis 20260913000300, `mes_adhesions()` rend elle-même les champs
+      // d'accès : un salarié ne lit plus la ligne `garages`, qui portait des
+      // colonnes qui ne le regardent pas. Le repli sur la table ne sert que
+      // sur un environnement resté à la version du matin.
+      let etatAcces = adhesion;
+      if (!("acces_motif" in adhesion)) {
+        const { data: garage } = await supabase
+          .from("garages")
+          .select("id, acces_motif, acces_fin, abonnement_actif, abonnement_statut, forfait, abonnement_prochaine_facture")
+          .eq("id", adhesion.garage_id)
+          .maybeSingle();
+        if (cancelled) return;
+        if (!garage) {
+          setGarageError("Votre compte est rattache a un garage, mais son espace n'a pas pu etre ouvert. Prevenez le dirigeant du garage.");
+          return;
+        }
+        etatAcces = garage;
       }
-      setGarageId(garage.id);
+      setGarageId(adhesion.garage_id);
       setMonRole(adhesion.role);
       setAcces({
-        motif: garage.acces_motif,
-        fin: garage.acces_fin,
-        abonnementActif: garage.abonnement_actif,
-        statut: garage.abonnement_statut,
-        forfait: garage.forfait,
-        prochaineFacture: garage.abonnement_prochaine_facture,
+        motif: etatAcces.acces_motif,
+        fin: etatAcces.acces_fin,
+        abonnementActif: etatAcces.abonnement_actif,
+        statut: etatAcces.abonnement_statut,
+        forfait: etatAcces.forfait,
+        prochaineFacture: etatAcces.abonnement_prochaine_facture,
       });
       setGarageReady(true);
     }
@@ -7197,13 +7181,12 @@ export default function NexoraDashboard() {
     return <AccesTermineScreen motif={acces.motif} fin={acces.fin} />;
   }
 
-  // Le rôle « mécanicien » existe en base — périmètre, RPC d'atelier et
-  // révocation sont éprouvés — mais aucun écran ne s'en sert encore. Le
-  // laisser entrer dans le tableau de bord complet lui donnerait une barre
-  // latérale vide et des listes refusées par la base. Lui dire est plus
-  // honnête que le laisser chercher.
+  // Le mécanicien ne lit aucune table : sa seule porte est le jeu de
+  // fonctions de la migration 20260905000400. Le tableau de bord complet lui
+  // afficherait une barre latérale vide et des listes refusées par la base ;
+  // son écran est donc distinct, et volontairement étroit.
   if (monRole === ROLE_MECANICIEN) {
-    return <RoleSansEcranScreen />;
+    return <AtelierMecanicienScreen />;
   }
 
   return <NexoraDashboardInner garageId={garageId} acces={acces} joursEssaiRestants={joursRestants(acces)} monRole={monRole} />;
