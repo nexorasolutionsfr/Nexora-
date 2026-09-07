@@ -18,6 +18,7 @@ import { SquelettesListe, SquelettteAccueil } from "./garage-os/Squelettes";
 import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier, dateLongueFR } from "./garage-os/calculs";
 import { estFerme, heureReservable, heuresOuvrables } from "./agenda/horaires";
 import ConnexionShell from "./connexion/ConnexionShell";
+import { DELAI_RENVOI_SECONDES, libelleRenvoi, messageRenvoi, secondesAvantRenvoi } from "./connexion/renvoiConfirmation";
 import { offre } from "@/lib/tarifs";
 import VehicleCaseFileView from "./vehicle-case-file/VehicleCaseFileView";
 import OnboardingGarage from "./onboarding/OnboardingGarage";
@@ -6877,6 +6878,53 @@ function InscriptionScreen({ onBack }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [verifier, setVerifier] = useState(false);
+  // Le renvoi de l'e-mail de confirmation. Les décisions — délai, libellés,
+  // messages — sont dans ./connexion/renvoiConfirmation.js, où elles sont
+  // testées. Ici on ne garde que l'état de l'écran.
+  const [prochainRenvoi, setProchainRenvoi] = useState(0);
+  const [attenteRenvoi, setAttenteRenvoi] = useState(0);
+  const [renvoiEnCours, setRenvoiEnCours] = useState(false);
+  const [messageDeRenvoi, setMessageDeRenvoi] = useState(null);
+
+  // Le décompte. Un intervalle d'une seconde plutôt qu'un minuteur unique :
+  // on veut voir les secondes défiler, sinon le bouton a l'air cassé.
+  useEffect(() => {
+    if (!prochainRenvoi) return undefined;
+    const battement = () => setAttenteRenvoi(secondesAvantRenvoi(prochainRenvoi));
+    battement();
+    const minuteur = setInterval(battement, 1000);
+    return () => clearInterval(minuteur);
+  }, [prochainRenvoi]);
+
+  function ouvrirDelaiDeRenvoi() {
+    setProchainRenvoi(Date.now() + DELAI_RENVOI_SECONDES * 1000);
+  }
+
+  async function renvoyerConfirmation() {
+    setRenvoiEnCours(true);
+    setMessageDeRenvoi(null);
+    const { error: erreurRenvoi } = await supabase.auth.resend({
+      type: "signup",
+      email: email.trim(),
+    });
+    setRenvoiEnCours(false);
+    setMessageDeRenvoi(messageRenvoi(erreurRenvoi, email.trim()));
+    // On referme le délai même après un échec : marteler le bouton n'aide
+    // pas, et un quota d'envoi se répare avec du temps, pas avec des clics.
+    ouvrirDelaiDeRenvoi();
+  }
+
+  // Une adresse mal tapée ne prévient personne : le message part dans le
+  // vide et l'écran attend indéfiniment. On revient donc au formulaire, avec
+  // l'adresse et le mot de passe déjà saisis — il n'y a qu'une lettre à
+  // corriger, pas tout à retaper.
+  function corrigerAdresse() {
+    setVerifier(false);
+    setMessageDeRenvoi(null);
+    setProchainRenvoi(0);
+    setAttenteRenvoi(0);
+    setError("");
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -6924,6 +6972,7 @@ function InscriptionScreen({ onBack }) {
     // connecté le ferait attendre un message qui n'arrivera jamais.
     if (!data?.session) {
       setVerifier(true);
+      ouvrirDelaiDeRenvoi();
     }
   }
 
@@ -6936,9 +6985,39 @@ function InscriptionScreen({ onBack }) {
         <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.55, margin: 0 }}>
           Rien reçu au bout de quelques minutes ? Regardez dans vos indésirables.
         </p>
-        <button type="button" onClick={onBack} className="nx-bouton" style={{ marginTop: 20 }}>
-          Revenir à la connexion
+        <div aria-live="polite">
+          {messageDeRenvoi && (messageDeRenvoi.ton === "succes" ? (
+            <div style={{
+              display: "flex", gap: 8, alignItems: "flex-start",
+              background: "#ECFDF5", color: "#065F46", borderRadius: 10,
+              padding: "10px 12px", fontSize: 13.5, lineHeight: 1.45,
+            }}>
+              <span aria-hidden>✓</span><span>{messageDeRenvoi.texte}</span>
+            </div>
+          ) : (
+            <div className="nx-erreur">
+              <span aria-hidden>!</span><span>{messageDeRenvoi.texte}</span>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={renvoyerConfirmation}
+          disabled={renvoiEnCours || attenteRenvoi > 0}
+          className="nx-bouton"
+          style={{ marginTop: 20 }}
+        >
+          {renvoiEnCours && <span className="nx-rond" />}
+          {libelleRenvoi({ enCours: renvoiEnCours, secondesRestantes: attenteRenvoi })}
         </button>
+        <div style={{ display: "flex", justifyContent: "center", gap: 20, flexWrap: "wrap" }}>
+          <button type="button" onClick={corrigerAdresse} className="nx-lien">
+            Modifier mon adresse
+          </button>
+          <button type="button" onClick={onBack} className="nx-lien">
+            Revenir à la connexion
+          </button>
+        </div>
       </ConnexionShell>
     );
   }
