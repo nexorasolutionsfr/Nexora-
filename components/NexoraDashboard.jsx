@@ -6897,8 +6897,19 @@ function InscriptionScreen({ onBack }) {
     if (erreurInscription) {
       console.error("Erreur inscription :", erreurInscription);
       const brut = erreurInscription.message || "";
+      const code = erreurInscription.code || "";
+      // Recette du 2026-09-07 : deux cas réels tombaient sur le message
+      // générique « réessayez dans un instant », qui envoie chercher une
+      // panne là où il n'y en a pas. Une adresse refusée par le serveur
+      // (code email_address_invalid) ne se corrige pas en attendant ; et un
+      // quota d'envoi atteint (over_email_send_rate_limit) se corrige, lui,
+      // en attendant — mais il faut le dire, sinon on réessaie en boucle.
       if (/already registered|already been registered/i.test(brut)) {
         setError("Un compte existe déjà avec cette adresse. Connectez-vous, ou utilisez « Mot de passe oublié ».");
+      } else if (code === "email_address_invalid" || /invalid.*email|email.*invalid/i.test(brut)) {
+        setError("Cette adresse e-mail n'est pas acceptée. Vérifiez qu'elle est bien écrite, par exemple contact@votre-garage.fr.");
+      } else if (code === "over_email_send_rate_limit" || /rate limit/i.test(brut)) {
+        setError("Trop de demandes en peu de temps : l'e-mail de confirmation ne peut pas partir tout de suite. Réessayez dans une heure, votre adresse n'est pas bloquée.");
       } else if (/password/i.test(brut)) {
         setError("Ce mot de passe est refusé. Essayez-en un plus long.");
       } else {
