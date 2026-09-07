@@ -18,6 +18,7 @@ import { SquelettesListe, SquelettteAccueil } from "./garage-os/Squelettes";
 import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier, dateLongueFR } from "./garage-os/calculs";
 import { estFerme, heureReservable, heuresOuvrables } from "./agenda/horaires";
 import ConnexionShell from "./connexion/ConnexionShell";
+import { CANAUX as CANAUX_ENVOI, CAPACITES, canalEffectif, mentionCanalIndisponible } from "./parametres/capacites";
 import { DELAI_RENVOI_SECONDES, libelleRenvoi, messageRenvoi, secondesAvantRenvoi } from "./connexion/renvoiConfirmation";
 import { offre } from "@/lib/tarifs";
 import VehicleCaseFileView from "./vehicle-case-file/VehicleCaseFileView";
@@ -4279,7 +4280,11 @@ function ParametresView({ garageId, garageData, onGarageChange, onSave, prestati
             {field("Objectif de chiffre d'affaires mensuel (€)", "objectif_ca_mensuel", "number")}
             <div className="text-[12.5px] text-slate-500 -mt-2">Sert de repere de progression sur le tableau de bord. Laissez vide pour ne rien afficher.</div>
             {field("Lien vers votre fiche d'avis Google", "lien_avis_google")}
-            <div className="text-[12.5px] text-slate-500 -mt-2">Utilisé automatiquement dans l'email de demande d'avis envoyé après chaque rendez-vous terminé.</div>
+            {/* Cette ligne promettait un e-mail de demande d'avis « envoyé
+                après chaque rendez-vous terminé ». L'automatisation qui doit
+                l'envoyer échoue tous les jours faute de destinataire : rien
+                ne part. On garde le champ, on retire la promesse. */}
+            <div className="text-[12.5px] text-slate-500 -mt-2">Conservé ici pour la demande d&apos;avis. {CAPACITES.demandeAvis.resume} En attendant, collez ce lien dans vos échanges avec le client.</div>
           </div>
         </SettingsSection>
         <SettingsSection title="Horaires d’ouverture"><div className="space-y-2">{JOURS_SEMAINE.map(([jour, libelle]) => { const plages = plagesDuJour(jour); const ouvert = plages.length > 0; return <div key={jour} className="flex flex-wrap items-center gap-2 py-1.5 border-b border-slate-100 last:border-0"><label className="flex items-center gap-2 w-[112px] sm:w-[132px] shrink-0"><input type="checkbox" checked={ouvert} onChange={(e) => basculerJour(jour, e.target.checked)} className="accent-blue-600" /><span className="text-[13px] font-medium text-slate-700">{libelle}</span></label>{ouvert ? <div className="flex flex-wrap items-center gap-1.5">{champHeure(jour, 0, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 0, 1)}{plages.length > 1 ? <><span className="text-slate-300 px-1">|</span>{champHeure(jour, 1, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 1, 1)}<button type="button" onClick={() => retirerApresMidi(jour)} className="text-[11px] text-slate-400 hover:text-red-500 px-1">retirer</button></> : <button type="button" onClick={() => ajouterApresMidi(jour)} className="text-[11px] text-blue-600 hover:underline px-1">+ après-midi</button>}</div> : <span className="text-[13px] text-slate-400">Fermé</span>}</div>; })}</div><div className="mt-4 rounded-xl bg-slate-50 p-3 text-[12.5px] text-slate-600">Ces horaires servent au calcul des créneaux proposés aux clients. Laissez un jour décoché pour le déclarer fermé.</div></SettingsSection>
@@ -4301,64 +4306,79 @@ function ParametresView({ garageId, garageData, onGarageChange, onSave, prestati
 
     {onglet === "notifications" && (
       <div className="grid grid-cols-1 gap-5">
-        <SettingsSection title="Automatisation IA">
-          <button type="button" onClick={() => onGarageChange("automatisation_active", !garageData.automatisation_active)} className="w-full flex items-center justify-between py-1">
-            <div className="text-left pr-4">
-              <span className="text-sm text-slate-700 font-medium block">Réponse automatique aux demandes (email, WhatsApp)</span>
-              <span className="text-[12.5px] text-slate-500 block mt-0.5">Désactivé : rien n'est envoyé automatiquement, vous utilisez le dashboard à la main comme un carnet de RDV. Activé : l'IA répond et propose des créneaux, vous validez toujours avant l'envoi final.</span>
-            </div>
-            <Toggle checked={!!garageData.automatisation_active} />
-          </button>
-        </SettingsSection>
-        <SettingsSection title="Rappel de confirmation de rendez-vous">
-          <button type="button" onClick={() => onGarageChange("rappel_confirmation_actif", !garageData.rappel_confirmation_actif)} className="w-full flex items-center justify-between py-1">
-            <div className="text-left pr-4">
-              <span className="text-sm text-slate-700 font-medium block">Envoyer un rappel de confirmation avant chaque rendez-vous</span>
-              <span className="text-[12.5px] text-slate-500 block mt-0.5">Le client reçoit un email pour confirmer, demander un report ou annuler. Différent du rappel d'entretien (relance envoyée 12 mois après un rendez-vous terminé).</span>
-            </div>
-            <Toggle checked={!!garageData.rappel_confirmation_actif} />
-          </button>
-          <div className="mt-3">
-            <span className="text-[12.5px] font-medium text-slate-500">Délai avant le rendez-vous</span>
-            <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-              {[24, 48].map((h) => (
-                <button key={h} type="button" onClick={() => onGarageChange("delai_confirmation_rdv_h", h)} className="text-[12.5px] font-medium px-3 py-1.5 rounded-full border" style={(garageData.delai_confirmation_rdv_h ?? 24) === h ? { backgroundColor: ACCENT, borderColor: ACCENT, color: "white" } : { borderColor: "#E2E8F0", color: "#475569" }}>
-                  {h} h
-                </button>
-              ))}
-              <button type="button" onClick={() => onGarageChange("delai_confirmation_rdv_h", ![24, 48].includes(garageData.delai_confirmation_rdv_h ?? 24) ? (garageData.delai_confirmation_rdv_h ?? 12) : 12)} className="text-[12.5px] font-medium px-3 py-1.5 rounded-full border" style={![24, 48].includes(garageData.delai_confirmation_rdv_h ?? 24) ? { backgroundColor: ACCENT, borderColor: ACCENT, color: "white" } : { borderColor: "#E2E8F0", color: "#475569" }}>
-                Personnalisé
-              </button>
-              {![24, 48].includes(garageData.delai_confirmation_rdv_h ?? 24) && (
-                <input type="number" min="1" max="168" value={garageData.delai_confirmation_rdv_h ?? 12} onChange={(e) => onGarageChange("delai_confirmation_rdv_h", Number(e.target.value))} className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-[13px] text-slate-900 outline-none focus:border-blue-500" />
-              )}
-              {![24, 48].includes(garageData.delai_confirmation_rdv_h ?? 24) && <span className="text-[12.5px] text-slate-500">heures</span>}
-            </div>
+        {/* L'interrupteur « Automatisation IA » a été retiré le 8 septembre
+            2026 : aucune automatisation publiée ne lit
+            `automatisation_active`. Il ne déclenchait rien en position
+            haute, et n'arrêtait rien en position basse — donc il mentait
+            dans les deux sens. La colonne est conservée en base : le jour
+            où la réponse automatique existe, on rouvre le réglage.
+            Voir components/parametres/capacites.js. */}
+        <SettingsSection title="Réponse automatique aux demandes">
+          <div className="text-[13px] text-slate-600 leading-relaxed">
+            {CAPACITES.reponseAutomatique.resume}{" "}
+            {CAPACITES.reponseAutomatique.utilisable}
           </div>
-          <div className="mt-4 rounded-xl p-3 text-[12.5px]" style={!garageData.rappel_confirmation_actif ? { backgroundColor: "#FEF3E2", color: "#B45309" } : (canauxNotifications.confirmation_rdv || "email") !== "email" ? { backgroundColor: "#FEF3E2", color: "#B45309" } : { backgroundColor: "#E7F6EC", color: "#15803D" }}>
-            {!garageData.rappel_confirmation_actif
-              ? "Rappels de confirmation désactivés — activez-les ci-dessus pour commencer à les envoyer."
-              : (canauxNotifications.confirmation_rdv || "email") !== "email"
-              ? "Rappels activés, mais le canal choisi (SMS/WhatsApp) n'est pas encore disponible. Passez sur Email ci-dessous pour que les rappels partent réellement."
-              : `Rappels actifs — envoyés par Email ${garageData.delai_confirmation_rdv_h ?? 24} h avant chaque rendez-vous.`}
+          <div className="mt-3 rounded-xl bg-slate-50 p-3 text-[12.5px] text-slate-600">
+            Les demandes reçues sur votre boîte mail connectée arrivent bien dans Nexora :
+            vous les retrouvez dans « Demandes ». C&apos;est la réponse qui reste la vôtre.
+          </div>
+        </SettingsSection>
+        {/* Le rappel de confirmation avait un interrupteur, un délai
+            24 h / 48 h / personnalisé, et un bandeau vert « Rappels actifs —
+            envoyés par Email 24 h avant chaque rendez-vous ». Vérification
+            du 8 septembre 2026 : aucune automatisation publiée ne lit
+            `rappel_confirmation_actif` ni `delai_confirmation_rdv_h`. Le
+            bandeau vert affirmait donc un envoi sur la seule foi d'une
+            préférence. Les deux colonnes restent en base, intactes. */}
+        <SettingsSection title="Rappel de confirmation de rendez-vous">
+          <div className="text-[13px] text-slate-600 leading-relaxed">
+            {CAPACITES.rappelConfirmation.resume}{" "}
+            {CAPACITES.rappelConfirmation.utilisable}
+          </div>
+          <div className="mt-3 rounded-xl p-3 text-[12.5px]" style={{ backgroundColor: "#FEF3E2", color: "#B45309" }}>
+            Tant que cet envoi n&apos;est pas branché, prévenez vos clients comme vous
+            le faisiez avant. Nous vous dirons ici quand il partira tout seul.
           </div>
         </SettingsSection>
         <SettingsSection title="Canal d'envoi par type de notification">
-          <div className="text-[12.5px] text-slate-500 mb-4">Choisissez comment chaque notification est envoyée à vos clients. SMS et WhatsApp seront actifs dès que votre fournisseur (Twilio) sera configuré côté Nexora — vous pouvez déjà définir vos préférences.</div>
+          {/* « Vous pouvez déjà définir vos préférences » laissait choisir un
+              canal qui n'envoie rien : le garage repartait en croyant ses
+              factures parties par SMS. Les boutons indisponibles ne sont plus
+              cliquables, et la préférence déjà enregistrée reste affichée
+              avec ce qui part réellement. */}
+          <div className="text-[12.5px] text-slate-500 mb-4">Aujourd&apos;hui, ces notifications partent par e-mail. SMS et WhatsApp apparaîtront ici dès qu&apos;ils enverront réellement.</div>
           <div className="space-y-3">
             {TYPES_NOTIFICATIONS.map((type) => (
               <div key={type.key} className="flex items-center justify-between flex-wrap gap-2 py-2 border-b border-slate-100 last:border-0">
                 <span className="text-sm text-slate-700 font-medium">{type.label}</span>
                 <div className="flex gap-1.5">
-                  {CANAUX_NOTIFICATIONS.map((canal) => {
-                    const actif = (canauxNotifications[type.key] || "email") === canal.key;
+                  {CANAUX_ENVOI.map((canal) => {
+                    const prefere = canauxNotifications[type.key] || "email";
+                    const actif = canalEffectif(prefere) === canal.key;
                     return (
-                      <button key={canal.key} type="button" onClick={() => choisirCanal(type.key, canal.key)} className="text-[12.5px] font-medium px-3 py-1.5 rounded-full border" style={actif ? { backgroundColor: ACCENT, borderColor: ACCENT, color: "white" } : { borderColor: "#E2E8F0", color: "#475569" }}>
+                      <button
+                        key={canal.key}
+                        type="button"
+                        disabled={!canal.disponible}
+                        title={canal.disponible ? undefined : "Pas encore disponible"}
+                        onClick={() => canal.disponible && choisirCanal(type.key, canal.key)}
+                        className="text-[12.5px] font-medium px-3 py-1.5 rounded-full border"
+                        style={actif
+                          ? { backgroundColor: ACCENT, borderColor: ACCENT, color: "white" }
+                          : canal.disponible
+                          ? { borderColor: "#E2E8F0", color: "#475569" }
+                          : { borderColor: "#F1F5F9", color: "#CBD5E1", cursor: "default" }}
+                      >
                         {canal.label}
                       </button>
                     );
                   })}
                 </div>
+                {mentionCanalIndisponible(canauxNotifications[type.key] || "email") && (
+                  <div className="basis-full text-[12px] text-amber-700">
+                    {mentionCanalIndisponible(canauxNotifications[type.key] || "email")}
+                  </div>
+                )}
               </div>
             ))}
           </div>

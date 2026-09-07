@@ -49,7 +49,15 @@ export default function PartagerLien({
 
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <div className="text-[12px] font-medium text-slate-500 mb-2">Envoyer au client</div>
+      {/* « Envoyer au client » laissait croire que Nexora envoie. Il
+          n'envoie pas : chaque bouton ouvre l'application du garagiste avec
+          le message déjà écrit, et c'est lui qui appuie sur envoyer. Un
+          garage qui croit le message parti ne relance pas son client. */}
+      <div className="text-[12px] font-medium text-slate-500">Envoyer au client, depuis vos applications</div>
+      <div className="text-[11.5px] text-slate-400 mb-2 leading-snug">
+        Nexora prépare le message ; l&apos;envoi part de votre téléphone ou de votre
+        boîte mail, quand vous validez. « Copier le lien » ne fait que le copier.
+      </div>
       <div className="flex flex-wrap gap-2">
         {sms && (
           <a href={sms} className={style}>
