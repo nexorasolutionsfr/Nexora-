@@ -251,6 +251,15 @@ export default function OnboardingGarage({ onGarageCree }) {
               <p style={{ color: "#DC2626", fontSize: 13, marginBottom: 10 }}>{erreur}</p>
             )}
 
+            {/* Recette du 2026-09-07 : le bouton reste gris tant que rien n'est
+                coché, sans dire pourquoi. Un bouton inerte sans explication se
+                lit comme une panne. */}
+            {profil.length === 0 && !enCours && (
+              <p aria-live="polite" style={{ color: "#64748B", fontSize: 13, marginBottom: 10, textAlign: "center" }}>
+                Cochez au moins une activité pour ouvrir votre tableau de bord.
+              </p>
+            )}
+
             <button
               type="button"
               onClick={creer}
