@@ -30,7 +30,10 @@ export const ETATS = {
   },
   en_attente_envoi: {
     titre: "En attente d'envoi",
-    detail: "L'envoi est programmé. Le message part dans les minutes qui viennent.",
+    // Aucun délai annoncé : le traitement dépend encore d'une machine qui
+    // peut être éteinte. Promettre « quelques minutes » serait un engagement
+    // que rien ne tient.
+    detail: "L'envoi est programmé. Il partira au prochain passage du traitement.",
     ton: "attente",
     peutValider: false,
     peutReessayer: false,
