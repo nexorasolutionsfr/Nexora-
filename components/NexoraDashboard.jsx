@@ -6892,6 +6892,24 @@ function AccesTermineScreen({ motif, fin }) {
 // Aucune donnée de garage n'est demandée ici : l'écran de mise en service s'en
 // charge juste après. Demander deux fois les mêmes informations, à deux étapes
 // différentes, fait abandonner.
+// Où le lien de confirmation doit ramener le garagiste.
+//
+// Sans cette précision, l'authentification choisit elle-même : elle retient
+// l'en-tête Referer du navigateur quand il est autorisé, sinon l'adresse par
+// défaut du projet. Le Referer n'étant qu'une origine — les navigateurs ne
+// transmettent pas le chemin vers un autre domaine — le garagiste atterrissait
+// sur la page de vente, avec sa session ouverte mais son tableau de bord à
+// deux clics. Mesuré le 8 septembre 2026 : arrivée sur
+// `https://nexora-garage.vercel.app/#` après un lien de confirmation.
+//
+// On dit donc explicitement où revenir. L'adresse est construite depuis
+// l'origine courante : la recette locale revient en local, la production
+// revient en production, sans réglage à tenir à jour dans deux endroits.
+function adresseRetourInscription() {
+  if (typeof window === "undefined") return undefined;
+  return `${window.location.origin}/dashboard`;
+}
+
 function InscriptionScreen({ onBack }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -6959,6 +6977,7 @@ function InscriptionScreen({ onBack }) {
     const { data, error: erreurInscription } = await supabase.auth.signUp({
       email: email.trim(),
       password,
+      options: { emailRedirectTo: adresseRetourInscription() },
     });
     setLoading(false);
 
