@@ -18,6 +18,7 @@ import { SquelettesListe, SquelettteAccueil } from "./garage-os/Squelettes";
 import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier, dateLongueFR } from "./garage-os/calculs";
 import { estFerme, heureReservable, heuresOuvrables } from "./agenda/horaires";
 import ConnexionShell from "./connexion/ConnexionShell";
+import EnvoiDevis from "./envoi/EnvoiDevis";
 import { CANAUX as CANAUX_ENVOI, CAPACITES, canalEffectif, mentionCanalIndisponible } from "./parametres/capacites";
 import { DELAI_RENVOI_SECONDES, libelleRenvoi, messageRenvoi, secondesAvantRenvoi } from "./connexion/renvoiConfirmation";
 import { offre } from "@/lib/tarifs";
@@ -2939,8 +2940,12 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
       </div>
 
       <div className="flex flex-wrap gap-2.5 mt-4">
+        {/* Ce bouton n'a jamais rien envoyé : il enregistre que le client a
+            accepté le devis. Le libellé le disait autrement, et c'est la
+            confusion que ce lot corrige — l'envoi a désormais son propre
+            geste, plus bas, avec destinataire et aperçu. */}
         <button onClick={() => onAccept(d.id)} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl whitespace-nowrap" style={{ backgroundColor: "#16A34A" }}>
-          <Check size={15} /> Valider et envoyer au client
+          <Check size={15} /> Marquer accepté par le client
         </button>
         <button onClick={() => onRefuse(d.id)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600 whitespace-nowrap">
           <X size={15} /> Refuser
@@ -2949,6 +2954,12 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
           <Eye size={15} /> Aperçu client
         </button>
       </div>
+
+      {/* L'envoi au client : son propre bloc, avec l'état réel de la file.
+          « Copier le lien », juste en dessous, reste une action de partage
+          manuel — elle ne déclenche aucun e-mail. */}
+      <EnvoiDevis devisId={d.id} onToast={onToast} />
+
       {onGenererLien && (
         <div className="mt-3 pt-3 border-t border-slate-100">
           {lien ? (
