@@ -1,0 +1,77 @@
+Répétition d'hébergement — 10 septembre 2026, 08 h 24 – 08 h 32
+================================================================
+
+Objet : rejouer, sur copies isolées, ce que sera vraiment la bascule — et pas
+seulement le mécanisme de sauvegarde. La répétition précédente (02 h 00)
+retrouvait 2 workflows et 0 actif : elle prouvait que sauvegarder/restaurer
+fonctionne, pas que l'instance réelle passe.
+
+Périmètre : instance réelle du Mac (conteneur `nexora-n8n`, SQLite, n8n 2.37.7),
+recopiée puis rejouée sur la pile cible (Postgres 17 + n8n 2.37.7).
+
+Garde-fous
+----------
+- L'instance vivante n'a **jamais** été touchée : tout part d'une copie de
+  `~/Nexora/n8n_data/database.sqlite` (+ `-wal`, `-shm`, `config`).
+- Les conteneurs de répétition tournaient sur un réseau Docker `internal:true`.
+  Aucune sortie possible — vérifié depuis le conteneur n8n lui-même :
+      bloqué : smtp-relay.brevo.com:587
+      bloqué : slawilafseganlbghgwx.supabase.co:443
+      bloqué : 1.1.1.1:53
+  Aucun e-mail ne pouvait partir, aucune base réelle ne pouvait être lue.
+- Caddy exclu de la répétition : il demanderait un certificat Let's Encrypt,
+  donc une sortie réseau et un domaine. C'est la seule pièce non répétée.
+- Copies, exports et clé de chiffrement effacés à la fin.
+
+Déroulé
+-------
+ 1. copie de la base vivante                                  65 Mo
+ 2. réseau clos créé (internal, aucune sortie)
+ 3. export depuis la copie SQLite :
+      19 workflows
+       9 identifiants — exportés CHIFFRÉS (9/9), aucun secret en clair
+ 4. pile cible montée (postgres 17 + n8n 2.37.7)              tables absentes
+ 5. import dans la pile cible :
+      « Successfully imported 9 credentials. »
+      « Successfully imported 19 workflows. »
+      -> workflows=19  actifs=0  identifiants=9
+ 6. déchiffrement avec la clé restaurée : 9/9 identifiants lus, non vides
+      Supabase account            [supabaseApi]     2 champs
+      IMAP account                [imap]            3 champs
+      SMTP account                [smtp]            3 champs
+      Header Auth account         [httpHeaderAuth]  2 champs
+      Twilio account (à activer)  [httpBasicAuth]   2 champs
+      SMTP Brevo — envois métier  [smtp]            5 champs
+      Supabase RECETTE (Test)     [supabaseApi]     2 champs
+      RPC Supabase RECETTE (Test) [httpHeaderAuth]  2 champs
+      RPC Supabase Production     [httpCustomAuth]  1 champ
+ 7. activation délibérée d'UN workflow                        actifs=1
+ 8. sauvegarde à chaud (sauvegarder.sh)                       400 Ko
+ 9. destruction totale (docker compose down -v, volumes compris)
+10. restauration (restaurer.sh)                               workflows=19
+                                                              actifs=1
+                                                              identifiants=9
+11. contrôle final : le workflow actif est bien le seul allumé à l'étape 7
+    (`jnDj8Aj9DmuLV5Di — 3 - Détection no-show`), les 18 autres inactifs.
+
+Ce que la répétition établit
+----------------------------
+- Les 19 définitions et les 9 identifiants passent de SQLite à Postgres, sur
+  une machine neuve, sans perte.
+- Les identifiants restent lisibles **parce que la clé de chiffrement a été
+  copiée**. Sans elle, les 9 identifiants seraient des blobs inertes.
+- `n8n import:workflow` importe **tout en inactif**, quel que soit l'état
+  d'origine : sur le Mac, 7 workflows sont actifs ; après import, 0. Rien ne
+  se remet à envoyer tout seul lors d'une bascule. L'activation est un geste
+  manuel, un workflow à la fois — c'est une propriété de sûreté, et c'est
+  pourquoi l'étape 5 du plan de bascule ne peut pas être automatisée.
+- L'état d'activation, une fois posé, survit à sauvegarde → destruction →
+  restauration.
+
+Ce que la répétition n'établit PAS
+-----------------------------------
+- **Caddy et le HTTPS** : non répété (exige un domaine et une sortie réseau).
+- **Le comportement en charge** : aucune exécution réelle n'a tourné, le
+  réseau étant clos. Les ~2 900 exécutions/jour du socle ne sont pas mesurées.
+- **La restauration côté OVH** (voir README : rétention 24 h seulement).
+- **Le VPS lui-même** : rien n'a été commandé.

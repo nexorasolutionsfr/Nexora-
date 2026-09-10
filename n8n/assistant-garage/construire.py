@@ -83,6 +83,14 @@ def uid(p):
 def supabase_get(name, table, key_expr, pos):
     return {"parameters": {"operation": "get", "tableId": table, "filters": {"conditions": [{"keyName": "id", "keyValue": key_expr}]}},
             "id": uid("get"), "name": name, "type": "n8n-nodes-base.supabase", "typeVersion": 1, "position": pos, "credentials": {"supabaseApi": dict(CRED_SUPA_PROD)}}
+def supabase_where(name, table, colonne, val_expr, pos):
+    """getAll filtré sur une colonne : `alwaysOutputData` pour qu'une absence de résultat
+    continue quand même vers la garde (sinon la branche meurt sans motif journalisé)."""
+    return {"parameters": {"operation": "getAll", "tableId": table, "returnAll": True,
+                           "filters": {"conditions": [{"keyName": colonne, "condition": "eq", "keyValue": val_expr}]}},
+            "id": uid("where"), "name": name, "type": "n8n-nodes-base.supabase", "typeVersion": 1,
+            "position": pos, "alwaysOutputData": True, "credentials": {"supabaseApi": dict(CRED_SUPA_PROD)}}
+def cond_empty(expr): return {"id": uid("c"), "leftValue": expr, "rightValue": "", "operator": {"type": "string", "operation": "empty", "singleValue": True}}
 def journal(name, type_, texte_expr, pos, garage_expr=None):
     fv = [{"fieldId": "type", "fieldValue": type_}, {"fieldId": "texte", "fieldValue": texte_expr}]
     if garage_expr: fv.insert(0, {"fieldId": "garage_id", "fieldValue": garage_expr})
@@ -143,9 +151,52 @@ def transformer(base):
     wf.add(if_node("Garage identifié ?", [cond_notempty("={{ $json.garage_id }}")], wf.pos("Point d'entrée unifié", 220, 0)))
     wf.insert_between("Point d'entrée unifié", suiv, "Garage identifié ?")
     wf.add(journal("Journaliser l'entrée sans garage", "entree_sans_garage",
-                   "={{ 'Message entrant (' + ($json.source || 'inconnu') + ') sans garage identifié : non traité' }}",
+                   "={{ 'Message entrant (' + ($json.source || 'inconnu') + ') sans garage identifié : non traité' + ($json.motif_resolution ? ' \u2014 ' + $json.motif_resolution : '') + ($json.destinataire ? ' (destinataire : ' + $json.destinataire + ')' : '') }}",
                    wf.pos("Point d'entrée unifié", 220, 220)))
     wf.set_out("Garage identifié ?", 1, ["Journaliser l'entrée sans garage"])
+
+    # M2b — quel garage pour un e-mail entrant ? La seule donnée fiable est le DESTINATAIRE :
+    # l'adresse à laquelle le client a écrit. C'est exactement ce que fait déjà WhatsApp
+    # (`body.To` -> `garages.numero_whatsapp`). Symétrique ici : Delivered-To / X-Original-To /
+    # To -> `garages.gmail_adresse`. L'expéditeur, lui, n'apprend rien : un même client peut
+    # écrire à plusieurs garages, et l'adresse d'envoi est falsifiable.
+    # Pas de repli : sans correspondance, garage_id reste null et la garde M2 refuse le message.
+    g = wf.node("Normaliser (Gmail)"); js = g["parameters"]["jsCode"]
+    js = js.replace('function texte(v){', r"""function destinataire(msg) {
+  // En-têtes d'acheminement d'abord : ce sont ceux que le serveur a réellement utilisés.
+  const h = (msg.headers || (msg.metadata || {}).headers || msg.metadata || {});
+  const brut = h["delivered-to"] || h["Delivered-To"] || h["x-original-to"] || h["X-Original-To"] || msg.to || "";
+  const v = typeof brut === "object" ? (brut.text || ((brut.value || [])[0] || {}).address || "") : String(brut);
+  const m = String(v).match(/<([^<>]+)>/);
+  return (m ? m[1] : String(v).split(",")[0]).trim().toLowerCase();
+}
+function texte(v){""")
+    js = js.replace("    garage_id: msg.garage_id || null,",
+                    "    garage_id: msg.garage_id || null,\n    destinataire: destinataire(msg),")
+    assert "destinataire(msg)" in js and "gmail_adresse" not in js; g["parameters"]["jsCode"] = js
+
+    wf.add(if_node("Garage à résoudre par l'adresse de réception ?",
+                   [cond_empty("={{ $json.garage_id }}"), cond_notempty("={{ $json.destinataire }}")],
+                   wf.pos("Point d'entrée unifié", 110, 0)))
+    wf.insert_between("Point d'entrée unifié", "Garage identifié ?", "Garage à résoudre par l'adresse de réception ?")
+    wf.add(supabase_where("Résoudre le garage (adresse de réception)", "garages", "gmail_adresse",
+                          "={{ $json.destinataire }}", wf.pos("Point d'entrée unifié", 110, -180)))
+    wf.add(code_node("Attacher le garage_id (e-mail entrant)", """
+// Résolution certaine ou refus : exactement UNE correspondance, sinon garage_id reste null et
+// la garde suivante journalise sans rien exécuter. Rien ne garantit en base que gmail_adresse
+// soit unique ; deux garages sur la même adresse doivent bloquer, pas être départagés au hasard.
+const original = $("Point d'entrée unifié").first().json || {};
+const trouves = $input.all().map(i => i.json).filter(g => g && g.id);
+const garage = trouves.length === 1 ? trouves[0] : null;
+return [{ json: { ...original, garage_id: garage ? garage.id : null,
+  motif_resolution: garage ? '' : (trouves.length > 1
+    ? 'adresse de réception partagée par ' + trouves.length + ' garages'
+    : 'aucun garage pour cette adresse de réception') } }];""",
+                     wf.pos("Point d'entrée unifié", 220, -180)))
+    wf.set_out("Garage à résoudre par l'adresse de réception ?", 0, ["Résoudre le garage (adresse de réception)"])
+    wf.set_out("Garage à résoudre par l'adresse de réception ?", 1, ["Garage identifié ?"])
+    wf.set_out("Résoudre le garage (adresse de réception)", 0, ["Attacher le garage_id (e-mail entrant)"])
+    wf.set_out("Attacher le garage_id (e-mail entrant)", 0, ["Garage identifié ?"])
 
     # M3 — réponse « infos manquantes » au nom du garage.
     wf.add(supabase_get("Récupérer le garage (réponse)", "garages", "={{ $('Parser la réponse IA').item.json.garage_id }}", wf.pos("Construire le message de relance infos", -240, 0)))
@@ -255,6 +306,16 @@ return [{ json: { envoyable: !motif, motif, garage_id: garage.id || rdv.garage_i
     a = wf.node("avis google"); t = a["parameters"]["text"]
     assert '($json.lien_avis_google || "https://google.com")' in t
     t = t.replace('($json.lien_avis_google || "https://google.com")', "$json.lien_avis_google").replace('"\\n\\nL\'équipe du garage"', '"\\n\\n" + ($json.nom_garage || "Votre garage")')
+    # Nature du message : la demande d'avis n'est pas une notification de service, c'est une
+    # sollicitation. C'est le seul envoi de ce type qui soit actif en Production. L'accord du
+    # garage existe déjà (il doit avoir renseigné `lien_avis_google` : sans lien, rien ne part) ;
+    # ce qui manquait, c'est le moyen de retrait côté client. Le Reply-To va au garage.
+    # Les messages transactionnels (réponse à un message entrant, notifications internes) ne
+    # portent pas cette mention : elle n'a pas lieu d'être sur une réponse qu'on a sollicitée.
+    RETRAIT = ('"\\n\\nSi vous ne souhaitez plus recevoir ce type de message, '
+               'dites-le-nous en répondant : nous en tiendrons compte.\\n\\n"')
+    t = t.replace('+ "\\n\\n" + ($json.nom_garage', '+ ' + RETRAIT + ' + ($json.nom_garage')
+    assert "ne souhaitez plus recevoir" in t, t[-200:]
     assert "google.com\"" not in t and "L'équipe du garage" not in t; a["parameters"]["text"] = t
     email_brevo(a, from_garage("$json.nom_garage"), "={{ $('Récupérer le client (avis)').item.json.email }}", "={{ $json.email || '' }}")
 
@@ -312,13 +373,19 @@ def variante_production(wf):
     wf.node("Tous les jours à 9h")["disabled"] = True
     wf.add(sticky("Note v2 - Relance", "## Relance entretien : désactivée volontairement\nC'est une sollicitation commerciale, pas une notification de service. Avant de l'activer il faut : (1) un moyen de désinscription enregistré par client, (2) un interrupteur par garage. Le code est prêt et recetté : il recontrôle le rendez-vous à l'instant de l'envoi et part au nom du garage.", wf.pos("Tous les jours à 9h", -40, -260), 560, 220))
     wf.node("Email Trigger (IMAP)")["disabled"] = True
-    wf.add(sticky("Note v2 - Boîte IMAP", "## Boîte IMAP partagée : désactivée\nUne boîte unique ne permet pas de savoir à quel garage un message est destiné ; l'ancien repli vers un garage par défaut a été retiré. Les messages entrants doivent arriver par le formulaire du site (garage_id) ou par la connexion Gmail propre à chaque garage (polling OAuth, à brancher).", wf.pos("Email Trigger (IMAP)", -40, -260), 560, 220))
+    wf.add(sticky("Note v2 - Boîte IMAP", "## Boîte IMAP : désactivée tant que `gmail_adresse` est vide\nLe repli vers un garage par défaut a été retiré. Le garage est maintenant résolu par le DESTINATAIRE du message (Delivered-To / X-Original-To / To) contre `garages.gmail_adresse`, comme WhatsApp le fait avec `numero_whatsapp`. Sans correspondance : journal `entree_sans_garage`, rien n'est traité.\n\nÀ activer seulement quand (1) au moins un garage a une adresse de réception à lui dans `gmail_adresse`, et (2) cette adresse arrive bien dans la boîte relevée en IMAP avec l'en-tête d'acheminement d'origine. Une boîte unique partagée ne remplit pas (1).", wf.pos("Email Trigger (IMAP)", -40, -260), 560, 220))
     wf.check(); return wf
 
 if __name__ == "__main__":
     base = json.load(open(os.path.join(ICI, "base.json"), encoding="utf-8"))
     commun = transformer(base)
-    for nom, fab, wid in (("recette-test.json", variante_recette, "eX5THd6tZIYBas8n"), ("production.json", variante_production, "rw69Oin74O5UwQlc")):
+    # Ids de publication : jamais celui d'un workflow qu'on ne veut pas écraser.
+    #   - production : id neuf, pour que l'import crée un workflow NEUF à côté du vivant
+    #     (`rw69Oin74O5UwQlc`), qu'on suspend ensuite à la main. Porter l'id du vivant
+    #     ferait fusionner 117 nœuds dans un workflow actif.
+    #   - recette : l'id du workflow de recette PROUVÉ (`PICszikUjJIpowgJ`), jamais celui de
+    #     l'import raté à 361 nœuds (`eX5THd6tZIYBas8n`), qui doit être supprimé.
+    for nom, fab, wid in (("recette-test.json", variante_recette, "PICszikUjJIpowgJ"), ("production.json", variante_production, "assistantv2brevo0000001")):
         v = fab(commun); v.check(); v.d["id"] = wid  # id stable : exigé par `n8n import:workflow`
         json.dump(v.d, open(os.path.join(ICI, nom), "w", encoding="utf-8"), ensure_ascii=False, indent=2)
         print(f"{nom}: {len(v.nodes)} noeuds")

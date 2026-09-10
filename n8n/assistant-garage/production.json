@@ -66,7 +66,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const messages = $input.all();\n\nfunction reparerEncodage(s) {\n  if (!s || typeof s !== \"string\") return s;\n  try {\n    const reparee = Buffer.from(s, \"latin1\").toString(\"utf8\");\n    const scoreOriginal = (s.match(/Ã|â€/g) || []).length;\n    const scoreRepare = (reparee.match(/Ã|â€|\\uFFFD/g) || []).length;\n    return scoreRepare < scoreOriginal ? reparee : s;\n  } catch (e) { return s; }\n}\nfunction extraireExpediteur(from) {\n  if (!from) return { email: \"\", nom: \"\" };\n  if (typeof from === \"string\") {\n    const m = from.match(/^(.*?)\\s*<([^<>]+)>\\s*$/);\n    if (m) return { email: m[2].trim().toLowerCase(), nom: m[1].replace(/^\"|\"$/g, \"\").trim() };\n    return { email: from.trim().toLowerCase(), nom: \"\" };\n  }\n  const v = Array.isArray(from.value) && from.value[0] ? from.value[0] : null;\n  if (v) return { email: (v.address || \"\").toLowerCase(), nom: v.name || \"\" };\n  if (from.address) return { email: from.address.toLowerCase(), nom: from.name || \"\" };\n  return { email: String(from.text || \"\").toLowerCase(), nom: \"\" };\n}\nfunction texte(v){ if(!v) return \"\"; if(typeof v===\"string\") return reparerEncodage(v); if(typeof v===\"object\"&&v.text) return reparerEncodage(v.text); return String(v); }\n\nconst sortie = [];\nfor (const m of messages) {\n  const msg = m.json;\n  const exp = extraireExpediteur(msg.from);\n  const sujet = texte(msg.subject);\n  // Anti-boucle : ignorer nos propres notifications\nif (msg.init_curseur || msg.rien_de_nouveau || msg.erreur_polling) continue;\nif (exp.email === \"nexorasolutions.france@gmail.com\" || /^Nexora\\s*[—–-]/.test(sujet.trim())) continue;\n  const corps = texte(msg.text) || texte(msg.textPlain) || texte(msg.snippet) || \"\";\n  sortie.push({ json: {\n    nom: exp.nom, telephone: \"\", email: exp.email,\n    message: (sujet ? sujet + \"\\n\" : \"\") + corps.trim(),\n    source: \"gmail\", canal: \"email\", source_id: msg.id || null,\n    garage_id: msg.garage_id || null,\n  }});\n}\nreturn sortie;"
+        "jsCode": "const messages = $input.all();\n\nfunction reparerEncodage(s) {\n  if (!s || typeof s !== \"string\") return s;\n  try {\n    const reparee = Buffer.from(s, \"latin1\").toString(\"utf8\");\n    const scoreOriginal = (s.match(/Ã|â€/g) || []).length;\n    const scoreRepare = (reparee.match(/Ã|â€|\\uFFFD/g) || []).length;\n    return scoreRepare < scoreOriginal ? reparee : s;\n  } catch (e) { return s; }\n}\nfunction extraireExpediteur(from) {\n  if (!from) return { email: \"\", nom: \"\" };\n  if (typeof from === \"string\") {\n    const m = from.match(/^(.*?)\\s*<([^<>]+)>\\s*$/);\n    if (m) return { email: m[2].trim().toLowerCase(), nom: m[1].replace(/^\"|\"$/g, \"\").trim() };\n    return { email: from.trim().toLowerCase(), nom: \"\" };\n  }\n  const v = Array.isArray(from.value) && from.value[0] ? from.value[0] : null;\n  if (v) return { email: (v.address || \"\").toLowerCase(), nom: v.name || \"\" };\n  if (from.address) return { email: from.address.toLowerCase(), nom: from.name || \"\" };\n  return { email: String(from.text || \"\").toLowerCase(), nom: \"\" };\n}\nfunction destinataire(msg) {\n  // En-têtes d'acheminement d'abord : ce sont ceux que le serveur a réellement utilisés.\n  const h = (msg.headers || (msg.metadata || {}).headers || msg.metadata || {});\n  const brut = h[\"delivered-to\"] || h[\"Delivered-To\"] || h[\"x-original-to\"] || h[\"X-Original-To\"] || msg.to || \"\";\n  const v = typeof brut === \"object\" ? (brut.text || ((brut.value || [])[0] || {}).address || \"\") : String(brut);\n  const m = String(v).match(/<([^<>]+)>/);\n  return (m ? m[1] : String(v).split(\",\")[0]).trim().toLowerCase();\n}\nfunction texte(v){ if(!v) return \"\"; if(typeof v===\"string\") return reparerEncodage(v); if(typeof v===\"object\"&&v.text) return reparerEncodage(v.text); return String(v); }\n\nconst sortie = [];\nfor (const m of messages) {\n  const msg = m.json;\n  const exp = extraireExpediteur(msg.from);\n  const sujet = texte(msg.subject);\n  // Anti-boucle : ignorer nos propres notifications\nif (msg.init_curseur || msg.rien_de_nouveau || msg.erreur_polling) continue;\nif (exp.email === \"nexorasolutions.france@gmail.com\" || /^Nexora\\s*[—–-]/.test(sujet.trim())) continue;\n  const corps = texte(msg.text) || texte(msg.textPlain) || texte(msg.snippet) || \"\";\n  sortie.push({ json: {\n    nom: exp.nom, telephone: \"\", email: exp.email,\n    message: (sujet ? sujet + \"\\n\" : \"\") + corps.trim(),\n    source: \"gmail\", canal: \"email\", source_id: msg.id || null,\n    garage_id: msg.garage_id || null,\n    destinataire: destinataire(msg),\n  }});\n}\nreturn sortie;"
       },
       "id": "11a00680-b242-4bbd-8536-3f9a5e6468ca",
       "name": "Normaliser (Gmail)",
@@ -2102,7 +2102,7 @@
         "toEmail": "={{ $('Récupérer le client (avis)').item.json.email }}",
         "subject": "Votre avis compte pour nous",
         "emailFormat": "text",
-        "text": "={{ \"Bonjour \" + $('Récupérer le client (avis)').item.json.nom + \",\\n\\nMerci de votre visite. Un avis Google nous aiderait beaucoup : \" + $json.lien_avis_google + \"\\n\\n\" + ($json.nom_garage || \"Votre garage\") }}",
+        "text": "={{ \"Bonjour \" + $('Récupérer le client (avis)').item.json.nom + \",\\n\\nMerci de votre visite. Un avis Google nous aiderait beaucoup : \" + $json.lien_avis_google + \"\\n\\nSi vous ne souhaitez plus recevoir ce type de message, dites-le-nous en répondant : nous en tiendrons compte.\\n\\n\" + ($json.nom_garage || \"Votre garage\") }}",
         "options": {
           "appendAttribution": false,
           "replyTo": "={{ $json.email || '' }}"
@@ -2618,7 +2618,7 @@
               }
             },
             {
-              "id": "c-022",
+              "id": "c-027",
               "leftValue": "={{ $json.lien_avis_google }}",
               "rightValue": "",
               "operator": {
@@ -2628,7 +2628,7 @@
               }
             },
             {
-              "id": "c-023",
+              "id": "c-028",
               "leftValue": "={{ $('Traiter un par un (avis)').item.json.statut }}",
               "rightValue": "termine",
               "operator": {
@@ -2693,7 +2693,7 @@
             },
             {
               "fieldId": "texte",
-              "fieldValue": "={{ 'Message entrant (' + ($json.source || 'inconnu') + ') sans garage identifié : non traité' }}"
+              "fieldValue": "={{ 'Message entrant (' + ($json.source || 'inconnu') + ') sans garage identifié : non traité' + ($json.motif_resolution ? ' — ' + $json.motif_resolution : '') + ($json.destinataire ? ' (destinataire : ' + $json.destinataire + ')' : '') }}"
             }
           ]
         }
@@ -2715,6 +2715,93 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c-004",
+              "leftValue": "={{ $json.garage_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c-005",
+              "leftValue": "={{ $json.destinataire }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-006",
+      "name": "Garage à résoudre par l'adresse de réception ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1390,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "garages",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "gmail_adresse",
+              "condition": "eq",
+              "keyValue": "={{ $json.destinataire }}"
+            }
+          ]
+        }
+      },
+      "id": "where-007",
+      "name": "Résoudre le garage (adresse de réception)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1390,
+        252
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Résolution certaine ou refus : exactement UNE correspondance, sinon garage_id reste null et\n// la garde suivante journalise sans rien exécuter. Rien ne garantit en base que gmail_adresse\n// soit unique ; deux garages sur la même adresse doivent bloquer, pas être départagés au hasard.\nconst original = $(\"Point d'entrée unifié\").first().json || {};\nconst trouves = $input.all().map(i => i.json).filter(g => g && g.id);\nconst garage = trouves.length === 1 ? trouves[0] : null;\nreturn [{ json: { ...original, garage_id: garage ? garage.id : null,\n  motif_resolution: garage ? '' : (trouves.length > 1\n    ? 'adresse de réception partagée par ' + trouves.length + ' garages'\n    : 'aucun garage pour cette adresse de réception') } }];"
+      },
+      "id": "code-008",
+      "name": "Attacher le garage_id (e-mail entrant)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        252
+      ]
+    },
+    {
+      "parameters": {
         "operation": "get",
         "tableId": "garages",
         "filters": {
@@ -2726,7 +2813,7 @@
           ]
         }
       },
-      "id": "get-004",
+      "id": "get-009",
       "name": "Récupérer le garage (réponse)",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
@@ -2752,7 +2839,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "c-005",
+              "id": "c-010",
               "leftValue": "={{ $json.email }}",
               "rightValue": "",
               "operator": {
@@ -2762,7 +2849,7 @@
               }
             },
             {
-              "id": "c-006",
+              "id": "c-011",
               "leftValue": "={{ $json.expediteur }}",
               "rightValue": "",
               "operator": {
@@ -2772,7 +2859,7 @@
               }
             },
             {
-              "id": "c-025",
+              "id": "c-030",
               "leftValue": "={{ $json.automatisation_active }}",
               "rightValue": "",
               "operator": {
@@ -2785,7 +2872,7 @@
         },
         "options": {}
       },
-      "id": "if-007",
+      "id": "if-012",
       "name": "Réponse envoyable ?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -2814,7 +2901,7 @@
           ]
         }
       },
-      "id": "journal-008",
+      "id": "journal-013",
       "name": "Journaliser la réponse non envoyée",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
@@ -2842,7 +2929,7 @@
           ]
         }
       },
-      "id": "get-009",
+      "id": "get-014",
       "name": "Récupérer le garage (manuel)",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
@@ -2868,7 +2955,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "c-010",
+              "id": "c-015",
               "leftValue": "={{ $json.email }}",
               "rightValue": "",
               "operator": {
@@ -2881,7 +2968,7 @@
         },
         "options": {}
       },
-      "id": "if-011",
+      "id": "if-016",
       "name": "Garage joignable ? (manuel)",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -2910,7 +2997,7 @@
           ]
         }
       },
-      "id": "journal-012",
+      "id": "journal-017",
       "name": "Journaliser le garage injoignable (manuel)",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
@@ -2936,7 +3023,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "c-013",
+              "id": "c-018",
               "leftValue": "={{ $('Récupérer les horaires du garage').first().json.email }}",
               "rightValue": "",
               "operator": {
@@ -2949,7 +3036,7 @@
         },
         "options": {}
       },
-      "id": "if-014",
+      "id": "if-019",
       "name": "Garage joignable ? (créneau)",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -2978,7 +3065,7 @@
           ]
         }
       },
-      "id": "journal-015",
+      "id": "journal-020",
       "name": "Journaliser le garage injoignable (créneau)",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
@@ -3006,7 +3093,7 @@
           ]
         }
       },
-      "id": "get-016",
+      "id": "get-021",
       "name": "Recontrôler le rendez-vous (relance)",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
@@ -3034,7 +3121,7 @@
           ]
         }
       },
-      "id": "get-017",
+      "id": "get-022",
       "name": "Récupérer le garage (relance)",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
@@ -3053,7 +3140,7 @@
       "parameters": {
         "jsCode": "// Rien ne part sur un état ancien : on relit le rendez-vous et le garage à l'instant de l'envoi.\nconst client = $('Récupérer le client (relance)').item.json || {};\nconst rdv = $('Recontrôler le rendez-vous (relance)').item.json || {};\nconst garage = $input.first().json || {};\nconst nomGarage = String(garage.nom_garage || '').replace(/[,<>\"]/g, ' ').trim();\nconst email = String(client.email || '').trim().toLowerCase();\nlet motif = '';\nif (rdv.statut !== 'termine') motif = 'Relance sans objet : le rendez-vous n\\'est plus « terminé » (' + (rdv.statut || 'inconnu') + ')';\nelse if (rdv.relance_envoyee === true) motif = 'Relance déjà envoyée pour ce rendez-vous';\nelse if (!email) motif = 'Relance non envoyée : le client n\\'a pas d\\'adresse e-mail';\nelse if (!nomGarage) motif = 'Relance non envoyée : garage introuvable';\nconst texte = `Bonjour ${client.nom || ''},\\n\\nCela fait un moment depuis votre dernier entretien chez ${nomGarage}. Souhaitez-vous prendre rendez-vous ? Il suffit de répondre à ce message.\\n\\nSi vous ne souhaitez plus recevoir ces rappels, dites-le-nous en répondant : nous en tiendrons compte.\\n\\n${nomGarage}`;\nreturn [{ json: { envoyable: !motif, motif, garage_id: garage.id || rdv.garage_id || null, client_email: email, nom: client.nom || '',\n  expediteur: nomGarage ? nomGarage + ' <nexorasolutions.france@gmail.com' : '', garage_email: garage.email || '', texte,\n  sujet: `Votre entretien chez ${nomGarage || 'votre garage'}` } }];"
       },
-      "id": "code-018",
+      "id": "code-023",
       "name": "Préparer la relance",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -3073,7 +3160,7 @@
           "combinator": "and",
           "conditions": [
             {
-              "id": "c-019",
+              "id": "c-024",
               "leftValue": "={{ $json.envoyable }}",
               "rightValue": "",
               "operator": {
@@ -3086,7 +3173,7 @@
         },
         "options": {}
       },
-      "id": "if-020",
+      "id": "if-025",
       "name": "Relance encore justifiée ?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -3115,7 +3202,7 @@
           ]
         }
       },
-      "id": "journal-021",
+      "id": "journal-026",
       "name": "Journaliser la relance non envoyée",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
@@ -3150,7 +3237,7 @@
           ]
         }
       },
-      "id": "journal-024",
+      "id": "journal-029",
       "name": "Journaliser l'avis non envoyé",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
@@ -3172,7 +3259,7 @@
         "width": 520,
         "color": 3
       },
-      "id": "note-026",
+      "id": "note-031",
       "name": "Note v2 - Accepté / refusé",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -3188,7 +3275,7 @@
         "width": 560,
         "color": 3
       },
-      "id": "note-033",
+      "id": "note-038",
       "name": "Note v2 - Relance",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -3199,12 +3286,12 @@
     },
     {
       "parameters": {
-        "content": "## Boîte IMAP partagée : désactivée\nUne boîte unique ne permet pas de savoir à quel garage un message est destiné ; l'ancien repli vers un garage par défaut a été retiré. Les messages entrants doivent arriver par le formulaire du site (garage_id) ou par la connexion Gmail propre à chaque garage (polling OAuth, à brancher).",
+        "content": "## Boîte IMAP : désactivée tant que `gmail_adresse` est vide\nLe repli vers un garage par défaut a été retiré. Le garage est maintenant résolu par le DESTINATAIRE du message (Delivered-To / X-Original-To / To) contre `garages.gmail_adresse`, comme WhatsApp le fait avec `numero_whatsapp`. Sans correspondance : journal `entree_sans_garage`, rien n'est traité.\n\nÀ activer seulement quand (1) au moins un garage a une adresse de réception à lui dans `gmail_adresse`, et (2) cette adresse arrive bien dans la boîte relevée en IMAP avec l'en-tête d'acheminement d'origine. Une boîte unique partagée ne remplit pas (1).",
         "height": 220,
         "width": 560,
         "color": 3
       },
-      "id": "note-034",
+      "id": "note-039",
       "name": "Note v2 - Boîte IMAP",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -3274,7 +3361,7 @@
       "main": [
         [
           {
-            "node": "Garage identifié ?",
+            "node": "Garage à résoudre par l'adresse de réception ?",
             "type": "main",
             "index": 0
           }
@@ -4252,6 +4339,46 @@
         ]
       ]
     },
+    "Garage à résoudre par l'adresse de réception ?": {
+      "main": [
+        [
+          {
+            "node": "Résoudre le garage (adresse de réception)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Garage identifié ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Résoudre le garage (adresse de réception)": {
+      "main": [
+        [
+          {
+            "node": "Attacher le garage_id (e-mail entrant)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attacher le garage_id (e-mail entrant)": {
+      "main": [
+        [
+          {
+            "node": "Garage identifié ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Récupérer le garage (réponse)": {
       "main": [
         [
@@ -4427,5 +4554,5 @@
   },
   "settings": {},
   "active": false,
-  "id": "rw69Oin74O5UwQlc"
+  "id": "assistantv2brevo0000001"
 }
