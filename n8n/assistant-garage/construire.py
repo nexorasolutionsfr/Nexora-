@@ -103,6 +103,10 @@ def if_node(name, conds, pos):
             "id": uid("if"), "name": name, "type": "n8n-nodes-base.if", "typeVersion": 2.2, "position": pos}
 def code_node(name, js, pos):
     return {"parameters": {"jsCode": js}, "id": uid("code"), "name": name, "type": "n8n-nodes-base.code", "typeVersion": 2, "position": pos}
+def webhook_node(name, path, pos):
+    return {"parameters": {"httpMethod": "POST", "path": path, "options": {}},
+            "id": uid("wh"), "name": name, "type": "n8n-nodes-base.webhook", "typeVersion": 2,
+            "position": pos, "webhookId": uid("whid")}
 def sticky(name, content, pos, w=520, h=200):
     return {"parameters": {"content": content, "height": h, "width": w, "color": 3}, "id": uid("note"), "name": name, "type": "n8n-nodes-base.stickyNote", "typeVersion": 1, "position": pos}
 def email_brevo(n, from_expr, to_expr, reply_expr=None):
@@ -177,26 +181,29 @@ function texte(v){""")
 
     wf.add(if_node("Garage à résoudre par l'adresse de réception ?",
                    [cond_empty("={{ $json.garage_id }}"), cond_notempty("={{ $json.destinataire }}")],
-                   wf.pos("Point d'entrée unifié", 110, 0)))
-    wf.insert_between("Point d'entrée unifié", "Garage identifié ?", "Garage à résoudre par l'adresse de réception ?")
+                   wf.pos("Point d'entrée unifié", -110, 0)))
+    # La résolution doit se placer AVANT « Point d'entrée unifié » : plusieurs nœuds en aval
+    # relisent ce nœud (`$('Point d'entrée unifié')`) et retrouveraient sinon le garage d'avant
+    # résolution, c'est-à-dire nul. Défaut trouvé en recette le 10 septembre.
+    wf.insert_between("Traiter un email à la fois", "Point d'entrée unifié", "Garage à résoudre par l'adresse de réception ?")
     wf.add(supabase_where("Résoudre le garage (adresse de réception)", "garages", "gmail_adresse",
-                          "={{ $json.destinataire }}", wf.pos("Point d'entrée unifié", 110, -180)))
+                          "={{ $json.destinataire }}", wf.pos("Point d'entrée unifié", -110, -180)))
     wf.add(code_node("Attacher le garage_id (e-mail entrant)", """
 // Résolution certaine ou refus : exactement UNE correspondance, sinon garage_id reste null et
 // la garde suivante journalise sans rien exécuter. Rien ne garantit en base que gmail_adresse
 // soit unique ; deux garages sur la même adresse doivent bloquer, pas être départagés au hasard.
-const original = $("Point d'entrée unifié").first().json || {};
+const original = $("Traiter un email à la fois").first().json || {};
 const trouves = $input.all().map(i => i.json).filter(g => g && g.id);
 const garage = trouves.length === 1 ? trouves[0] : null;
 return [{ json: { ...original, garage_id: garage ? garage.id : null,
   motif_resolution: garage ? '' : (trouves.length > 1
     ? 'adresse de réception partagée par ' + trouves.length + ' garages'
     : 'aucun garage pour cette adresse de réception') } }];""",
-                     wf.pos("Point d'entrée unifié", 220, -180)))
+                     wf.pos("Point d'entrée unifié", 0, -180)))
     wf.set_out("Garage à résoudre par l'adresse de réception ?", 0, ["Résoudre le garage (adresse de réception)"])
-    wf.set_out("Garage à résoudre par l'adresse de réception ?", 1, ["Garage identifié ?"])
+    wf.set_out("Garage à résoudre par l'adresse de réception ?", 1, ["Point d'entrée unifié"])
     wf.set_out("Résoudre le garage (adresse de réception)", 0, ["Attacher le garage_id (e-mail entrant)"])
-    wf.set_out("Attacher le garage_id (e-mail entrant)", 0, ["Garage identifié ?"])
+    wf.set_out("Attacher le garage_id (e-mail entrant)", 0, ["Point d'entrée unifié"])
 
     # M3 — réponse « infos manquantes » au nom du garage.
     wf.add(supabase_get("Récupérer le garage (réponse)", "garages", "={{ $('Parser la réponse IA').item.json.garage_id }}", wf.pos("Construire le message de relance infos", -240, 0)))
@@ -354,6 +361,17 @@ def variante_recette(wf):
         if n["name"] in ("Email Trigger (IMAP)", "Polling Gmail OAuth (2 min)", "Tous les jours à 9h", "Tous les jours à 18h30"): n["disabled"] = True
     wf.add({"parameters": {}, "id": uid("manual"), "name": "Recette : lancer les tournées", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": wf.pos("Tous les jours à 9h", 0, -160)})
     wf.set_out("Recette : lancer les tournées", 0, ["RDV entretien terminés", "RDV terminés aujourd'hui"])
+    # Les deux instruments ci-dessous n'existent QUE dans la recette : ils rendent pilotables, sans
+    # interface, les deux chemins qu'aucun webhook ne couvrait — les tournées et l'entrée e-mail.
+    wf.add(webhook_node("Recette : déclencher les tournées", "recette-tournees", wf.pos("Tous les jours à 9h", -220, -160)))
+    wf.set_out("Recette : déclencher les tournées", 0, ["RDV entretien terminés", "RDV terminés aujourd'hui"])
+    # L'entrée e-mail simulée alimente « Normaliser (Gmail) » : c'est la VRAIE fonction d'extraction
+    # du destinataire qui est éprouvée, pas une copie.
+    wf.add(webhook_node("Recette : e-mail entrant", "recette-email-entrant", wf.pos("Email Trigger (IMAP)", -220, 0)))
+    wf.add(code_node("Recette : message brut", "return [{ json: $input.first().json.body || {} }];",
+                     wf.pos("Email Trigger (IMAP)", -110, 0)))
+    wf.set_out("Recette : e-mail entrant", 0, ["Recette : message brut"])
+    wf.set_out("Recette : message brut", 0, ["Normaliser (Gmail)"])
     gardes = {"répondre infos manquantes": "$json.email", "relance": "$json.client_email",
               "avis google": "$('Récupérer le client (avis)').item.json.email",
               "Notifier le garage traitement manuel": "$json.email",
@@ -372,6 +390,12 @@ def variante_production(wf):
         if "supabaseApi" in (n.get("credentials") or {}): n["credentials"]["supabaseApi"] = dict(CRED_SUPA_PROD)
     wf.node("Tous les jours à 9h")["disabled"] = True
     wf.add(sticky("Note v2 - Relance", "## Relance entretien : désactivée volontairement\nC'est une sollicitation commerciale, pas une notification de service. Avant de l'activer il faut : (1) un moyen de désinscription enregistré par client, (2) un interrupteur par garage. Le code est prêt et recetté : il recontrôle le rendez-vous à l'instant de l'envoi et part au nom du garage.", wf.pos("Tous les jours à 9h", -40, -260), 560, 220))
+    # La demande d'avis est une SOLLICITATION, comme la relance : elle part sans que le client
+    # l'ait demandé, et rien ne permet encore d'enregistrer son refus — la mention de retrait
+    # arrive chez le garage, personne ne la retient. Elle est donc livrée éteinte, au même titre
+    # que la relance. Ce n'est pas un défaut du code : il est recetté et fonctionne.
+    wf.node("Tous les jours à 18h30")["disabled"] = True
+    wf.add(sticky("Note v2 - Demande d'avis", "## Demande d'avis : désactivée volontairement\nMême raison que la relance : c'est une sollicitation, et `clients` n'a aucune colonne de désinscription. Le message porte une mention de retrait, mais le « stop » d'un client arrive au garage par le Reply-To et n'est enregistré nulle part. À rallumer quand le refus sera enregistrable et respecté.", wf.pos("Tous les jours à 18h30", -40, -260), 560, 220))
     wf.node("Email Trigger (IMAP)")["disabled"] = True
     wf.add(sticky("Note v2 - Boîte IMAP", "## Boîte IMAP : désactivée tant que `gmail_adresse` est vide\nLe repli vers un garage par défaut a été retiré. Le garage est maintenant résolu par le DESTINATAIRE du message (Delivered-To / X-Original-To / To) contre `garages.gmail_adresse`, comme WhatsApp le fait avec `numero_whatsapp`. Sans correspondance : journal `entree_sans_garage`, rien n'est traité.\n\nÀ activer seulement quand (1) au moins un garage a une adresse de réception à lui dans `gmail_adresse`, et (2) cette adresse arrive bien dans la boîte relevée en IMAP avec l'en-tête d'acheminement d'origine. Une boîte unique partagée ne remplit pas (1).", wf.pos("Email Trigger (IMAP)", -40, -260), 560, 220))
     wf.check(); return wf
@@ -383,9 +407,10 @@ if __name__ == "__main__":
     #   - production : id neuf, pour que l'import crée un workflow NEUF à côté du vivant
     #     (`rw69Oin74O5UwQlc`), qu'on suspend ensuite à la main. Porter l'id du vivant
     #     ferait fusionner 117 nœuds dans un workflow actif.
-    #   - recette : l'id du workflow de recette PROUVÉ (`PICszikUjJIpowgJ`), jamais celui de
-    #     l'import raté à 361 nœuds (`eX5THd6tZIYBas8n`), qui doit être supprimé.
-    for nom, fab, wid in (("recette-test.json", variante_recette, "PICszikUjJIpowgJ"), ("production.json", variante_production, "assistantv2brevo0000001")):
+    #   - recette : un id NEUF, pour que la recette s'importe dans une instance à part sans
+    #     jamais tomber sur un workflow existant — ni la recette ratée `eX5THd6tZIYBas8n`,
+    #     ni la recette précédente `PICszikUjJIpowgJ`.
+    for nom, fab, wid in (("recette-test.json", variante_recette, "recetteassistantv2b001"), ("production.json", variante_production, "assistantv2brevo0000001")):
         v = fab(commun); v.check(); v.d["id"] = wid  # id stable : exigé par `n8n import:workflow`
         json.dump(v.d, open(os.path.join(ICI, nom), "w", encoding="utf-8"), ensure_ascii=False, indent=2)
         print(f"{nom}: {len(v.nodes)} noeuds")

@@ -46,7 +46,7 @@ def verifier(nom, variante):
     else:
         exige(noms["Tous les jours à 9h"].get("disabled") is True, "prod : relance doit être désactivée")
         exige(noms["Email Trigger (IMAP)"].get("disabled") is True, "prod : IMAP doit être désactivé")
-        exige(not noms["Tous les jours à 18h30"].get("disabled"), "prod : avis doit rester actif")
+        exige(noms["Tous les jours à 18h30"].get("disabled") is True, "prod : l'avis doit être livré désactivé (sollicitation sans désinscription enregistrable)")
     for s, spec in d["connections"].items():
         exige(s in noms, f"connexion depuis un nœud absent : {s}")
         for out in spec.get("main", []) or []:

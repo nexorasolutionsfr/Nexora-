@@ -225,6 +225,54 @@ portent sur les deux bouts du mécanisme, pas sur la chaîne complète) :
 **Non prouvé** : la chaîne complète dans n8n (relevé IMAP réel → résolution →
 garde), faute d'accès à l'instance.
 
+## Recette finale du 10 septembre 2026 (instance n8n dédiée)
+
+Rejouée **hors de l'instance vivante** : un conteneur `recette-n8n` à part
+(port 5679, volume propre, même clé de chiffrement pour relire les
+identifiants), workflow importé sous un identifiant neuf
+`recetteassistantv2b001`, cinq identifiants seulement — aucun ne vise la
+Production. Deux instruments n'existent que dans la variante de recette :
+`recette-email-entrant` (qui alimente le **vrai** `Normaliser (Gmail)`, donc la
+vraie fonction d'extraction du destinataire) et `recette-tournees`.
+
+L'export déployé a été recomparé au fichier du dépôt : **empreinte identique**
+(`2191000a8485`, 127 nœuds). Ce qui a été éprouvé est bien ce qui est livré.
+
+| Scénario | Attendu | Observé |
+|---|---|---|
+| Résolution **certaine** — message à l'adresse d'Alpha | garage Alpha, réponse envoyée | `garage_id` = Alpha, `motif_resolution` vide ; `From: SOCLE Garage Alpha`, `Reply-To: +socle-alpha`, SMTP `accepted`, `rejected: []` |
+| Résolution **absente** — adresse inconnue | refus explicite | journal `entree_sans_garage` — « aucun garage pour cette adresse de réception (destinataire : …) » |
+| Résolution **ambiguë** — deux garages sur la même adresse | refus explicite | journal `entree_sans_garage` — « adresse de réception partagée par 2 garages » |
+| **Aucun garage par défaut** | rien n'est traité sans garage | les deux cas ci-dessus n'écrivent ni demande ni client |
+| **Automatisation coupée** (Beta) | aucun envoi, motif journalisé | journal `reponse_non_envoyee` — « l'automatisation IA est désactivée pour ce garage » |
+| **Encodage et contenu** | accents et euro intacts | reçu : « Bonjour Élodie Prêtre », « véhicule », « à bientôt » |
+| **Relance** | 2 envoyées, 2 bloquées, annulé exclu | exactement cela ; le rendez-vous annulé reste `relance_envoyee = false` |
+| **Avis** | 1 envoyé (Alpha), 3 bloqués | garde : 1 sortie vraie, 3 fausses ; motifs « sans adresse » (×2) et « aucun lien d'avis » |
+| **Mention de retrait sur l'avis** | présente | reçue : « Si vous ne souhaitez plus recevoir ce type de message… » |
+| **Branches éteintes dans l'export Production** | relance, avis, IMAP, Gmail OAuth | les quatre `disabled: true` ; seuls les deux webhooks du site et de WhatsApp restent allumés |
+
+**Un défaut trouvé et corrigé en cours de recette.** La résolution du garage
+était placée **après** « Point d'entrée unifié ». Or plusieurs nœuds en aval
+relisent ce nœud (`$('Point d'entrée unifié')`) : ils y retrouvaient le garage
+d'**avant** résolution, c'est-à-dire nul, et la branche mourait sur
+`invalid input syntax for type uuid: "null"`. La résolution a été déplacée
+**avant** « Point d'entrée unifié », sur le seul chemin e-mail (le site et
+WhatsApp entrent directement et ne sont pas concernés). Scénario rejoué : vert.
+
+**La demande d'avis est désormais livrée éteinte**, au même titre que la
+relance. Ce n'est pas un défaut de son code — il est recetté et fonctionne :
+c'est une **sollicitation**, et `clients` n'a aucune colonne de désinscription.
+Le « stop » d'un client arrive au garage par le Reply-To et n'est enregistré
+nulle part.
+
+**Limite qui demeure.** Le routage IMAP multigarage n'est pas prouvé : la
+recette injecte un message dont le destinataire est connu, ce qui éprouve
+l'extraction et la correspondance, mais pas une vraie chaîne de livraison. Les
+huit messages réels du 8 septembre le montrent — leur `Delivered-To` valait la
+boîte partagée, pas une adresse de garage. Le mécanisme n'est valable que si
+chaque garage a **sa propre boîte relevée directement**, pas derrière un
+transfert. `Email Trigger (IMAP)` reste éteint.
+
 ## Plan de passage en Production (à ne pas dérouler sans feu vert)
 
 **La fusion Git et l'activation n8n sont deux gestes séparés, et dans cet

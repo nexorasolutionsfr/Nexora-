@@ -1845,7 +1845,8 @@
       "position": [
         880,
         2224
-      ]
+      ],
+      "disabled": true
     },
     {
       "parameters": {
@@ -2752,7 +2753,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1390,
+        1170,
         432
       ]
     },
@@ -2776,7 +2777,7 @@
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        1390,
+        1170,
         252
       ],
       "alwaysOutputData": true,
@@ -2789,14 +2790,14 @@
     },
     {
       "parameters": {
-        "jsCode": "\n// Résolution certaine ou refus : exactement UNE correspondance, sinon garage_id reste null et\n// la garde suivante journalise sans rien exécuter. Rien ne garantit en base que gmail_adresse\n// soit unique ; deux garages sur la même adresse doivent bloquer, pas être départagés au hasard.\nconst original = $(\"Point d'entrée unifié\").first().json || {};\nconst trouves = $input.all().map(i => i.json).filter(g => g && g.id);\nconst garage = trouves.length === 1 ? trouves[0] : null;\nreturn [{ json: { ...original, garage_id: garage ? garage.id : null,\n  motif_resolution: garage ? '' : (trouves.length > 1\n    ? 'adresse de réception partagée par ' + trouves.length + ' garages'\n    : 'aucun garage pour cette adresse de réception') } }];"
+        "jsCode": "\n// Résolution certaine ou refus : exactement UNE correspondance, sinon garage_id reste null et\n// la garde suivante journalise sans rien exécuter. Rien ne garantit en base que gmail_adresse\n// soit unique ; deux garages sur la même adresse doivent bloquer, pas être départagés au hasard.\nconst original = $(\"Traiter un email à la fois\").first().json || {};\nconst trouves = $input.all().map(i => i.json).filter(g => g && g.id);\nconst garage = trouves.length === 1 ? trouves[0] : null;\nreturn [{ json: { ...original, garage_id: garage ? garage.id : null,\n  motif_resolution: garage ? '' : (trouves.length > 1\n    ? 'adresse de réception partagée par ' + trouves.length + ' garages'\n    : 'aucun garage pour cette adresse de réception') } }];"
       },
       "id": "code-008",
       "name": "Attacher le garage_id (e-mail entrant)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1500,
+        1280,
         252
       ]
     },
@@ -3275,7 +3276,7 @@
         "width": 560,
         "color": 3
       },
-      "id": "note-038",
+      "id": "note-043",
       "name": "Note v2 - Relance",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -3286,12 +3287,28 @@
     },
     {
       "parameters": {
+        "content": "## Demande d'avis : désactivée volontairement\nMême raison que la relance : c'est une sollicitation, et `clients` n'a aucune colonne de désinscription. Le message porte une mention de retrait, mais le « stop » d'un client arrive au garage par le Reply-To et n'est enregistré nulle part. À rallumer quand le refus sera enregistrable et respecté.",
+        "height": 220,
+        "width": 560,
+        "color": 3
+      },
+      "id": "note-044",
+      "name": "Note v2 - Demande d'avis",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        840,
+        1964
+      ]
+    },
+    {
+      "parameters": {
         "content": "## Boîte IMAP : désactivée tant que `gmail_adresse` est vide\nLe repli vers un garage par défaut a été retiré. Le garage est maintenant résolu par le DESTINATAIRE du message (Delivered-To / X-Original-To / To) contre `garages.gmail_adresse`, comme WhatsApp le fait avec `numero_whatsapp`. Sans correspondance : journal `entree_sans_garage`, rien n'est traité.\n\nÀ activer seulement quand (1) au moins un garage a une adresse de réception à lui dans `gmail_adresse`, et (2) cette adresse arrive bien dans la boîte relevée en IMAP avec l'en-tête d'acheminement d'origine. Une boîte unique partagée ne remplit pas (1).",
         "height": 220,
         "width": 560,
         "color": 3
       },
-      "id": "note-039",
+      "id": "note-045",
       "name": "Note v2 - Boîte IMAP",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -3361,7 +3378,7 @@
       "main": [
         [
           {
-            "node": "Garage à résoudre par l'adresse de réception ?",
+            "node": "Garage identifié ?",
             "type": "main",
             "index": 0
           }
@@ -4058,7 +4075,7 @@
         [],
         [
           {
-            "node": "Point d'entrée unifié",
+            "node": "Garage à résoudre par l'adresse de réception ?",
             "type": "main",
             "index": 0
           }
@@ -4350,7 +4367,7 @@
         ],
         [
           {
-            "node": "Garage identifié ?",
+            "node": "Point d'entrée unifié",
             "type": "main",
             "index": 0
           }
@@ -4372,7 +4389,7 @@
       "main": [
         [
           {
-            "node": "Garage identifié ?",
+            "node": "Point d'entrée unifié",
             "type": "main",
             "index": 0
           }

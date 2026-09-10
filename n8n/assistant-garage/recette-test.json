@@ -2753,7 +2753,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1390,
+        1170,
         432
       ]
     },
@@ -2777,7 +2777,7 @@
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        1390,
+        1170,
         252
       ],
       "alwaysOutputData": true,
@@ -2790,14 +2790,14 @@
     },
     {
       "parameters": {
-        "jsCode": "\n// Résolution certaine ou refus : exactement UNE correspondance, sinon garage_id reste null et\n// la garde suivante journalise sans rien exécuter. Rien ne garantit en base que gmail_adresse\n// soit unique ; deux garages sur la même adresse doivent bloquer, pas être départagés au hasard.\nconst original = $(\"Point d'entrée unifié\").first().json || {};\nconst trouves = $input.all().map(i => i.json).filter(g => g && g.id);\nconst garage = trouves.length === 1 ? trouves[0] : null;\nreturn [{ json: { ...original, garage_id: garage ? garage.id : null,\n  motif_resolution: garage ? '' : (trouves.length > 1\n    ? 'adresse de réception partagée par ' + trouves.length + ' garages'\n    : 'aucun garage pour cette adresse de réception') } }];"
+        "jsCode": "\n// Résolution certaine ou refus : exactement UNE correspondance, sinon garage_id reste null et\n// la garde suivante journalise sans rien exécuter. Rien ne garantit en base que gmail_adresse\n// soit unique ; deux garages sur la même adresse doivent bloquer, pas être départagés au hasard.\nconst original = $(\"Traiter un email à la fois\").first().json || {};\nconst trouves = $input.all().map(i => i.json).filter(g => g && g.id);\nconst garage = trouves.length === 1 ? trouves[0] : null;\nreturn [{ json: { ...original, garage_id: garage ? garage.id : null,\n  motif_resolution: garage ? '' : (trouves.length > 1\n    ? 'adresse de réception partagée par ' + trouves.length + ' garages'\n    : 'aucun garage pour cette adresse de réception') } }];"
       },
       "id": "code-008",
       "name": "Attacher le garage_id (e-mail entrant)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1500,
+        1280,
         252
       ]
     },
@@ -3282,9 +3282,54 @@
     },
     {
       "parameters": {
+        "httpMethod": "POST",
+        "path": "recette-tournees",
+        "options": {}
+      },
+      "id": "wh-033",
+      "name": "Recette : déclencher les tournées",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        1476,
+        1552
+      ],
+      "webhookId": "whid-034"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "recette-email-entrant",
+        "options": {}
+      },
+      "id": "wh-035",
+      "name": "Recette : e-mail entrant",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        372,
+        224
+      ],
+      "webhookId": "whid-036"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: $input.first().json.body || {} }];"
+      },
+      "id": "code-037",
+      "name": "Recette : message brut",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        482,
+        224
+      ]
+    },
+    {
+      "parameters": {
         "jsCode": "const AUTORISEES = [\"baptiste.papoul52+socle-alpha@gmail.com\", \"baptiste.papoul52+socle-beta@gmail.com\", \"baptiste.papoul52+socle-clientalpha@gmail.com\", \"baptiste.papoul52+socle-clientbeta@gmail.com\"];\nconst to = String($json.email || '').trim().toLowerCase();\nif (!AUTORISEES.includes(to)) throw new Error('RECETTE : destinataire non autorisé, envoi refusé : ' + to);\nreturn $input.all();"
       },
-      "id": "code-033",
+      "id": "code-038",
       "name": "Recette : destinataire autorisé ? (répondre infos manquan)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -3297,7 +3342,7 @@
       "parameters": {
         "jsCode": "const AUTORISEES = [\"baptiste.papoul52+socle-alpha@gmail.com\", \"baptiste.papoul52+socle-beta@gmail.com\", \"baptiste.papoul52+socle-clientalpha@gmail.com\", \"baptiste.papoul52+socle-clientbeta@gmail.com\"];\nconst to = String($json.client_email || '').trim().toLowerCase();\nif (!AUTORISEES.includes(to)) throw new Error('RECETTE : destinataire non autorisé, envoi refusé : ' + to);\nreturn $input.all();"
       },
-      "id": "code-034",
+      "id": "code-039",
       "name": "Recette : destinataire autorisé ? (relance)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -3310,7 +3355,7 @@
       "parameters": {
         "jsCode": "const AUTORISEES = [\"baptiste.papoul52+socle-alpha@gmail.com\", \"baptiste.papoul52+socle-beta@gmail.com\", \"baptiste.papoul52+socle-clientalpha@gmail.com\", \"baptiste.papoul52+socle-clientbeta@gmail.com\"];\nconst to = String($('Récupérer le client (avis)').item.json.email || '').trim().toLowerCase();\nif (!AUTORISEES.includes(to)) throw new Error('RECETTE : destinataire non autorisé, envoi refusé : ' + to);\nreturn $input.all();"
       },
-      "id": "code-035",
+      "id": "code-040",
       "name": "Recette : destinataire autorisé ? (avis google)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -3323,7 +3368,7 @@
       "parameters": {
         "jsCode": "const AUTORISEES = [\"baptiste.papoul52+socle-alpha@gmail.com\", \"baptiste.papoul52+socle-beta@gmail.com\", \"baptiste.papoul52+socle-clientalpha@gmail.com\", \"baptiste.papoul52+socle-clientbeta@gmail.com\"];\nconst to = String($json.email || '').trim().toLowerCase();\nif (!AUTORISEES.includes(to)) throw new Error('RECETTE : destinataire non autorisé, envoi refusé : ' + to);\nreturn $input.all();"
       },
-      "id": "code-036",
+      "id": "code-041",
       "name": "Recette : destinataire autorisé ? (Notifier le garage tra)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -3336,7 +3381,7 @@
       "parameters": {
         "jsCode": "const AUTORISEES = [\"baptiste.papoul52+socle-alpha@gmail.com\", \"baptiste.papoul52+socle-beta@gmail.com\", \"baptiste.papoul52+socle-clientalpha@gmail.com\", \"baptiste.papoul52+socle-clientbeta@gmail.com\"];\nconst to = String($('Récupérer les horaires du garage').first().json.email || '').trim().toLowerCase();\nif (!AUTORISEES.includes(to)) throw new Error('RECETTE : destinataire non autorisé, envoi refusé : ' + to);\nreturn $input.all();"
       },
-      "id": "code-037",
+      "id": "code-042",
       "name": "Recette : destinataire autorisé ? (notifier le garage auc)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -3406,7 +3451,7 @@
       "main": [
         [
           {
-            "node": "Garage à résoudre par l'adresse de réception ?",
+            "node": "Garage identifié ?",
             "type": "main",
             "index": 0
           }
@@ -4103,7 +4148,7 @@
         [],
         [
           {
-            "node": "Point d'entrée unifié",
+            "node": "Garage à résoudre par l'adresse de réception ?",
             "type": "main",
             "index": 0
           }
@@ -4395,7 +4440,7 @@
         ],
         [
           {
-            "node": "Garage identifié ?",
+            "node": "Point d'entrée unifié",
             "type": "main",
             "index": 0
           }
@@ -4417,7 +4462,7 @@
       "main": [
         [
           {
-            "node": "Garage identifié ?",
+            "node": "Point d'entrée unifié",
             "type": "main",
             "index": 0
           }
@@ -4612,6 +4657,44 @@
         ]
       ]
     },
+    "Recette : déclencher les tournées": {
+      "main": [
+        [
+          {
+            "node": "RDV entretien terminés",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RDV terminés aujourd'hui",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recette : e-mail entrant": {
+      "main": [
+        [
+          {
+            "node": "Recette : message brut",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recette : message brut": {
+      "main": [
+        [
+          {
+            "node": "Normaliser (Gmail)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Recette : destinataire autorisé ? (répondre infos manquan)": {
       "main": [
         [
@@ -4670,5 +4753,5 @@
   },
   "settings": {},
   "active": false,
-  "id": "PICszikUjJIpowgJ"
+  "id": "recetteassistantv2b001"
 }
