@@ -1,0 +1,472 @@
+{
+  "name": "Facture (socle)",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "factures",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Une notification à la fois').item.json.doc_id }}"
+            }
+          ]
+        }
+      },
+      "id": "43522382-391c-458d-b8e5-c75fa9afcf21",
+      "name": "Récupérer la facture",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3920,
+        -288
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "clients",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Récupérer la facture').item.json.client_id }}"
+            }
+          ]
+        }
+      },
+      "id": "03a47bc3-de41-4ded-831f-e4861a199c2c",
+      "name": "Récupérer le client",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3648,
+        -288
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "vehicules",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Récupérer la facture').item.json.vehicule_id }}"
+            }
+          ]
+        }
+      },
+      "id": "6111aeb7-a225-4df7-bba4-8efc4ed12cc9",
+      "name": "Récupérer le véhicule",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3360,
+        -288
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "garages",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Récupérer la facture').item.json.garage_id }}"
+            }
+          ]
+        }
+      },
+      "id": "6cfab700-ea21-45c5-922d-3619b1ff9e89",
+      "name": "Récupérer le garage",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3088,
+        -288
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const notif = $('Une notification à la fois').item.json;\nconst facture = $('Récupérer la facture').item.json;\nconst client = $('Récupérer le client').item.json;\nconst vehicule = $('Récupérer le véhicule').item.json;\nconst garage = $('Récupérer le garage').item.json;\nconst reserve = $('Une notification à la fois').item.json;\nconst nomAffiche = (garage && garage.nom_garage ? garage.nom_garage : 'Votre garage').replace(/[\"\\\\]/g, ' ').trim();\nconst nomVehicule = `${vehicule.marque || ''} ${vehicule.modele || ''}`.trim();\nconst immat = (vehicule && vehicule.immatriculation) ? ' (' + vehicule.immatriculation + ')' : '';\nconst lien = `${reserve.url_publique}/facture/${reserve.jeton}`;\nlet texte, sujet;\nif (notif.type === 'payee') {\n  sujet = 'Confirmation de paiement';\n  texte = `Bonjour ${client.nom || ''},\\n\\nNous confirmons la bonne réception de votre paiement pour la facture ${facture.numero} — votre ${nomVehicule}${immat} — d'un montant de ${facture.montant_ttc} € TTC.\\n\\nMerci de votre confiance,\\nL'équipe ${garage.nom_garage || 'du garage'}`;\n} else {\n  sujet = `Votre facture ${facture.numero}`;\n  texte = `Bonjour ${client.nom || ''},\\n\\n${garage.nom_garage || 'Votre garage'} vous transmet la facture ${facture.numero} pour votre ${nomVehicule}${immat} : ${facture.montant_ttc} € TTC.\\n\\nConsultez le détail ici : ${lien}\\n\\nÀ bientôt,\\n${nomAffiche}`;\n}\n\nconst expediteur = `\"${nomAffiche}\" <nexorasolutions.france@gmail.com>`;\nconst repondreA = (garage && garage.email) ? garage.email : '';\n\nreturn [{ json: { expediteur, repondreA, notif_id: reserve.id, id: notif.id, client_email: client.email || '', texte, sujet } }];"
+      },
+      "id": "a6683c75-5494-41ab-9238-b481d44664d0",
+      "name": "Construire le message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2800,
+        -288
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.expediteur }}",
+        "toEmail": "={{ $json.client_email }}",
+        "subject": "={{ $json.sujet }}",
+        "emailFormat": "text",
+        "text": "={{ $json.texte }}",
+        "options": {
+          "appendAttribution": false,
+          "replyTo": "={{ $json.repondreA }}"
+        }
+      },
+      "id": "df4e00b0-4622-4add-8633-0903007e4e7e",
+      "name": "Notifier facture (email)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -2240,
+        -352
+      ],
+      "webhookId": "983bb795-874b-4489-8006-4196735b5710",
+      "credentials": {
+        "smtp": {
+          "id": "6opiCKNWBLDnvYKJ",
+          "name": "SMTP Brevo — envois métier"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/reserver_notifications",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"p_file\": \"factures\", \"p_limite\": 10}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -6176,
+        -400
+      ],
+      "id": "cfbace19-585f-4c29-994d-b3018249b92d",
+      "name": "Réserver la file",
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -5968,
+        -400
+      ],
+      "id": "ee8b49a6-04df-4b84-8b0b-6ed558c275a3",
+      "name": "Une notification à la fois"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/terminer_notification",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_file\": \"factures\", \"p_id\": \"{{ $('Construire le message').item.json.notif_id }}\", \"p_resultat\": \"envoye\", \"p_motif\": null}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4368,
+        -544
+      ],
+      "id": "16339410-e2c0-4f3f-b865-1c23ecbff81a",
+      "name": "Clore envoyé",
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/terminer_notification",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_file\": \"factures\", \"p_id\": \"{{ $('Construire le message').item.json.notif_id }}\", \"p_resultat\": \"bloque\", \"p_motif\": \"destinataire hors des boîtes de recette autorisées\"}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4368,
+        -352
+      ],
+      "id": "45205904-a93a-4d0d-bedb-fa30ea507c55",
+      "name": "Clore bloqué",
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/terminer_notification",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_file\": \"factures\", \"p_id\": \"{{ $('Construire le message').item.json.notif_id }}\", \"p_resultat\": \"a_reprendre\", \"p_motif\": \"refus du fournisseur d'envoi\"}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4368,
+        -144
+      ],
+      "id": "bd2eb017-811c-4846-b935-f866ac88e147",
+      "name": "Clore à reprendre",
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/2 * * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -6480,
+        -400
+      ],
+      "id": "9779a969-84a4-4f21-8bdd-3a54f24781da",
+      "name": "Toutes les 2 minutes"
+    }
+  ],
+  "connections": {
+    "Réserver la file": {
+      "main": [
+        [
+          {
+            "node": "Une notification à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Une notification à la fois": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Récupérer la facture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer la facture": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le client": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le véhicule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le véhicule": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le garage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le garage": {
+      "main": [
+        [
+          {
+            "node": "Construire le message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construire le message": {
+      "main": [
+        [
+          {
+            "node": "Notifier facture (email)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notifier facture (email)": {
+      "main": [
+        [
+          {
+            "node": "Clore envoyé",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clore envoyé": {
+      "main": [
+        [
+          {
+            "node": "Une notification à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clore bloqué": {
+      "main": [
+        [
+          {
+            "node": "Une notification à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clore à reprendre": {
+      "main": [
+        [
+          {
+            "node": "Une notification à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Toutes les 2 minutes": {
+      "main": [
+        [
+          {
+            "node": "Réserver la file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "active": 0,
+  "id": "9IG1g2ZmHQzhnsMS"
+}

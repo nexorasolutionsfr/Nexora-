@@ -19,9 +19,13 @@ import {
   mentionCanalIndisponible,
 } from "./capacites.js";
 
-test("aucune automatisation n'est annoncée disponible sans preuve d'envoi", () => {
+test("une automatisation n'est annoncée disponible que si elle envoie vraiment, aujourd'hui", () => {
+  // Une recette réussie ne suffit pas : il faut que l'envoi soit ACTIF en Production. Au 10 septembre
+  // 2026, aucun ne l'est — la demande d'avis, seule à avoir été prouvée, est suspendue faute de
+  // pouvoir enregistrer le refus d'un client. Cette liste ne s'allonge que contre un envoi actif.
+  const enService = [];
   for (const [nom, capacite] of Object.entries(CAPACITES)) {
-    assert.equal(capacite.disponible, false, `${nom} : passé à disponible sans preuve ?`);
+    assert.equal(capacite.disponible, enService.includes(nom), `${nom} : disponibilité incohérente avec ce qui envoie réellement`);
     assert.ok(capacite.resume.length > 10, `${nom} : il manque le résumé`);
     assert.ok(capacite.utilisable.length > 10, `${nom} : il manque ce qui reste utilisable`);
   }

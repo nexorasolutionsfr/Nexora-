@@ -1,0 +1,511 @@
+{
+  "name": "Proposition RDV (socle)",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "propositions_rdv",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Une notification à la fois').item.json.doc_id }}"
+            }
+          ]
+        }
+      },
+      "id": "fce721ce-b443-4167-ba4b-a0968f34ff2d",
+      "name": "Récupérer la proposition",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -4192,
+        -288
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "clients",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Récupérer la proposition').item.json.client_id }}"
+            }
+          ]
+        }
+      },
+      "id": "05d64dd9-5c62-4c33-88cb-46b8a7684bae",
+      "name": "Récupérer le client",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3920,
+        -288
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "vehicules",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Récupérer la proposition').item.json.vehicule_id }}"
+            }
+          ]
+        }
+      },
+      "id": "f89a25ec-99c9-473a-b7ee-e3094393e408",
+      "name": "Récupérer le véhicule",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3632,
+        -288
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "garages",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Récupérer la proposition').item.json.garage_id }}"
+            }
+          ]
+        }
+      },
+      "id": "9a45de4a-8dcb-43fb-8b46-20756ebd9659",
+      "name": "Récupérer le garage",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3360,
+        -288
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "prestations",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Récupérer la proposition').item.json.prestation_id }}"
+            }
+          ]
+        }
+      },
+      "id": "c282988e-e166-43c2-8826-18bfb681d8b2",
+      "name": "Récupérer la prestation",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3072,
+        -288
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const notif = $('Une notification à la fois').item.json;\nconst prop = $('Récupérer la proposition').item.json;\nconst client = $('Récupérer le client').item.json;\nconst vehicule = $('Récupérer le véhicule').item.json;\nconst garage = $('Récupérer le garage').item.json;\nconst prestation = $('Récupérer la prestation').item.json;\nconst reserve = $('Une notification à la fois').item.json;\nconst nomAffiche = (garage && garage.nom_garage ? garage.nom_garage : 'Votre garage').replace(/[\"\\\\]/g, ' ').trim();\nconst nomVehicule = `${vehicule.marque || ''} ${vehicule.modele || ''}`.trim();\nconst immat = (vehicule && vehicule.immatriculation) ? ' (' + vehicule.immatriculation + ')' : '';\nconst dateTxt = new Date(prop.date_debut_proposee).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });\nconst heureTxt = new Date(prop.date_debut_proposee).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });\nlet texte, sujet;\nif (notif.type === 'accepte') {\n  sujet = 'Votre rendez-vous est confirmé';\n  texte = `Bonjour ${client.nom || ''},\\n\\nVotre rendez-vous pour votre ${nomVehicule}${immat} — ${prestation.nom || 'intervention'} — est confirmé le ${dateTxt} à ${heureTxt} chez ${garage.nom_garage || 'notre garage'}.\\n\\nÀ bientôt,\\n${nomAffiche}`;\n} else if (notif.type === 'refuse') {\n  sujet = 'À propos de votre demande de rendez-vous';\n  texte = `Bonjour ${client.nom || ''},\\n\\nNous ne pouvons malheureusement pas donner suite à votre demande de rendez-vous pour le moment. N'hésitez pas à nous recontacter pour trouver un autre créneau.\\n\\n${nomAffiche}`;\n} else {\n  sujet = 'Votre rendez-vous a été modifié';\n  texte = `Bonjour ${client.nom || ''},\\n\\nVotre rendez-vous pour ${nomVehicule} a été déplacé au ${dateTxt} à ${heureTxt}.\\n\\n${nomAffiche}`;\n}\n\nconst expediteur = `\"${nomAffiche}\" <nexorasolutions.france@gmail.com>`;\nconst repondreA = (garage && garage.email) ? garage.email : '';\n\nreturn [{ json: { expediteur, repondreA, notif_id: reserve.id, id: notif.id, client_email: client.email || '', texte, sujet } }];"
+      },
+      "id": "d8bae886-8626-40ea-960f-088ed255ddc6",
+      "name": "Construire le message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2800,
+        -288
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.expediteur }}",
+        "toEmail": "={{ $json.client_email }}",
+        "subject": "={{ $json.sujet }}",
+        "emailFormat": "text",
+        "text": "={{ $json.texte }}",
+        "options": {
+          "appendAttribution": false,
+          "replyTo": "={{ $json.repondreA }}"
+        }
+      },
+      "id": "dd14f2cd-80db-4cf7-bb83-575d3a2c04d7",
+      "name": "Notifier client (email)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -2240,
+        -352
+      ],
+      "webhookId": "5f87178a-3c46-4a24-b5dc-90728ae0b6f4",
+      "credentials": {
+        "smtp": {
+          "id": "6opiCKNWBLDnvYKJ",
+          "name": "SMTP Brevo — envois métier"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/reserver_notifications",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"p_file\": \"proposition\", \"p_limite\": 10}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -6448,
+        -400
+      ],
+      "id": "63fc99b7-331c-414c-b2e6-ab5d0cb63ddd",
+      "name": "Réserver la file",
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -6240,
+        -400
+      ],
+      "id": "0e710088-d98d-4d0e-b913-6420ae7575fa",
+      "name": "Une notification à la fois"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/terminer_notification",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_file\": \"proposition\", \"p_id\": \"{{ $('Construire le message').item.json.notif_id }}\", \"p_resultat\": \"envoye\", \"p_motif\": null}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4640,
+        -544
+      ],
+      "id": "911ff81a-fd12-4b5d-bfa7-7b6ff0a520c1",
+      "name": "Clore envoyé",
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/terminer_notification",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_file\": \"proposition\", \"p_id\": \"{{ $('Construire le message').item.json.notif_id }}\", \"p_resultat\": \"bloque\", \"p_motif\": \"destinataire hors des boîtes de recette autorisées\"}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4640,
+        -352
+      ],
+      "id": "01f24eae-2761-4794-84ff-73746e6e375c",
+      "name": "Clore bloqué",
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/terminer_notification",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_file\": \"proposition\", \"p_id\": \"{{ $('Construire le message').item.json.notif_id }}\", \"p_resultat\": \"a_reprendre\", \"p_motif\": \"refus du fournisseur d'envoi\"}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4640,
+        -144
+      ],
+      "id": "c1a1f51b-5e92-479a-9562-445f49ff6029",
+      "name": "Clore à reprendre",
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/2 * * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -6752,
+        -400
+      ],
+      "id": "75269def-7ba5-4f26-a6a6-0ccd3846624b",
+      "name": "Toutes les 2 minutes"
+    }
+  ],
+  "connections": {
+    "Réserver la file": {
+      "main": [
+        [
+          {
+            "node": "Une notification à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Une notification à la fois": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Récupérer la proposition",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer la proposition": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le client": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le véhicule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le véhicule": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le garage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le garage": {
+      "main": [
+        [
+          {
+            "node": "Récupérer la prestation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer la prestation": {
+      "main": [
+        [
+          {
+            "node": "Construire le message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construire le message": {
+      "main": [
+        [
+          {
+            "node": "Notifier client (email)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notifier client (email)": {
+      "main": [
+        [
+          {
+            "node": "Clore envoyé",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clore envoyé": {
+      "main": [
+        [
+          {
+            "node": "Une notification à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clore bloqué": {
+      "main": [
+        [
+          {
+            "node": "Une notification à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clore à reprendre": {
+      "main": [
+        [
+          {
+            "node": "Une notification à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Toutes les 2 minutes": {
+      "main": [
+        [
+          {
+            "node": "Réserver la file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "active": 0,
+  "id": "HdO63GrT2WfopDQP"
+}

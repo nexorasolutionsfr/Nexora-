@@ -21,6 +21,9 @@
 
 export const CAPACITES = {
   // La réponse automatique aux demandes entrantes.
+  // L'Assistant v2 (10 septembre 2026) sait répondre au nom du garage, mais n'envoie que si
+  // `automatisation_active` est vrai — et ce réglage n'est plus exposé dans l'interface depuis le
+  // 8 septembre. Tant que le garage ne peut pas l'allumer lui-même, on ne l'annonce pas.
   reponseAutomatique: {
     disponible: false,
     resume: "Les demandes ne reçoivent pas encore de réponse automatique.",
@@ -33,10 +36,16 @@ export const CAPACITES = {
     utilisable: "Vous pouvez confirmer un rendez-vous à la main depuis l'agenda.",
   },
   // La demande d'avis envoyée après un rendez-vous terminé.
+  // Elle a été prouvée sur Test le 10 septembre 2026 (envoi au nom du garage, blocage avec motif
+  // journalisé sans e-mail client ou sans lien d'avis). Elle reste néanmoins annoncée indisponible,
+  // et ce n'est pas un oubli : c'est une SOLLICITATION, pas une notification de service, et rien ne
+  // permet encore d'enregistrer le refus d'un client qui répond « stop » — la mention de retrait
+  // part vers le garage, personne ne la retient. Tant que ce refus n'est pas enregistrable et
+  // respecté, l'envoi est suspendu et l'interface ne doit pas en promettre le fonctionnement.
   demandeAvis: {
     disponible: false,
-    resume: "La demande d'avis n'est pas encore envoyée automatiquement.",
-    utilisable: "Le lien est conservé ici, prêt à servir.",
+    resume: "La demande d'avis n'est pas envoyée automatiquement.",
+    utilisable: "Le lien est conservé ici : collez-le dans vos échanges avec le client.",
   },
 };
 
