@@ -36,12 +36,16 @@ export const CAPACITES = {
     utilisable: "Vous pouvez confirmer un rendez-vous à la main depuis l'agenda.",
   },
   // La demande d'avis envoyée après un rendez-vous terminé.
-  // Prouvé sur Test le 10 septembre 2026 : envoyée chaque soir aux rendez-vous terminés, seulement si
-  // ce lien est renseigné et si le client a une adresse e-mail ; sinon un motif est journalisé.
+  // Elle a été prouvée sur Test le 10 septembre 2026 (envoi au nom du garage, blocage avec motif
+  // journalisé sans e-mail client ou sans lien d'avis). Elle reste néanmoins annoncée indisponible,
+  // et ce n'est pas un oubli : c'est une SOLLICITATION, pas une notification de service, et rien ne
+  // permet encore d'enregistrer le refus d'un client qui répond « stop » — la mention de retrait
+  // part vers le garage, personne ne la retient. Tant que ce refus n'est pas enregistrable et
+  // respecté, l'envoi est suspendu et l'interface ne doit pas en promettre le fonctionnement.
   demandeAvis: {
-    disponible: true,
-    resume: "La demande d'avis est envoyée chaque soir aux clients dont le rendez-vous est terminé.",
-    utilisable: "Sans lien renseigné ici, rien ne part : renseignez-le pour activer l'envoi.",
+    disponible: false,
+    resume: "La demande d'avis n'est pas envoyée automatiquement.",
+    utilisable: "Le lien est conservé ici : collez-le dans vos échanges avec le client.",
   },
 };
 
