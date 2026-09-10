@@ -232,6 +232,11 @@ return [{ json: { envoyable: !motif, motif, garage_id: garage.id || rdv.garage_i
         {"fieldId": "type", "fieldValue": "relance"},
         {"fieldId": "texte", "fieldValue": "={{ 'Relance entretien envoyée à ' + $('Préparer la relance').item.json.nom }}"}]
 
+    # M5b/M6b — défaut préexistant vu en recette : les deux sélections (relance, avis) combinaient leurs
+    # filtres en OU (matchType par défaut du nœud Supabase) : un rendez-vous annulé avec relance_envoyee=false
+    # sortait comme « terminé ». On force le ET, et l'avis vérifie en plus le statut à l'instant de l'envoi.
+    for nm in ("RDV entretien terminés", "RDV terminés aujourd'hui"):
+        wf.node(nm)["parameters"]["matchType"] = "allFilters"
     # M6 — avis : e-mail client ET lien d'avis du garage, sinon motif journalisé.
     ifa = wf.node("Le client a-t-il un e-mail ?"); ifa["name"] = "Avis envoyable ? (e-mail client et lien du garage)"
     wf.conns["Avis envoyable ? (e-mail client et lien du garage)"] = wf.conns.pop("Le client a-t-il un e-mail ?")
@@ -240,6 +245,7 @@ return [{ json: { envoyable: !motif, motif, garage_id: garage.id || rdv.garage_i
             for c in (out or []):
                 if c["node"] == "Le client a-t-il un e-mail ?": c["node"] = "Avis envoyable ? (e-mail client et lien du garage)"
     ifa["parameters"]["conditions"]["conditions"].append(cond_notempty("={{ $json.lien_avis_google }}"))
+    ifa["parameters"]["conditions"]["conditions"].append({"id": uid("c"), "leftValue": "={{ $('Traiter un par un (avis)').item.json.statut }}", "rightValue": "termine", "operator": {"type": "string", "operation": "equals"}})
     assert wf.succ("Avis envoyable ? (e-mail client et lien du garage)", 1) == ["Marquer l'avis demandé"]
     wf.add(journal("Journaliser l'avis non envoyé", "avis_non_envoye",
                    "={{ !$('Récupérer le client (avis)').item.json.email ? 'Avis non envoyé : le client n\\'a pas d\\'adresse e-mail' : 'Avis non envoyé : aucun lien d\\'avis Google renseigné pour ce garage (Paramètres > Objectif & avis)' }}",

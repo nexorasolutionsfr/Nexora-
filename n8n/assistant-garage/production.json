@@ -1678,7 +1678,8 @@
               "keyValue": "false"
             }
           ]
-        }
+        },
+        "matchType": "allFilters"
       },
       "id": "b11554cd-8224-4139-8639-e077de79c575",
       "name": "RDV entretien terminés",
@@ -1864,7 +1865,8 @@
               "keyValue": "false"
             }
           ]
-        }
+        },
+        "matchType": "allFilters"
       },
       "id": "6a25f941-dbe9-4671-8652-2af652f28047",
       "name": "RDV terminés aujourd'hui",
@@ -2624,6 +2626,15 @@
                 "operation": "notEmpty",
                 "singleValue": true
               }
+            },
+            {
+              "id": "c-023",
+              "leftValue": "={{ $('Traiter un par un (avis)').item.json.statut }}",
+              "rightValue": "termine",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             }
           ]
         },
@@ -2761,7 +2772,7 @@
               }
             },
             {
-              "id": "c-024",
+              "id": "c-025",
               "leftValue": "={{ $json.automatisation_active }}",
               "rightValue": "",
               "operator": {
@@ -3139,7 +3150,7 @@
           ]
         }
       },
-      "id": "journal-023",
+      "id": "journal-024",
       "name": "Journaliser l'avis non envoyé",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
@@ -3161,7 +3172,7 @@
         "width": 520,
         "color": 3
       },
-      "id": "note-025",
+      "id": "note-026",
       "name": "Note v2 - Accepté / refusé",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -3177,7 +3188,7 @@
         "width": 560,
         "color": 3
       },
-      "id": "note-032",
+      "id": "note-033",
       "name": "Note v2 - Relance",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -3193,7 +3204,7 @@
         "width": 560,
         "color": 3
       },
-      "id": "note-033",
+      "id": "note-034",
       "name": "Note v2 - Boîte IMAP",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,

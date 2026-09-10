@@ -1678,7 +1678,8 @@
               "keyValue": "false"
             }
           ]
-        }
+        },
+        "matchType": "allFilters"
       },
       "id": "b11554cd-8224-4139-8639-e077de79c575",
       "name": "RDV entretien terminés",
@@ -1865,7 +1866,8 @@
               "keyValue": "false"
             }
           ]
-        }
+        },
+        "matchType": "allFilters"
       },
       "id": "6a25f941-dbe9-4671-8652-2af652f28047",
       "name": "RDV terminés aujourd'hui",
@@ -2625,6 +2627,15 @@
                 "operation": "notEmpty",
                 "singleValue": true
               }
+            },
+            {
+              "id": "c-023",
+              "leftValue": "={{ $('Traiter un par un (avis)').item.json.statut }}",
+              "rightValue": "termine",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             }
           ]
         },
@@ -2762,7 +2773,7 @@
               }
             },
             {
-              "id": "c-024",
+              "id": "c-025",
               "leftValue": "={{ $json.automatisation_active }}",
               "rightValue": "",
               "operator": {
@@ -3140,7 +3151,7 @@
           ]
         }
       },
-      "id": "journal-023",
+      "id": "journal-024",
       "name": "Journaliser l'avis non envoyé",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
@@ -3162,7 +3173,7 @@
         "width": 520,
         "color": 3
       },
-      "id": "note-025",
+      "id": "note-026",
       "name": "Note v2 - Accepté / refusé",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -3173,7 +3184,7 @@
     },
     {
       "parameters": {},
-      "id": "manual-026",
+      "id": "manual-027",
       "name": "Recette : lancer les tournées",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
@@ -3186,7 +3197,7 @@
       "parameters": {
         "jsCode": "const AUTORISEES = [\"baptiste.papoul52+socle-alpha@gmail.com\", \"baptiste.papoul52+socle-beta@gmail.com\", \"baptiste.papoul52+socle-clientalpha@gmail.com\", \"baptiste.papoul52+socle-clientbeta@gmail.com\"];\nconst to = String($json.email || '').trim().toLowerCase();\nif (!AUTORISEES.includes(to)) throw new Error('RECETTE : destinataire non autorisé, envoi refusé : ' + to);\nreturn $input.all();"
       },
-      "id": "code-027",
+      "id": "code-028",
       "name": "Recette : destinataire autorisé ? (répondre infos manquan)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -3199,7 +3210,7 @@
       "parameters": {
         "jsCode": "const AUTORISEES = [\"baptiste.papoul52+socle-alpha@gmail.com\", \"baptiste.papoul52+socle-beta@gmail.com\", \"baptiste.papoul52+socle-clientalpha@gmail.com\", \"baptiste.papoul52+socle-clientbeta@gmail.com\"];\nconst to = String($json.client_email || '').trim().toLowerCase();\nif (!AUTORISEES.includes(to)) throw new Error('RECETTE : destinataire non autorisé, envoi refusé : ' + to);\nreturn $input.all();"
       },
-      "id": "code-028",
+      "id": "code-029",
       "name": "Recette : destinataire autorisé ? (relance)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -3212,7 +3223,7 @@
       "parameters": {
         "jsCode": "const AUTORISEES = [\"baptiste.papoul52+socle-alpha@gmail.com\", \"baptiste.papoul52+socle-beta@gmail.com\", \"baptiste.papoul52+socle-clientalpha@gmail.com\", \"baptiste.papoul52+socle-clientbeta@gmail.com\"];\nconst to = String($('Récupérer le client (avis)').item.json.email || '').trim().toLowerCase();\nif (!AUTORISEES.includes(to)) throw new Error('RECETTE : destinataire non autorisé, envoi refusé : ' + to);\nreturn $input.all();"
       },
-      "id": "code-029",
+      "id": "code-030",
       "name": "Recette : destinataire autorisé ? (avis google)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -3225,7 +3236,7 @@
       "parameters": {
         "jsCode": "const AUTORISEES = [\"baptiste.papoul52+socle-alpha@gmail.com\", \"baptiste.papoul52+socle-beta@gmail.com\", \"baptiste.papoul52+socle-clientalpha@gmail.com\", \"baptiste.papoul52+socle-clientbeta@gmail.com\"];\nconst to = String($json.email || '').trim().toLowerCase();\nif (!AUTORISEES.includes(to)) throw new Error('RECETTE : destinataire non autorisé, envoi refusé : ' + to);\nreturn $input.all();"
       },
-      "id": "code-030",
+      "id": "code-031",
       "name": "Recette : destinataire autorisé ? (Notifier le garage tra)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -3238,7 +3249,7 @@
       "parameters": {
         "jsCode": "const AUTORISEES = [\"baptiste.papoul52+socle-alpha@gmail.com\", \"baptiste.papoul52+socle-beta@gmail.com\", \"baptiste.papoul52+socle-clientalpha@gmail.com\", \"baptiste.papoul52+socle-clientbeta@gmail.com\"];\nconst to = String($('Récupérer les horaires du garage').first().json.email || '').trim().toLowerCase();\nif (!AUTORISEES.includes(to)) throw new Error('RECETTE : destinataire non autorisé, envoi refusé : ' + to);\nreturn $input.all();"
       },
-      "id": "code-031",
+      "id": "code-032",
       "name": "Recette : destinataire autorisé ? (notifier le garage auc)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,

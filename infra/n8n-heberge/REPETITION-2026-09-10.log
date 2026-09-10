@@ -1,0 +1,9 @@
+3. sauvegarde : /private/tmp/claude-503/-Users-Baptiste-Downloads/98923fda-82d7-4b90-8b2b-8d42fc6c6874/scratchpad/nuit/repetition-hebergement/sauvegardes/2026-09-10_0200 (116K)
+4. apres redemarrage : 2 workflows
+5. pile detruite (down -v)
+6. restauré depuis /private/tmp/claude-503/-Users-Baptiste-Downloads/98923fda-82d7-4b90-8b2b-8d42fc6c6874/scratchpad/nuit/repetition-hebergement/sauvegardes/2026-09-10_0200/ — vérifier : identifiants lisibles, workflows présents, AUCUN workflow actif avant contrôle des files
+7. apres restauration : 2 workflows, 0 actif(s)
+8. healthz : {"status":"ok"}
+-rw-------  1 Baptiste  wheel  110255 Sep 10 02:00 n8n.sql.gz
+-rw-------  1 Baptiste  wheel     381 Sep 10 02:00 n8n_data.tgz
+-rw-------  1 Baptiste  wheel      65 Sep 10 02:00 n8n_encryption_key

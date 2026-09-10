@@ -42,10 +42,39 @@ rebranché le dashboard sur les webhooks.
 Aucun e-mail n'a été ajouté au périmètre, aucun destinataire nouveau, aucune
 promotion dans un message transactionnel.
 
-## Preuves (recette Test, 10 septembre 2026, ~01 h 30 – 02 h 30)
+## Preuves (recette Test, 10 septembre 2026, 01 h 39 – 02 h 17)
 
-Voir la section « Preuves » de la PR — chaque parcours y est cité avec
-l'exécution n8n, le message reçu et ses en-têtes.
+Recette importée **par fichier** (`recette-test.json`, workflow `PICszikUjJIpowgJ`),
+identifiants Test, garde-fou qui refuse tout destinataire hors des quatre boîtes
+de recette. Deux garages fictifs : SOCLE Garage Alpha (lien d'avis renseigné,
+automatisation active) et SOCLE Garage Beta (sans lien d'avis, automatisation
+coupée, horaires vides). Le n8n vivant et la Production n'ont rien vu passer.
+
+| Parcours | Événement | Exécution | Résultat vérifié |
+|---|---|---|---|
+| Réponse infos manquantes | formulaire site, garage Alpha, message vague | 18713, 18776 | e-mail reçu sur `+socle-clientalpha` ; `From: "SOCLE Garage Alpha"`, `Reply-To: +socle-alpha`, DKIM/SPF/DMARC pass, accents corrects, signature au nom du garage |
+| Réponse bloquée | même message, garage Beta (automatisation coupée) | 18777 | aucun e-mail ; journal `reponse_non_envoyee` « l'automatisation IA est désactivée pour ce garage » |
+| Entrée sans garage | formulaire sans `garage_id` | 18714 | aucun traitement ; journal `entree_sans_garage` |
+| Notification interne « traitement manuel » | question de diagnostic, garage Beta | 18725 | e-mail reçu sur `+socle-beta` (l'adresse du garage), depuis « Nexora » |
+| Notification interne « aucun créneau » | demande de vidange, garage Beta aux horaires vides | 18720 | e-mail reçu sur `+socle-beta` |
+| Relance entretien | 4 rendez-vous terminés depuis 13 mois + 1 annulé | 18790, 18799 | 2 envoyées (Alpha, Beta ; `From` et `Reply-To` du bon garage, mention de désinscription), 2 bloquées « client sans adresse », l'annulé **exclu de la sélection** (18799) après correction du filtre |
+| Avis Google | mêmes rendez-vous | 18790, 18799 | envoyé pour Alpha (lien renseigné), bloqué « aucun lien d'avis » pour Beta, bloqué « sans adresse », statut non terminé exclu ; lignes marquées pour ne plus être reprises |
+| Lien à jeton ouvert | facture Test `F-2026-0001` | app locale sur Test, port 3111 | page rendue : « SOCLE Garage Alpha — Facture F-2026-0001 — Peugeot 308 — 120,00 € TTC » |
+
+**Ce que la recette a révélé et corrigé en chemin** (les deux sont dans
+`construire.py`) :
+
+1. le retour de boucle : après chaque envoi, le résultat SMTP revenait dans la
+   file d'entrée et était traité comme un nouveau message ;
+2. les deux sélections de rendez-vous combinaient leurs filtres en **OU** — un
+   rendez-vous annulé sortait comme « terminé ». En Production, la v2 aurait
+   marqué des rendez-vous futurs comme « avis demandé ». Forcé en ET, et le
+   statut est revérifié à l'instant de l'envoi.
+
+**Limites de preuve.** La page a été ouverte depuis une application locale
+reliée à Test, pas depuis l'extérieur : les préversions Vercel exigent une
+connexion. L'IMAP n'a pas été testé (désactivé à dessein). La relance a été
+testée sur Test mais est livrée **désactivée** en Production.
 
 ## Plan de passage en Production (à ne pas dérouler sans feu vert)
 
