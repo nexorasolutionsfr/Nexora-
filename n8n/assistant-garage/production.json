@@ -1,0 +1,4420 @@
+{
+  "name": "1 - Assistant Garage Avancé (v2 Brevo)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## v2 Brevo — ce qui a changé\n- Plus aucun garage par défaut : un message entrant sans `garage_id` est journalisé dans `actions_ia` (type `entree_sans_garage`) et non traité.\n- Tous les e-mails partent par l'identifiant `SMTP Brevo — envois métier`, au nom du garage lu en base, Reply-To vers son adresse.\n- Les notifications internes vont à l'adresse du garage concerné.\n- La réponse automatique respecte `garages.automatisation_active`.\n- Accepté / refusé (devis, proposition) : traité par le socle, plus par ici.\n- Relance entretien : déclencheur désactivé tant qu'il n'existe ni désinscription ni interrupteur par garage.",
+        "height": 620,
+        "width": 620,
+        "color": 4
+      },
+      "id": "41e51b9c-6d9d-4e14-945d-6ba2432c8972",
+      "name": "📋 À faire avant utilisation",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🅰️ Réception multi-source → identification du client (email/téléphone) → contexte de conversation → classification IA → triage par type",
+        "width": 2820,
+        "color": 6
+      },
+      "id": "522e1404-12ce-4b2e-9c79-d10249783a71",
+      "name": "Note - Réception",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        592,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "demande-site",
+        "options": {}
+      },
+      "id": "7b3319b9-47ed-4934-ac65-47b0dd9fba0f",
+      "name": "🌐 Nouvelle demande (Site web)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        592,
+        432
+      ],
+      "webhookId": "ef797e97-32e3-4f2d-a508-d5db533a38a0"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "demande-whatsapp",
+        "options": {}
+      },
+      "id": "7adabce9-f050-42c0-b497-391a205069ca",
+      "name": "💬 Nouveau message (WhatsApp)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        592,
+        624
+      ],
+      "webhookId": "aa1a7a0d-85d8-4d30-bacd-c7cda9c869f5"
+    },
+    {
+      "parameters": {
+        "jsCode": "const messages = $input.all();\n\nfunction reparerEncodage(s) {\n  if (!s || typeof s !== \"string\") return s;\n  try {\n    const reparee = Buffer.from(s, \"latin1\").toString(\"utf8\");\n    const scoreOriginal = (s.match(/Ã|â€/g) || []).length;\n    const scoreRepare = (reparee.match(/Ã|â€|\\uFFFD/g) || []).length;\n    return scoreRepare < scoreOriginal ? reparee : s;\n  } catch (e) { return s; }\n}\nfunction extraireExpediteur(from) {\n  if (!from) return { email: \"\", nom: \"\" };\n  if (typeof from === \"string\") {\n    const m = from.match(/^(.*?)\\s*<([^<>]+)>\\s*$/);\n    if (m) return { email: m[2].trim().toLowerCase(), nom: m[1].replace(/^\"|\"$/g, \"\").trim() };\n    return { email: from.trim().toLowerCase(), nom: \"\" };\n  }\n  const v = Array.isArray(from.value) && from.value[0] ? from.value[0] : null;\n  if (v) return { email: (v.address || \"\").toLowerCase(), nom: v.name || \"\" };\n  if (from.address) return { email: from.address.toLowerCase(), nom: from.name || \"\" };\n  return { email: String(from.text || \"\").toLowerCase(), nom: \"\" };\n}\nfunction texte(v){ if(!v) return \"\"; if(typeof v===\"string\") return reparerEncodage(v); if(typeof v===\"object\"&&v.text) return reparerEncodage(v.text); return String(v); }\n\nconst sortie = [];\nfor (const m of messages) {\n  const msg = m.json;\n  const exp = extraireExpediteur(msg.from);\n  const sujet = texte(msg.subject);\n  // Anti-boucle : ignorer nos propres notifications\nif (msg.init_curseur || msg.rien_de_nouveau || msg.erreur_polling) continue;\nif (exp.email === \"nexorasolutions.france@gmail.com\" || /^Nexora\\s*[—–-]/.test(sujet.trim())) continue;\n  const corps = texte(msg.text) || texte(msg.textPlain) || texte(msg.snippet) || \"\";\n  sortie.push({ json: {\n    nom: exp.nom, telephone: \"\", email: exp.email,\n    message: (sujet ? sujet + \"\\n\" : \"\") + corps.trim(),\n    source: \"gmail\", canal: \"email\", source_id: msg.id || null,\n    garage_id: msg.garage_id || null,\n  }});\n}\nreturn sortie;"
+      },
+      "id": "11a00680-b242-4bbd-8536-3f9a5e6468ca",
+      "name": "Normaliser (Gmail)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nreturn [{ json: {\n  nom: body.nom || \"\",\n  telephone: body.telephone || \"\",\n  email: (body.email || \"\").toLowerCase().trim(),\n  message: body.message || \"\",\n  source: \"site\",\n  canal: \"site\",\n  source_id: null,\n  garage_id: body.garage_id || null,\n} }];"
+      },
+      "id": "7b6733f7-d1dd-4039-9a70-9918b0285cca",
+      "name": "Normaliser (Site web)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nreturn [{ json: {\n  nom: body.ProfileName || \"\",\n  telephone: (body.From || \"\").replace(\"whatsapp:\", \"\").trim(),\n  email: \"\",\n  message: body.Body || \"\",\n  source: \"whatsapp\",\n  canal: \"whatsapp\",\n  source_id: body.MessageSid || null,\n  numero_whatsapp: (body.To || \"\").replace(\"whatsapp:\", \"\").trim(),\n} }];"
+      },
+      "id": "312546e1-83ff-4529-9dd3-a4703e74dde3",
+      "name": "Normaliser (WhatsApp)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json || {};\nif (!j.source) return [];  // retour de boucle (résultat SMTP, etc.) : ce n'est pas un message\nreturn [{ json: j }];"
+      },
+      "id": "aa91af8c-6463-48e0-b037-5bdcfbe1a3fd",
+      "name": "Point d'entrée unifié",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "clients",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "garage_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.garage_id }}"
+            }
+          ]
+        }
+      },
+      "id": "2af59a43-8a90-44e2-bb5c-428069913607",
+      "name": "Récupérer les clients du garage",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1552,
+        432
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const nouveau = $('Point d\\'entrée unifié').item.json;\nconst clients = $input.all().map(i => i.json);\n\nconst emailN = (nouveau.email || \"\").toLowerCase().trim();\nconst telN = (nouveau.telephone || \"\").trim();\n\nlet match = null;\nif (emailN) match = clients.find(c => (c.email || \"\").toLowerCase().trim() === emailN);\nif (!match && telN) match = clients.find(c => (c.telephone || \"\").trim() === telN);\n\nreturn [{ json: { ...nouveau, client_existant_id: match ? match.id : null } }];"
+      },
+      "id": "c547afa4-45a4-426b-8821-20a38ef09f5c",
+      "name": "Identifier le client existant (email ou téléphone)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.client_existant_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f5cdbe87-96af-4652-b37a-e66c4610c5fb",
+      "name": "Client déjà connu ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2064,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "demandes",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "garage_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.garage_id }}"
+            },
+            {
+              "keyName": "client_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.client_existant_id }}"
+            },
+            {
+              "keyName": "statut",
+              "condition": "eq",
+              "keyValue": "infos_manquantes"
+            }
+          ]
+        }
+      },
+      "id": "b615e67e-8746-4b69-83c8-bf69735a860a",
+      "name": "Chercher une demande en cours de ce client",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2320,
+        320
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const nouveau = $('Identifier le client existant (email ou téléphone)').item.json;\nconst demandesPrecedentes = $input.all().map(i => i.json);\nconst DEUX_JOURS_MS = 48 * 60 * 60 * 1000;\nconst maintenant = Date.now();\nconst contexte = demandesPrecedentes.filter(d => d.created_at && (maintenant - new Date(d.created_at).getTime()) < DEUX_JOURS_MS).sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0] || null;\nconst resultat = Object.assign({}, nouveau);\nresultat.message_brut = nouveau.message;\nresultat.message = contexte ? ((contexte.message_original || \"\") + \"\\n---\\n\" + nouveau.message) : nouveau.message;\nresultat.demande_precedente_id = contexte ? contexte.id : null;\nreturn [{ json: resultat }];"
+      },
+      "id": "6a8ac320-1ba9-4267-8c20-b58450d6afa2",
+      "name": "Fusionner avec le contexte précédent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2592,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const nouveau = $('Point d\\'entrée unifié').item.json;\nreturn [{ json: { ...nouveau, client_existant_id: null, demande_precedente_id: null } }];"
+      },
+      "id": "572497dd-d986-44a8-abf5-ab0cefa6ea30",
+      "name": "Pas de contexte (nouveau client)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"claude-haiku-4-5\", max_tokens: 700, system: \"Tu es l'assistant intelligent d'un garage automobile. Analyse le message reçu et réponds UNIQUEMENT avec un objet JSON valide, sans texte autour, sans markdown, avec exactement ces champs : type_demande (rdv, devis, fournisseur, question, ou non_pertinent — utilise non_pertinent UNIQUEMENT pour les newsletters, publicites, notifications automatiques d'outils tiers sans rapport (Google, Gemini, Atlassian, Loom, reseaux sociaux, etc.), spam, ou tout message qui n'est ni une vraie demande client ni un message d'un fournisseur du garage), nom, telephone, email, vehicule (objet marque/modele/annee/immatriculation/kilometrage, vide si inconnu), prestation (texte libre décrivant la prestation demandée), motif, urgence (Faible, Moyenne ou Élevée), disponibilites_client (objet avec moment_prefere: matin/apres-midi/soir/indifferent, jours_a_eviter: tableau, delai_max_jours: nombre ou null), infos_manquantes (tableau parmi motif, vehicule — uniquement si le motif de la demande n'est pas du tout précisé, ou si aucune info sur le véhicule (au moins marque ou modèle) n'est donnée ; ne jamais y mettre nom, telephone, email, annee_vehicule, immatriculation ou kilometrage, qui sont optionnels et ne doivent jamais bloquer la prise de rendez-vous).\", messages: [ { role: \"user\", content: \"Message reçu (source: \" + $json.source + \"):\\n\" + $json.message + (($json.nom || $json.telephone || $json.email) ? (\"\\n\\nInfos déjà connues : nom=\" + $json.nom + \", telephone=\" + $json.telephone + \", email=\" + $json.email) : \"\") } ] }) }}",
+        "options": {}
+      },
+      "id": "f5ab2872-465a-48dd-8380-89354300e0c8",
+      "name": "Classifier et extraire (IA)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        432
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vqps9Wb05BI7Z6BO",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const reponse = $input.first().json;\nlet entree;\ntry { entree = $('Fusionner avec le contexte précédent').item.json; } catch (e) { entree = $('Pas de contexte (nouveau client)').item.json; }\nlet data;\nlet brut = \"\";\ntry { brut = (reponse.content[0].text || \"\").trim(); } catch (e) { brut = \"\"; }\nbrut = brut.replace(/^```(?:json)?\\s*/i, \"\").replace(/\\s*```\\s*$/i, \"\").trim();\ntry {\n    data = JSON.parse(brut);\n} catch (e) {\n    data = null;\n}\nif (Array.isArray(data)) { data = data[data.length - 1]; }\nif (!data) {\n    data = {};\n    data.type_demande = \"autre\";\n    data.nom = entree.nom;\n    data.telephone = entree.telephone;\n    data.email = entree.email;\n    data.vehicule = { marque: \"\", modele: \"\", annee: null, immatriculation: \"\" };\n    data.prestation = \"\";\n    data.motif = entree.message;\n    data.urgence = \"Moyenne\";\n    data.disponibilites_client = { moment_prefere: \"indifferent\", jours_a_eviter: [], delai_max_jours: null };\n    data.infos_manquantes = [\"analyse_impossible\"];\n}\nif (data.demandes && Array.isArray(data.demandes) && data.demandes.length) { data = data.demandes[0]; }\ndata.source = entree.source;\ndata.canal = entree.canal;\ndata.source_id = entree.source_id;\ndata.client_existant_id = entree.client_existant_id;\nif (!data.client_existant_id) {\n    try {\n          const clientsConnus = $('Récupérer les clients du garage').all().map(i => i.json);\n          const emailIA = (data.email || \"\").toLowerCase().trim();\n          const telIA = (data.telephone || \"\").replace(/\\s/g, \"\");\n          let matchIA = null;\n          if (emailIA) { matchIA = clientsConnus.find(c => (c.email || \"\").toLowerCase().trim() === emailIA); }\n          if (!matchIA && telIA) { matchIA = clientsConnus.find(c => (c.telephone || \"\").replace(/\\s/g, \"\") === telIA); }\n          if (matchIA) { data.client_existant_id = matchIA.id; }\n    } catch (e) {}\n}\ndata.demande_precedente_id = entree.demande_precedente_id;\ndata.message_original = entree.message_brut || entree.message;\ndata.garage_id = entree.garage_id;\ndata.nom = data.nom || entree.nom;\ndata.telephone = data.telephone || entree.telephone;\ndata.email = entree.email || data.email;\nconst doitGarderEmail = Array.isArray(data.infos_manquantes) && entree.email;\nif (doitGarderEmail) { data.infos_manquantes = data.infos_manquantes.filter(k => k !== \"email\"); }\nreturn [{ json: data }];"
+      },
+      "id": "30f51718-5ac0-454b-9a58-6b6761207a51",
+      "name": "Parser la réponse IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3152,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ ['rdv','devis'].includes($json.type_demande) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5d959ce1-1e61-4e48-8cb6-3e5621e50251",
+      "name": "Type = rdv ou devis ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3408,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🅱️ Créer ou mettre à jour le client (toujours, dès qu'on sait que c'est une demande de RDV)\nPas d'upsert par email : on utilise le client_existant_id déjà identifié en amont, pour rester correct même quand l'email/téléphone est encore vide au premier message.",
+        "height": 140,
+        "width": 1200,
+        "color": 6
+      },
+      "id": "ee12ec30-ee78-4676-838a-f25850b7c00e",
+      "name": "Note - CRM client",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3408,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.client_existant_id || \"\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              },
+              "id": "9b714679-4e1f-4a4e-94f3-e817319a5f62"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9bf10f3e-5965-41f8-95b3-6a7bdf723b50",
+      "name": "Client à mettre à jour ou à créer ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3408,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "clients",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{  $json.client_existant_id  }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "nom",
+              "fieldValue": "={{ $json.nom }}"
+            },
+            {
+              "fieldId": "telephone",
+              "fieldValue": "={{ $json.telephone }}"
+            },
+            {
+              "fieldId": "email",
+              "fieldValue": "={{ $json.email }}"
+            }
+          ]
+        }
+      },
+      "id": "1488ba63-7285-424d-b64f-6ed110da717a",
+      "name": "Mettre à jour le client",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3664,
+        912
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "clients",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $json.garage_id }}"
+            },
+            {
+              "fieldId": "nom",
+              "fieldValue": "={{ $json.nom }}"
+            },
+            {
+              "fieldId": "telephone",
+              "fieldValue": "={{ $json.telephone }}"
+            },
+            {
+              "fieldId": "email",
+              "fieldValue": "={{ $json.email }}"
+            }
+          ]
+        }
+      },
+      "id": "6f13c233-f27b-4a00-bf33-0c924d603f0b",
+      "name": "Créer le client",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3664,
+        1072
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Parser la réponse IA').item.json;\nlet client;\ntry { client = $('Mettre à jour le client').item.json; } catch (e) { client = $('Créer le client').item.json; }\nreturn [{ json: { ...base, client_id: client.id } }];"
+      },
+      "id": "47cefe73-8635-4da9-93f2-c8ae381c02b8",
+      "name": "Récupérer l'id client",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3920,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🅲 Vérification des informations avant planification\nSi nom / téléphone / véhicule manquent, le workflow répond directement au client pour lui demander l'info, sans créer de proposition. La demande partielle est sauvegardée (créée ou mise à jour) pour être complétée au prochain message du même contact.",
+        "height": 140,
+        "width": 2200,
+        "color": 3
+      },
+      "id": "30dacbee-0913-4915-a4a5-7357f0a84522",
+      "name": "Note - Infos manquantes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3408,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.infos_manquantes.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "38858fdc-cdb1-4012-902c-9a82395fba57",
+      "name": "Infos suffisantes ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4304,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.demande_precedente_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6d370c03-7d27-43f3-b045-2bffe22b6cf1",
+      "name": "Demande incomplète existante ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4448,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "demandes",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.demande_precedente_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "type_demande",
+              "fieldValue": "={{ $json.type_demande }}"
+            },
+            {
+              "fieldId": "urgence",
+              "fieldValue": "={{ $json.urgence }}"
+            },
+            {
+              "fieldId": "message_original",
+              "fieldValue": "={{ $json.message_original }}"
+            },
+            {
+              "fieldId": "statut",
+              "fieldValue": "infos_manquantes"
+            },
+            {
+              "fieldId": "motif",
+              "fieldValue": "={{ $json.motif }}"
+            },
+            {
+              "fieldId": "infos_manquantes",
+              "fieldValue": "={{ $json.infos_manquantes }}"
+            },
+            {
+              "fieldId": "vehicule_id",
+              "fieldValue": "={{ $json.vehicule_id }}"
+            }
+          ]
+        }
+      },
+      "id": "ac1789d9-8769-44c3-ad08-50895a0b0cde",
+      "name": "Mettre à jour la demande incomplète",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4704,
+        1280
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "demandes",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $json.garage_id }}"
+            },
+            {
+              "fieldId": "client_id",
+              "fieldValue": "={{ $json.client_id }}"
+            },
+            {
+              "fieldId": "type_demande",
+              "fieldValue": "={{ $json.type_demande }}"
+            },
+            {
+              "fieldId": "urgence",
+              "fieldValue": "={{ $json.urgence }}"
+            },
+            {
+              "fieldId": "message_original",
+              "fieldValue": "={{ $json.message_original }}"
+            },
+            {
+              "fieldId": "source",
+              "fieldValue": "={{ $json.source }}"
+            },
+            {
+              "fieldId": "canal",
+              "fieldValue": "={{ $json.canal }}"
+            },
+            {
+              "fieldId": "statut",
+              "fieldValue": "infos_manquantes"
+            },
+            {
+              "fieldId": "motif",
+              "fieldValue": "={{ $json.motif }}"
+            },
+            {
+              "fieldId": "infos_manquantes",
+              "fieldValue": "={{ $json.infos_manquantes }}"
+            },
+            {
+              "fieldId": "vehicule_id",
+              "fieldValue": "={{ $json.vehicule_id }}"
+            }
+          ]
+        }
+      },
+      "id": "0d800ce4-c464-49c3-b279-0456d5b27e00",
+      "name": "Créer la demande incomplète",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4704,
+        1440
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Parser la réponse IA').item.json;\nconst garage = $('Récupérer le garage (réponse)').item.json || {};\nconst nomGarage = String(garage.nom_garage || '').replace(/[,<>\"]/g, ' ').trim();\nconst manquants = base.infos_manquantes || [];\nconst labels = { nom: \"votre nom\", telephone: \"un numéro de téléphone\", email: \"votre adresse email\", motif: \"le motif de votre demande (quelle prestation souhaitez-vous ?)\", vehicule: \"les informations de votre véhicule (marque, modèle, immatriculation)\", annee_vehicule: \"l'année de votre véhicule\", immatriculation: \"l'immatriculation de votre véhicule\" };\nconst liste = manquants.filter(k => labels[k]).map(k => labels[k]).join(\", \") || \"quelques informations complémentaires\";\n\nconst message_reponse = `Bonjour${base.nom ? \" \" + base.nom : \"\"},\\n\\nMerci pour votre message. Pour traiter votre demande, pourriez-vous nous communiquer ${liste} ?\\n\\nMerci et à bientôt,\\n${nomGarage || 'Votre garage'}`;\n\nreturn [{ json: { ...base, message_reponse, nom_garage: nomGarage, garage_email: garage.email || '', automatisation_active: garage.automatisation_active === true,\n  expediteur: nomGarage ? nomGarage + ' <nexorasolutions.france@gmail.com>' : '' } }];"
+      },
+      "id": "7e5939b8-6b5f-4d3b-aa8b-f70a91ca1883",
+      "name": "Construire le message de relance infos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4960,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.canal }}",
+              "rightValue": "whatsapp",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "25fff0c0-faca-4df2-8c96-e9ec42956f3c",
+      "name": "Canal WhatsApp ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5232,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/TWILIO_ACCOUNT_SID/Messages.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "To",
+              "value": "={{ \"whatsapp:\" + $json.telephone }}"
+            },
+            {
+              "name": "From",
+              "value": "whatsapp:TWILIO_NUMBER_A_REMPLACER"
+            },
+            {
+              "name": "Body",
+              "value": "={{ $json.message_reponse }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2389975c-e32d-4f97-81ba-46b4affeb1f7",
+      "name": "Répondre via WhatsApp (Twilio)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5488,
+        1296
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "wiYD1dAVA4n0OSGV",
+          "name": "Twilio account (à activer)"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "content": "## 🔁 Véhicule (si connu) puis détection de doublon (même client, texte similaire, moins de 2h) avant de créer une nouvelle demande.",
+        "height": 108,
+        "width": 2176,
+        "color": 5
+      },
+      "id": "d09e2727-df78-40e1-9d15-67c2034da276",
+      "name": "Note - Véhicule + dédoublonnage",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        4192,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.vehicule.immatriculation || $json.vehicule.marque || $json.vehicule.modele }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              },
+              "id": "f8693243-8f63-4c40-99ba-f531f6721c27"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "720f982a-0105-4657-ad52-f4b9d651de13",
+      "name": "Véhicule renseigné ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4192,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "vehicules",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $json.garage_id }}"
+            },
+            {
+              "fieldId": "client_id",
+              "fieldValue": "={{ $json.client_id }}"
+            },
+            {
+              "fieldId": "marque",
+              "fieldValue": "={{ $json.vehicule.marque || null }}"
+            },
+            {
+              "fieldId": "modele",
+              "fieldValue": "={{ $json.vehicule.modele || null }}"
+            },
+            {
+              "fieldId": "annee",
+              "fieldValue": "={{ $json.vehicule.annee ? Number($json.vehicule.annee) : null }}"
+            },
+            {
+              "fieldId": "immatriculation",
+              "fieldValue": "={{ $json.vehicule.immatriculation || null }}"
+            },
+            {
+              "fieldId": "kilometrage",
+              "fieldValue": "={{ $json.vehicule.kilometrage ? Number($json.vehicule.kilometrage) : null }}"
+            }
+          ]
+        }
+      },
+      "id": "a5bc2827-be8e-41a0-af98-0822f4a60a16",
+      "name": "Créer ou mettre à jour le véhicule",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4448,
+        1744
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "let base;\ntry { base = $('Créer ou mettre à jour le véhicule').item.json; return [{ json: { ...($('Récupérer l\\'id client').item.json), vehicule_id: base.id } }]; } catch (e) {\n  return [{ json: { ...($('Récupérer l\\'id client').item.json), vehicule_id: null } }];\n}"
+      },
+      "id": "bd6053b9-2237-4fa2-a758-b38ccc6222bf",
+      "name": "Récupérer l'id véhicule (si connu)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4704,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.client_existant_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d1daafb6-893e-46ef-90ea-753e72fd2b96",
+      "name": "Client déjà connu (dédoublonnage utile) ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4960,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "demandes",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "garage_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.garage_id }}"
+            },
+            {
+              "keyName": "client_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.client_existant_id }}"
+            }
+          ]
+        }
+      },
+      "id": "dfc79c40-3cf7-46ad-81b8-33331d96c37d",
+      "name": "Récupérer les demandes récentes du client",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        5232,
+        1744
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const nouvelle = $('Récupérer l\\'id véhicule (si connu)').item.json;\nconst recentes = $input.all().map(i => i.json);\n\nfunction similarite(a, b) {\n  const motsA = new Set((a || \"\").toLowerCase().split(/\\W+/).filter(Boolean));\n  const motsB = new Set((b || \"\").toLowerCase().split(/\\W+/).filter(Boolean));\n  if (motsA.size === 0 || motsB.size === 0) return 0;\n  let communs = 0;\n  motsA.forEach(m => { if (motsB.has(m)) communs++; });\n  return communs / Math.max(motsA.size, motsB.size);\n}\n\nconst DEUX_HEURES_MS = 2 * 60 * 60 * 1000;\nconst maintenant = Date.now();\n\nconst doublon = recentes.find(d => {\n  if (d.id === nouvelle.demande_precedente_id) return false;\n  const recente = d.created_at ? (maintenant - new Date(d.created_at).getTime()) < DEUX_HEURES_MS : false;\n  const similaire = similarite(d.message_original, nouvelle.message_original) > 0.4;\n  return recente && similaire;\n});\n\nreturn [{ json: { ...nouvelle, est_doublon: !!doublon, doublon_de_id: doublon ? doublon.id : null } }];"
+      },
+      "id": "adbbcb23-4d95-45c0-9047-38310267542d",
+      "name": "Détecter un doublon",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5488,
+        1744
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.est_doublon }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "05c15a2b-5e70-44d8-9176-cd03347056ce",
+      "name": "Doublon détecté ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5744,
+        1744
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "actions_ia",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $json.garage_id }}"
+            },
+            {
+              "fieldId": "type",
+              "fieldValue": "doublon"
+            },
+            {
+              "fieldId": "texte",
+              "fieldValue": "={{ \"Demande ignorée (doublon détecté) — \" + $json.nom }}"
+            }
+          ]
+        }
+      },
+      "id": "738c587e-b113-49da-846f-8ccebe81d7fc",
+      "name": "Journaliser (doublon ignoré)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        6000,
+        1792
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## 🅳 Créer/finaliser la demande → faire correspondre une prestation du catalogue réel du garage → recherche de créneau optimisée (préférence horaire du client, comble les trous de planning, priorise selon l'urgence) → proposition.",
+        "height": 100,
+        "width": 2504,
+        "color": 6
+      },
+      "id": "bda22dfd-7432-419a-823b-8ef93059782e",
+      "name": "Note - Création demande + prestation + créneau",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.demande_precedente_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6a1591c6-0d49-4a73-815b-7612a08b810a",
+      "name": "Demande incomplète à finaliser ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4192,
+        2384
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "demandes",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.demande_precedente_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "vehicule_id",
+              "fieldValue": "={{ $json.vehicule_id }}"
+            },
+            {
+              "fieldId": "type_demande",
+              "fieldValue": "={{ $json.type_demande }}"
+            },
+            {
+              "fieldId": "urgence",
+              "fieldValue": "={{ $json.urgence }}"
+            },
+            {
+              "fieldId": "message_original",
+              "fieldValue": "={{ $json.message_original }}"
+            },
+            {
+              "fieldId": "statut",
+              "fieldValue": "traitee"
+            },
+            {
+              "fieldId": "infos_manquantes",
+              "fieldValue": "={{ $json.infos_manquantes }}"
+            }
+          ]
+        }
+      },
+      "id": "5c5be74c-5809-45b3-ae58-2aaabab827f8",
+      "name": "Finaliser la demande existante",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4448,
+        2304
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "demandes",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $json.garage_id }}"
+            },
+            {
+              "fieldId": "client_id",
+              "fieldValue": "={{ $json.client_id }}"
+            },
+            {
+              "fieldId": "vehicule_id",
+              "fieldValue": "={{ $json.vehicule_id }}"
+            },
+            {
+              "fieldId": "type_demande",
+              "fieldValue": "={{ $json.type_demande }}"
+            },
+            {
+              "fieldId": "urgence",
+              "fieldValue": "={{ $json.urgence }}"
+            },
+            {
+              "fieldId": "message_original",
+              "fieldValue": "={{ $json.message_original }}"
+            },
+            {
+              "fieldId": "source",
+              "fieldValue": "={{ $json.source }}"
+            },
+            {
+              "fieldId": "canal",
+              "fieldValue": "={{ $json.canal }}"
+            },
+            {
+              "fieldId": "statut",
+              "fieldValue": "traitee"
+            },
+            {
+              "fieldId": "motif",
+              "fieldValue": "={{ $json.motif }}"
+            },
+            {
+              "fieldId": "infos_manquantes",
+              "fieldValue": "={{ $json.infos_manquantes }}"
+            }
+          ]
+        }
+      },
+      "id": "0c5b2c28-01f5-4f08-aaf6-ad77c4c5df00",
+      "name": "Créer la demande",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4448,
+        2464
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let base;\ntry { base = $('Finaliser la demande existante').item.json; } catch (e) { base = $('Créer la demande').item.json; }\nlet contexte;\ntry { contexte = $('Détecter un doublon').item.json; } catch (e) { contexte = $('Récupérer l\\'id véhicule (si connu)').item.json; }\nreturn [{ json: { ...contexte, demande_id: base.id } }];"
+      },
+      "id": "20727929-ed72-445e-9aa8-2483f3e77d9d",
+      "name": "Récupérer l'id demande",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4704,
+        2384
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "prestations",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "garage_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.garage_id }}"
+            }
+          ]
+        }
+      },
+      "id": "f7399e5d-79c7-42b3-b07d-d90565935178",
+      "name": "Récupérer le catalogue de prestations",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4960,
+        2384
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $('Récupérer l\\'id demande').item.json;\nconst prestations = $input.all().map(i => i.json);\nconst texte = ((item.prestation || \"\") + \" \" + (item.motif || \"\")).toLowerCase();\n\nlet match = prestations.find(p => texte.includes((p.nom || \"\").toLowerCase()));\n\nif (!match) {\n  const motsClefs = [\n    { mots: [\"vidange\"], cible: \"vidange\" },\n    { mots: [\"révision\", \"revision\"], cible: \"révision\" },\n    { mots: [\"frein\"], cible: \"freins\" },\n    { mots: [\"pneu\"], cible: \"pneus\" },\n    { mots: [\"diagnostic\", \"panne\", \"voyant\", \"bruit\"], cible: \"diagnostic\" },\n  ];\n  for (const mc of motsClefs) {\n    if (mc.mots.some(m => texte.includes(m))) {\n      match = prestations.find(p => (p.nom || \"\").toLowerCase().includes(mc.cible));\n      if (match) break;\n    }\n  }\n}\n\nif (!match) match = prestations.find(p => (p.categorie || \"\").toLowerCase() === \"diagnostic\") || prestations[0] || null;\n\nreturn [{ json: {\n  ...item,\n  prestation_id: match ? match.id : null,\n  prestation_nom: match ? match.nom : (item.prestation || \"Prestation à préciser\"),\n  duree_min: match ? match.duree_minutes : 60,\n} }];"
+      },
+      "id": "8dc37358-1919-4573-a116-6de6f6e3dbfc",
+      "name": "Faire correspondre une prestation du catalogue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5232,
+        2384
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.type_demande }}",
+              "rightValue": "rdv",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "05019346-3ac7-4bf8-8ce5-bb6e7da93e6d",
+      "name": "Type = rdv (détail) ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5488,
+        2240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $('Faire correspondre une prestation du catalogue').item.json;\nconst prestations = $('Récupérer le catalogue de prestations').all().map(i => i.json);\nconst prestation = prestations.find(p => p.id === item.prestation_id);\nconst prixHt = (prestation && prestation.prix_ht != null) ? prestation.prix_ht : null;\nconst montantHt = prixHt;\nconst montantTtc = prixHt != null ? Math.round(prixHt * 1.2 * 100) / 100 : null;\n\nreturn [{ json: { ...item, montant_ht: montantHt, montant_ttc: montantTtc } }];"
+      },
+      "id": "5ab86677-f683-425b-8e7d-c4a6e9c84cd5",
+      "name": "Calculer le montant du devis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5712,
+        1968
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "devis",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $json.garage_id }}"
+            },
+            {
+              "fieldId": "demande_id",
+              "fieldValue": "={{ $json.demande_id }}"
+            },
+            {
+              "fieldId": "client_id",
+              "fieldValue": "={{ $json.client_id }}"
+            },
+            {
+              "fieldId": "vehicule_id",
+              "fieldValue": "={{ $json.vehicule_id }}"
+            },
+            {
+              "fieldId": "prestation_id",
+              "fieldValue": "={{ $json.prestation_id }}"
+            },
+            {
+              "fieldId": "montant_ht",
+              "fieldValue": "={{ $json.montant_ht }}"
+            },
+            {
+              "fieldId": "montant_ttc",
+              "fieldValue": "={{ $json.montant_ttc }}"
+            },
+            {
+              "fieldId": "statut",
+              "fieldValue": "en_attente"
+            }
+          ]
+        }
+      },
+      "id": "3dea1872-1783-4f7b-8d81-1fb5363c1200",
+      "name": "Créer le devis",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        6000,
+        1968
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "actions_ia",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $json.garage_id }}"
+            },
+            {
+              "fieldId": "type",
+              "fieldValue": "devis"
+            },
+            {
+              "fieldId": "texte",
+              "fieldValue": "={{ \"Devis créé pour \" + $json.nom }}"
+            }
+          ]
+        }
+      },
+      "id": "43f27d90-f7cc-47cf-9904-ae7003bcf4a6",
+      "name": "Journaliser le devis",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        6464,
+        1936
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "rendez_vous",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "garage_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.garage_id }}"
+            }
+          ]
+        }
+      },
+      "id": "118a5d63-77e8-46e1-baf0-60ae52155088",
+      "name": "Récupérer les RDV à venir du garage",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        5488,
+        2384
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const HORAIRES_DEFAUT = {\n  \"1\": [[\"08:30\", \"12:00\"], [\"14:00\", \"18:30\"]],\n  \"2\": [[\"08:30\", \"12:00\"], [\"14:00\", \"18:30\"]],\n  \"3\": [[\"08:30\", \"12:00\"], [\"14:00\", \"18:30\"]],\n  \"4\": [[\"08:30\", \"12:00\"], [\"14:00\", \"18:30\"]],\n  \"5\": [[\"08:30\", \"12:00\"], [\"14:00\", \"18:30\"]],\n  \"6\": [],\n  \"7\": []\n};\n\nconst DELAI_MINIMUM_MINUTES = 120;\n\nconst demande = $('Faire correspondre une prestation du catalogue').item.json;\nconst dureeMin = demande.duree_min || 60;\nconst dispo = demande.disponibilites_client || {};\nconst urgence = demande.urgence || \"Moyenne\";\nconst rdvExistants = $input.all().map(i => i.json);\n\nlet garage = {};\ntry { garage = $('Récupérer les horaires du garage').first().json || {}; } catch (e) { garage = {}; }\n\nlet horaires = garage.horaires;\nif (typeof horaires === \"string\") { try { horaires = JSON.parse(horaires); } catch (e) { horaires = null; } }\nif (!horaires || typeof horaires !== \"object\") horaires = HORAIRES_DEFAUT;\n\nconst nbMecaniciens = Number(garage.nb_mecaniciens) > 0 ? Number(garage.nb_mecaniciens) : 3;\n\nfunction toMinutes(hhmm) { if (!hhmm) return 0; const [h, m] = hhmm.split(\":\").map(Number); return h * 60 + m; }\nfunction momentDeLaJournee(min) { if (min < 12 * 60) return \"matin\"; if (min < 17 * 60) return \"apres-midi\"; return \"soir\"; }\nfunction jourISO(d) { return d.getDay() === 0 ? 7 : d.getDay(); }\n\nconst joursNoms = [\"dimanche\", \"lundi\", \"mardi\", \"mercredi\", \"jeudi\", \"vendredi\", \"samedi\"];\nconst joursAEviter = (dispo.jours_a_eviter || []).map(j => (j || \"\").toLowerCase());\n\nconst maintenant = new Date();\nconst plancherMs = maintenant.getTime() + DELAI_MINIMUM_MINUTES * 60 * 1000;\n\nconst candidats = [];\nconst maxJours = dispo.delai_max_jours || 90;\n\nfor (let offset = 0; offset < maxJours + 3; offset++) {\n  const date = new Date();\n  date.setDate(date.getDate() + offset);\n  date.setHours(0, 0, 0, 0);\n\n  const plages = horaires[String(jourISO(date))];\n  if (!Array.isArray(plages) || plages.length === 0) continue;\n\n  const nomJour = joursNoms[date.getDay()];\n  if (joursAEviter.includes(nomJour)) continue;\n\n  const dateStr = date.toISOString().split(\"T\")[0];\n  const rdvDuJour = rdvExistants.filter(r => (r.date_debut || \"\").startsWith(dateStr));\n\n  for (const plage of plages) {\n    const debutPlage = toMinutes(plage[0]);\n    const finPlage = toMinutes(plage[1]);\n    if (!finPlage || finPlage <= debutPlage) continue;\n\n    for (let debutMin = debutPlage; debutMin + dureeMin <= finPlage; debutMin += 30) {\n      const finMin = debutMin + dureeMin;\n\n      const debutReel = new Date(date);\n      debutReel.setHours(Math.floor(debutMin / 60), debutMin % 60, 0, 0);\n      if (debutReel.getTime() < plancherMs) continue;\n\n      const chevauchements = rdvDuJour.filter(r => {\n        const rDebut = toMinutes((r.date_debut || \"\").split(\"T\")[1]?.slice(0, 5));\n        const rFin = toMinutes((r.date_fin || \"\").split(\"T\")[1]?.slice(0, 5));\n        return debutMin < rFin && finMin > rDebut;\n      }).length;\n      if (chevauchements >= nbMecaniciens) continue;\n\n      let score = 0;\n      if (dispo.moment_prefere && dispo.moment_prefere !== \"indifferent\" && momentDeLaJournee(debutMin) === dispo.moment_prefere) score += 15;\n      const adjacentAvant = rdvDuJour.some(r => toMinutes((r.date_fin || \"\").split(\"T\")[1]?.slice(0, 5)) === debutMin);\n      const adjacentApres = rdvDuJour.some(r => toMinutes((r.date_debut || \"\").split(\"T\")[1]?.slice(0, 5)) === finMin);\n      score += (adjacentAvant ? 6 : 0) + (adjacentApres ? 6 : 0);\n      score -= offset * (urgence === \"Élevée\" ? 4 : 1);\n\n      candidats.push({ dateStr, debutMin, finMin, score });\n    }\n  }\n}\n\ncandidats.sort((a, b) => b.score - a.score);\nconst meilleur = candidats[0] || null;\n\nfunction versISO(dateStr, minutes) {\n  const h = Math.floor(minutes / 60).toString().padStart(2, \"0\");\n  const m = (minutes % 60).toString().padStart(2, \"0\");\n  const midi = new Date(dateStr + \"T12:00:00Z\");\n  const paris = new Date(midi.toLocaleString(\"en-US\", { timeZone: \"Europe/Paris\" }));\n  const utc = new Date(midi.toLocaleString(\"en-US\", { timeZone: \"UTC\" }));\n  const offsetH = Math.round((paris - utc) / 3600000);\n  const offsetStr = \"+\" + String(offsetH).padStart(2, \"0\") + \":00\";\n  return `${dateStr}T${h}:${m}:00${offsetStr}`;\n}\n\nreturn [{ json: {\n  ...demande,\n  creneau_trouve: !!meilleur,\n  date_debut_proposee: meilleur ? versISO(meilleur.dateStr, meilleur.debutMin) : null,\n  date_fin_proposee: meilleur ? versISO(meilleur.dateStr, meilleur.finMin) : null,\n} }];\n"
+      },
+      "id": "7ec47e79-eb59-4085-85a2-8fb5f77ac4b4",
+      "name": "Calculer le meilleur créneau (optimisation)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5904,
+        2384
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.creneau_trouve }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6694952a-ffd0-40de-9d68-6d87f54c5e65",
+      "name": "Créneau trouvé ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        6080,
+        2384
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "propositions_rdv",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $json.garage_id }}"
+            },
+            {
+              "fieldId": "demande_id",
+              "fieldValue": "={{ $json.demande_id }}"
+            },
+            {
+              "fieldId": "client_id",
+              "fieldValue": "={{ $json.client_id }}"
+            },
+            {
+              "fieldId": "vehicule_id",
+              "fieldValue": "={{ $json.vehicule_id }}"
+            },
+            {
+              "fieldId": "prestation_id",
+              "fieldValue": "={{ $json.prestation_id }}"
+            },
+            {
+              "fieldId": "date_debut_proposee",
+              "fieldValue": "={{ $json.date_debut_proposee }}"
+            },
+            {
+              "fieldId": "date_fin_proposee",
+              "fieldValue": "={{ $json.date_fin_proposee }}"
+            },
+            {
+              "fieldId": "statut",
+              "fieldValue": "en_attente"
+            }
+          ]
+        }
+      },
+      "id": "99c378c4-fdab-4b8a-949f-e3a95bf075cd",
+      "name": "Créer la proposition de RDV",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        6544,
+        2304
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "actions_ia",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $json.garage_id }}"
+            },
+            {
+              "fieldId": "type",
+              "fieldValue": "proposition"
+            },
+            {
+              "fieldId": "texte",
+              "fieldValue": "={{ \"Proposition de RDV créée pour \" + $json.nom }}"
+            }
+          ]
+        }
+      },
+      "id": "904a48bf-15cc-49e6-80fd-443ec7664491",
+      "name": "Journaliser la proposition",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        6752,
+        2304
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## ✅ Bouton \"Accepter\" du dashboard\nCrée le rendez-vous à partir de la proposition, confirme au client par email. Copie l'URL générée dans N8N_WEBHOOK_BASE + '/proposition-acceptee'.",
+        "height": 140,
+        "width": 2208,
+        "color": 4
+      },
+      "id": "1054479b-835d-4a4a-8925-d8e49d88c2ff",
+      "name": "Note - Acceptation",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -704,
+        688
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 💶 Boutons \"Accepter\" / \"Refuser\" du dashboard, côté devis\nMarque le devis accepté/refusé et prévient le client par email (avec le montant si accepté).",
+        "height": 140,
+        "width": 1440,
+        "color": 4
+      },
+      "id": "ac4d8e7d-6926-4c9d-b819-d36287399d00",
+      "name": "Note - Devis (acceptation/refus)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1648,
+        896
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ❌ Bouton \"Refuser\" du dashboard\nMarque la proposition refusée et prévient le client.",
+        "height": 140,
+        "width": 1600,
+        "color": 3
+      },
+      "id": "56638481-4637-4782-842f-3c3df645cb43",
+      "name": "Note - Refus",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔁 Relance entretien (délai propre à chaque prestation)\nVidange/révision ≈ 12 mois, contrôle technique ≈ 24 mois.",
+        "height": 140,
+        "width": 1800,
+        "color": 5
+      },
+      "id": "093b0372-97d9-4bd4-ad44-71acacca13e0",
+      "name": "Note - Relance",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1728,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "35 11 * * *"
+            }
+          ]
+        }
+      },
+      "id": "969a95d3-3dc4-4a8e-ac0f-3eb4c9004d29",
+      "name": "Tous les jours à 9h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        1696,
+        1712
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "rendez_vous",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "statut",
+              "condition": "eq",
+              "keyValue": "termine"
+            },
+            {
+              "keyName": "relance_envoyee",
+              "condition": "eq",
+              "keyValue": "false"
+            }
+          ]
+        }
+      },
+      "id": "b11554cd-8224-4139-8639-e077de79c575",
+      "name": "RDV entretien terminés",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1952,
+        1712
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "prestations",
+        "returnAll": true,
+        "filters": {
+          "conditions": []
+        }
+      },
+      "id": "751bfd97-405c-453d-846c-ea6b53d3d3f9",
+      "name": "Catalogue de prestations (relance)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2208,
+        1712
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const DELAIS_MOIS = { \"vidange\": 12, \"révision complète\": 12, \"contrôle technique\": 24 };\nconst rdvItems = $('RDV entretien terminés').all().map(i => i.json);\nconst prestations = $input.all().map(i => i.json);\nconst prestationParId = Object.fromEntries(prestations.map(p => [p.id, p]));\nconst maintenant = Date.now();\n\nconst aRelancer = rdvItems.filter(r => {\n  const prestation = prestationParId[r.prestation_id];\n  const nomPrestation = (prestation?.nom || \"\").toLowerCase();\n  const delaiMois = DELAIS_MOIS[nomPrestation] || 12;\n  const dateRdv = new Date(r.date_debut).getTime();\n  const moisEcoules = (maintenant - dateRdv) / (1000 * 60 * 60 * 24 * 30);\n  return moisEcoules >= delaiMois;\n});\n\nreturn aRelancer.map(r => ({ json: r }));"
+      },
+      "id": "09413d0c-dc83-459e-94fe-675ab7c9d124",
+      "name": "Filtrer selon le délai propre à chaque prestation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        1712
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "af3cc9ac-9513-476b-a4d0-cf9fcda0e3a7",
+      "name": "Traiter un par un (relance)",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2736,
+        1712
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "clients",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $json.client_id }}"
+            }
+          ]
+        }
+      },
+      "id": "3665d58c-e7b1-4e55-844f-bb8f9c5a4dc5",
+      "name": "Récupérer le client (relance)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2992,
+        1648
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "actions_ia",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $('Préparer la relance').item.json.garage_id }}"
+            },
+            {
+              "fieldId": "type",
+              "fieldValue": "relance"
+            },
+            {
+              "fieldId": "texte",
+              "fieldValue": "={{ 'Relance entretien envoyée à ' + $('Préparer la relance').item.json.nom }}"
+            }
+          ]
+        }
+      },
+      "id": "6f2a80ab-10ae-413f-8f4b-e8704309bd22",
+      "name": "Journaliser la relance",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3504,
+        1648
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## ⭐ Demande d'avis Google\nCible les RDV terminés le jour même, tous les soirs. Nécessite la colonne rendez_vous.avis_demande (voir migration).",
+        "height": 140,
+        "width": 1800,
+        "color": 7
+      },
+      "id": "e7f065e4-9f27-429f-a3f5-b5a83816535c",
+      "name": "Note - Avis Google",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        736,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 18 * * *"
+            }
+          ]
+        }
+      },
+      "id": "2a25a164-4c5e-4337-9eca-867d4b0e2153",
+      "name": "Tous les jours à 18h30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        880,
+        2224
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "rendez_vous",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "statut",
+              "condition": "eq",
+              "keyValue": "termine"
+            },
+            {
+              "keyName": "avis_demande",
+              "condition": "eq",
+              "keyValue": "false"
+            }
+          ]
+        }
+      },
+      "id": "6a25f941-dbe9-4671-8652-2af652f28047",
+      "name": "RDV terminés aujourd'hui",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1136,
+        2224
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "4a36dd8a-1351-4f8e-9698-e12082f4a73c",
+      "name": "Traiter un par un (avis)",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1312,
+        2160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "clients",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $json.client_id }}"
+            }
+          ]
+        }
+      },
+      "id": "4aad9b0d-3a57-475a-a798-9eb323de89c3",
+      "name": "Récupérer le client (avis)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1648,
+        2128
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "rendez_vous",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Traiter un par un (avis)').item.json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "avis_demande",
+              "fieldValue": "true"
+            }
+          ]
+        }
+      },
+      "id": "08016a28-4e71-4d19-8829-905adea5fc14",
+      "name": "Marquer l'avis demandé",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2432,
+        2144
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "customEmailConfig": "[\"UNSEEN\"]",
+          "forceReconnect": 60,
+          "trackLastMessageId": true
+        }
+      },
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2.2,
+      "position": [
+        592,
+        224
+      ],
+      "id": "34164b1e-270d-43a1-baa0-43c9f46a81b7",
+      "name": "Email Trigger (IMAP)",
+      "credentials": {
+        "imap": {
+          "id": "VeGzTJC4VP1zoNaZ",
+          "name": "IMAP account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "fromEmail": "Nexora <nexorasolutions.france@gmail.com>",
+        "toEmail": "={{ $json.email }}",
+        "subject": "={{ \"Nexora — demande à traiter manuellement (\" + $('Parser la réponse IA').item.json.type_demande + \")\" }}",
+        "emailFormat": "text",
+        "text": "={{ \"Type : \" + $('Parser la réponse IA').item.json.type_demande + \"\\nContact : \" + ($('Parser la réponse IA').item.json.nom || $('Parser la réponse IA').item.json.email || $('Parser la réponse IA').item.json.telephone) + \"\\nMessage :\\n\" + $('Parser la réponse IA').item.json.message_original }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        3712,
+        432
+      ],
+      "id": "7759c496-08fb-4389-b062-d672679326a4",
+      "name": "Notifier le garage traitement manuel",
+      "webhookId": "fa514d58-db55-4d90-a374-75cccee343c5",
+      "credentials": {
+        "smtp": {
+          "id": "6opiCKNWBLDnvYKJ",
+          "name": "SMTP Brevo — envois métier"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.expediteur }}",
+        "toEmail": "={{ $json.email }}",
+        "subject": "Quelques précisions pour traiter votre demande",
+        "emailFormat": "text",
+        "text": "={{ $json.message_reponse }}",
+        "options": {
+          "appendAttribution": false,
+          "replyTo": "={{ $json.garage_email }}"
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        5456,
+        1456
+      ],
+      "id": "e8d0f8a5-d5ae-43a1-ad53-a1c337b03601",
+      "name": "répondre infos manquantes",
+      "webhookId": "e15fed2b-b62c-42ae-afa8-56922c47496f",
+      "credentials": {
+        "smtp": {
+          "id": "6opiCKNWBLDnvYKJ",
+          "name": "SMTP Brevo — envois métier"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "Nexora <nexorasolutions.france@gmail.com>",
+        "toEmail": "={{ $('Récupérer les horaires du garage').first().json.email }}",
+        "subject": "Nexora — aucun créneau auto trouvé, action manuelle requise",
+        "emailFormat": "text",
+        "text": "={{ \"Aucun créneau n'a pu être calculé automatiquement pour \" + $json.nom + \" (\" + $json.prestation_nom + \"). Merci de traiter cette demande manuellement dans le dashboard.\" }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        6544,
+        2480
+      ],
+      "id": "92d50c92-1e96-460b-a9e1-e0039c60ab48",
+      "name": "notifier le garage aucun créneau",
+      "webhookId": "2bd8b97a-117e-4326-9403-ec2462c23aab",
+      "credentials": {
+        "smtp": {
+          "id": "6opiCKNWBLDnvYKJ",
+          "name": "SMTP Brevo — envois métier"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.expediteur }}",
+        "toEmail": "={{ $json.client_email }}",
+        "subject": "={{ $json.sujet }}",
+        "emailFormat": "text",
+        "text": "={{ $json.texte }}",
+        "options": {
+          "appendAttribution": false,
+          "replyTo": "={{ $json.garage_email }}"
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        3216,
+        1648
+      ],
+      "id": "7c8156de-1669-4596-a059-5d6bbfc350a0",
+      "name": "relance",
+      "webhookId": "e9fae04c-cb30-4e98-a045-ceecea4a6134",
+      "credentials": {
+        "smtp": {
+          "id": "6opiCKNWBLDnvYKJ",
+          "name": "SMTP Brevo — envois métier"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ ($json.nom_garage || 'Votre garage').replace(/[,<>\"]/g, ' ').trim() + ' <nexorasolutions.france@gmail.com>' }}",
+        "toEmail": "={{ $('Récupérer le client (avis)').item.json.email }}",
+        "subject": "Votre avis compte pour nous",
+        "emailFormat": "text",
+        "text": "={{ \"Bonjour \" + $('Récupérer le client (avis)').item.json.nom + \",\\n\\nMerci de votre visite. Un avis Google nous aiderait beaucoup : \" + $json.lien_avis_google + \"\\n\\n\" + ($json.nom_garage || \"Votre garage\") }}",
+        "options": {
+          "appendAttribution": false,
+          "replyTo": "={{ $json.email || '' }}"
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2208,
+        2144
+      ],
+      "id": "84142248-86b9-4676-a6dc-4dd667c46ba7",
+      "name": "avis google",
+      "webhookId": "3a7dc988-cdc8-4038-9d6c-7e00c4cd39f2",
+      "credentials": {
+        "smtp": {
+          "id": "6opiCKNWBLDnvYKJ",
+          "name": "SMTP Brevo — envois métier"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "fc91b854-464b-4fdd-8154-7e69d760b988",
+      "name": "Traiter un email à la fois",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1184,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.type_demande }}",
+              "rightValue": "non_pertinent",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4858e5f5-b59b-4360-ad8d-f7ddb17b46ad",
+      "name": "Est-ce pertinent pour le garage ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3536,
+        640
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "89055b43-caab-454a-84a2-8ef9a66e5432",
+      "name": "Ignorer (non pertinent)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3808,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "garages",
+        "returnAll": true,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Parser la réponse IA').item.json.garage_id }}"
+            }
+          ]
+        }
+      },
+      "id": "afa7c2ec-79cd-4a4d-bbe7-89cc8fd78c6d",
+      "name": "Récupérer les horaires du garage",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        5696,
+        2384
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "rendez_vous",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Traiter un par un (relance)').item.json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "relance_envoyee",
+              "fieldValue": "true"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3552,
+        2208
+      ],
+      "id": "84f6c90b-4c42-4d74-9253-8f5510808d92",
+      "name": "Marquer la relance envoyée",
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "propositions_rdv",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "demande_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.demande_id }}"
+            },
+            {
+              "keyName": "statut",
+              "condition": "eq",
+              "keyValue": "en_attente"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "statut",
+              "fieldValue": "obsolete"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        6304,
+        2384
+      ],
+      "id": "b48d92c9-5456-4737-9f87-64222b114b30",
+      "name": "Obsoléter anciennes propositions",
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "garages",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "numero_whatsapp",
+              "condition": "eq",
+              "keyValue": "={{ $json.numero_whatsapp }}"
+            }
+          ]
+        }
+      },
+      "id": "7c2554e2-6fff-4f6d-93c6-7eaff145dc08",
+      "name": "Résoudre le garage (WhatsApp)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        736,
+        304
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Normaliser (WhatsApp)').item.json;\nconst garage = $input.first() ? $input.first().json : null;\nreturn [{ json: { ...original, garage_id: garage ? garage.id : null } }];"
+      },
+      "id": "86030aff-bf4d-4c1a-a829-8383dcf66830",
+      "name": "Attacher le garage_id (WhatsApp)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "garages",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Traiter un par un (avis)').item.json.garage_id }}"
+            }
+          ]
+        }
+      },
+      "id": "853e5123-042c-4248-93e1-5a37a841163f",
+      "name": "Récupérer le garage (avis)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1936,
+        2144
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "b1a1e001-0001-4a1a-9a1a-000000000001",
+      "name": "Polling Gmail OAuth (2 min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        2400
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "email_connections_avec_app",
+        "returnAll": true
+      },
+      "id": "b1a1e001-0001-4a1a-9a1a-000000000002",
+      "name": "Lister connexions Gmail actives",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        464,
+        2400
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "b1a1e001-0001-4a1a-9a1a-000000000003",
+      "name": "Traiter une connexion à la fois",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        720,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nreturn items.map((item) => {\n  const expiryMs = item.json.token_expiry ? new Date(item.json.token_expiry).getTime() : 0;\n  const expire = expiryMs <= Date.now() + 2 * 60 * 1000;\n  return { json: { ...item.json, expire } };\n});"
+      },
+      "id": "b1a1e001-0001-4a1a-9a1a-000000000004",
+      "name": "Le jeton est-il expiré ?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        976,
+        2416
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.expire }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1a1e001-0001-4a1a-9a1a-000000000005",
+      "name": "Jeton expiré ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        2416
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://oauth2.googleapis.com/token",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ refresh_token: $json.refresh_token, client_id: $json.client_id, client_secret: $json.client_secret, grant_type: \"refresh_token\" }) }}",
+        "options": {}
+      },
+      "id": "b1a1e001-0001-4a1a-9a1a-000000000006",
+      "name": "Rafraîchir le jeton Google",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1456,
+        2336
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "email_connections",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Traiter une connexion à la fois').item.json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "access_token",
+              "fieldValue": "={{ $json.access_token }}"
+            },
+            {
+              "fieldId": "token_expiry",
+              "fieldValue": "={{ new Date(Date.now() + (($json.expires_in) || 3600) * 1000).toISOString() }}"
+            },
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $('Traiter une connexion à la fois').item.json.garage_id }}"
+            },
+            {
+              "fieldId": "email_address",
+              "fieldValue": "={{ $('Traiter une connexion à la fois').item.json.email_address }}"
+            }
+          ]
+        }
+      },
+      "id": "b1a1e001-0001-4a1a-9a1a-000000000007",
+      "name": "Sauvegarder le nouveau jeton",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1696,
+        2336
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const httpRequest = this.helpers.httpRequest;\nconst item = $input.first().json;\nconst accessToken = item.access_token;\nconst garageId = item.garage_id;\nconst connectionId = item.id;\nconst historyId = item.last_history_id;\n\nif (!accessToken || !garageId) {\n  return [];\n}\n\nfunction decodeBase64Url(data) {\n  if (!data) return '';\n  const b64 = data.replace(/-/g, '+').replace(/_/g, '/');\n  try { return Buffer.from(b64, 'base64').toString('utf8'); } catch (e) { return ''; }\n}\n\nfunction extraireTexte(payload) {\n  if (!payload) return '';\n  if (payload.mimeType === 'text/plain' && payload.body && payload.body.data) {\n    return decodeBase64Url(payload.body.data);\n  }\n  if (payload.parts) {\n    for (const part of payload.parts) {\n      const texte = extraireTexte(part);\n      if (texte) return texte;\n    }\n  }\n  if (payload.body && payload.body.data) return decodeBase64Url(payload.body.data);\n  return '';\n}\n\nfunction header(headers, name) {\n  const h = (headers || []).find((x) => x.name.toLowerCase() === name.toLowerCase());\n  return h ? h.value : '';\n}\n\n// Pas encore de curseur pour cette connexion : on l'initialise et on ne traite rien ce tour-ci.\nif (!historyId) {\n  const profil = await httpRequest({\n    method: 'GET',\n    url: 'https://gmail.googleapis.com/gmail/v1/users/me/profile',\n    headers: { Authorization: `Bearer ${accessToken}` },\n    json: true,\n  });\n  return [{ json: { init_curseur: true, connection_id: connectionId, new_history_id: profil.historyId, garage_id: garageId } }];\n}\n\nlet liste;\ntry {\n  liste = await httpRequest({\n    method: 'GET',\n    url: `https://gmail.googleapis.com/gmail/v1/users/me/history?startHistoryId=${historyId}&historyTypes=messageAdded&maxResults=50`,\n    headers: { Authorization: `Bearer ${accessToken}` },\n    json: true,\n  });\n} catch (e) {\n  return [{ json: { erreur_polling: true, detail: String(e && e.message || e), garage_id: garageId } }];\n}\n\nconst messageIds = [...new Set(((liste && liste.history) || []).flatMap((h) => (h.messagesAdded || []).map((m) => m.message.id)))];\nconst newHistoryId = (liste && liste.historyId) || historyId;\nconst resultats = [];\n\nfor (const id of messageIds) {\n  try {\n    const detail = await httpRequest({\n      method: 'GET',\n      url: `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,\n      headers: { Authorization: `Bearer ${accessToken}` },\n      json: true,\n    });\n    const from = header(detail.payload && detail.payload.headers, 'From');\n    const subject = header(detail.payload && detail.payload.headers, 'Subject');\n    const text = extraireTexte(detail.payload) || detail.snippet || '';\n    resultats.push({ from, subject, text, id: detail.id, garage_id: garageId, connection_id: connectionId, new_history_id: newHistoryId });\n  } catch (e) {\n    // un message en erreur ne doit pas bloquer les autres\n  }\n}\n\nif (resultats.length === 0) {\n  return [{ json: { rien_de_nouveau: true, connection_id: connectionId, new_history_id: newHistoryId, garage_id: garageId } }];\n}\n\nreturn resultats.map((r) => ({ json: r }));"
+      },
+      "id": "b1a1e001-0001-4a1a-9a1a-000000000008",
+      "name": "Synchroniser les emails Gmail (OAuth)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1472,
+        2528
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⚠️ Pas encore testé en conditions réelles (créé le 26/08)\n\nCe bloc (Polling Gmail OAuth → ... → Synchroniser les emails Gmail (OAuth)) remplace l'IMAP pour les garages connectés via OAuth self-service. Il rejoint le nœud existant **Normaliser (Gmail)** juste à droite, qui a été légèrement modifié pour accepter un `garage_id` dynamique au lieu du garage démo codé en dur.\n\n**Avant publication, vérifier avec n8n allumé :**\n1. `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` bien renseignés dans docker-compose.yml (remplacer les `A_REMPLACER_...`)\n2. Le nœud Code final utilise `this.helpers.httpRequest` — à confirmer que ça fonctionne dans cette version de n8n (sinon adapter avec des nœuds HTTP Request classiques)\n3. Tester sur le compte baptiste.papoul52@gmail.com déjà connecté avant d'activer pour de vrais clients",
+        "height": 400,
+        "width": 460
+      },
+      "id": "b1a1e001-0001-4a1a-9a1a-000000000009",
+      "name": "Note - Polling OAuth Gmail",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        208,
+        2656
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "email_connections",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.connection_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "last_history_id",
+              "fieldValue": "={{ $json.new_history_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1696,
+        2544
+      ],
+      "id": "40536e34-2f69-43ba-82e8-c55fbb6000a4",
+      "name": "Mettre à jour le curseur Gmail",
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "garde-email",
+              "leftValue": "={{ $('Récupérer le client (avis)').item.json.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c-022",
+              "leftValue": "={{ $json.lien_avis_google }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1988,
+        2144
+      ],
+      "id": "garde-email-avis-0001",
+      "name": "Avis envoyable ? (e-mail client et lien du garage)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c-001",
+              "leftValue": "={{ $json.garage_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-002",
+      "name": "Garage identifié ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1500,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "actions_ia",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "type",
+              "fieldValue": "entree_sans_garage"
+            },
+            {
+              "fieldId": "texte",
+              "fieldValue": "={{ 'Message entrant (' + ($json.source || 'inconnu') + ') sans garage identifié : non traité' }}"
+            }
+          ]
+        }
+      },
+      "id": "journal-003",
+      "name": "Journaliser l'entrée sans garage",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        652
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "garages",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Parser la réponse IA').item.json.garage_id }}"
+            }
+          ]
+        }
+      },
+      "id": "get-004",
+      "name": "Récupérer le garage (réponse)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4720,
+        1360
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c-005",
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c-006",
+              "leftValue": "={{ $json.expediteur }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c-024",
+              "leftValue": "={{ $json.automatisation_active }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-007",
+      "name": "Réponse envoyable ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5216,
+        1456
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "actions_ia",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $json.garage_id }}"
+            },
+            {
+              "fieldId": "type",
+              "fieldValue": "reponse_non_envoyee"
+            },
+            {
+              "fieldId": "texte",
+              "fieldValue": "={{ !$json.email ? 'Réponse non envoyée : le client n\\'a pas d\\'adresse e-mail' : !$json.expediteur ? 'Réponse non envoyée : garage introuvable' : 'Réponse non envoyée : l\\'automatisation IA est désactivée pour ce garage (Paramètres)' }}"
+            }
+          ]
+        }
+      },
+      "id": "journal-008",
+      "name": "Journaliser la réponse non envoyée",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        5216,
+        1656
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "garages",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $json.garage_id }}"
+            }
+          ]
+        }
+      },
+      "id": "get-009",
+      "name": "Récupérer le garage (manuel)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3232,
+        432
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c-010",
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-011",
+      "name": "Garage joignable ? (manuel)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3472,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "actions_ia",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $json.id }}"
+            },
+            {
+              "fieldId": "type",
+              "fieldValue": "garage_injoignable"
+            },
+            {
+              "fieldId": "texte",
+              "fieldValue": "={{ 'Demande à traiter manuellement non transmise : le garage n\\'a pas d\\'adresse e-mail (Paramètres > Informations garage)' }}"
+            }
+          ]
+        }
+      },
+      "id": "journal-012",
+      "name": "Journaliser le garage injoignable (manuel)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3472,
+        632
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c-013",
+              "leftValue": "={{ $('Récupérer les horaires du garage').first().json.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-014",
+      "name": "Garage joignable ? (créneau)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6304,
+        2480
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "actions_ia",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $('Récupérer les horaires du garage').first().json.id }}"
+            },
+            {
+              "fieldId": "type",
+              "fieldValue": "garage_injoignable"
+            },
+            {
+              "fieldId": "texte",
+              "fieldValue": "={{ 'Aucun créneau trouvé et garage sans adresse e-mail : demande non transmise' }}"
+            }
+          ]
+        }
+      },
+      "id": "journal-015",
+      "name": "Journaliser le garage injoignable (créneau)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        6304,
+        2680
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "rendez_vous",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Traiter un par un (relance)').item.json.id }}"
+            }
+          ]
+        }
+      },
+      "id": "get-016",
+      "name": "Recontrôler le rendez-vous (relance)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2496,
+        1648
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "garages",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Recontrôler le rendez-vous (relance)').item.json.garage_id }}"
+            }
+          ]
+        }
+      },
+      "id": "get-017",
+      "name": "Récupérer le garage (relance)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2736,
+        1648
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Rien ne part sur un état ancien : on relit le rendez-vous et le garage à l'instant de l'envoi.\nconst client = $('Récupérer le client (relance)').item.json || {};\nconst rdv = $('Recontrôler le rendez-vous (relance)').item.json || {};\nconst garage = $input.first().json || {};\nconst nomGarage = String(garage.nom_garage || '').replace(/[,<>\"]/g, ' ').trim();\nconst email = String(client.email || '').trim().toLowerCase();\nlet motif = '';\nif (rdv.statut !== 'termine') motif = 'Relance sans objet : le rendez-vous n\\'est plus « terminé » (' + (rdv.statut || 'inconnu') + ')';\nelse if (rdv.relance_envoyee === true) motif = 'Relance déjà envoyée pour ce rendez-vous';\nelse if (!email) motif = 'Relance non envoyée : le client n\\'a pas d\\'adresse e-mail';\nelse if (!nomGarage) motif = 'Relance non envoyée : garage introuvable';\nconst texte = `Bonjour ${client.nom || ''},\\n\\nCela fait un moment depuis votre dernier entretien chez ${nomGarage}. Souhaitez-vous prendre rendez-vous ? Il suffit de répondre à ce message.\\n\\nSi vous ne souhaitez plus recevoir ces rappels, dites-le-nous en répondant : nous en tiendrons compte.\\n\\n${nomGarage}`;\nreturn [{ json: { envoyable: !motif, motif, garage_id: garage.id || rdv.garage_id || null, client_email: email, nom: client.nom || '',\n  expediteur: nomGarage ? nomGarage + ' <nexorasolutions.france@gmail.com' : '', garage_email: garage.email || '', texte,\n  sujet: `Votre entretien chez ${nomGarage || 'votre garage'}` } }];"
+      },
+      "id": "code-018",
+      "name": "Préparer la relance",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2976,
+        1648
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c-019",
+              "leftValue": "={{ $json.envoyable }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-020",
+      "name": "Relance encore justifiée ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3096,
+        1648
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "actions_ia",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $json.garage_id }}"
+            },
+            {
+              "fieldId": "type",
+              "fieldValue": "relance_non_envoyee"
+            },
+            {
+              "fieldId": "texte",
+              "fieldValue": "={{ $json.motif }}"
+            }
+          ]
+        }
+      },
+      "id": "journal-021",
+      "name": "Journaliser la relance non envoyée",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3216,
+        1848
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "actions_ia",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $json.id }}"
+            },
+            {
+              "fieldId": "type",
+              "fieldValue": "avis_non_envoye"
+            },
+            {
+              "fieldId": "texte",
+              "fieldValue": "={{ !$('Récupérer le client (avis)').item.json.email ? 'Avis non envoyé : le client n\\'a pas d\\'adresse e-mail' : 'Avis non envoyé : aucun lien d\\'avis Google renseigné pour ce garage (Paramètres > Objectif & avis)' }}"
+            }
+          ]
+        }
+      },
+      "id": "journal-023",
+      "name": "Journaliser l'avis non envoyé",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2208,
+        2364
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Accepté / refusé : traité par le socle\nLe dashboard écrit directement le statut en base ; les triggers `trg_notifier_devis_maj` et `trg_notifier_proposition_maj` créent la notification, que les workflows du socle envoient. Les quatre webhooks qui doublonnaient ont été retirés (rien ne les appelait plus).",
+        "height": 200,
+        "width": 520,
+        "color": 3
+      },
+      "id": "note-025",
+      "name": "Note v2 - Accepté / refusé",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1400,
+        -700
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Relance entretien : désactivée volontairement\nC'est une sollicitation commerciale, pas une notification de service. Avant de l'activer il faut : (1) un moyen de désinscription enregistré par client, (2) un interrupteur par garage. Le code est prêt et recetté : il recontrôle le rendez-vous à l'instant de l'envoi et part au nom du garage.",
+        "height": 220,
+        "width": 560,
+        "color": 3
+      },
+      "id": "note-032",
+      "name": "Note v2 - Relance",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1656,
+        1452
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Boîte IMAP partagée : désactivée\nUne boîte unique ne permet pas de savoir à quel garage un message est destiné ; l'ancien repli vers un garage par défaut a été retiré. Les messages entrants doivent arriver par le formulaire du site (garage_id) ou par la connexion Gmail propre à chaque garage (polling OAuth, à brancher).",
+        "height": 220,
+        "width": 560,
+        "color": 3
+      },
+      "id": "note-033",
+      "name": "Note v2 - Boîte IMAP",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        552,
+        -36
+      ]
+    }
+  ],
+  "connections": {
+    "🌐 Nouvelle demande (Site web)": {
+      "main": [
+        [
+          {
+            "node": "Normaliser (Site web)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💬 Nouveau message (WhatsApp)": {
+      "main": [
+        [
+          {
+            "node": "Normaliser (WhatsApp)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normaliser (Gmail)": {
+      "main": [
+        [
+          {
+            "node": "Traiter un email à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normaliser (Site web)": {
+      "main": [
+        [
+          {
+            "node": "Point d'entrée unifié",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normaliser (WhatsApp)": {
+      "main": [
+        [
+          {
+            "node": "Résoudre le garage (WhatsApp)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Point d'entrée unifié": {
+      "main": [
+        [
+          {
+            "node": "Garage identifié ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer les clients du garage": {
+      "main": [
+        [
+          {
+            "node": "Identifier le client existant (email ou téléphone)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Identifier le client existant (email ou téléphone)": {
+      "main": [
+        [
+          {
+            "node": "Client déjà connu ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client déjà connu ?": {
+      "main": [
+        [
+          {
+            "node": "Chercher une demande en cours de ce client",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pas de contexte (nouveau client)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chercher une demande en cours de ce client": {
+      "main": [
+        [
+          {
+            "node": "Fusionner avec le contexte précédent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fusionner avec le contexte précédent": {
+      "main": [
+        [
+          {
+            "node": "Classifier et extraire (IA)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pas de contexte (nouveau client)": {
+      "main": [
+        [
+          {
+            "node": "Classifier et extraire (IA)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classifier et extraire (IA)": {
+      "main": [
+        [
+          {
+            "node": "Parser la réponse IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parser la réponse IA": {
+      "main": [
+        [
+          {
+            "node": "Type = rdv ou devis ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Type = rdv ou devis ?": {
+      "main": [
+        [
+          {
+            "node": "Client à mettre à jour ou à créer ?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Est-ce pertinent pour le garage ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client à mettre à jour ou à créer ?": {
+      "main": [
+        [
+          {
+            "node": "Mettre à jour le client",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Créer le client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mettre à jour le client": {
+      "main": [
+        [
+          {
+            "node": "Récupérer l'id client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Créer le client": {
+      "main": [
+        [
+          {
+            "node": "Récupérer l'id client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer l'id client": {
+      "main": [
+        [
+          {
+            "node": "Véhicule renseigné ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Infos suffisantes ?": {
+      "main": [
+        [
+          {
+            "node": "Client déjà connu (dédoublonnage utile) ?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Demande incomplète existante ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Demande incomplète existante ?": {
+      "main": [
+        [
+          {
+            "node": "Mettre à jour la demande incomplète",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Créer la demande incomplète",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mettre à jour la demande incomplète": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le garage (réponse)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Créer la demande incomplète": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le garage (réponse)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construire le message de relance infos": {
+      "main": [
+        [
+          {
+            "node": "Canal WhatsApp ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Canal WhatsApp ?": {
+      "main": [
+        [
+          {
+            "node": "Répondre via WhatsApp (Twilio)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Réponse envoyable ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Véhicule renseigné ?": {
+      "main": [
+        [
+          {
+            "node": "Créer ou mettre à jour le véhicule",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Récupérer l'id véhicule (si connu)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Créer ou mettre à jour le véhicule": {
+      "main": [
+        [
+          {
+            "node": "Récupérer l'id véhicule (si connu)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer l'id véhicule (si connu)": {
+      "main": [
+        [
+          {
+            "node": "Infos suffisantes ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client déjà connu (dédoublonnage utile) ?": {
+      "main": [
+        [
+          {
+            "node": "Récupérer les demandes récentes du client",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Demande incomplète à finaliser ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer les demandes récentes du client": {
+      "main": [
+        [
+          {
+            "node": "Détecter un doublon",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Détecter un doublon": {
+      "main": [
+        [
+          {
+            "node": "Doublon détecté ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Doublon détecté ?": {
+      "main": [
+        [
+          {
+            "node": "Journaliser (doublon ignoré)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Demande incomplète à finaliser ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Demande incomplète à finaliser ?": {
+      "main": [
+        [
+          {
+            "node": "Finaliser la demande existante",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Créer la demande",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finaliser la demande existante": {
+      "main": [
+        [
+          {
+            "node": "Récupérer l'id demande",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Créer la demande": {
+      "main": [
+        [
+          {
+            "node": "Récupérer l'id demande",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer l'id demande": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le catalogue de prestations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le catalogue de prestations": {
+      "main": [
+        [
+          {
+            "node": "Faire correspondre une prestation du catalogue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Faire correspondre une prestation du catalogue": {
+      "main": [
+        [
+          {
+            "node": "Type = rdv (détail) ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Type = rdv (détail) ?": {
+      "main": [
+        [
+          {
+            "node": "Récupérer les RDV à venir du garage",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Calculer le montant du devis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculer le montant du devis": {
+      "main": [
+        [
+          {
+            "node": "Créer le devis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Créer le devis": {
+      "main": [
+        [
+          {
+            "node": "Journaliser le devis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer les RDV à venir du garage": {
+      "main": [
+        [
+          {
+            "node": "Récupérer les horaires du garage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculer le meilleur créneau (optimisation)": {
+      "main": [
+        [
+          {
+            "node": "Créneau trouvé ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Créneau trouvé ?": {
+      "main": [
+        [
+          {
+            "node": "Obsoléter anciennes propositions",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Garage joignable ? (créneau)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Créer la proposition de RDV": {
+      "main": [
+        [
+          {
+            "node": "Journaliser la proposition",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tous les jours à 9h": {
+      "main": [
+        [
+          {
+            "node": "RDV entretien terminés",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RDV entretien terminés": {
+      "main": [
+        [
+          {
+            "node": "Catalogue de prestations (relance)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Catalogue de prestations (relance)": {
+      "main": [
+        [
+          {
+            "node": "Filtrer selon le délai propre à chaque prestation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrer selon le délai propre à chaque prestation": {
+      "main": [
+        [
+          {
+            "node": "Traiter un par un (relance)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Traiter un par un (relance)": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Récupérer le client (relance)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le client (relance)": {
+      "main": [
+        [
+          {
+            "node": "Recontrôler le rendez-vous (relance)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Journaliser la relance": {
+      "main": [
+        [
+          {
+            "node": "Traiter un par un (relance)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Marquer la relance envoyée",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tous les jours à 18h30": {
+      "main": [
+        [
+          {
+            "node": "RDV terminés aujourd'hui",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RDV terminés aujourd'hui": {
+      "main": [
+        [
+          {
+            "node": "Traiter un par un (avis)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Traiter un par un (avis)": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Récupérer le client (avis)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le client (avis)": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le garage (avis)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marquer l'avis demandé": {
+      "main": [
+        [
+          {
+            "node": "Traiter un par un (avis)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Trigger (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Normaliser (Gmail)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "relance": {
+      "main": [
+        [
+          {
+            "node": "Journaliser la relance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "avis google": {
+      "main": [
+        [
+          {
+            "node": "Marquer l'avis demandé",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Traiter un email à la fois": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Point d'entrée unifié",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Journaliser (doublon ignoré)": {
+      "main": [
+        [
+          {
+            "node": "Traiter un email à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Journaliser la proposition": {
+      "main": [
+        [
+          {
+            "node": "Traiter un email à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Journaliser le devis": {
+      "main": [
+        [
+          {
+            "node": "Traiter un email à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notifier le garage traitement manuel": {
+      "main": [
+        [
+          {
+            "node": "Traiter un email à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notifier le garage aucun créneau": {
+      "main": [
+        [
+          {
+            "node": "Traiter un email à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "répondre infos manquantes": {
+      "main": [
+        [
+          {
+            "node": "Traiter un email à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Répondre via WhatsApp (Twilio)": {
+      "main": [
+        [
+          {
+            "node": "Traiter un email à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Est-ce pertinent pour le garage ?": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le garage (manuel)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignorer (non pertinent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer les horaires du garage": {
+      "main": [
+        [
+          {
+            "node": "Calculer le meilleur créneau (optimisation)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obsoléter anciennes propositions": {
+      "main": [
+        [
+          {
+            "node": "Créer la proposition de RDV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Résoudre le garage (WhatsApp)": {
+      "main": [
+        [
+          {
+            "node": "Attacher le garage_id (WhatsApp)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attacher le garage_id (WhatsApp)": {
+      "main": [
+        [
+          {
+            "node": "Point d'entrée unifié",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le garage (avis)": {
+      "main": [
+        [
+          {
+            "node": "Avis envoyable ? (e-mail client et lien du garage)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Polling Gmail OAuth (2 min)": {
+      "main": [
+        [
+          {
+            "node": "Lister connexions Gmail actives",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lister connexions Gmail actives": {
+      "main": [
+        [
+          {
+            "node": "Traiter une connexion à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Traiter une connexion à la fois": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Le jeton est-il expiré ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Le jeton est-il expiré ?": {
+      "main": [
+        [
+          {
+            "node": "Jeton expiré ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jeton expiré ?": {
+      "main": [
+        [
+          {
+            "node": "Rafraîchir le jeton Google",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Synchroniser les emails Gmail (OAuth)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rafraîchir le jeton Google": {
+      "main": [
+        [
+          {
+            "node": "Sauvegarder le nouveau jeton",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sauvegarder le nouveau jeton": {
+      "main": [
+        [
+          {
+            "node": "Synchroniser les emails Gmail (OAuth)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Synchroniser les emails Gmail (OAuth)": {
+      "main": [
+        [
+          {
+            "node": "Mettre à jour le curseur Gmail",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Normaliser (Gmail)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mettre à jour le curseur Gmail": {
+      "main": [
+        []
+      ]
+    },
+    "Garage identifié ?": {
+      "main": [
+        [
+          {
+            "node": "Récupérer les clients du garage",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Journaliser l'entrée sans garage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le garage (réponse)": {
+      "main": [
+        [
+          {
+            "node": "Construire le message de relance infos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Réponse envoyable ?": {
+      "main": [
+        [
+          {
+            "node": "répondre infos manquantes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Journaliser la réponse non envoyée",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le garage (manuel)": {
+      "main": [
+        [
+          {
+            "node": "Garage joignable ? (manuel)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Garage joignable ? (manuel)": {
+      "main": [
+        [
+          {
+            "node": "Notifier le garage traitement manuel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Journaliser le garage injoignable (manuel)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Garage joignable ? (créneau)": {
+      "main": [
+        [
+          {
+            "node": "notifier le garage aucun créneau",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Journaliser le garage injoignable (créneau)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recontrôler le rendez-vous (relance)": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le garage (relance)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le garage (relance)": {
+      "main": [
+        [
+          {
+            "node": "Préparer la relance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Préparer la relance": {
+      "main": [
+        [
+          {
+            "node": "Relance encore justifiée ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Relance encore justifiée ?": {
+      "main": [
+        [
+          {
+            "node": "relance",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Journaliser la relance non envoyée",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Journaliser la relance non envoyée": {
+      "main": [
+        [
+          {
+            "node": "Traiter un par un (relance)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Marquer la relance envoyée",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Avis envoyable ? (e-mail client et lien du garage)": {
+      "main": [
+        [
+          {
+            "node": "avis google",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Journaliser l'avis non envoyé",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Journaliser l'avis non envoyé": {
+      "main": [
+        [
+          {
+            "node": "Marquer l'avis demandé",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "active": false,
+  "id": "rw69Oin74O5UwQlc"
+}

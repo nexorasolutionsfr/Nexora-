@@ -1,0 +1,472 @@
+{
+  "name": "Véhicule prêt (socle)",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "rendez_vous",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Une notification à la fois').item.json.doc_id }}"
+            }
+          ]
+        }
+      },
+      "id": "3ad15b21-517b-42a4-a358-98cae497e26d",
+      "name": "Récupérer le rdv",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3920,
+        -288
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "clients",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Récupérer le rdv').item.json.client_id }}"
+            }
+          ]
+        }
+      },
+      "id": "bdc05ccb-f888-4b8d-8f11-fac815728983",
+      "name": "Récupérer le client",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3648,
+        -288
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "vehicules",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Récupérer le rdv').item.json.vehicule_id }}"
+            }
+          ]
+        }
+      },
+      "id": "b2371ed9-5d29-4fec-a359-b5f260e849bc",
+      "name": "Récupérer le véhicule",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3360,
+        -288
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "garages",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Récupérer le rdv').item.json.garage_id }}"
+            }
+          ]
+        }
+      },
+      "id": "362cea3a-ce88-4e5d-8abe-5f8069fae98d",
+      "name": "Récupérer le garage",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3088,
+        -288
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const notif = $('Une notification à la fois').item.json;\nconst rdv = $('Récupérer le rdv').item.json;\nconst client = $('Récupérer le client').item.json;\nconst vehicule = $('Récupérer le véhicule').item.json;\nconst garage = $('Récupérer le garage').item.json;\nconst reserve = $('Une notification à la fois').item.json;\nconst nomAffiche = (garage && garage.nom_garage ? garage.nom_garage : 'Votre garage').replace(/[\"\\\\]/g, ' ').trim();\nconst nomVehicule = `${vehicule.marque || ''} ${vehicule.modele || ''}`.trim();\nconst immat = (vehicule && vehicule.immatriculation) ? ' (' + vehicule.immatriculation + ')' : '';\nlet texte = `Bonjour ${client.nom || ''},\\n\\nVotre véhicule ${nomVehicule}${immat} est prêt, vous pouvez venir le récupérer chez ${garage.nom_garage || 'notre garage'}.`;\nif ($json.lien_paiement_final) {\n  texte += `\\n\\nVous pouvez régler en ligne dès maintenant : ${$json.lien_paiement_final}`;\n}\ntexte += `\\n\\nÀ bientôt,\\n${nomAffiche}`;\n\nconst expediteur = `\"${nomAffiche}\" <nexorasolutions.france@gmail.com>`;\nconst repondreA = (garage && garage.email) ? garage.email : '';\n\nreturn [{ json: { expediteur, repondreA, notif_id: reserve.id, id: notif.id, client_email: client.email || '', texte } }];"
+      },
+      "id": "49b0366a-0aa9-4668-be8c-273ce05fb3d3",
+      "name": "Construire le message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2800,
+        -288
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.expediteur }}",
+        "toEmail": "={{ $json.client_email }}",
+        "subject": "Votre véhicule est prêt !",
+        "emailFormat": "text",
+        "text": "={{ $json.texte }}",
+        "options": {
+          "appendAttribution": false,
+          "replyTo": "={{ $json.repondreA }}"
+        }
+      },
+      "id": "db970b92-1393-408b-9777-1d18c18a0eaa",
+      "name": "Notifier véhicule prêt (email)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -2240,
+        -352
+      ],
+      "webhookId": "e0fe0d6b-0abd-463e-bf86-98869415203f",
+      "credentials": {
+        "smtp": {
+          "id": "6opiCKNWBLDnvYKJ",
+          "name": "SMTP Brevo — envois métier"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/reserver_notifications",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"p_file\": \"atelier\", \"p_limite\": 10}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -6176,
+        -400
+      ],
+      "id": "33824e35-4e9b-4a1f-8383-1e0e272f64cc",
+      "name": "Réserver la file",
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -5968,
+        -400
+      ],
+      "id": "f18b53a8-d08a-401f-9540-0f99ff9283dd",
+      "name": "Une notification à la fois"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/terminer_notification",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_file\": \"atelier\", \"p_id\": \"{{ $('Construire le message').item.json.notif_id }}\", \"p_resultat\": \"envoye\", \"p_motif\": null}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4368,
+        -544
+      ],
+      "id": "58730191-7aaa-47db-9703-aa370e9920b1",
+      "name": "Clore envoyé",
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/terminer_notification",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_file\": \"atelier\", \"p_id\": \"{{ $('Construire le message').item.json.notif_id }}\", \"p_resultat\": \"bloque\", \"p_motif\": \"destinataire hors des boîtes de recette autorisées\"}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4368,
+        -352
+      ],
+      "id": "0e92ac45-423e-4486-b236-c88cde4e2424",
+      "name": "Clore bloqué",
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/terminer_notification",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_file\": \"atelier\", \"p_id\": \"{{ $('Construire le message').item.json.notif_id }}\", \"p_resultat\": \"a_reprendre\", \"p_motif\": \"refus du fournisseur d'envoi\"}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4368,
+        -144
+      ],
+      "id": "594b6a48-8a30-4c2f-85c1-1623a39e0492",
+      "name": "Clore à reprendre",
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/2 * * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -6480,
+        -400
+      ],
+      "id": "e25a5c5d-57c3-4f6f-af42-0afcbee98cbd",
+      "name": "Toutes les 2 minutes"
+    }
+  ],
+  "connections": {
+    "Réserver la file": {
+      "main": [
+        [
+          {
+            "node": "Une notification à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Une notification à la fois": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Récupérer le rdv",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le rdv": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le client": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le véhicule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le véhicule": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le garage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le garage": {
+      "main": [
+        [
+          {
+            "node": "Construire le message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construire le message": {
+      "main": [
+        [
+          {
+            "node": "Notifier véhicule prêt (email)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notifier véhicule prêt (email)": {
+      "main": [
+        [
+          {
+            "node": "Clore envoyé",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clore envoyé": {
+      "main": [
+        [
+          {
+            "node": "Une notification à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clore bloqué": {
+      "main": [
+        [
+          {
+            "node": "Une notification à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clore à reprendre": {
+      "main": [
+        [
+          {
+            "node": "Une notification à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Toutes les 2 minutes": {
+      "main": [
+        [
+          {
+            "node": "Réserver la file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "active": 0,
+  "id": "jXsssqkdKFR3Hnf9"
+}
