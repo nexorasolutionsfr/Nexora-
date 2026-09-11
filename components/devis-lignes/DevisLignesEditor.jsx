@@ -184,11 +184,13 @@ function LigneDevisRow({ ligne, index, total, modifiable, prestations, onUpdate,
  *  - onToast      : (message, type)
  *  - client       : client Supabase injectable
  */
-export default function DevisLignesEditor({ devis, lignes: lignesProp, prestations = [], readOnly, onChange, onToast, client = supabaseClient }) {
+export default function DevisLignesEditor({ devis, lignes: lignesProp, prestations = [], readOnly, onChange, onToast, client = supabaseClient, ajoutInitial = false }) {
   const garageId = devis?.garage_id;
   const modifiable = readOnly === true ? false : devisStatutModifiable(devis?.statut);
   const [lignes, setLignes] = useState(trierLignes(lignesProp ?? devis?.devis_lignes ?? []));
-  const [ajoutOuvert, setAjoutOuvert] = useState(false);
+  // Un devis tout juste créé arrive formulaire ouvert : la suite évidente est
+  // d'y mettre la main-d'œuvre et les pièces (recette du 2026-09-11).
+  const [ajoutOuvert, setAjoutOuvert] = useState(Boolean(ajoutInitial && modifiable));
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState(null);
 
