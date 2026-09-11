@@ -36,9 +36,11 @@ function ecrirePassees(cles) {
  * Elle disparaît d'elle-même dès qu'il n'y a plus rien à proposer — voir
  * miseEnRoute.js. Un garage installé ne la voit jamais.
  */
-export default function MiseEnRoute({ garageData, mecaniciens, clients, rendezVous, devis = [], onAller }) {
+export default function MiseEnRoute({ garageData, mecaniciens, clients, rendezVous, devis = [], role = null, onAller }) {
   const [passees, setPassees] = useState(lirePassees);
-  const etat = etatMiseEnRoute({ garageData, mecaniciens, clients, rendezVous, devis }, passees);
+  // `role` : une étape qui mène à un écran refusé n'est pas proposée (voir
+  // miseEnRoute.js). Les droits ne sont pas élargis, seulement respectés.
+  const etat = etatMiseEnRoute({ garageData, mecaniciens, clients, rendezVous, devis, role }, passees);
 
   if (!etat.visible) return null;
 

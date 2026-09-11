@@ -26,6 +26,8 @@
 //    tout passé, elle s'efface — et on rappelle une fois où retrouver ces
 //    réglages.
 
+import { peutVoir } from "../acces-salaries/accesConstants.js";
+
 /** Le garage a-t-il renseigné au moins une plage d'ouverture ? */
 export function horairesRenseignes(garageData) {
   const horaires = garageData?.horaires;
@@ -51,7 +53,11 @@ export function horairesRenseignes(garageData) {
  * `creation` indique la fenêtre à ouvrir en arrivant : l'étape emmène
  * directement au geste, pas à un écran où il faudrait le chercher.
  */
-export function etapesMiseEnRoute({ garageData, mecaniciens = [], clients = [], rendezVous = [], devis = [] }) {
+export function etapesMiseEnRoute({ garageData, mecaniciens = [], clients = [], rendezVous = [], devis = [], role = null }) {
+  // Revue du 12 septembre 2026 : la liste proposait « horaires » et « équipe »
+  // — donc les Paramètres — à un compte accueil qui n'y a pas droit. Une étape
+  // qui mène à un refus n'a rien à faire dans une mise en route. On filtre par
+  // les droits existants, sans en élargir aucun.
   return [
     {
       cle: "clients",
@@ -97,7 +103,7 @@ export function etapesMiseEnRoute({ garageData, mecaniciens = [], clients = [], 
       vue: "agenda",
       fait: rendezVous.length > 0,
     },
-  ];
+  ].filter((etape) => !role || peutVoir(role, etape.vue));
 }
 
 /**

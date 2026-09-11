@@ -24,6 +24,7 @@ import { libelleReponse, reponsesRecentes } from "./envoi/reponsesClients";
 import DevisVueClient from "./devis-lignes/DevisVueClient";
 import { vueDepuisDevisGarage } from "./devis-lignes/vueClient";
 import { vehiculeDepuisSaisie } from "./clients/vehicule";
+import { MESSAGE_VEHICULE_ECHEC, lectureCreationClient, messageDevisCree } from "./clients/creationClient";
 import { horairesRenseignes } from "./garage-os/miseEnRoute";
 import { CANAUX as CANAUX_ENVOI, CAPACITES, canalEffectif, mentionCanalIndisponible } from "./parametres/capacites";
 import { DELAI_RENVOI_SECONDES, libelleRenvoi, messageRenvoi, secondesAvantRenvoi } from "./connexion/renvoiConfirmation";
@@ -33,6 +34,7 @@ import OnboardingGarage from "./onboarding/OnboardingGarage";
 import MembresSection from "./acces-salaries/MembresSection";
 import AtelierMecanicienScreen from "./acces-salaries/AtelierMecanicienScreen";
 import {
+  peutVoir,
   ROLE_DIRIGEANT,
   ROLE_MECANICIEN,
   peutGererLesAcces,
@@ -309,6 +311,7 @@ const navItems = navGroups.flatMap((g) => g.items);
 // Une vue absente de cette table n'est ouverte qu'au dirigeant.
 const NAV_VERS_VUE_ROLE = {
   aujourdhui: "accueil",
+  devis: "devis",
   agenda: "agenda",
   atelier: "atelier",
   "ordres-reparation": "ordres_reparation",
@@ -323,10 +326,20 @@ const NAV_VERS_VUE_ROLE = {
 function navGroupesPourRole(role) {
   const autorisees = vuesAutorisees(role);
   if (autorisees === null) return navGroups;
+  // Revue du 2026-09-12 : l'accueil a le droit « devis » mais aucune entrée de
+  // menu n'y menait — « Facturation » couvre aussi factures et historique,
+  // hors de ses droits. On lui propose donc une entrée « Devis » seule. Les
+  // droits ne sont pas élargis : la base refuse déjà le reste.
   return navGroups
     .map((g) => ({
       ...g,
-      items: g.items.filter((item) => autorisees.includes(NAV_VERS_VUE_ROLE[item.key])),
+      items: g.items
+        .map((item) => (
+          item.key === "facturation" && !autorisees.includes("factures") && autorisees.includes("devis")
+            ? { ...item, key: "devis", label: "Devis", match: ["devis"] }
+            : item
+        ))
+        .filter((item) => autorisees.includes(NAV_VERS_VUE_ROLE[item.key])),
     }))
     .filter((g) => g.items.length > 0);
 }
@@ -1362,7 +1375,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
   );
 }
 
-function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onAllerConfigurer, onGererAbonnement, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
+function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demandes, devisList = [], setView, onAllerConfigurer, onGererAbonnement, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   const [cockpitCompteurs, setCockpitCompteurs] = useState(null);
   if (loading) {
@@ -1700,6 +1713,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
         clients={clients}
         rendezVous={rendezVous}
         devis={devisList}
+        role={monRole}
         onAller={onAllerConfigurer}
       />
 
@@ -2579,6 +2593,7 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
   // rendez-vous. Elle se saisit ici quand le client n'en a pas encore.
   const [vehiculeSaisi, setVehiculeSaisi] = useState(VEHICULE_VIDE);
   const [vehiculeId, setVehiculeId] = useState("");
+  const [echecVehicule, setEchecVehicule] = useState(false);
 
   const clientChoisi = clientPreselectionne || clients.find((c) => c.id === clientId) || null;
   const vehiculesClient = Array.isArray(clientChoisi?.vehicules) ? clientChoisi.vehicules : clientChoisi?.vehicules ? [clientChoisi.vehicules] : [];
@@ -2593,12 +2608,23 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
     if (nouveauClient) {
       if (!nomNouveau.trim()) { setCreating(false); return; }
       const cree = await onCreerClient({ nom: nomNouveau.trim(), telephone: telNouveau.trim() || null, email: emailNouveau.trim() || null, vehicule });
-      if (!cree) { setCreating(false); return; }
-      idClient = cree.id;
-      idVehicule = (Array.isArray(cree.vehicules) ? cree.vehicules[0]?.id : null) || null;
+      const lu = lectureCreationClient(cree, vehicule);
+      if (!lu.ok) { setCreating(false); return; }
+      // Le client existe : la fenêtre bascule sur lui. Un nouvel essai ne le
+      // recrée pas, et la saisie de la voiture reste à l'écran.
+      setNouveauClient(false);
+      setClientId(lu.clientId);
+      if (lu.vehiculeEnEchec) {
+        setEchecVehicule(true);
+        setCreating(false);
+        return;
+      }
+      idClient = lu.clientId;
+      idVehicule = lu.vehiculeId;
     } else if (idClient && !idVehicule && vehicule && onCreerVehicule) {
       const cree = await onCreerVehicule({ client_id: idClient, ...vehicule });
-      if (!cree) { setCreating(false); return; }
+      if (!cree) { setEchecVehicule(true); setCreating(false); return; }
+      setEchecVehicule(false);
       idVehicule = cree.id;
     }
     if (!idClient) { setCreating(false); return; }
@@ -2666,7 +2692,13 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
             ) : (
               <>
                 <ChampsVehicule valeur={vehiculeSaisi} onChange={setVehiculeSaisi} />
-                <div className="text-[11.5px] text-slate-400 mt-1">Facultatif — la plaque suffit.</div>
+                {echecVehicule ? (
+                  <div className="text-[12px] text-amber-700 mt-1.5">
+                    {MESSAGE_VEHICULE_ECHEC} Videz ces champs pour créer le devis sans voiture.
+                  </div>
+                ) : (
+                  <div className="text-[11.5px] text-slate-400 mt-1">Facultatif — la plaque suffit.</div>
+                )}
               </>
             )}
           </div>
@@ -2693,15 +2725,17 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
   );
 }
 
-function FacturationView({ view, setView, devisList, clients, prestations, garageData, onAcceptDevis, onRefuseDevis, onUpdateMontant, onCreerDevis, onCreerClient, rendezVous, factures, onGenererFacture, onMarquerPayee, onSauvegarderFacture, garageId, devisLiens, devisBusyId, onGenererLienDevis, onRevoquerLienDevis, facturesLiens, facturesBusyId, onGenererLienFacture, onRevoquerLienFacture, onCreerOrdreReparation, onLignesChange, onToast, onCreerVehicule, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null }) {
+function FacturationView({ monRole = ROLE_DIRIGEANT, view, setView, devisList, clients, prestations, garageData, onAcceptDevis, onRefuseDevis, onUpdateMontant, onCreerDevis, onCreerClient, rendezVous, factures, onGenererFacture, onMarquerPayee, onSauvegarderFacture, garageId, devisLiens, devisBusyId, onGenererLienDevis, onRevoquerLienDevis, facturesLiens, facturesBusyId, onGenererLienFacture, onRevoquerLienFacture, onCreerOrdreReparation, onLignesChange, onToast, onCreerVehicule, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null }) {
+  // Les onglets suivent les droits : un compte accueil ne voit ni les
+  // factures ni l'historique, qui ne lui sont pas ouverts.
   const tabs = [
     ["devis", "Devis"],
     ["factures", "Factures"],
     ["historique", "Historique"],
-  ];
+  ].filter(([key]) => peutVoir(monRole, key === "devis" ? "devis" : key));
   return (
     <div className="space-y-4">
-      <div className="flex gap-1.5 bg-slate-100 rounded-[10px] p-[3px] w-fit">
+      <div className={`flex gap-1.5 bg-slate-100 rounded-[10px] p-[3px] w-fit${tabs.length < 2 ? " hidden" : ""}`}>
         {tabs.map(([key, label]) => (
           <button key={key} onClick={() => setView(key)} className="text-[13px] font-medium px-4 py-1.5 rounded-lg" style={view === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>{label}</button>
         ))}
@@ -3997,24 +4031,44 @@ function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien,
 // 2026-09-11 : la voiture ne pouvait être créée qu'en inventant un
 // rendez-vous. Et l'e-mail, dit « optionnel », est ce qui permet d'envoyer le
 // devis : on le dit.
-function NouveauClientModal({ onClose, onCreerClient }) {
+function NouveauClientModal({ onClose, onCreerClient, onCreerVehicule }) {
   const [nom, setNom] = useState("");
   const [telephone, setTelephone] = useState("");
   const [email, setEmail] = useState("");
   const [vehicule, setVehicule] = useState(VEHICULE_VIDE);
   const [creating, setCreating] = useState(false);
+  // Client déjà créé lors d'un essai précédent : un nouvel essai ne recrée
+  // pas le client, il ne réessaie que la voiture (revue du 2026-09-12).
+  const [clientCree, setClientCree] = useState(null);
+  const [echecVehicule, setEchecVehicule] = useState(false);
 
   const creer = async () => {
     if (!nom.trim()) return;
     setCreating(true);
+    const saisie = vehiculeDepuisSaisie(vehicule);
+    if (clientCree && onCreerVehicule) {
+      if (!saisie) { setCreating(false); onClose(clientCree); return; }
+      const v = await onCreerVehicule({ client_id: clientCree.id, ...saisie });
+      setCreating(false);
+      if (!v) { setEchecVehicule(true); return; }
+      onClose({ ...clientCree, vehicules: [v] });
+      return;
+    }
     const cree = await onCreerClient({
       nom: nom.trim(),
       telephone: telephone.trim() || null,
       email: email.trim() || null,
-      vehicule: vehiculeDepuisSaisie(vehicule),
+      vehicule: saisie,
     });
     setCreating(false);
-    if (cree) onClose(cree);
+    const lu = lectureCreationClient(cree, saisie);
+    if (!lu.ok) return;
+    if (lu.vehiculeEnEchec) {
+      setClientCree(cree);
+      setEchecVehicule(true);
+      return;
+    }
+    onClose(cree);
   };
 
   return (
@@ -4029,10 +4083,15 @@ function NouveauClientModal({ onClose, onCreerClient }) {
         <div className="mt-4">
           <div className="text-[12px] font-medium text-slate-500">Sa voiture <span className="font-normal text-slate-400">— facultatif, la plaque suffit</span></div>
           <ChampsVehicule valeur={vehicule} onChange={setVehicule} />
+          {echecVehicule && (
+            <div className="text-[12px] text-amber-700 mt-1.5">
+              {MESSAGE_VEHICULE_ECHEC} « Enregistrer » réessaiera la voiture ; videz les champs pour garder le client seul.
+            </div>
+          )}
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={() => onClose()} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600">Annuler</button>
-          <button type="button" onClick={creer} disabled={!nom.trim() || creating} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: ACCENT }}>{creating ? "Enregistrement..." : "Enregistrer le client"}</button>
+          <button type="button" onClick={creer} disabled={!nom.trim() || creating} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: ACCENT }}>{creating ? "Enregistrement..." : clientCree ? "Réessayer la voiture" : "Enregistrer le client"}</button>
         </div>
       </div>
     </div>
@@ -4054,6 +4113,7 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
   const [nouveauClientOuvert, setNouveauClientOuvert] = useState(Boolean(ouvrirCreation));
   const [ajoutVehicule, setAjoutVehicule] = useState(false);
   const [vehiculeSaisi, setVehiculeSaisi] = useState(VEHICULE_VIDE);
+  const [vehiculeEnCours, setVehiculeEnCours] = useState(false);
   const [tri, setTri] = useState("nom");
   useEffect(() => {
     if (ouvrirCreation && onCreationOuverte) onCreationOuverte();
@@ -4091,9 +4151,13 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
     setVehiculeSaisi(VEHICULE_VIDE);
   };
   const enregistrerVehicule = async () => {
+    // Verrou : deux clics pendant l'enregistrement créaient deux voitures.
+    if (vehiculeEnCours) return;
     const vehicule = vehiculeDepuisSaisie(vehiculeSaisi);
     if (!vehicule || !selected || !onCreerVehicule) return;
+    setVehiculeEnCours(true);
     const cree = await onCreerVehicule({ client_id: selected.id, ...vehicule });
+    setVehiculeEnCours(false);
     if (!cree) return;
     setAjoutVehicule(false);
     setVehiculeSaisi(VEHICULE_VIDE);
@@ -4101,7 +4165,7 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
   };
 
   const modaleNouveauClient = nouveauClientOuvert && (
-    <NouveauClientModal onClose={fermerNouveauClient} onCreerClient={onCreerClient} />
+    <NouveauClientModal onClose={fermerNouveauClient} onCreerClient={onCreerClient} onCreerVehicule={onCreerVehicule} />
   );
 
   // Recette du 2026-09-11 : sans aucun client, l'écran disait « Aucun client
@@ -4211,7 +4275,7 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
               <ChampsVehicule valeur={vehiculeSaisi} onChange={setVehiculeSaisi} autoFocus />
               <div className="flex justify-end gap-2 mt-2">
                 <button type="button" onClick={() => { setAjoutVehicule(false); setVehiculeSaisi(VEHICULE_VIDE); }} className="px-3 py-1.5 rounded-lg text-[12.5px] font-medium text-slate-500">Annuler</button>
-                <button type="button" onClick={enregistrerVehicule} disabled={!vehiculeDepuisSaisie(vehiculeSaisi)} className="px-3 py-1.5 rounded-lg text-[12.5px] font-semibold text-white disabled:opacity-50" style={{ backgroundColor: ACCENT }}>Enregistrer le véhicule</button>
+                <button type="button" onClick={enregistrerVehicule} disabled={!vehiculeDepuisSaisie(vehiculeSaisi) || vehiculeEnCours} className="px-3 py-1.5 rounded-lg text-[12.5px] font-semibold text-white disabled:opacity-50" style={{ backgroundColor: ACCENT }}>{vehiculeEnCours ? "Enregistrement…" : "Enregistrer le véhicule"}</button>
               </div>
             </div>
           )}
@@ -4927,6 +4991,11 @@ function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = nul
   // Compteur de la pastille : chargé au montage pour que le badge existe
   // sans avoir à ouvrir la section. La section, une fois ouverte, tient
   // ce compteur à jour via onCountChange.
+  // Revue du 2026-09-12 : masquer l'entrée quand le compteur vaut zéro la
+  // rendait introuvable si une alerte arrivait ensuite, le compteur n'étant
+  // lu qu'au montage. Il est relu au retour sur l'onglet et à chaque
+  // changement d'écran.
+  const [versionNotifs, setVersionNotifs] = useState(0);
   useEffect(() => {
     let annule = false;
     supabase.rpc("notifications_a_verifier").then(({ data, error }) => {
@@ -4935,6 +5004,17 @@ function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = nul
     });
     return () => {
       annule = true;
+    };
+  }, [versionNotifs]);
+  useEffect(() => {
+    const relire = () => {
+      if (document.visibilityState === "visible") setVersionNotifs((v) => v + 1);
+    };
+    window.addEventListener("focus", relire);
+    document.addEventListener("visibilitychange", relire);
+    return () => {
+      window.removeEventListener("focus", relire);
+      document.removeEventListener("visibilitychange", relire);
     };
   }, []);
   const [stats, setStats] = useState({
@@ -5495,8 +5575,9 @@ setPropositions(formattedPropositions);
   }, []);
   const vuePrecedente = useRef(view);
   useEffect(() => {
-    if (vuePrecedente.current !== view && (view === "devis" || view === "aujourdhui")) {
-      setVersionDevis((v) => v + 1);
+    if (vuePrecedente.current !== view) {
+      if (view === "devis" || view === "aujourdhui") setVersionDevis((v) => v + 1);
+      setVersionNotifs((v) => v + 1);
     }
     vuePrecedente.current = view;
   }, [view]);
@@ -6052,6 +6133,7 @@ if (updateError) {
     }
 
     let devisCree = data;
+    let ligneEchouee = null;
     const premiereLigne = Number(prestation?.prix_ht) > 0 ? preremplirDepuisPrestation(prestation) : null;
     if (premiereLigne) {
       const { error: erreurLigne } = await supabase
@@ -6059,6 +6141,7 @@ if (updateError) {
         .insert({ devis_id: data.id, garage_id: garageId, position: 0, quantite: 1, ...premiereLigne });
       if (erreurLigne) {
         console.error("Première ligne non créée :", erreurLigne);
+        ligneEchouee = premiereLigne.libelle || prestation?.nom || null;
       } else {
         const { data: relu } = await supabase.from("devis").select(SELECT_DEVIS).eq("id", data.id).single();
         if (relu) devisCree = relu;
@@ -6077,7 +6160,8 @@ if (updateError) {
       devis_lignes: devisCree.devis_lignes || [],
     };
     setDevisList((prev) => [formatted, ...prev.filter((d) => d.id !== formatted.id)]);
-    flashToast("Devis créé. Rien n'est envoyé au client.");
+    const message = messageDevisCree({ ligneEchouee });
+    flashToast(message.texte, message.ton === "error" ? "error" : "success");
     return formatted;
   };
 
@@ -6384,9 +6468,9 @@ if (updateError) {
       return null;
     }
     // La voiture saisie avec le client. Son échec ne fait pas perdre le
-    // client : il est enregistré, et on dit où ajouter la voiture.
+    // client : il est enregistré, et l'écran appelant s'arrête là plutôt que
+    // de continuer sans voiture (revue du 2026-09-12).
     let client = data;
-    let vehiculeEnregistre = false;
     if (vehicule) {
       const { data: v, error: erreurVehicule } = await supabase
         .from("vehicules")
@@ -6397,14 +6481,14 @@ if (updateError) {
         console.error("Erreur création véhicule :", erreurVehicule);
       } else {
         client = { ...data, vehicules: [...(Array.isArray(data.vehicules) ? data.vehicules : []), v] };
-        vehiculeEnregistre = true;
       }
     }
     setClients((prev) => [...prev, client]);
-    if (vehicule && !vehiculeEnregistre) {
-      flashToast("Client enregistré, mais pas sa voiture : ajoutez-la depuis sa fiche.", "error");
+    const lu = lectureCreationClient(client, vehicule);
+    if (lu.vehiculeEnEchec) {
+      flashToast(MESSAGE_VEHICULE_ECHEC, "error");
     } else {
-      flashToast(vehiculeEnregistre ? "Client et véhicule enregistrés" : "Client enregistré");
+      flashToast(lu.vehiculeId ? "Client et véhicule enregistrés" : "Client enregistré");
     }
     return client;
   };
@@ -6882,12 +6966,13 @@ if (updateError) {
         )}
 
         <div key={view} className="nx-vue p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
+          {view === "aujourdhui" && <AujourdhuiView monRole={monRole} stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={setDossierVehiculeId} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
           {["devis", "factures", "historique"].includes(view) && (
             <FacturationView
+              monRole={monRole}
               view={view}
               setView={setView}
               devisList={devisList}

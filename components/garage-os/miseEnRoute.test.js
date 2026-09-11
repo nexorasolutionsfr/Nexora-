@@ -77,3 +77,19 @@ test('le premier client vient en premier, et ouvre la création à la main', () 
   assert.equal(deuxieme.cle, 'premier_devis')
   assert.equal(deuxieme.creation, 'devis')
 })
+
+// Revue du 2026-09-12 : la liste proposait « horaires » et « équipe » — donc
+// les Paramètres — à un compte accueil qui n'y a pas droit. Une étape qui
+// mène à un refus n'a rien à faire dans une mise en route.
+test('le compte accueil ne se voit proposer que ce qu’il peut ouvrir', () => {
+  const etapes = etapesMiseEnRoute({ ...VIDE, role: 'accueil' })
+  assert.deepEqual(etapes.map((e) => e.cle), ['clients', 'premier_devis', 'premier_rdv'])
+  assert.ok(!etapes.some((e) => e.vue === 'parametres'), 'aucune étape vers les Paramètres')
+})
+
+test('le dirigeant garde les cinq étapes, et l’absence de rôle ne filtre rien', () => {
+  assert.equal(etapesMiseEnRoute({ ...VIDE, role: 'dirigeant' }).length, 5)
+  assert.equal(etapesMiseEnRoute(VIDE).length, 5)
+  const etat = etatMiseEnRoute({ ...VIDE, role: 'accueil' })
+  assert.equal(etat.total, 3, 'le compteur suit ce qui est réellement proposé')
+})

@@ -100,6 +100,31 @@ export function construireCandidats(ctx) {
     });
   }
 
+  // ---- Réponses des clients aux devis ----------------------------------------------
+  //
+  // Revue du 2026-09-12 : l'accueil existe en deux variantes (zones ou
+  // Cockpit). Les réponses n'étaient ajoutées qu'aux zones ; un garage sous
+  // Cockpit n'aurait rien vu. Même règle des deux jours, même geste suivant.
+  const reponses = devisList.filter(
+    (d) => (d.statut === "accepte" || d.statut === "refuse") && d.date_validation && joursDepuis(d.date_validation, now) < 2,
+  );
+  for (const d of reponses) {
+    const accepte = d.statut === "accepte";
+    candidats.push({
+      key: `reponse-devis:${d.id}`,
+      sourceType: "reponse_devis",
+      sourceId: d.id,
+      section: "maintenant",
+      stripe: accepte ? "#16A34A" : "#64748B",
+      urgent: false,
+      titre: `${accepte ? "Devis accepté" : "Devis refusé"} par ${d.client}`,
+      meta: `${depuisLabel(d.date_validation, now)} · ${d.prestations?.nom || d.prestation || "—"}`,
+      amount: accepte ? Number(d.montant_ttc || 0) : 0,
+      action: "Voir la réponse",
+      onAction: () => setView && setView("devis"),
+    });
+  }
+
   // ---- Relais Appels — rappels actifs ----------------------------------------------
   const rappelsActifs = rappelsManques.filter((r) => ["a_rappeler", "tentative_sans_reponse", "rdv_a_creer"].includes(r.statut));
   for (const r of rappelsActifs) {
