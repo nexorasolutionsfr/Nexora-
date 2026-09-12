@@ -53,57 +53,100 @@ export function horairesRenseignes(garageData) {
  * `creation` indique la fenêtre à ouvrir en arrivant : l'étape emmène
  * directement au geste, pas à un écran où il faudrait le chercher.
  */
+export const GROUPE_UTILISER = "utiliser";
+export const GROUPE_CONFIGURER = "configurer";
+
+export const LIBELLES_GROUPES = {
+  [GROUPE_UTILISER]: "Commencer à utiliser Nexora",
+  [GROUPE_CONFIGURER]: "Configurer mon garage",
+};
+
 export function etapesMiseEnRoute({ garageData, mecaniciens = [], clients = [], rendezVous = [], devis = [], role = null }) {
   // Revue du 12 septembre 2026 : la liste proposait « horaires » et « équipe »
   // — donc les Paramètres — à un compte accueil qui n'y a pas droit. Une étape
   // qui mène à un refus n'a rien à faire dans une mise en route. On filtre par
   // les droits existants, sans en élargir aucun.
+  //
+  // Revue du 12 septembre 2026 (soir) : les cinq étapes étaient à plat, et
+  // trois d'entre elles seulement font gagner du temps au garage. Les régler
+  // n'est pas s'en servir. Deux groupes, donc, et l'ordre compte : ce qui
+  // produit une facture d'abord, ce qui paramètre ensuite.
+  //
+  // `action` est le libellé du bouton. Il dit ce que le clic fait — « Ajouter
+  // un client », pas « Ajouter » : lu seul, un verbe sans objet n'apprend
+  // rien, et c'est souvent tout ce qu'on lit.
+  //
+  // `reportable` : seules les étapes de configuration se remettent à plus
+  // tard. Les trois premières sont le produit ; elles disparaissent quand
+  // elles sont faites, ce qui est une autre façon de s'effacer.
   return [
     {
       cle: "clients",
-      titre: "Votre premier client et sa voiture",
+      groupe: GROUPE_UTILISER,
+      titre: "Ajouter mon premier client et son véhicule",
       pourquoi: "Nom, téléphone, e-mail et immatriculation : une minute.",
-      action: "Ajouter",
+      action: "Ajouter un client",
       vue: "clients",
       creation: "client",
+      reportable: false,
       fait: clients.length > 0,
     },
     {
+      cle: "premier_rdv",
+      groupe: GROUPE_UTILISER,
+      titre: "Planifier mon premier rendez-vous",
+      pourquoi: "Le tableau de bord s'anime dès qu'une voiture est attendue.",
+      action: "Planifier un rendez-vous",
+      vue: "agenda",
+      reportable: false,
+      fait: rendezVous.length > 0,
+    },
+    {
       cle: "premier_devis",
-      titre: "Votre premier devis",
+      groupe: GROUPE_UTILISER,
+      titre: "Créer mon premier devis",
       pourquoi: "Main-d'œuvre et pièces : les totaux se calculent seuls.",
-      action: "Créer",
+      action: "Créer un devis",
       vue: "devis",
       creation: "devis",
+      reportable: false,
       fait: devis.length > 0,
     },
     {
       cle: "horaires",
-      titre: "Vos horaires d'ouverture",
+      groupe: GROUPE_CONFIGURER,
+      titre: "Renseigner mes horaires",
       pourquoi: "Sinon l'agenda propose des créneaux les jours de fermeture.",
-      action: "Renseigner",
+      action: "Configurer les horaires",
       vue: "parametres",
       onglet: "garage",
+      reportable: true,
       fait: horairesRenseignes(garageData),
     },
     {
       cle: "mecaniciens",
-      titre: "Votre équipe",
+      groupe: GROUPE_CONFIGURER,
+      titre: "Ajouter mon équipe",
       pourquoi: "Pour affecter les véhicules et voir qui fait quoi.",
-      action: "Ajouter",
+      action: "Ajouter un mécanicien",
       vue: "parametres",
       onglet: "garage",
+      reportable: true,
       fait: mecaniciens.length > 0,
     },
-    {
-      cle: "premier_rdv",
-      titre: "Votre premier rendez-vous",
-      pourquoi: "Le tableau de bord s'anime dès qu'une voiture est attendue.",
-      action: "Ouvrir l'agenda",
-      vue: "agenda",
-      fait: rendezVous.length > 0,
-    },
   ].filter((etape) => !role || peutVoir(role, etape.vue));
+}
+
+/**
+ * Les étapes restantes, groupées et dans l'ordre d'affichage.
+ *
+ * Un groupe vide n'est pas rendu : un titre « Configurer mon garage » suivi
+ * de rien est un intertitre qui ment.
+ */
+export function groupesRestants(restantes = []) {
+  return [GROUPE_UTILISER, GROUPE_CONFIGURER]
+    .map((cle) => ({ cle, titre: LIBELLES_GROUPES[cle], etapes: restantes.filter((e) => e.groupe === cle) }))
+    .filter((g) => g.etapes.length > 0);
 }
 
 /**
