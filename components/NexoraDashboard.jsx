@@ -1,7 +1,7 @@
 
 "use client"; import { supabase } from "@/lib/supabase";
 import DevisLignesEditor from "./devis-lignes/DevisLignesEditor";
-import { calculerLigne, calculerTotaux, devisALignes } from "./devis-lignes/calculs";
+import { calculerLigne, calculerTotaux, devisALignes, formatEuro, preremplirDepuisPrestation } from "./devis-lignes/calculs";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import QRCode from "qrcode";
@@ -19,6 +19,13 @@ import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtel
 import { estFerme, heureReservable, heuresOuvrables } from "./agenda/horaires";
 import ConnexionShell from "./connexion/ConnexionShell";
 import EnvoiDevis from "./envoi/EnvoiDevis";
+import { GESTES_DEVIS } from "./envoi/etatsEnvoi";
+import { libelleReponse, reponsesRecentes } from "./envoi/reponsesClients";
+import DevisVueClient from "./devis-lignes/DevisVueClient";
+import { vueDepuisDevisGarage } from "./devis-lignes/vueClient";
+import { vehiculeDepuisSaisie } from "./clients/vehicule";
+import { MESSAGE_VEHICULE_ECHEC, lectureCreationClient, messageDevisCree } from "./clients/creationClient";
+import { horairesRenseignes } from "./garage-os/miseEnRoute";
 import { CANAUX as CANAUX_ENVOI, CAPACITES, canalEffectif, mentionCanalIndisponible } from "./parametres/capacites";
 import { DELAI_RENVOI_SECONDES, libelleRenvoi, messageRenvoi, secondesAvantRenvoi } from "./connexion/renvoiConfirmation";
 import { offre } from "@/lib/tarifs";
@@ -27,6 +34,8 @@ import OnboardingGarage from "./onboarding/OnboardingGarage";
 import MembresSection from "./acces-salaries/MembresSection";
 import AtelierMecanicienScreen from "./acces-salaries/AtelierMecanicienScreen";
 import {
+  peutVoir,
+  peutFacturer,
   ROLE_DIRIGEANT,
   ROLE_MECANICIEN,
   peutGererLesAcces,
@@ -303,6 +312,7 @@ const navItems = navGroups.flatMap((g) => g.items);
 // Une vue absente de cette table n'est ouverte qu'au dirigeant.
 const NAV_VERS_VUE_ROLE = {
   aujourdhui: "accueil",
+  devis: "devis",
   agenda: "agenda",
   atelier: "atelier",
   "ordres-reparation": "ordres_reparation",
@@ -317,10 +327,20 @@ const NAV_VERS_VUE_ROLE = {
 function navGroupesPourRole(role) {
   const autorisees = vuesAutorisees(role);
   if (autorisees === null) return navGroups;
+  // Revue du 2026-09-12 : l'accueil a le droit « devis » mais aucune entrée de
+  // menu n'y menait — « Facturation » couvre aussi factures et historique,
+  // hors de ses droits. On lui propose donc une entrée « Devis » seule. Les
+  // droits ne sont pas élargis : la base refuse déjà le reste.
   return navGroups
     .map((g) => ({
       ...g,
-      items: g.items.filter((item) => autorisees.includes(NAV_VERS_VUE_ROLE[item.key])),
+      items: g.items
+        .map((item) => (
+          item.key === "facturation" && !autorisees.includes("factures") && autorisees.includes("devis")
+            ? { ...item, key: "devis", label: "Devis", match: ["devis"] }
+            : item
+        ))
+        .filter((item) => autorisees.includes(NAV_VERS_VUE_ROLE[item.key])),
     }))
     .filter((g) => g.items.length > 0);
 }
@@ -1356,7 +1376,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
   );
 }
 
-function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView, onAllerConfigurer, onGererAbonnement, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
+function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demandes, devisList = [], setView, onAllerConfigurer, onGererAbonnement, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   const [cockpitCompteurs, setCockpitCompteurs] = useState(null);
   if (loading) {
@@ -1383,7 +1403,6 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
   const joursDepuis = (dateStr) => (dateStr ? Math.floor((Date.now() - new Date(dateStr).getTime()) / 86_400_000) : 0);
   const heuresDepuis = (dateStr) => (dateStr ? Math.floor((Date.now() - new Date(dateStr).getTime()) / 3_600_000) : 0);
   const canauxChoisis = garageData?.canaux_notifications && typeof garageData.canaux_notifications === "object" ? garageData.canaux_notifications : {};
-  const canalPour = (typeKey) => canauxChoisis[typeKey] || "email";
 
   const demandesOuvertes = demandes.filter((d) => d.statut === "nouveau" || d.statut === "infos_manquantes");
   const demandesUrgentes = demandesOuvertes.filter((d) => d.urgence === "Élevée");
@@ -1415,6 +1434,17 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
 
   // ---- Zone 1 — À traiter maintenant (rouge = urgence réelle ou délai dépassé) -----
   const zone1Rows = [
+    // Les réponses des clients aux devis, 48 h durant. Recette du 2026-09-11 :
+    // un devis accepté disparaissait de l'accueil sans laisser de trace.
+    ...reponsesRecentes(devisList, now, 2).map((d) => ({
+      key: `rep-${d.id}`,
+      stripe: d.statut === "accepte" ? "#16A34A" : "#64748B",
+      urgent: false,
+      title: `${libelleReponse(d)} par ${d.client}`,
+      meta: `${depuisLabel(d.date_validation)} · ${d.prestations?.nom || "—"} · ${formatEuro(d.montant_ttc)} TTC`,
+      action: "Voir la réponse",
+      onAction: () => setView("devis"),
+    })),
     ...demandesUrgentes.map((d) => ({
       key: `du-${d.id}`,
       stripe: "#DC2626",
@@ -1504,10 +1534,11 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
       key: `d2-${d.id}`,
       stripe: ACCENT,
       urgent: false,
-      title: `Devis prêt — ${d.client}`,
+      // « Prévisualiser et envoyer » s'affichait aussi pour un devis déjà
+      // envoyé : la ligne ouvre le devis, où l'état réel de l'envoi est lu.
+      title: `Devis en cours — ${d.client}`,
       meta: `${d.prestation || "—"} · ${Number(d.montant_ttc || 0).toFixed(0)} € TTC`,
-      canal: canalPour("devis"),
-      action: "Prévisualiser et envoyer",
+      action: "Ouvrir le devis",
       onAction: () => setView("devis"),
     })),
   ];
@@ -1521,8 +1552,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
       title: `Devis sans réponse depuis ${joursDepuis(d.created_at)} jour${joursDepuis(d.created_at) > 1 ? "s" : ""}`,
       meta: `${d.client} · ${d.prestation || "—"}`,
       amount: Number(d.montant_ttc || 0),
-      canal: canalPour("devis"),
-      action: "Prévisualiser et envoyer",
+      action: "Ouvrir le devis",
       onAction: () => setView("devis"),
     })),
     ...demandesEnRisque.map((d) => ({
@@ -1646,7 +1676,11 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
 
   // ---- Ligne compacte d'identité — remplace la grande carte pour laisser "À traiter
   // maintenant" apparaître le plus haut possible, surtout sur mobile -----------------
-  const openState = getGarageOpenState(garageData || {});
+  // Recette du 2026-09-11 : un garage sans aucun horaire saisi lisait
+  // « Ouvert maintenant », calculé sur un 8 h–18 h supposé. Tant que rien
+  // n'est renseigné, l'en-tête ne dit rien plutôt que d'inventer.
+  const horairesConnus = horairesRenseignes(garageData) || Boolean(garageData?.horaire_ouverture);
+  const openState = horairesConnus ? getGarageOpenState(garageData || {}) : null;
 
   const vehiculesEngages = compterVehiculesEngages(rendezVous);
   const alertesAtelier = compterAlertesAtelier(rendezVous);
@@ -1679,6 +1713,8 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
         mecaniciens={mecaniciens}
         clients={clients}
         rendezVous={rendezVous}
+        devis={devisList}
+        role={monRole}
         onAller={onAllerConfigurer}
       />
 
@@ -1825,10 +1861,11 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
         setView={setView}
       />
 
-      <AccesRapides setView={setView} inspectionsActif={INSPECTIONS_MODULE_ACTIF} />
+      <AccesRapides setView={setView} inspectionsActif={INSPECTIONS_MODULE_ACTIF} demandesActif={demandes.length > 0} facturationActive={peutFacturer(monRole)} />
 
       <ParcoursExplique />
 
+      {demandes.length > 0 && (
       <details className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3">
         <summary className="flex items-center gap-3 flex-wrap cursor-pointer list-none [&::-webkit-details-marker]:hidden">
           <span className="text-[12.5px] font-semibold text-slate-700">Demandes de rendez-vous — {periodePilote === "pilote" ? "depuis le début" : periodePilote.replace("j", " derniers jours")}</span>
@@ -1855,6 +1892,7 @@ function AujourdhuiView({ stats, propositions, demandes, devisList = [], setView
           </div>
         </div>
       </details>
+      )}
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-2">
         <div className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
@@ -2521,56 +2559,97 @@ function CreerRdvModal({ clients, prestations, date, heure, onClose, onCreate, o
 
 
 
-function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose, onCreate, onCreerClient }) {
+const VEHICULE_VIDE = { marque: "", modele: "", immatriculation: "" };
+const libelleVehiculeCourt = (v) => [`${v?.marque || ""} ${v?.modele || ""}`.trim(), v?.immatriculation].filter(Boolean).join(" · ") || "Véhicule";
+
+// Marque, modèle, immatriculation — tous facultatifs, un seul suffit. La
+// plaque vient en premier : c'est par elle qu'un garage reconnaît une voiture.
+function ChampsVehicule({ valeur = VEHICULE_VIDE, onChange, autoFocus = false }) {
+  const maj = (champ) => (e) => onChange({ ...valeur, [champ]: e.target.value });
+  const classe = "rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 min-w-0";
+  return (
+    <div className="mt-1.5 grid grid-cols-2 gap-2">
+      <input value={valeur.immatriculation} onChange={maj("immatriculation")} placeholder="Immatriculation (AB-123-CD)" autoFocus={autoFocus} className={`col-span-2 ${classe}`} />
+      <input value={valeur.marque} onChange={maj("marque")} placeholder="Marque" className={classe} />
+      <input value={valeur.modele} onChange={maj("modele")} placeholder="Modèle" className={classe} />
+    </div>
+  );
+}
+
+// Créer un devis. Recette du 2026-09-11 : la modale demandait un « montant HT »
+// unique (le catalogue proposait des prestations à 0,00 €), puis il fallait
+// découvrir « Détailler en lignes » sur la carte. Elle ne demande plus que le
+// client, sa voiture et, au besoin, l'intervention ; les lignes s'ouvrent
+// ensuite sur le devis créé. Rien n'est envoyé au client à cette étape.
+function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose, onCreate, onCreerClient, onCreerVehicule }) {
   const [query, setQuery] = useState("");
   const [clientId, setClientId] = useState(clientPreselectionne?.id || "");
   const [prestationId, setPrestationId] = useState("");
-  const [montantHt, setMontantHt] = useState(0);
   const [creating, setCreating] = useState(false);
   const [nouveauClient, setNouveauClient] = useState(false);
   const [nomNouveau, setNomNouveau] = useState("");
   const [telNouveau, setTelNouveau] = useState("");
   const [emailNouveau, setEmailNouveau] = useState("");
+  // Un devis se fait sur une voiture, et la voiture ne pouvait naître que d'un
+  // rendez-vous. Elle se saisit ici quand le client n'en a pas encore.
+  const [vehiculeSaisi, setVehiculeSaisi] = useState(VEHICULE_VIDE);
+  const [vehiculeId, setVehiculeId] = useState("");
+  const [echecVehicule, setEchecVehicule] = useState(false);
 
   const clientChoisi = clientPreselectionne || clients.find((c) => c.id === clientId) || null;
   const vehiculesClient = Array.isArray(clientChoisi?.vehicules) ? clientChoisi.vehicules : clientChoisi?.vehicules ? [clientChoisi.vehicules] : [];
-  const vehiculeChoisi = vehiculesClient[0] || null;
+  const vehiculeChoisi = vehiculesClient.find((v) => v.id === vehiculeId) || vehiculesClient[0] || null;
   const clientsFiltres = clients.filter((c) => !query || c.nom?.toLowerCase().includes(query.toLowerCase()));
-
-  const choisirPrestation = (id) => {
-    setPrestationId(id);
-    const p = prestations.find((p) => p.id === id);
-    setMontantHt(Number(p?.prix_ht || 0));
-  };
 
   const creer = async () => {
     setCreating(true);
     let idClient = clientChoisi?.id || null;
     let idVehicule = vehiculeChoisi?.id || null;
+    const vehicule = vehiculeDepuisSaisie(vehiculeSaisi);
     if (nouveauClient) {
       if (!nomNouveau.trim()) { setCreating(false); return; }
-      const cree = await onCreerClient({ nom: nomNouveau.trim(), telephone: telNouveau.trim() || null, email: emailNouveau.trim() || null });
-      if (!cree) { setCreating(false); return; }
-      idClient = cree.id;
-      idVehicule = null;
+      const cree = await onCreerClient({ nom: nomNouveau.trim(), telephone: telNouveau.trim() || null, email: emailNouveau.trim() || null, vehicule });
+      const lu = lectureCreationClient(cree, vehicule);
+      if (!lu.ok) { setCreating(false); return; }
+      // Le client existe : la fenêtre bascule sur lui. Un nouvel essai ne le
+      // recrée pas, et la saisie de la voiture reste à l'écran.
+      setNouveauClient(false);
+      setClientId(lu.clientId);
+      if (lu.vehiculeEnEchec) {
+        setEchecVehicule(true);
+        setCreating(false);
+        return;
+      }
+      idClient = lu.clientId;
+      idVehicule = lu.vehiculeId;
+    } else if (idClient && !idVehicule && vehicule && onCreerVehicule) {
+      const cree = await onCreerVehicule({ client_id: idClient, ...vehicule });
+      if (!cree) { setEchecVehicule(true); setCreating(false); return; }
+      setEchecVehicule(false);
+      idVehicule = cree.id;
     }
     if (!idClient) { setCreating(false); return; }
-    await onCreate({
+    const devis = await onCreate({
       client_id: idClient,
       vehicule_id: idVehicule,
-      prestation_id: prestationId || null,
-      montant_ht: montantHt,
+      prestation: prestations.find((p) => p.id === prestationId) || null,
     });
     setCreating(false);
-    onClose();
+    if (devis) onClose();
   };
 
   return (
     <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900" onClick={(e) => e.stopPropagation()}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-lg text-slate-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Créer un devis</h2>
+        <p className="text-[12.5px] text-slate-500 mt-1">Choisissez le client et sa voiture. Vous ajouterez la main-d&apos;œuvre et les pièces juste après. Rien n&apos;est envoyé au client à cette étape.</p>
 
-        {!clientPreselectionne && (
+        {clientPreselectionne ? (
+          <div className="mt-4">
+            <label className="text-[12px] font-medium text-slate-500">Client</label>
+            <div className="mt-1 bg-slate-50 rounded-lg px-3 py-2 text-sm">{clientPreselectionne.nom}</div>
+          </div>
+        ) : (
           <div className="mt-4">
             <div className="flex items-center justify-between">
               <label className="text-[12px] font-medium text-slate-500">Client</label>
@@ -2578,75 +2657,91 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
             </div>
             {nouveauClient ? (
               <div className="mt-1.5 space-y-2">
-                <input value={nomNouveau} onChange={(e) => setNomNouveau(e.target.value)} placeholder="Nom du client" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
-                <input value={telNouveau} onChange={(e) => setTelNouveau(e.target.value)} placeholder="Téléphone (optionnel)" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
-                <input value={emailNouveau} onChange={(e) => setEmailNouveau(e.target.value)} placeholder="Email (optionnel)" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                <input value={nomNouveau} onChange={(e) => setNomNouveau(e.target.value)} placeholder="Nom du client" autoFocus className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                <input value={telNouveau} onChange={(e) => setTelNouveau(e.target.value)} placeholder="Téléphone (facultatif)" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                <input value={emailNouveau} onChange={(e) => setEmailNouveau(e.target.value)} placeholder="E-mail — pour lui envoyer le devis" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
                 <button type="button" onClick={() => setNouveauClient(false)} className="text-[12px] text-slate-400 hover:underline">Annuler, chercher un client existant</button>
               </div>
             ) : clientChoisi ? (
               <div className="mt-1 flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-sm">
                 <span>{clientChoisi.nom}</span>
-                <button onClick={() => setClientId("")} className="text-[12px] text-slate-500">Changer</button>
+                <button type="button" onClick={() => { setClientId(""); setVehiculeId(""); }} className="text-[12px] text-slate-500">Changer</button>
               </div>
             ) : (
               <>
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher un client..." className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
                 <div className="mt-1 max-h-40 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-50">
                   {clientsFiltres.slice(0, 20).map((c) => (
-                    <button key={c.id} onClick={() => setClientId(c.id)} className="w-full text-left px-3 py-2 text-[13px] hover:bg-slate-50">{c.nom}</button>
+                    <button type="button" key={c.id} onClick={() => setClientId(c.id)} className="w-full text-left px-3 py-2 text-[13px] hover:bg-slate-50">{c.nom}</button>
                   ))}
-                  {clientsFiltres.length === 0 && <div className="px-3 py-2 text-[13px] text-slate-400">Aucun client trouvé.</div>}
+                  {clientsFiltres.length === 0 && <div className="px-3 py-2 text-[13px] text-slate-400">{clients.length === 0 ? "Aucun client encore : ajoutez-le avec « + Nouveau client »." : "Aucun client trouvé."}</div>}
                 </div>
               </>
             )}
           </div>
         )}
 
-        {clientChoisi && vehiculeChoisi && (
-          <div className="mt-3 text-[12.5px] text-slate-500">Véhicule : {vehiculeChoisi.marque} {vehiculeChoisi.modele} — {vehiculeChoisi.immatriculation}</div>
+        {(nouveauClient || clientChoisi) && (
+          <div className="mt-4">
+            <label className="text-[12px] font-medium text-slate-500">Véhicule</label>
+            {!nouveauClient && vehiculesClient.length > 1 ? (
+              <select value={vehiculeChoisi?.id || ""} onChange={(e) => setVehiculeId(e.target.value)} className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                {vehiculesClient.map((v) => <option key={v.id} value={v.id}>{libelleVehiculeCourt(v)}</option>)}
+              </select>
+            ) : !nouveauClient && vehiculeChoisi ? (
+              <div className="mt-1 text-[13px] text-slate-700">{libelleVehiculeCourt(vehiculeChoisi)}</div>
+            ) : (
+              <>
+                <ChampsVehicule valeur={vehiculeSaisi} onChange={setVehiculeSaisi} />
+                {echecVehicule ? (
+                  <div className="text-[12px] text-amber-700 mt-1.5">
+                    {MESSAGE_VEHICULE_ECHEC} Videz ces champs pour créer le devis sans voiture.
+                  </div>
+                ) : (
+                  <div className="text-[11.5px] text-slate-400 mt-1">Facultatif — la plaque suffit.</div>
+                )}
+              </>
+            )}
+          </div>
         )}
 
         <div className="mt-4">
-          <label className="text-[12px] font-medium text-slate-500">Prestation</label>
-          <select value={prestationId} onChange={(e) => choisirPrestation(e.target.value)} className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-            <option value="">— Choisir —</option>
+          <label className="text-[12px] font-medium text-slate-500">Intervention <span className="font-normal text-slate-400">— facultatif</span></label>
+          <select value={prestationId} onChange={(e) => setPrestationId(e.target.value)} className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+            <option value="">— Aucune, je détaille moi-même —</option>
             {prestations.map((p) => (
-              <option key={p.id} value={p.id}>{p.nom} ({Number(p.prix_ht || 0).toFixed(2)} € HT)</option>
+              <option key={p.id} value={p.id}>{p.nom}{Number(p.prix_ht) > 0 ? ` (${formatEuro(p.prix_ht)} HT)` : ""}</option>
             ))}
           </select>
         </div>
 
-        <div className="mt-4">
-          <label className="text-[12px] font-medium text-slate-500">Montant HT</label>
-          <input type="number" min="0" step="0.01" value={montantHt} onChange={(e) => setMontantHt(Number(e.target.value))} className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-          <div className="text-[12px] text-slate-400 mt-1">TTC : {(Math.round(montantHt * 1.2 * 100) / 100).toFixed(2)} €</div>
-        </div>
-
         <div className="flex gap-2.5 mt-6">
-          <button onClick={creer} disabled={(!nouveauClient && !clientChoisi) || (nouveauClient && !nomNouveau.trim()) || creating} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl disabled:opacity-50" style={{ backgroundColor: ACCENT }}>
+          <button type="button" onClick={creer} disabled={(!nouveauClient && !clientChoisi) || (nouveauClient && !nomNouveau.trim()) || creating} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl disabled:opacity-50" style={{ backgroundColor: ACCENT }}>
             <ReceiptText size={15} /> {creating ? "Création..." : "Créer le devis"}
           </button>
-          <button onClick={onClose} className="text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">Annuler</button>
+          <button type="button" onClick={onClose} className="text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">Annuler</button>
         </div>
       </div>
     </div>
   );
 }
 
-function FacturationView({ view, setView, devisList, clients, prestations, garageData, onAcceptDevis, onRefuseDevis, onUpdateMontant, onCreerDevis, onCreerClient, rendezVous, factures, onGenererFacture, onMarquerPayee, onSauvegarderFacture, garageId, devisLiens, devisBusyId, onGenererLienDevis, onRevoquerLienDevis, facturesLiens, facturesBusyId, onGenererLienFacture, onRevoquerLienFacture, onCreerOrdreReparation, onLignesChange, onToast }) {
+function FacturationView({ monRole = ROLE_DIRIGEANT, view, setView, devisList, clients, prestations, garageData, onAcceptDevis, onRefuseDevis, onUpdateMontant, onCreerDevis, onCreerClient, rendezVous, factures, onGenererFacture, onMarquerPayee, onSauvegarderFacture, garageId, devisLiens, devisBusyId, onGenererLienDevis, onRevoquerLienDevis, facturesLiens, facturesBusyId, onGenererLienFacture, onRevoquerLienFacture, onCreerOrdreReparation, onLignesChange, onToast, onCreerVehicule, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null }) {
+  // Les onglets suivent les droits : un compte accueil ne voit ni les
+  // factures ni l'historique, qui ne lui sont pas ouverts.
   const tabs = [
     ["devis", "Devis"],
     ["factures", "Factures"],
     ["historique", "Historique"],
-  ];
+  ].filter(([key]) => peutVoir(monRole, key === "devis" ? "devis" : key));
   return (
     <div className="space-y-4">
-      <div className="flex gap-1.5 bg-slate-100 rounded-[10px] p-[3px] w-fit">
+      <div className={`flex gap-1.5 bg-slate-100 rounded-[10px] p-[3px] w-fit${tabs.length < 2 ? " hidden" : ""}`}>
         {tabs.map(([key, label]) => (
           <button key={key} onClick={() => setView(key)} className="text-[13px] font-medium px-4 py-1.5 rounded-lg" style={view === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>{label}</button>
         ))}
       </div>
-      {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} onLignesChange={onLignesChange} onToast={onToast} />}
+      {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} onLignesChange={onLignesChange} onToast={onToast} onCreerVehicule={onCreerVehicule} ouvrirCreation={ouvrirCreation} onCreationOuverte={onCreationOuverte} devisOuvertId={devisOuvertId} onCreerOrdreReparation={onCreerOrdreReparation} historiqueAccessible={tabs.some(([cle]) => cle === "historique")} />}
       {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={onGenererFacture} onMarquerPayee={onMarquerPayee} onSauvegarder={onSauvegarderFacture} facturesLiens={facturesLiens} facturesBusyId={facturesBusyId} onGenererLien={onGenererLienFacture} onRevoquerLien={onRevoquerLienFacture} onToast={onToast} />}
       {view === "historique" && <HistoriqueView devisList={devisList} garageId={garageId} onCreerOrdreReparation={onCreerOrdreReparation} prestations={prestations} />}
     </div>
@@ -2797,9 +2892,28 @@ function HistoriqueView({ devisList, garageId, onCreerOrdreReparation, prestatio
   );
 }
 
-function DevisView({ devisList: devisListToutesSources, clients, prestations, garageData, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient, devisLiens = {}, devisBusyId, onGenererLien, onRevoquerLien, onLignesChange, onToast }) {
+const dateHeureCourte = (d) => (d ? new Date(d).toLocaleString("fr-FR", { timeZone: APP_TIME_ZONE, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
+
+function DevisView({ devisList: devisListToutesSources, clients, prestations, garageData, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient, onCreerVehicule, devisLiens = {}, devisBusyId, onGenererLien, onRevoquerLien, onLignesChange, onToast, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null, onCreerOrdreReparation, historiqueAccessible = true }) {
   const devisList = devisListToutesSources.filter((d) => d.statut === "en_attente");
-  const [modalOuvert, setModalOuvert] = useState(false);
+  // Recette du 2026-09-11 : un devis accepté disparaissait d'ici sans laisser
+  // de trace ; il ne restait que l'onglet Historique. Les réponses récentes
+  // restent visibles là où le garagiste a créé le devis.
+  const reponses = reponsesRecentes(devisListToutesSources);
+  const [modalOuvert, setModalOuvert] = useState(Boolean(ouvrirCreation));
+  const [dernierCreeId, setDernierCreeId] = useState(devisOuvertId);
+  useEffect(() => {
+    if (ouvrirCreation && onCreationOuverte) onCreationOuverte();
+    // Une seule fois, à l'arrivée depuis la mise en route.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const creer = async (champs) => {
+    const cree = await onCreer(champs);
+    if (cree) setDernierCreeId(cree.id);
+    return cree;
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
@@ -2807,51 +2921,94 @@ function DevisView({ devisList: devisListToutesSources, clients, prestations, ga
           <Plus size={15} /> Créer un devis
         </button>
       </div>
+
+      {reponses.length > 0 && (
+        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-5 pt-4 pb-2">
+            <div className="font-semibold text-slate-900 text-[14.5px]">Réponses des clients</div>
+            {/* Un compte accueil n'a pas d'onglet Historique : ne l'y envoyons pas. */}
+            <div className="text-[12.5px] text-slate-500">
+              Les sept derniers jours.{historiqueAccessible ? " Tout l'historique est dans l'onglet Historique." : ""}
+            </div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {reponses.map((d) => (
+              <div key={d.id} className="px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-slate-900 text-[14px]">{d.client}</span>
+                    <Badge tone={d.statut === "accepte" ? "green" : "red"}>{libelleReponse(d)}</Badge>
+                  </div>
+                  <div className="text-[12.5px] text-slate-500 mt-0.5">
+                    {[[d.vehicule, d.immatriculation].filter(Boolean).join(" · "), d.prestations?.nom, `${formatEuro(d.montant_ttc)} TTC`, dateHeureCourte(d.date_validation)].filter(Boolean).join(" · ")}
+                  </div>
+                </div>
+                {d.statut === "accepte" && onCreerOrdreReparation && (
+                  <button type="button" onClick={() => onCreerOrdreReparation(d)} className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 whitespace-nowrap">
+                    Créer la fiche atelier
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {devisList.length === 0 ? (
-        <EmptyState icon={ReceiptText} title="Aucun devis en attente" subtitle="Les demandes de devis apparaîtront ici, prêtes à valider ou ajuster." />
+        <EmptyState
+          icon={ReceiptText}
+          title={reponses.length > 0 ? "Aucun devis en attente de réponse" : "Aucun devis pour l'instant"}
+          subtitle="Créez un devis : choisissez le client et sa voiture, puis ajoutez la main-d'œuvre et les pièces."
+        />
       ) : (
         devisList.map((d) => (
-          <DevisCard key={d.id} d={d} garageData={garageData} onAccept={onAccept} onRefuse={onRefuse} onUpdateMontant={onUpdateMontant} lien={devisLiens[d.id]} busy={devisBusyId === d.id} onGenererLien={onGenererLien} onRevoquerLien={onRevoquerLien} prestations={prestations} onLignesChange={onLignesChange} onToast={onToast} />
+          <DevisCard key={d.id} d={d} garageData={garageData} onAccept={onAccept} onRefuse={onRefuse} onUpdateMontant={onUpdateMontant} lien={devisLiens[d.id]} busy={devisBusyId === d.id} onGenererLien={onGenererLien} onRevoquerLien={onRevoquerLien} prestations={prestations} onLignesChange={onLignesChange} onToast={onToast} nouveau={d.id === dernierCreeId} />
         ))
       )}
       {modalOuvert && (
-        <GenererDevisModal clients={clients} prestations={prestations} onClose={() => setModalOuvert(false)} onCreate={onCreer} onCreerClient={onCreerClient} />
+        <GenererDevisModal clients={clients} prestations={prestations} onClose={() => setModalOuvert(false)} onCreate={creer} onCreerClient={onCreerClient} onCreerVehicule={onCreerVehicule} />
       )}
     </div>
   );
 }
 
+// Ce que verra le client, rendu par le composant même de la page publique.
+// Recette du 2026-09-11 : l'ancien aperçu se disait « exact » sans lignes ni
+// TVA, et son bouton « Fermer » sortait de l'écran à 1280×800.
 function DevisApercuModal({ d, garageData, onClose }) {
   return (
     <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-md text-slate-900" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-lg font-semibold text-slate-900">Aperçu client</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+      <div className="nx-panneau bg-white rounded-2xl w-full max-w-md text-slate-900 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 pt-5">
+          <h2 className="text-lg font-semibold text-slate-900">Ce que verra le client</h2>
+          <button type="button" onClick={onClose} aria-label="Fermer" className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
         </div>
-        <p className="text-[12.5px] text-slate-500 mb-4">Voici exactement ce que le client verra en ouvrant le lien reçu par email.</p>
-        <div style={{ minHeight: "100vh", margin: "-1px", padding: 0 }}>
+        <p className="px-6 mt-1 text-[12.5px] text-slate-500">La page qu&apos;il ouvre depuis le lien du devis, telle quelle.</p>
+        <div className="mt-3 px-6 overflow-y-auto min-h-0">
           <div style={{ background: "#F5F7FA", padding: 20, borderRadius: 16, fontFamily: "-apple-system, sans-serif" }}>
-            <div style={{ background: "#0F1B33", color: "white", borderRadius: 16, padding: 20, marginBottom: 20 }}>
-              <div style={{ fontSize: 13, opacity: 0.7 }}>{garageData?.nom_garage || "Votre garage"}</div>
-              <div style={{ fontSize: 18, fontWeight: 600, marginTop: 4 }}>{[d.vehicule, d.immatriculation].filter(Boolean).join(" · ")}</div>
-              <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>{d.prestation}</div>
-              <div style={{ fontSize: 28, fontWeight: 700, marginTop: 12 }}>{Number(d.montant_ttc || 0).toFixed(2)} €</div>
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <div style={{ flex: 1, padding: "14px 16px", borderRadius: 12, background: "#16A34A", color: "white", fontSize: 15, fontWeight: 600, textAlign: "center", opacity: 0.6 }}>Accepter</div>
-              <div style={{ flex: 1, padding: "14px 16px", borderRadius: 12, border: "1px solid #DC2626", background: "white", color: "#DC2626", fontSize: 15, fontWeight: 600, textAlign: "center", opacity: 0.6 }}>Refuser</div>
-            </div>
+            <DevisVueClient vue={vueDepuisDevisGarage(d, garageData?.nom_garage)}>
+              <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ flex: 1, padding: "14px 16px", borderRadius: 12, background: "#16A34A", color: "white", fontSize: 15, fontWeight: 600, textAlign: "center", opacity: 0.6 }}>Accepter</div>
+                <div style={{ flex: 1, padding: "14px 16px", borderRadius: 12, border: "1px solid #DC2626", background: "white", color: "#DC2626", fontSize: 15, fontWeight: 600, textAlign: "center", opacity: 0.6 }}>Refuser</div>
+              </div>
+            </DevisVueClient>
           </div>
+          <p className="text-[11.5px] text-slate-400 mt-3">Boutons inertes ici — le client, lui, peut répondre.</p>
         </div>
-        <p className="text-[11.5px] text-slate-400 mt-3">Boutons désactivés ici (aperçu uniquement) — le client, lui, peut cliquer.</p>
-        <button onClick={onClose} className="mt-4 w-full text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">Fermer</button>
+        <div className="px-6 pb-5 pt-3">
+          <button type="button" onClick={onClose} className="w-full text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">Fermer</button>
+        </div>
       </div>
     </div>
   );
 }
 
-function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, busy, onGenererLien, onRevoquerLien, prestations = [], onLignesChange, onToast }) {
+// La carte d'un devis en attente, en trois temps qui ne se confondent pas
+// (recette du 2026-09-11) : écrire au client par e-mail ; obtenir un lien à
+// lui transmettre soi-même, qui n'envoie rien ; noter une réponse reçue par
+// un autre moyen. Les libellés sont dans envoi/etatsEnvoi.js, où ils sont
+// testés.
+function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, busy, onGenererLien, onRevoquerLien, prestations = [], onLignesChange, onToast, nouveau = false }) {
   const [editing, setEditing] = useState(false);
   const aDesLignes = devisALignes(d);
   const [montant, setMontant] = useState(d.montant_ht ?? 0);
@@ -2864,6 +3021,15 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
     if (isNaN(value) || value < 0) return;
     onUpdateMontant(d.id, value);
     setEditing(false);
+  };
+
+  const copierLien = async () => {
+    try {
+      await navigator.clipboard.writeText(lien);
+      onToast?.(GESTES_DEVIS.lienCopie);
+    } catch {
+      onToast?.("Copie impossible : sélectionnez le lien à la main.", "error");
+    }
   };
 
   return (
@@ -2883,7 +3049,7 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-        <div className="flex items-center gap-2 text-sm text-slate-700"><Car size={15} className="text-slate-400" /> {[d.vehicule, d.immatriculation].filter(Boolean).join(" · ")}</div>
+        <div className="flex items-center gap-2 text-sm text-slate-700"><Car size={15} className="text-slate-400" /> {[d.vehicule, d.immatriculation].filter(Boolean).join(" · ") || "Véhicule non renseigné"}</div>
         <div className="text-sm text-slate-700 flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(d.categorie).bar }} /> {d.prestation}
         </div>
@@ -2925,7 +3091,7 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
           )}
         </div>
 
-        <DevisLignesEditor devis={d} lignes={d.devis_lignes || []} prestations={prestations} onChange={onLignesChange} onToast={onToast} />
+        <DevisLignesEditor devis={d} lignes={d.devis_lignes || []} prestations={prestations} onChange={onLignesChange} onToast={onToast} ajoutInitial={nouveau && !aDesLignes} />
 
         {d.message_original && (
           <>
@@ -2939,51 +3105,41 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2.5 mt-4">
-        {/* Ce bouton n'a jamais rien envoyé : il enregistre que le client a
-            accepté le devis. Le libellé le disait autrement, et c'est la
-            confusion que ce lot corrige — l'envoi a désormais son propre
-            geste, plus bas, avec destinataire et aperçu. */}
-        <button onClick={() => onAccept(d.id)} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl whitespace-nowrap" style={{ backgroundColor: "#16A34A" }}>
-          <Check size={15} /> Marquer accepté par le client
-        </button>
-        <button onClick={() => onRefuse(d.id)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600 whitespace-nowrap">
-          <X size={15} /> Refuser
-        </button>
-        <button onClick={() => setApercuOuvert(true)} className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600 whitespace-nowrap">
-          <Eye size={15} /> Aperçu client
-        </button>
+      {/* 1. Écrire au client : son propre bloc, avec l'état réel de la file. */}
+      <div className="mt-4 pt-3 border-t border-slate-100">
+        <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+          <div className="text-[12.5px] font-semibold text-slate-700">Envoyer au client</div>
+          <button type="button" onClick={() => setApercuOuvert(true)} className="flex items-center gap-1.5 text-[12.5px] font-medium text-slate-600 hover:text-slate-800">
+            <Eye size={14} /> {GESTES_DEVIS.apercu}
+          </button>
+        </div>
+        <EnvoiDevis devisId={d.id} cle={`${d.montant_ttc}|${d.statut}`} onToast={onToast} />
       </div>
 
-      {/* L'envoi au client : son propre bloc, avec l'état réel de la file.
-          « Copier le lien », juste en dessous, reste une action de partage
-          manuel — elle ne déclenche aucun e-mail. */}
-      <EnvoiDevis devisId={d.id} onToast={onToast} />
-
+      {/* 2. Un lien à transmettre soi-même : n'envoie rien. */}
       {onGenererLien && (
         <div className="mt-3 pt-3 border-t border-slate-100">
           {lien ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-1.5 text-[12px] bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 min-w-0">
-                <Link2 size={13} className="text-slate-400 shrink-0" />
-                <span className="truncate">{lien}</span>
+            <>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5 text-[12px] bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 min-w-0">
+                  <Link2 size={13} className="text-slate-400 shrink-0" />
+                  <span className="truncate">{lien}</span>
+                </div>
+                <button type="button" onClick={copierLien} className="flex items-center gap-1 text-[12px] font-medium text-slate-600 hover:text-slate-800">
+                  <Copy size={12} /> Copier
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onRevoquerLien(d.id)}
+                  className="flex items-center gap-1 text-[12px] font-medium text-slate-500 hover:text-red-600 disabled:opacity-50"
+                >
+                  <ShieldOff size={12} /> Révoquer
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={async () => { try { await navigator.clipboard.writeText(lien); } catch {} }}
-                className="flex items-center gap-1 text-[12px] font-medium text-slate-600 hover:text-slate-800"
-              >
-                <Copy size={12} /> Copier
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => onRevoquerLien(d.id)}
-                className="flex items-center gap-1 text-[12px] font-medium text-slate-500 hover:text-red-600 disabled:opacity-50"
-              >
-                <ShieldOff size={12} /> Révoquer
-              </button>
-            </div>
+              <div className="text-[11.5px] text-slate-500 mt-1.5">{GESTES_DEVIS.lienAide}</div>
+            </>
           ) : (
             <button
               type="button"
@@ -2991,11 +3147,26 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
               onClick={() => onGenererLien(d.id)}
               className="flex items-center gap-1.5 text-[12.5px] font-medium text-slate-600 hover:text-slate-800 disabled:opacity-50"
             >
-              <Link2 size={13} /> {busy ? "Génération…" : "Générer le lien client (réponse à distance)"}
+              <Link2 size={13} /> {busy ? "Génération…" : GESTES_DEVIS.lien}
             </button>
           )}
         </div>
       )}
+
+      {/* 3. Une réponse reçue autrement : c'est le client qui décide, le
+          garage ne fait que la noter. */}
+      <div className="mt-3 pt-3 border-t border-slate-100">
+        <div className="text-[12.5px] text-slate-500 mb-2">{GESTES_DEVIS.reponseAutre}</div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => onAccept(d.id)} className="flex items-center gap-1.5 text-[13px] font-medium px-3.5 py-1.5 rounded-xl border border-emerald-200 text-emerald-700 hover:bg-emerald-50 whitespace-nowrap">
+            <Check size={14} /> {GESTES_DEVIS.marquerAccepte}
+          </button>
+          <button type="button" onClick={() => onRefuse(d.id)} className="flex items-center gap-1.5 text-[13px] font-medium px-3.5 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 whitespace-nowrap">
+            <X size={14} /> {GESTES_DEVIS.marquerRefuse}
+          </button>
+        </div>
+      </div>
+
       {apercuOuvert && <DevisApercuModal d={d} garageData={garageData} onClose={() => setApercuOuvert(false)} />}
     </div>
   );
@@ -3304,7 +3475,7 @@ const statutLabel = (s) => {
   return s;
 };
   if (demandes.length === 0) {
-    return <EmptyState icon={Inbox} title="Aucune demande pour le moment" subtitle="Les nouvelles demandes clients apparaîtront ici automatiquement." />;
+    return <EmptyState icon={Inbox} title="Aucune demande pour le moment" subtitle="Les demandes de rendez-vous en ligne arrivent ici quand leur réception est activée pour votre garage. Un appel se note depuis l'accueil, avec « Un appel à rappeler »." />;
   }
   return (
     <div className="space-y-3">
@@ -3860,32 +4031,71 @@ function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien,
   );
 }
 
-function NouveauClientModal({ onClose, onCreerClient }) {
+// Un client et, s'il y a lieu, sa voiture, en une fenêtre. Recette du
+// 2026-09-11 : la voiture ne pouvait être créée qu'en inventant un
+// rendez-vous. Et l'e-mail, dit « optionnel », est ce qui permet d'envoyer le
+// devis : on le dit.
+function NouveauClientModal({ onClose, onCreerClient, onCreerVehicule }) {
   const [nom, setNom] = useState("");
   const [telephone, setTelephone] = useState("");
   const [email, setEmail] = useState("");
+  const [vehicule, setVehicule] = useState(VEHICULE_VIDE);
   const [creating, setCreating] = useState(false);
+  // Client déjà créé lors d'un essai précédent : un nouvel essai ne recrée
+  // pas le client, il ne réessaie que la voiture (revue du 2026-09-12).
+  const [clientCree, setClientCree] = useState(null);
+  const [echecVehicule, setEchecVehicule] = useState(false);
 
   const creer = async () => {
     if (!nom.trim()) return;
     setCreating(true);
-    const cree = await onCreerClient({ nom: nom.trim(), telephone: telephone.trim() || null, email: email.trim() || null });
+    const saisie = vehiculeDepuisSaisie(vehicule);
+    if (clientCree && onCreerVehicule) {
+      if (!saisie) { setCreating(false); onClose(clientCree); return; }
+      const v = await onCreerVehicule({ client_id: clientCree.id, ...saisie });
+      setCreating(false);
+      if (!v) { setEchecVehicule(true); return; }
+      onClose({ ...clientCree, vehicules: [v] });
+      return;
+    }
+    const cree = await onCreerClient({
+      nom: nom.trim(),
+      telephone: telephone.trim() || null,
+      email: email.trim() || null,
+      vehicule: saisie,
+    });
     setCreating(false);
-    if (cree) onClose();
+    const lu = lectureCreationClient(cree, saisie);
+    if (!lu.ok) return;
+    if (lu.vehiculeEnEchec) {
+      setClientCree(cree);
+      setEchecVehicule(true);
+      return;
+    }
+    onClose(cree);
   };
 
   return (
-    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => onClose()}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-slate-900">Nouveau client</h2>
         <div className="mt-4 space-y-2.5">
-          <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom du client" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
-          <input value={telephone} onChange={(e) => setTelephone(e.target.value)} placeholder="Téléphone (optionnel)" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (optionnel)" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+          <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom du client" autoFocus className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+          <input value={telephone} onChange={(e) => setTelephone(e.target.value)} placeholder="Téléphone (facultatif)" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail — pour lui envoyer devis et factures" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+        </div>
+        <div className="mt-4">
+          <div className="text-[12px] font-medium text-slate-500">Sa voiture <span className="font-normal text-slate-400">— facultatif, la plaque suffit</span></div>
+          <ChampsVehicule valeur={vehicule} onChange={setVehicule} />
+          {echecVehicule && (
+            <div className="text-[12px] text-amber-700 mt-1.5">
+              {MESSAGE_VEHICULE_ECHEC} « Enregistrer » réessaiera la voiture ; videz les champs pour garder le client seul.
+            </div>
+          )}
         </div>
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600">Annuler</button>
-          <button onClick={creer} disabled={!nom.trim() || creating} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: ACCENT }}>{creating ? "Création..." : "Créer le client"}</button>
+          <button type="button" onClick={() => onClose()} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600">Annuler</button>
+          <button type="button" onClick={creer} disabled={!nom.trim() || creating} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: ACCENT }}>{creating ? "Enregistrement..." : clientCree ? "Réessayer la voiture" : "Enregistrer le client"}</button>
         </div>
       </div>
     </div>
@@ -3900,12 +4110,20 @@ const TRAVAIL_DIFFERE_STATUT_LABEL = {
   refus_definitif: "Refus définitif",
 };
 
-function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], travauxDifferes = [], onCreerDevis, onCreerClient, onOuvrirTravailDiffereModal, onToast, onOuvrirDossierVehicule }) {
+function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], travauxDifferes = [], onCreerDevis, onCreerClient, onCreerVehicule, onOuvrirTravailDiffereModal, onToast, onOuvrirDossierVehicule, ouvrirCreation = false, onCreationOuverte }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [devisModalOpen, setDevisModalOpen] = useState(false);
-  const [nouveauClientOuvert, setNouveauClientOuvert] = useState(false);
+  const [nouveauClientOuvert, setNouveauClientOuvert] = useState(Boolean(ouvrirCreation));
+  const [ajoutVehicule, setAjoutVehicule] = useState(false);
+  const [vehiculeSaisi, setVehiculeSaisi] = useState(VEHICULE_VIDE);
+  const [vehiculeEnCours, setVehiculeEnCours] = useState(false);
   const [tri, setTri] = useState("nom");
+  useEffect(() => {
+    if (ouvrirCreation && onCreationOuverte) onCreationOuverte();
+    // Une seule fois, à l'arrivée depuis la mise en route.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const filtered = clients
     .filter((c) => c.nom?.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => {
@@ -3927,6 +4145,54 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
     .filter((t) => t.client_id === selected?.id)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
+  const fermerNouveauClient = (cree) => {
+    setNouveauClientOuvert(false);
+    if (cree?.id) setSelectedId(cree.id);
+  };
+  const choisirClient = (id) => {
+    setSelectedId(id);
+    setAjoutVehicule(false);
+    setVehiculeSaisi(VEHICULE_VIDE);
+  };
+  const enregistrerVehicule = async () => {
+    // Verrou : deux clics pendant l'enregistrement créaient deux voitures.
+    if (vehiculeEnCours) return;
+    const vehicule = vehiculeDepuisSaisie(vehiculeSaisi);
+    if (!vehicule || !selected || !onCreerVehicule) return;
+    setVehiculeEnCours(true);
+    const cree = await onCreerVehicule({ client_id: selected.id, ...vehicule });
+    setVehiculeEnCours(false);
+    if (!cree) return;
+    setAjoutVehicule(false);
+    setVehiculeSaisi(VEHICULE_VIDE);
+    onToast?.("Véhicule enregistré");
+  };
+
+  const modaleNouveauClient = nouveauClientOuvert && (
+    <NouveauClientModal onClose={fermerNouveauClient} onCreerClient={onCreerClient} onCreerVehicule={onCreerVehicule} />
+  );
+
+  // Recette du 2026-09-11 : sans aucun client, l'écran disait « Aucun client
+  // ne correspond à cette recherche » — il n'y avait pas de recherche — et
+  // montrait une fiche fantôme « CL » dont les boutons Appeler, SMS et Devis
+  // restaient actifs. Un écran vide dit ce qu'il faut faire, et le fait faire.
+  if (clients.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center max-w-xl mx-auto">
+        <div className="w-11 h-11 rounded-2xl mx-auto flex items-center justify-center" style={{ backgroundColor: ACCENT_SOFT }}>
+          <Users size={20} color={ACCENT} />
+        </div>
+        <div className="mt-3 font-semibold text-slate-900 text-[15px]">Aucun client pour l&apos;instant</div>
+        <div className="text-[13px] text-slate-500 mt-1">Ajoutez votre premier client et sa voiture : c&apos;est ce qu&apos;il faut pour lui faire un devis.</div>
+        <button type="button" onClick={() => setNouveauClientOuvert(true)} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-white px-4 py-2 rounded-xl" style={{ backgroundColor: ACCENT }}>
+          <Plus size={15} /> Ajouter un client
+        </button>
+        <div className="text-[12px] text-slate-400 mt-3">Vous avez déjà un fichier clients ? Il se reprend dans Paramètres › Reprise de données.</div>
+        {modaleNouveauClient}
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
       <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -3945,13 +4211,11 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
             <option value="recent">Plus récent → moins récent</option>
             <option value="ancien">Moins récent → plus récent</option>
           </select>
-          <button onClick={() => setNouveauClientOuvert(true)} className="order-3 shrink-0 p-2 rounded-xl text-white" style={{ backgroundColor: ACCENT }} title="Nouveau client">
-            <Plus size={16} />
+          <button type="button" onClick={() => setNouveauClientOuvert(true)} className="order-3 shrink-0 flex items-center gap-1 px-2.5 py-2 rounded-xl text-white text-[12.5px] font-semibold" style={{ backgroundColor: ACCENT }} title="Nouveau client" aria-label="Nouveau client">
+            <Plus size={16} /> <span className="hidden sm:inline">Nouveau client</span>
           </button>
         </div>
-        {nouveauClientOuvert && (
-          <NouveauClientModal onClose={() => setNouveauClientOuvert(false)} onCreerClient={onCreerClient} />
-        )}
+        {modaleNouveauClient}
         {filtered.length === 0 ? (
           <div className="px-4 py-8 text-center text-slate-400 text-[13px]">Aucun client ne correspond à cette recherche.</div>
         ) : (
@@ -3960,10 +4224,10 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
               const vehicles = Array.isArray(c.vehicules) ? c.vehicules : c.vehicules ? [c.vehicules] : [];
               const v = vehicles[0];
               return (
-                <button key={c.id} onClick={() => setSelectedId(c.id)} className="w-full text-left px-4 py-3 hover:bg-slate-50/70 flex items-center justify-between" style={selected?.id === c.id ? { backgroundColor: ACCENT_SOFT } : {}}>
+                <button key={c.id} onClick={() => choisirClient(c.id)} className="w-full text-left px-4 py-3 hover:bg-slate-50/70 flex items-center justify-between" style={selected?.id === c.id ? { backgroundColor: ACCENT_SOFT } : {}}>
                   <div>
                     <div className="text-sm font-medium text-slate-900">{c.nom}</div>
-                    <div className="text-[12.5px] text-slate-500">{v?.marque} {v?.modele}</div>
+                    <div className="text-[12.5px] text-slate-500">{v ? libelleVehiculeCourt(v) : "Aucun véhicule"}</div>
                   </div>
                   {c.fidele && <Star size={13} className="text-amber-400 fill-amber-400 shrink-0" />}
                 </button>
@@ -3980,7 +4244,7 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
             <div><div className="text-lg font-semibold text-slate-900">{selected?.nom}</div><div className="text-[12.5px] text-slate-500">Dossier client et véhicule</div></div>
             {selected?.fidele && <Badge tone="amber">⭐ Client fidèle</Badge>}
           </div>
-          <div className="flex items-center gap-2 flex-wrap"><a href={selected?.telephone ? `tel:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><Phone size={13} />Appeler</a><a href={selected?.telephone ? `sms:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><MessageSquare size={13} />SMS</a><button onClick={() => setDevisModalOpen(true)} className="px-3 py-2 rounded-xl text-[12.5px] font-medium text-white flex items-center gap-1.5" style={{ backgroundColor: ACCENT }}><ReceiptText size={13} />Devis</button>{selected && <button onClick={() => onOuvrirTravailDiffereModal && onOuvrirTravailDiffereModal(selected.id)} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><Clock size={13} />Travail différé</button>}</div>
+          <div className="flex items-center gap-2 flex-wrap"><a href={selected?.telephone ? `tel:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><Phone size={13} />Appeler</a><a href={selected?.telephone ? `sms:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><MessageSquare size={13} />SMS</a><button onClick={() => setDevisModalOpen(true)} className="px-3 py-2 rounded-xl text-[12.5px] font-medium text-white flex items-center gap-1.5" style={{ backgroundColor: ACCENT }}><ReceiptText size={13} />Faire un devis</button>{selected && <button onClick={() => onOuvrirTravailDiffereModal && onOuvrirTravailDiffereModal(selected.id)} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><Clock size={13} />Travail différé</button>}</div>
           {devisModalOpen && selected && (
             <GenererDevisModal
               clients={clients}
@@ -3988,13 +4252,14 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
               clientPreselectionne={selected}
               onClose={() => setDevisModalOpen(false)}
               onCreate={onCreerDevis}
+              onCreerVehicule={onCreerVehicule}
             />
           )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
           <Phone size={14} className="text-slate-400" /> {formatPhone(selected?.telephone)}
-          <div className="flex items-center gap-2 text-sm text-slate-600"><Mail size={14} className="text-slate-400" /> {selected?.email}</div>
+          <div className="flex items-center gap-2 text-sm text-slate-600"><Mail size={14} className="text-slate-400" /> {selected?.email || <span className="text-slate-400">Pas d&apos;e-mail : le devis ne pourra pas lui être envoyé par e-mail.</span>}</div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6">
@@ -4003,9 +4268,23 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
         </div>
 
         <div className="mt-6">
-          <div className="text-[13px] font-medium text-slate-500 mb-2">Véhicule{selectedVehicles.length > 1 ? "s" : ""}</div>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="text-[13px] font-medium text-slate-500">Véhicule{selectedVehicles.length > 1 ? "s" : ""}</div>
+            {selected && onCreerVehicule && !ajoutVehicule && (
+              <button type="button" onClick={() => setAjoutVehicule(true)} className="text-[12.5px] font-medium text-blue-600 hover:underline">+ Ajouter un véhicule</button>
+            )}
+          </div>
+          {ajoutVehicule && (
+            <div className="mb-3 bg-slate-50 rounded-xl p-3">
+              <ChampsVehicule valeur={vehiculeSaisi} onChange={setVehiculeSaisi} autoFocus />
+              <div className="flex justify-end gap-2 mt-2">
+                <button type="button" onClick={() => { setAjoutVehicule(false); setVehiculeSaisi(VEHICULE_VIDE); }} className="px-3 py-1.5 rounded-lg text-[12.5px] font-medium text-slate-500">Annuler</button>
+                <button type="button" onClick={enregistrerVehicule} disabled={!vehiculeDepuisSaisie(vehiculeSaisi) || vehiculeEnCours} className="px-3 py-1.5 rounded-lg text-[12.5px] font-semibold text-white disabled:opacity-50" style={{ backgroundColor: ACCENT }}>{vehiculeEnCours ? "Enregistrement…" : "Enregistrer le véhicule"}</button>
+              </div>
+            </div>
+          )}
           <div className="space-y-2">
-            {selectedVehicles.length === 0 && <div className="text-[13px] text-slate-400">Aucun véhicule enregistré.</div>}
+            {selectedVehicles.length === 0 && !ajoutVehicule && <div className="text-[13px] text-slate-400">Aucun véhicule enregistré.</div>}
             {selectedVehicles.map((v, i) => (
               v.id && onOuvrirDossierVehicule ? (
                 <button
@@ -4016,14 +4295,14 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <Car size={16} className="text-slate-400 shrink-0" />
-                    <div className="text-sm text-slate-800 truncate">{v.marque} {v.modele} ({v.annee}) · <span className="text-slate-500">{v.immatriculation}</span></div>
+                    <div className="text-sm text-slate-800 truncate">{v.marque} {v.modele}{v.annee ? ` (${v.annee})` : ""} · <span className="text-slate-500">{v.immatriculation}</span></div>
                   </div>
                   <ArrowRight size={14} className="text-slate-400 shrink-0" />
                 </button>
               ) : (
                 <div key={v.id || i} className="bg-slate-50 rounded-xl p-3.5 flex items-center gap-3">
                   <Car size={16} className="text-slate-400" />
-                  <div className="text-sm text-slate-800">{v.marque} {v.modele} ({v.annee}) · <span className="text-slate-500">{v.immatriculation}</span></div>
+                  <div className="text-sm text-slate-800">{v.marque} {v.modele}{v.annee ? ` (${v.annee})` : ""} · <span className="text-slate-500">{v.immatriculation}</span></div>
                 </div>
               )
             ))}
@@ -4698,15 +4977,29 @@ function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = nul
     }
   };
 
-  const allerConfigurer = (vue, onglet) => {
+  // `creation` : la fenêtre à ouvrir en arrivant (« client », « devis »). La
+  // mise en route emmène au geste, pas à l'écran où il faudrait le chercher.
+  const [creationDemandee, setCreationDemandee] = useState(null);
+  const [devisOuvertId, setDevisOuvertId] = useState(null);
+  const [versionDevis, setVersionDevis] = useState(0);
+  const allerConfigurer = (vue, onglet, creation) => {
     setParametresOnglet(onglet || "garage");
+    setCreationDemandee(creation || null);
     setView(vue);
   };
+  useEffect(() => {
+    if (view !== "devis") setDevisOuvertId(null);
+  }, [view]);
   const [notifsAVerifierCount, setNotifsAVerifierCount] = useState(0);
 
   // Compteur de la pastille : chargé au montage pour que le badge existe
   // sans avoir à ouvrir la section. La section, une fois ouverte, tient
   // ce compteur à jour via onCountChange.
+  // Revue du 2026-09-12 : masquer l'entrée quand le compteur vaut zéro la
+  // rendait introuvable si une alerte arrivait ensuite, le compteur n'étant
+  // lu qu'au montage. Il est relu au retour sur l'onglet et à chaque
+  // changement d'écran.
+  const [versionNotifs, setVersionNotifs] = useState(0);
   useEffect(() => {
     let annule = false;
     supabase.rpc("notifications_a_verifier").then(({ data, error }) => {
@@ -4715,6 +5008,17 @@ function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = nul
     });
     return () => {
       annule = true;
+    };
+  }, [versionNotifs]);
+  useEffect(() => {
+    const relire = () => {
+      if (document.visibilityState === "visible") setVersionNotifs((v) => v + 1);
+    };
+    window.addEventListener("focus", relire);
+    document.addEventListener("visibilitychange", relire);
+    return () => {
+      window.removeEventListener("focus", relire);
+      document.removeEventListener("visibilitychange", relire);
     };
   }, []);
   const [stats, setStats] = useState({
@@ -5257,7 +5561,30 @@ setPropositions(formattedPropositions);
       setDevisList(formatted);
     }
     loadDevisList();
+  }, [versionDevis]);
+
+  // Recette du 2026-09-11 : le client avait accepté, l'écran resté ouvert
+  // proposait encore d'envoyer. Les devis sont relus au retour sur l'onglet du
+  // navigateur, et en rouvrant l'accueil ou les devis.
+  useEffect(() => {
+    const relire = () => {
+      if (document.visibilityState === "visible") setVersionDevis((v) => v + 1);
+    };
+    window.addEventListener("focus", relire);
+    document.addEventListener("visibilitychange", relire);
+    return () => {
+      window.removeEventListener("focus", relire);
+      document.removeEventListener("visibilitychange", relire);
+    };
   }, []);
+  const vuePrecedente = useRef(view);
+  useEffect(() => {
+    if (vuePrecedente.current !== view) {
+      if (view === "devis" || view === "aujourdhui") setVersionDevis((v) => v + 1);
+      setVersionNotifs((v) => v + 1);
+    }
+    vuePrecedente.current = view;
+  }, [view]);
 
   const loadTravauxDifferes = async () => {
     const { data, error } = await supabase
@@ -5559,35 +5886,34 @@ if (updateError) {
     flashToast("Proposition refusée — Nexora peut maintenant rechercher un autre créneau");
   };
 
-  const handleAcceptDevis = async (id) => {
-    const { error } = await supabase
+  // Noter une réponse reçue par téléphone ou au comptoir. Si le client a déjà
+  // répondu par le lien entre-temps, la mise à jour ne touche aucune ligne :
+  // on le dit et on relit, au lieu d'afficher un succès qui n'a pas eu lieu.
+  const noterReponseDevis = async (id, statut) => {
+    const date = new Date().toISOString();
+    const { data, error } = await supabase
       .from("devis")
-      .update({ statut: "accepte", date_validation: new Date().toISOString() })
+      .update({ statut, date_validation: date })
       .eq("id", id)
-      .eq("statut", "en_attente");
+      .eq("statut", "en_attente")
+      .select("id");
     if (error) {
-      console.error("Erreur acceptation devis :", error);
-      flashToast("Impossible de valider ce devis", "error");
+      console.error("Erreur réponse devis :", error);
+      flashToast("Impossible d'enregistrer la réponse", "error");
       return;
     }
-    setDevisList((prev) => prev.filter((d) => d.id !== id));
-    flashToast("Devis accepté");
-  };
-
-  const handleRefuseDevis = async (id) => {
-    const { error } = await supabase
-      .from("devis")
-      .update({ statut: "refuse", date_validation: new Date().toISOString() })
-      .eq("id", id)
-      .eq("statut", "en_attente");
-    if (error) {
-      console.error("Erreur refus devis :", error);
-      flashToast("Impossible de refuser ce devis", "error");
+    if (!data || data.length === 0) {
+      flashToast("Ce devis a déjà reçu une réponse : la liste est relue.", "error");
+      setVersionDevis((v) => v + 1);
       return;
     }
-    setDevisList((prev) => prev.filter((d) => d.id !== id));
-    flashToast("Devis refusé");
+    // Le devis garde sa place avec son nouveau statut : il rejoint « Réponses
+    // des clients » et l'historique au lieu de disparaître.
+    setDevisList((prev) => prev.map((d) => (d.id === id ? { ...d, statut, date_validation: date } : d)));
+    flashToast(statut === "accepte" ? "Réponse notée : devis accepté" : "Réponse notée : devis refusé");
   };
+  const handleAcceptDevis = (id) => noterReponseDevis(id, "accepte");
+  const handleRefuseDevis = (id) => noterReponseDevis(id, "refuse");
 
   // Lien devis sécurisé (jeton opaque, cf. migration liens_publics) — un
   // seul lien actif par devis, régénéré à la demande, jamais journalisé.
@@ -5779,24 +6105,29 @@ if (updateError) {
     flashToast("Montant du devis mis à jour");
   };
 
-  const handleCreerDevis = async ({ client_id, vehicule_id, prestation_id, montant_ht }) => {
+  const SELECT_DEVIS = `*, clients (nom, telephone, email), vehicules (marque, modele, annee, immatriculation), prestations (nom, categorie), devis_lignes ( id, devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva, position, prestation_id, montant_ht, montant_tva, created_at, updated_at )`;
+
+  // Un devis naît à 0 € : ses totaux viennent de ses lignes, que le garage
+  // saisit juste après. Si l'intervention choisie a un prix au catalogue, elle
+  // devient la première ligne — c'est une information déjà connue. Rien n'est
+  // envoyé au client : l'envoi a son propre geste (migration 20260915000100).
+  const handleCreerDevis = async ({ client_id, vehicule_id, prestation = null }) => {
     if (!client_id) {
       flashToast("Sélectionnez un client", "error");
       return;
     }
-    const montantTtc = Math.round(Number(montant_ht || 0) * 1.2 * 100) / 100;
     const { data, error } = await supabase
       .from("devis")
       .insert({
         garage_id: garageId,
         client_id,
         vehicule_id: vehicule_id || null,
-        prestation_id: prestation_id || null,
-        montant_ht: Number(montant_ht || 0),
-        montant_ttc: montantTtc,
+        prestation_id: prestation?.id || null,
+        montant_ht: 0,
+        montant_ttc: 0,
         statut: "en_attente",
       })
-      .select(`*, clients (nom, telephone, email), vehicules (marque, modele, annee, immatriculation), prestations (nom, categorie), devis_lignes ( id, devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva, position, prestation_id, montant_ht, montant_tva, created_at, updated_at )`)
+      .select(SELECT_DEVIS)
       .single();
 
     if (error) {
@@ -5805,22 +6136,38 @@ if (updateError) {
       return;
     }
 
+    let devisCree = data;
+    let ligneEchouee = null;
+    const premiereLigne = Number(prestation?.prix_ht) > 0 ? preremplirDepuisPrestation(prestation) : null;
+    if (premiereLigne) {
+      const { error: erreurLigne } = await supabase
+        .from("devis_lignes")
+        .insert({ devis_id: data.id, garage_id: garageId, position: 0, quantite: 1, ...premiereLigne });
+      if (erreurLigne) {
+        console.error("Première ligne non créée :", erreurLigne);
+        ligneEchouee = premiereLigne.libelle || prestation?.nom || null;
+      } else {
+        const { data: relu } = await supabase.from("devis").select(SELECT_DEVIS).eq("id", data.id).single();
+        if (relu) devisCree = relu;
+      }
+    }
+
     const formatted = {
-      ...data,
-      client: data.clients?.nom || "Client inconnu",
-      telephone: data.clients?.telephone || "",
-      vehicule: `${data.vehicules?.marque || ""} ${data.vehicules?.modele || ""}`.trim(),
-      immatriculation: data.vehicules?.immatriculation || "",
-      prestation: data.prestations?.nom || "Prestation",
-      categorie: data.prestations?.categorie || "diagnostic",
-      date: new Date(data.created_at).toLocaleDateString("fr-FR", { timeZone: APP_TIME_ZONE }),
-      devis_lignes: data.devis_lignes || [],
+      ...devisCree,
+      client: devisCree.clients?.nom || "Client inconnu",
+      telephone: devisCree.clients?.telephone || "",
+      vehicule: `${devisCree.vehicules?.marque || ""} ${devisCree.vehicules?.modele || ""}`.trim(),
+      immatriculation: devisCree.vehicules?.immatriculation || "",
+      prestation: devisCree.prestations?.nom || "Prestation",
+      categorie: devisCree.prestations?.categorie || "diagnostic",
+      date: new Date(devisCree.created_at).toLocaleDateString("fr-FR", { timeZone: APP_TIME_ZONE }),
+      devis_lignes: devisCree.devis_lignes || [],
     };
-    setDevisList((prev) => [formatted, ...prev]);
-    flashToast("Devis créé");
+    setDevisList((prev) => [formatted, ...prev.filter((d) => d.id !== formatted.id)]);
+    const message = messageDevisCree({ ligneEchouee });
+    flashToast(message.texte, message.ton === "error" ? "error" : "success");
     return formatted;
   };
-
 
   // Source de vérité unique d'une facture : l'ordre de réparation TERMINÉ du
   // rendez-vous, et ses seules lignes non annulées — ce qui a réellement été
@@ -6113,7 +6460,7 @@ if (updateError) {
     setSelectedAppt((previous) => (previous && previous.id === rdvId ? { ...previous, mecanicien_id: mecanicienId } : previous));
         flashToast("Mécanicien affecté");
   };
-  const handleCreerClient = async ({ nom, telephone, email }) => {
+  const handleCreerClient = async ({ nom, telephone, email, vehicule = null }) => {
     const { data, error } = await supabase
       .from("clients")
       .insert({ garage_id: garageId, nom, telephone: telephone || null, email: email || null })
@@ -6124,8 +6471,30 @@ if (updateError) {
       flashToast("Impossible de créer le client", "error");
       return null;
     }
-    setClients((prev) => [...prev, data]);
-    return data;
+    // La voiture saisie avec le client. Son échec ne fait pas perdre le
+    // client : il est enregistré, et l'écran appelant s'arrête là plutôt que
+    // de continuer sans voiture (revue du 2026-09-12).
+    let client = data;
+    if (vehicule) {
+      const { data: v, error: erreurVehicule } = await supabase
+        .from("vehicules")
+        .insert({ garage_id: garageId, client_id: data.id, ...vehicule })
+        .select("id, marque, modele, annee, immatriculation")
+        .single();
+      if (erreurVehicule) {
+        console.error("Erreur création véhicule :", erreurVehicule);
+      } else {
+        client = { ...data, vehicules: [...(Array.isArray(data.vehicules) ? data.vehicules : []), v] };
+      }
+    }
+    setClients((prev) => [...prev, client]);
+    const lu = lectureCreationClient(client, vehicule);
+    if (lu.vehiculeEnEchec) {
+      flashToast(MESSAGE_VEHICULE_ECHEC, "error");
+    } else {
+      flashToast(lu.vehiculeId ? "Client et véhicule enregistrés" : "Client enregistré");
+    }
+    return client;
   };
 
   // Création d'un véhicule depuis le formulaire de rendez-vous. Jusqu'ici
@@ -6340,6 +6709,13 @@ if (updateError) {
   // qu'on attend de lui sur la page qu'il vient d'ouvrir — surtout sur les
   // écrans qu'il n'ouvre qu'une fois par semaine. La place est la même, ce
   // qu'elle porte est utile.
+  // L'accueil n'a ni les factures ni les règlements : lui annoncer
+  // « Devis, factures et règlements » promet deux écrans qu'il n'aura jamais.
+  // Le sous-titre dit ce que ce rôle-là trouvera réellement sur la page.
+  const sousTitreDevis = peutFacturer(monRole)
+    ? "Devis, factures et règlements"
+    : "Vos devis, de la création à la réponse du client";
+
   const sousTitres = {
     aujourdhui: "Ce qui vous attend aujourd'hui, et ce qui bloque",
     atelier: "Où en est chaque voiture, en un coup d'œil",
@@ -6347,10 +6723,10 @@ if (updateError) {
     valider: "Les demandes de rendez-vous qui attendent votre accord",
     demandes: "Ce que vos clients vous ont écrit, trié pour vous",
     clients: "Vos clients, leurs véhicules et leur historique",
-    devis: "Devis, factures et règlements",
+    devis: sousTitreDevis,
     verifier: "Les envois automatiques qui n'ont pas abouti",
     factures: "Vos factures et les règlements reçus",
-    facturation: "Devis, factures et règlements",
+    facturation: sousTitreDevis,
     inspections: "Le tour du véhicule en photos, envoyé au client pour accord avant d'intervenir",
     ordres: "La fiche interne qui suit chaque réparation, de la préparation à la restitution",
     statistiques: "Ce que le garage a produit, et ce qui progresse",
@@ -6375,6 +6751,21 @@ if (updateError) {
     historique: "Historique",
     parametres: "Paramètres",
   };
+
+  // Recette du 2026-09-11 : « Demandes » et « Notifications à vérifier »
+  // s'affichaient chez un garage neuf alors que rien ne les alimente encore.
+  // Elles apparaissent dès qu'elles ont quelque chose à montrer.
+  const navGroupesAffiches = navGroupesVisibles
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((item) => {
+        if (item.key === view) return true;
+        if (item.key === "demandes") return demandes.length > 0;
+        if (item.key === "notifications-a-verifier") return notifsAVerifierCount > 0;
+        return true;
+      }),
+    }))
+    .filter((g) => g.items.length > 0);
 
   const navBadgeCounts = {
     aujourdhui: demandes.filter((d) => d.statut === "nouveau").length + propositions.length + devisList.filter((d) => d.statut === "en_attente").length,
@@ -6456,7 +6847,7 @@ if (updateError) {
       <aside className="w-60 shrink-0 py-5 px-3.5 hidden md:flex flex-col" style={{ backgroundColor: NAVY }}>
         <Logo dark />
         <nav className="mt-8 flex flex-col gap-4">
-          {navGroupesVisibles.map((group) => (
+          {navGroupesAffiches.map((group) => (
             <div key={group.label || "main"}>
               {group.label && <div className="px-3 mb-1 text-[10.5px] font-semibold tracking-wide uppercase" style={{ color: "#5C6B92" }}>{group.label}</div>}
               <div className="flex flex-col gap-1">
@@ -6542,7 +6933,7 @@ if (updateError) {
                 </button>
               </div>
               <nav className="mt-8 flex flex-col gap-4">
-                {navGroupesVisibles.map((group) => (
+                {navGroupesAffiches.map((group) => (
                   <div key={group.label || "main"}>
                     {group.label && <div className="px-3 mb-1 text-[10.5px] font-semibold tracking-wide uppercase" style={{ color: "#5C6B92" }}>{group.label}</div>}
                     <div className="flex flex-col gap-1">
@@ -6586,12 +6977,13 @@ if (updateError) {
         )}
 
         <div key={view} className="nx-vue p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
+          {view === "aujourdhui" && <AujourdhuiView monRole={monRole} stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={setDossierVehiculeId} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
           {["devis", "factures", "historique"].includes(view) && (
             <FacturationView
+              monRole={monRole}
               view={view}
               setView={setView}
               devisList={devisList}
@@ -6620,6 +7012,10 @@ if (updateError) {
               onGenererLienFacture={genererLienFacture}
               onRevoquerLienFacture={revoquerLienFacture}
               onCreerOrdreReparation={(devis) => { setFocusOrdreDevisId(devis.id); setView("ordres-reparation"); }}
+              onCreerVehicule={handleCreerVehicule}
+              ouvrirCreation={creationDemandee === "devis"}
+              onCreationOuverte={() => setCreationDemandee(null)}
+              devisOuvertId={devisOuvertId}
             />
           )}
           {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} garageData={garageData} onConnectCalendar={connectGoogleCalendar} clients={clients} prestations={prestations} onCreerRdv={handleCreerRdvManuel} onCreerClient={handleCreerClient} onCreerVehicule={handleCreerVehicule} />}
@@ -6630,7 +7026,32 @@ if (updateError) {
               onRecommend={handleRecommendedAppointment}
             />
           )}
-          {view === "clients" && <ClientsView clients={clients} rendezVous={rendezVous} prestations={prestations} factures={factures} travauxDifferes={travauxDifferes} onCreerDevis={handleCreerDevis} onCreerClient={handleCreerClient} onOuvrirTravailDiffereModal={(clientId) => setTravailDiffereModal({ clientId })} onToast={flashToast} onOuvrirDossierVehicule={(vehiculeId) => setDossierVehiculeId(vehiculeId)} />}
+          {view === "clients" && (
+            <ClientsView
+              clients={clients}
+              rendezVous={rendezVous}
+              prestations={prestations}
+              factures={factures}
+              travauxDifferes={travauxDifferes}
+              // Un devis créé depuis la fiche client s'ouvre là où l'on saisit
+              // ses lignes, au lieu de rester invisible derrière la fiche.
+              onCreerDevis={async (champs) => {
+                const cree = await handleCreerDevis(champs);
+                if (cree) {
+                  setDevisOuvertId(cree.id);
+                  setView("devis");
+                }
+                return cree;
+              }}
+              onCreerClient={handleCreerClient}
+              onCreerVehicule={handleCreerVehicule}
+              onOuvrirTravailDiffereModal={(clientId) => setTravailDiffereModal({ clientId })}
+              onToast={flashToast}
+              onOuvrirDossierVehicule={(vehiculeId) => setDossierVehiculeId(vehiculeId)}
+              ouvrirCreation={creationDemandee === "client"}
+              onCreationOuverte={() => setCreationDemandee(null)}
+            />
+          )}
           {INSPECTIONS_MODULE_ACTIF && view === "inspections" && <InspectionsSection garageId={garageId} garageNom={garageData?.nom_garage} clients={clients} rendezVous={rendezVous} onToast={flashToast} initialDetailId={inspectionCibleCockpit} onInitialDetailConsumed={() => setInspectionCibleCockpit(null)} />}
           {view === "ordres-reparation" && (
             <OrdresReparationSection

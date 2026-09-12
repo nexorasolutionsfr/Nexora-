@@ -15,15 +15,15 @@
 
 export const ETATS = {
   aucune: {
-    titre: "Pas encore préparé",
-    detail: "Aucun envoi n'a été demandé pour ce devis.",
+    titre: "Pas encore envoyé",
+    detail: "Rien n'est parti. Relisez le message, puis confirmez l'envoi.",
     ton: "neutre",
     peutValider: true,
     peutReessayer: false,
   },
   a_valider: {
-    titre: "À valider",
-    detail: "Le devis est prêt. Rien ne partira tant que vous ne l'aurez pas validé.",
+    titre: "Pas encore envoyé",
+    detail: "Rien n'est parti. Relisez le message, puis confirmez l'envoi.",
     ton: "neutre",
     peutValider: true,
     peutReessayer: false,
@@ -93,6 +93,33 @@ export function lireEtat(reponse) {
     destinataire: (reponse && reponse.destinataire) || null,
   };
 }
+
+// Ce que dit l'écran juste après la confirmation. La ligne vient d'être mise
+// en file : rien n'est encore parti, et aucun délai n'est promis — le
+// traitement dépend d'une machine qui peut être arrêtée.
+export function messageApresValidation(dejaAutorise) {
+  return dejaAutorise
+    ? "Cet envoi était déjà programmé : rien n'a été ajouté."
+    : "Envoi programmé. La carte passera à « Envoyé » quand le message sera parti.";
+}
+
+// Les gestes de la carte devis, nommés une fois pour toutes.
+//
+// En recette, trois gestes se ressemblaient : produire un lien, écrire au
+// client, noter sa réponse. Un garagiste ne doit pas pouvoir croire qu'il a
+// envoyé en copiant un lien, ni qu'il a accepté pour le client en envoyant.
+// Seuls les deux libellés d'envoi parlent d'envoyer.
+export const GESTES_DEVIS = {
+  ouvrirEnvoi: "Envoyer au client par e-mail…",
+  confirmerEnvoi: "Oui, envoyer ce message",
+  apercu: "Voir ce que verra le client",
+  lien: "Obtenir un lien à transmettre vous-même",
+  lienAide: "Ce lien n'envoie rien : copiez-le pour le transmettre vous-même (SMS, WhatsApp…).",
+  lienCopie: "Lien copié",
+  reponseAutre: "Le client vous a répondu par téléphone ou au comptoir ?",
+  marquerAccepte: "Il a accepté",
+  marquerRefuse: "Il a refusé",
+};
 
 // Les refus renvoyés par `autoriser_envoi_devis`, en français.
 export function messageRefusValidation(raison) {

@@ -26,6 +26,8 @@
 //    tout passé, elle s'efface — et on rappelle une fois où retrouver ces
 //    réglages.
 
+import { peutVoir } from "../acces-salaries/accesConstants.js";
+
 /** Le garage a-t-il renseigné au moins une plage d'ouverture ? */
 export function horairesRenseignes(garageData) {
   const horaires = garageData?.horaires;
@@ -40,13 +42,41 @@ export function horairesRenseignes(garageData) {
 /**
  * Les étapes de mise en route, dans l'ordre où elles servent au garage.
  *
- * L'ordre n'est pas décoratif : les horaires d'abord, parce que sans eux
- * l'agenda propose des créneaux un jour de fermeture ; les clients ensuite,
- * parce que c'est le plus long et le plus rentable ; le premier rendez-vous en
- * dernier, parce qu'il n'a de sens qu'une fois le reste en place.
+ * L'ordre n'est pas décoratif. Recette du 2026-09-11 : la première ligne
+ * guidée menait à la reprise d'un fichier CSV, et rien ne proposait de créer
+ * un client à la main ni un devis — un garage sans fichier restait sans
+ * première action utile. D'où, en tête, le premier client (avec sa voiture)
+ * puis le premier devis : c'est ce qui prouve l'outil en une minute. Les
+ * horaires suivent — sans eux l'agenda propose des créneaux un jour de
+ * fermeture —, puis l'équipe, puis le premier rendez-vous.
+ *
+ * `creation` indique la fenêtre à ouvrir en arrivant : l'étape emmène
+ * directement au geste, pas à un écran où il faudrait le chercher.
  */
-export function etapesMiseEnRoute({ garageData, mecaniciens = [], clients = [], rendezVous = [] }) {
+export function etapesMiseEnRoute({ garageData, mecaniciens = [], clients = [], rendezVous = [], devis = [], role = null }) {
+  // Revue du 12 septembre 2026 : la liste proposait « horaires » et « équipe »
+  // — donc les Paramètres — à un compte accueil qui n'y a pas droit. Une étape
+  // qui mène à un refus n'a rien à faire dans une mise en route. On filtre par
+  // les droits existants, sans en élargir aucun.
   return [
+    {
+      cle: "clients",
+      titre: "Votre premier client et sa voiture",
+      pourquoi: "Nom, téléphone, e-mail et immatriculation : une minute.",
+      action: "Ajouter",
+      vue: "clients",
+      creation: "client",
+      fait: clients.length > 0,
+    },
+    {
+      cle: "premier_devis",
+      titre: "Votre premier devis",
+      pourquoi: "Main-d'œuvre et pièces : les totaux se calculent seuls.",
+      action: "Créer",
+      vue: "devis",
+      creation: "devis",
+      fait: devis.length > 0,
+    },
     {
       cle: "horaires",
       titre: "Vos horaires d'ouverture",
@@ -66,15 +96,6 @@ export function etapesMiseEnRoute({ garageData, mecaniciens = [], clients = [], 
       fait: mecaniciens.length > 0,
     },
     {
-      cle: "clients",
-      titre: "Vos clients et véhicules",
-      pourquoi: "Reprenez votre ancien fichier, une seule fois.",
-      action: "Reprendre",
-      vue: "parametres",
-      onglet: "import",
-      fait: clients.length > 0,
-    },
-    {
       cle: "premier_rdv",
       titre: "Votre premier rendez-vous",
       pourquoi: "Le tableau de bord s'anime dès qu'une voiture est attendue.",
@@ -82,7 +103,7 @@ export function etapesMiseEnRoute({ garageData, mecaniciens = [], clients = [], 
       vue: "agenda",
       fait: rendezVous.length > 0,
     },
-  ];
+  ].filter((etape) => !role || peutVoir(role, etape.vue));
 }
 
 /**

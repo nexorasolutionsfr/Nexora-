@@ -36,9 +36,11 @@ function ecrirePassees(cles) {
  * Elle disparaît d'elle-même dès qu'il n'y a plus rien à proposer — voir
  * miseEnRoute.js. Un garage installé ne la voit jamais.
  */
-export default function MiseEnRoute({ garageData, mecaniciens, clients, rendezVous, onAller }) {
+export default function MiseEnRoute({ garageData, mecaniciens, clients, rendezVous, devis = [], role = null, onAller }) {
   const [passees, setPassees] = useState(lirePassees);
-  const etat = etatMiseEnRoute({ garageData, mecaniciens, clients, rendezVous }, passees);
+  // `role` : une étape qui mène à un écran refusé n'est pas proposée (voir
+  // miseEnRoute.js). Les droits ne sont pas élargis, seulement respectés.
+  const etat = etatMiseEnRoute({ garageData, mecaniciens, clients, rendezVous, devis, role }, passees);
 
   if (!etat.visible) return null;
 
@@ -85,11 +87,11 @@ export default function MiseEnRoute({ garageData, mecaniciens, clients, rendezVo
             key={etape.cle}
             role="button"
             tabIndex={0}
-            onClick={() => onAller(etape.vue, etape.onglet)}
+            onClick={() => onAller(etape.vue, etape.onglet, etape.creation)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                onAller(etape.vue, etape.onglet);
+                onAller(etape.vue, etape.onglet, etape.creation);
               }
             }}
             className="flex items-start gap-2.5 px-2.5 py-3 border-t border-slate-50 cursor-pointer hover:bg-slate-50/70 transition-colors"

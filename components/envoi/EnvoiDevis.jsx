@@ -3,19 +3,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { Mail, Send, ShieldAlert, Clock, Check, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { lireEtat, messageRefusValidation } from "./etatsEnvoi";
+import { GESTES_DEVIS, lireEtat, messageApresValidation, messageRefusValidation } from "./etatsEnvoi";
 
 const ACCENT = "#3D6BE0";
 
 // Envoyer un devis au client : deux gestes, jamais confondus.
 //
-//   « Copier le lien » vit ailleurs dans la carte et n'envoie rien.
-//   Ici, on montre le destinataire et le message, puis on valide.
+//   Le lien à transmettre soi-même vit ailleurs dans la carte et n'envoie rien.
+//   Ici, on montre le destinataire et le message, puis on confirme.
 //
 // L'aperçu vient de `apercu_message_devis`, la même fonction que le traitement
 // utilise pour composer l'e-mail : ce qui est relu est ce qui partira, au
 // lien près, qui n'existe qu'au moment de l'envoi.
-export default function EnvoiDevis({ devisId, onToast }) {
+//
+// `cle` change quand le devis change (montant, statut) : l'état d'envoi est
+// alors relu, pour qu'une carte restée ouverte ne mente pas.
+export default function EnvoiDevis({ devisId, cle = null, onToast }) {
   const [etat, setEtat] = useState(null);
   const [apercu, setApercu] = useState(null);
   const [ouvert, setOuvert] = useState(false);
@@ -29,7 +32,25 @@ export default function EnvoiDevis({ devisId, onToast }) {
 
   // L'état est relu à l'ouverture de l'écran : revenir sur la carte montre ce
   // qui a été enregistré, pas ce que le navigateur avait gardé en mémoire.
-  useEffect(() => { relireEtat(); }, [relireEtat]);
+  useEffect(() => { relireEtat(); }, [relireEtat, cle]);
+
+  // « Cet écran affichera « Envoyé » quand le message sera parti » : encore
+  // faut-il le relire. Rejeu du 2026-09-11 : le message était parti, la carte
+  // restée ouverte disait toujours « en attente ». Tant qu'un envoi est en
+  // file ou en cours, l'état est relu régulièrement et au retour sur l'onglet.
+  const enSuspens = etat?.cle === "en_attente_envoi" || etat?.cle === "envoi_en_cours";
+  useEffect(() => {
+    if (!enSuspens) return undefined;
+    const minuteur = setInterval(relireEtat, 20_000);
+    const auRetour = () => { if (document.visibilityState === "visible") relireEtat(); };
+    window.addEventListener("focus", auRetour);
+    document.addEventListener("visibilitychange", auRetour);
+    return () => {
+      clearInterval(minuteur);
+      window.removeEventListener("focus", auRetour);
+      document.removeEventListener("visibilitychange", auRetour);
+    };
+  }, [enSuspens, relireEtat]);
 
   const ouvrirApercu = async () => {
     setOccupe(true);
@@ -52,7 +73,7 @@ export default function EnvoiDevis({ devisId, onToast }) {
     });
     setOccupe(false);
     if (error) {
-      onToast?.("La validation n'a pas abouti", "error");
+      onToast?.("L'envoi n'a pas pu être programmé. Réessayez dans un instant.", "error");
       return;
     }
     if (!data?.ok) {
@@ -61,7 +82,7 @@ export default function EnvoiDevis({ devisId, onToast }) {
       return;
     }
     setOuvert(false);
-    onToast?.(data.deja_autorise ? "Cet envoi était déjà validé" : "Envoi validé — le message part dans les minutes qui viennent");
+    onToast?.(messageApresValidation(data.deja_autorise));
     await relireEtat();
   };
 
@@ -77,11 +98,11 @@ export default function EnvoiDevis({ devisId, onToast }) {
   const Icone = couleurs.icone;
 
   return (
-    <div className="mt-3 pt-3 border-t border-slate-100">
+    <div>
       <div className="rounded-xl px-3 py-2.5 flex items-start gap-2" style={{ backgroundColor: couleurs.fond, color: couleurs.texte }}>
         <Icone size={15} className="shrink-0 mt-0.5" aria-hidden />
         <div className="min-w-0">
-          <div className="text-[13px] font-semibold">{etat.titre}</div>
+          <div className="text-[13px] font-semibold">E-mail au client : {etat.titre.toLowerCase()}</div>
           <div className="text-[12.5px] leading-snug">{etat.detail}</div>
           {etat.destinataire && (
             <div className="text-[12px] mt-0.5 opacity-80 break-all">Destinataire : {etat.destinataire}</div>
@@ -97,13 +118,14 @@ export default function EnvoiDevis({ devisId, onToast }) {
           className="mt-2.5 flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl disabled:opacity-50"
           style={{ backgroundColor: ACCENT }}
         >
-          <Send size={15} aria-hidden /> Valider et envoyer au client
+          <Send size={15} aria-hidden /> {GESTES_DEVIS.ouvrirEnvoi}
         </button>
       )}
 
       {ouvert && apercu && (
         <div className="mt-2.5 rounded-xl border border-slate-200 bg-white p-3">
-          <div className="text-[12px] text-slate-500">Ce message sera envoyé à</div>
+          <div className="text-[13px] font-semibold text-slate-900">Voici le message qui partira</div>
+          <div className="mt-2 text-[12px] text-slate-500">À</div>
           <div className="text-[13.5px] font-semibold text-slate-900 break-all">
             {apercu.destinataire || "— aucune adresse enregistrée —"}
           </div>
@@ -114,7 +136,7 @@ export default function EnvoiDevis({ devisId, onToast }) {
 {apercu.texte}
           </pre>
           <div className="text-[11.5px] text-slate-400 mt-1">
-            Le lien de consultation est créé au moment de l&apos;envoi ; il apparaît ici en pointillés.
+            Le lien du devis est ajouté au moment de l&apos;envoi ; il apparaît ici en pointillés.
           </div>
           <div className="flex flex-wrap gap-2 mt-3">
             <button
@@ -124,7 +146,7 @@ export default function EnvoiDevis({ devisId, onToast }) {
               className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl disabled:opacity-50"
               style={{ backgroundColor: ACCENT }}
             >
-              <Send size={15} aria-hidden /> {occupe ? "Validation…" : "Confirmer l'envoi"}
+              <Send size={15} aria-hidden /> {occupe ? "Programmation…" : GESTES_DEVIS.confirmerEnvoi}
             </button>
             <button
               type="button"
