@@ -7317,6 +7317,7 @@ if (updateError) {
           client={dossierClient}
           rendezVous={rendezVous.filter((r) => r.vehicule_id === dossierVehiculeId)}
           devis={devisList.filter((d) => d.vehicule_id === dossierVehiculeId)}
+          ordresReparation={ordresReparation.filter((o) => o.vehicule_id === dossierVehiculeId)}
           factures={factures.filter((f) => f.vehicule_id === dossierVehiculeId)}
           workshopStages={WORKSHOP_STAGES}
           inspectionsDisponibles={INSPECTIONS_MODULE_ACTIF}

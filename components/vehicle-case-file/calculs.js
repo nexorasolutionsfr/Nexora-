@@ -1,11 +1,33 @@
 // Module de calculs purs pour le Dossier Véhicule 360.
 // Aucun accès réseau, aucun état React ici : uniquement des dérivations
 // locales à partir des données déjà chargées par le dashboard (rendez-vous,
-// devis, factures). Les rendez-vous passés en entrée portent un `statut`
-// déjà traduit en libellé français (ex. "Confirmé") — c'est la forme réelle
-// produite par le chargeur existant de NexoraDashboard.jsx. Les devis et
-// factures conservent leur `statut` brut (`en_attente`, `accepte`, `refuse`,
-// `payee`).
+// devis, ordres de réparation, factures). Les rendez-vous passés en entrée
+// portent un `statut` déjà traduit en libellé français (ex. "Confirmé") —
+// c'est la forme réelle produite par le chargeur existant de
+// NexoraDashboard.jsx. Les devis et factures conservent leur `statut` brut
+// (`en_attente`, `accepte`, `refuse`, `payee`).
+//
+// UNE SEULE LECTURE DU FIL, ET C'EST CELLE DE L'ATELIER
+//
+// Ce module dérivait sa propre « prochaine action » et son propre « statut
+// global » à partir de trois sources : rendez-vous, devis, factures. L'ordre
+// de réparation n'y entrait pas — il n'était même pas passé au dossier. Deux
+// conséquences observées le 13 septembre 2026 :
+//
+//   — travaux terminés sur l'ordre, devis encore « en attente » : le dossier
+//     affichait « Relancer le client pour la validation du devis » alors que
+//     la voiture était réparée ;
+//   — ordre ouvert sans étape d'atelier saisie : le dossier annonçait
+//     « Rendez-vous à venir » et ignorait le travail en cours.
+//
+// `atelier/filVehicule` lit les cinq statuts, ordre compris, et sait déjà
+// signaler la contradiction « ordre terminé / voiture à venir ». Il devient
+// la source unique de l'état, de la prochaine action et de la personne qui
+// doit agir. Les statuts métier ne sont pas fusionnés pour autant : le devis,
+// la facture et l'étape d'atelier restent exposés séparément ci-dessous et
+// affichés tels quels par la vue.
+
+import { filVehicule } from "../atelier/filVehicule.js";
 
 const ATELIER_ETAPES_EN_COURS = ["depose", "diagnostic", "attente_client", "attente_piece", "intervention"];
 
@@ -87,49 +109,59 @@ export function trouverFactureEnAttente(factures = []) {
   return trierParDate(factures.filter((f) => f.statut === "en_attente"), "created_at", "desc")[0] || null;
 }
 
-export function deriverProchaineAction({ rendezVous = [], devis = [], factures = [] }, maintenant = new Date()) {
-  const devisEnAttente = trouverDevisEnAttente(devis);
-  if (devisEnAttente) {
-    return { label: "Relancer le client pour la validation du devis", cible: "devis", reference: devisEnAttente };
-  }
+/**
+ * L'intervention à laquelle se rapporte le fil : un véhicule a un historique,
+ * `filVehicule` raisonne sur une visite.
+ *
+ * Le rendez-vous retenu est celui qui est à l'atelier, sinon le prochain à
+ * venir, sinon le dernier passé. Les autres pièces s'y rattachent par leurs
+ * liens réels — l'ordre par son rendez-vous, le devis par l'ordre — et
+ * retombent sur le plus récent du véhicule quand le lien n'existe pas. C'est
+ * la règle déjà appliquée par `filDuRendezVous` dans NexoraDashboard ; elle
+ * est écrite ici pour être testable.
+ */
+export function selectionnerInterventionCourante(
+  { rendezVous = [], devis = [], ordresReparation = [], factures = [] },
+  maintenant = new Date(),
+) {
+  const rdv =
+    determinerEtapeAtelierActuelle(rendezVous)
+    || trouverProchainRendezVous(rendezVous, maintenant)
+    || trouverDernierRendezVous(rendezVous, maintenant)
+    || null;
 
-  const etapeAtelier = determinerEtapeAtelierActuelle(rendezVous);
-  if (etapeAtelier) {
-    return { label: "Poursuivre le suivi à l'atelier", cible: "atelier", reference: etapeAtelier };
-  }
+  const ordre = rdv
+    ? ordresReparation.find((o) => o.rendez_vous_id === rdv.id) || null
+    : trierParDate(ordresReparation, "created_at", "desc")[0] || null;
 
-  const prochainRdv = trouverProchainRendezVous(rendezVous, maintenant);
-  if (prochainRdv) {
-    return { label: "Rendez-vous à venir", cible: "agenda", reference: prochainRdv };
-  }
+  const devisRetenu =
+    (ordre?.devis_id && devis.find((d) => d.id === ordre.devis_id))
+    || trierParDate(devis, "created_at", "desc")[0]
+    || null;
 
-  const factureEnAttente = trouverFactureEnAttente(factures);
-  if (factureEnAttente) {
-    return { label: "Relancer le règlement de la facture", cible: "factures", reference: factureEnAttente };
-  }
+  const facture =
+    (rdv && factures.find((f) => f.rendez_vous_id === rdv.id))
+    || trierParDate(factures, "created_at", "desc")[0]
+    || null;
 
-  const dernierRdv = trouverDernierRendezVous(rendezVous, maintenant);
-  if (dernierRdv) {
-    return { label: "Aucune action en cours — dernière intervention terminée", cible: null, reference: dernierRdv };
-  }
-
-  return { label: "Aucune action en cours", cible: null, reference: null };
+  return { rdv, devis: devisRetenu, ordre, facture };
 }
 
-export function deriverStatutGlobal({ rendezVous = [], devis = [], factures = [] }, maintenant = new Date()) {
-  const etapeAtelier = determinerEtapeAtelierActuelle(rendezVous);
-  if (etapeAtelier) return { cle: "atelier", statutAtelier: etapeAtelier.statut_atelier };
-
-  if (trouverDevisEnAttente(devis)) return { cle: "devis_en_attente" };
-
-  if (trouverProchainRendezVous(rendezVous, maintenant)) return { cle: "rdv_a_venir" };
-
-  if (trouverFactureEnAttente(factures)) return { cle: "facture_en_attente" };
-
-  const aHistorique = rendezVous.length > 0 || devis.length > 0 || factures.length > 0;
-  if (aHistorique) return { cle: "a_jour" };
-
-  return { cle: "aucun_suivi" };
+/**
+ * Où mène le bouton de la prochaine action.
+ *
+ * Ce n'est pas une décision métier — celle-là appartient à `filVehicule` —
+ * mais une destination de navigation, dérivée de ce qui existe. Tant que les
+ * gestes ne sont pas réalisables depuis le dossier, l'écran d'à côté reste le
+ * seul endroit où agir.
+ */
+export function cibleProchaineAction({ rdv, devis, ordre, facture }) {
+  if (facture) return "factures";
+  if (ordre) return "ordres_reparation";
+  if (rdv && ATELIER_ETAPES_EN_COURS.includes(rdv.statut_atelier)) return "atelier";
+  if (devis) return "devis";
+  if (rdv) return "agenda";
+  return null;
 }
 
 export function detecterDonneesIncompletes({ vehicule, client }) {
@@ -147,12 +179,23 @@ export function detecterDonneesIncompletes({ vehicule, client }) {
   };
 }
 
-export function construireDossierVehicule({ vehicule, client, rendezVous = [], devis = [], factures = [] }, maintenant = new Date()) {
+export function construireDossierVehicule({ vehicule, client, rendezVous = [], devis = [], ordresReparation = [], factures = [] }, maintenant = new Date()) {
+  const intervention = selectionnerInterventionCourante({ rendezVous, devis, ordresReparation, factures }, maintenant);
+  const fil = filVehicule(intervention);
+
   return {
     vehicule,
     client,
-    statutGlobal: deriverStatutGlobal({ rendezVous, devis, factures }, maintenant),
-    prochaineAction: deriverProchaineAction({ rendezVous, devis, factures }, maintenant),
+    // L'intervention en cours et sa lecture. `fil.etat` est une situation
+    // lue, pas un statut stocké : les statuts du devis, de la facture et de
+    // l'atelier restent exposés séparément ci-dessous.
+    intervention,
+    fil,
+    prochaineAction: {
+      label: fil.prochaineAction,
+      cible: cibleProchaineAction(intervention),
+      reference: intervention.rdv || intervention.devis || intervention.facture || null,
+    },
     prochainRendezVous: trouverProchainRendezVous(rendezVous, maintenant),
     dernierRendezVous: trouverDernierRendezVous(rendezVous, maintenant),
     etapeAtelier: determinerEtapeAtelierActuelle(rendezVous),
