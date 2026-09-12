@@ -102,12 +102,10 @@ Appliquée sur **Test** par `supabase db push` depuis un miroir hors dépôt,
 après un dry-run ne proposant qu'elle. **Production : dry-run seulement**
 (voir plus bas).
 
-Note sur l'accueil : le droit est ouvert en base parce que le lot le
-demandait explicitement, au même niveau que le devis. L'écran Factures reste
-fermé à ce rôle (`peutFacturer`, RLS de `factures` par `current_garage_id`) :
-c'est la décision de rôle antérieure (« ni facturation »). Le droit existe
-donc sans écran pour l'exercer. À trancher comme question de produit ; la
-levée ne demande pas de migration supplémentaire côté fonctions d'envoi.
+Note sur l'accueil : le droit d'envoi lui est ouvert en base ici, parce que le
+lot le demandait explicitement, au même niveau que le devis. L'écran, lui, est
+resté fermé jusqu'au second passage — droit sans écran pour l'exercer. C'est
+la décision **§ 4.2** qui l'ouvre.
 
 ### Écran Factures
 
@@ -214,8 +212,8 @@ Relevés, non corrigés (hors périmètre ou à trancher) :
 
 | Gravité | Défaut |
 |---|---|
-| P1 | **« Marquer payée » arme une « Confirmation de paiement » automatique** (`notifier_facture_payee` insère `en_attente` par défaut) : envoi sans relecture, invisible à l'écran, et le statut `payee` change l'empreinte, donc une facture payée avant son envoi voit celui-ci **bloqué** (« a changé depuis la validation »). Même traitement à décider que pour la facture : geste explicite ou suppression. |
-| P1 | accueil : droit d'envoi de facture ouvert en base, écran fermé (voir § 2) |
+| ~~P1~~ | ~~« Marquer payée » arme une « Confirmation de paiement » automatique, et le changement d'empreinte bloque un envoi déjà programmé~~ — **corrigé, voir § 4.1** |
+| ~~P1~~ | ~~accueil : droit d'envoi de facture ouvert en base, écran fermé~~ — **corrigé, voir § 4.2** |
 | P2 | OR « Terminé » alors que l'atelier dit « À venir » ; le détail atelier propose « Préparer la fiche atelier » alors qu'un OR existe : trois états pour une même voiture (devis, OR, atelier) qui ne se parlent pas |
 | P2 | vocabulaire : « Fiches atelier (OR) » dans le menu, « Nouvel ordre de réparation » dans la fenêtre, « fiche atelier » sur le bouton ; « Travail différé » ; « Générer le lien atelier » |
 | P2 | la ligne de devis ne reprend pas l'intervention choisie à la création (à retaper ou « Pré-remplir ») — déjà relevé le 11 |
@@ -223,11 +221,115 @@ Relevés, non corrigés (hors périmètre ou à trancher) :
 | P2 | après acceptation, le devis quitte la liste et son état d'envoi devient invisible ; la ligne `nouveau` restée `en_attente` sera bloquée à la réservation (empreinte changée), donc ne partira pas : correct mais muet |
 | P3 | accueil : « Bonjour, <nom du garage> » ; tuiles « Priorités » / « À risque » à zéro sur un garage neuf ; « CA client enregistré : À renseigner » ; bouton « SMS » (`sms:`) inerte sur un ordinateur ; en-tête de l'écran OR = nom du garage ; filtre « catégories » en valeurs brutes (`diagnostic`, `entretien`) ; « 96.00 € » à point dans les en-têtes, virgule dans les lignes |
 
+## 4. Les deux décisions de clôture (second passage, même PR)
+
+Demandées après la première lecture de la PR. Les deux points restés ouverts
+sont fermés ; aucun autre chantier n'a été ouvert.
+
+### 4.1 « Marquer payée » n'envoie rien
+
+**Ce qui était faux.** `notifier_facture_payee` insérait une notification
+`payee` à chaque passage au statut payé, et la colonne `statut` de
+`notifications_factures` vaut `en_attente` par défaut : la ligne naissait
+**armée**, et le traitement l'envoyait dans les deux minutes. Encaisser
+écrivait au client, sans relecture, depuis un écran qui n'en disait rien.
+
+**Le conflit d'empreinte, audité.** `empreinte_facture` inclut `statut`. Une
+facture marquée payée alors qu'un envoi était déjà programmé voyait son
+empreinte changer : la réservation la mettait de côté avec « le document ou le
+destinataire a changé depuis la validation ». Techniquement juste, mais
+incompréhensible pour un garagiste, et surtout muet sur l'essentiel — ce
+message annonçait une facture à régler, désormais réglée.
+
+**Comportement final** (migration `20260916000200`) :
+
+| Situation au moment du clic | Ce qui se passe |
+|---|---|
+| aucune notification | statut payé, rien de créé — le déclencheur n'existe plus |
+| notification `sans_lien` (non armée) | statut payé, la ligne dormante reste intacte |
+| envoi **programmé** (`en_attente`) | statut payé **et** ligne passée `bloque` dans la même transaction, motif « facture marquée payée avant l'envoi : le message annonçait une facture à régler ». La réservation ne la reprend plus. Elle reste revalidable par un geste explicite. |
+| envoi **en cours** (`envoi_en_cours`) | statut payé ; la ligne n'est **pas touchée** — ni rejouée, ni déclarée bloquée. L'écran le signale et renvoie vers le client. |
+| second clic | « déjà payée », rien remis de côté, date de paiement inchangée |
+
+L'application n'écrit plus la table directement : elle appelle
+`marquer_facture_payee(uuid)`, qui prend le verrou sur la facture comme
+`autoriser_envoi_facture` — les deux gestes se sérialisent, jamais l'un au
+milieu de l'autre. Il n'existe donc aucun instant où la facture est payée et
+le message « à régler » encore armé.
+
+**Ce que dit l'écran**, vérifié en navigateur sur Test :
+
+- « Facture marquée payée. Aucun message n'a été envoyé. »
+- avec un envoi programmé : la même phrase, suivie de « L'envoi qui était
+  programmé a été mis de côté : il annonçait une facture à régler. »
+- avec un envoi en cours : suivie de « Un envoi était en cours au moment du
+  paiement : vérifiez avec le client ce qu'il a reçu avant de lui écrire à
+  nouveau. »
+- la carte d'envoi passe alors à « E-mail au client : bloqué — Cette facture a
+  été marquée payée : le message préparé annonçait une facture à régler.
+  Relisez-le avant de l'envoyer quand même. » Sans cette traduction, l'écran
+  affichait le message passe-partout « L'envoi n'a pas pu se faire ».
+
+Aucun parcours de confirmation de paiement n'a été construit : aucun bouton,
+aucun réglage, aucune ligne dormante. La migration écrit comment le rebâtir
+le jour venu.
+
+### 4.2 Le rôle accueil gère les factures
+
+`factures` ne portait que `factures_scope` (`garage_id =
+current_garage_id()`), et `current_garage_id()` ne rend un garage qu'au
+propriétaire ou à un membre **dirigeant** : l'accueil avait depuis
+`20260916000100` le droit d'envoyer des factures qu'il ne pouvait pas lire.
+
+Trois policies dédiées (`factures_accueil_select`, `_insert`, `_update`),
+modèle des autres tables du lot accès salariés, appuyées sur `a_acces_garage`.
+**Pas de suppression** : une facture est une pièce comptable, et rien dans
+l'écran ne la supprime. Côté application : `peutFacturer` inclut l'accueil,
+`factures` entre dans ses vues, et la table `NAV_VERS_VUE_ROLE` gagne l'entrée
+`facturation` — sans elle, l'entrée de menu disparaissait pour tout rôle
+restreint. `revoquer_jeton_facture` est alignée sur `creer_jeton_facture`
+(dirigeant et accueil) : l'accueil pouvait produire un lien sans pouvoir le
+couper.
+
+Ce que l'accueil ne gagne pas : statistiques, paramètres, gestion des accès,
+historique des devis. Aucune policy n'est ajoutée pour eux.
+
+### 4.3 Preuves par rôle
+
+`scripts/recette/facture-payee-et-accueil.mjs` — **47 contrôles verts** sur
+Test, données fictives, rejouable :
+
+| Contrôle | Résultat |
+|---|---|
+| Les cinq situations de « Marquer payée » | conformes au tableau ci-dessus |
+| Aucune notification `payee` sur tout le projet Test | 0 |
+| Double clic | `deja_payee`, date de paiement inchangée, file inchangée |
+| Dirigeant, accueil | acceptés |
+| Mécanicien, salarié révoqué, autre garage, sans session | refusés, 4 sur 4 ; la facture reste non payée |
+| Accueil : lire, créer, modifier ses factures | oui |
+| Accueil : supprimer | refusé, la facture est toujours là |
+| Accueil : parcours d'envoi complet (aperçu, lien, révocation, autorisation) | oui |
+| Accueil : facture dans un autre garage | refusé |
+| Mécanicien, révoqué, autre garage : lecture des factures du garage A | 0 ligne |
+| Isolation | le garage B ne voit que ses propres factures |
+
+À l'écran, sur Test (1440 px puis 375 px) :
+
+| Rôle | Constat |
+|---|---|
+| Dirigeant | facture dont l'envoi était programmé → « Payée », carte « bloqué » avec la phrase du paiement ; en base `bloque`, `envoye = false`, motif explicite, aucune ligne `payee` créée |
+| Accueil | menu à 7 entrées, « Facturation » (plus « Devis » seul), onglets Devis + Factures sans Historique, ni Statistiques ni Paramètres ; 13 factures listées ; armement d'un envoi puis encaissement → les deux phrases attendues |
+| Mécanicien | écran « Mon atelier » inchangé, un seul bouton (déconnexion), le mot « facture » absent de la page |
+| Mobile 375 px | écran Factures sans débordement horizontal (`scrollWidth` = 375) |
+
+Tests unitaires : **306 JavaScript + 29 TypeScript** verts, dont 6 nouveaux
+sur les phrases du paiement et 2 mis à jour sur les droits du rôle accueil.
+
 ## Vérifications
 
 | | |
 |---|---|
-| Migration depuis l'état de Production | Test était à l'état exact de Production (mêmes migrations, mêmes empreintes) avant l'application |
+| Migration depuis l'état de Production | Test était à l'état exact de Production (mêmes migrations, mêmes empreintes) avant ce lot ; les deux migrations y ont été appliquées dans l'ordre, et le dry-run de Production propose exactement la même paire, dans le même ordre |
 | Tests | 300 JavaScript + 29 TypeScript verts (`node --test`) ; 18 nouveaux |
 | Build | `next build` vert après chaque série de modifications |
 | Recette navigateur | ci-dessus, bureau et mobile |
@@ -246,7 +348,13 @@ complet des migrations de la branche :
 DRY RUN: migrations will *not* be pushed to the database.
 Would push these migrations:
  • 20260916000100_facture_creee_pas_envoyee.sql
+ • 20260916000200_payee_nenvoie_rien_et_factures_accueil.sql
 ```
+
+Relevé en lecture seule au même moment : le déclencheur
+`trg_notifier_facture_payee` est **toujours en place en Production** — le
+défaut y est donc vivant — et les deux files sont à 0 en attente, 0 en cours.
+Appliquer ces deux migrations ne perturberait aucun envoi en vol.
 
 Le dossier de migrations du miroir a été vidé après coup. Rien n'a été
 appliqué.
@@ -260,4 +368,9 @@ appliqué.
    l'envoi tant que le client de test n'est pas une adresse de Baptiste.
 3. Un envoi réel de facture de bout en bout (Brevo, réception, lien ouvert)
    comme celui du devis le 12 septembre à 00:04.
-4. La décision sur « Marquer payée » et sur l'accueil.
+4. En Production, avec un compte accueil réel : vérifier qu'il voit l'écran
+   Factures de son garage, et lui seul.
+5. Pour mémoire, trois lignes `en_attente` datées du 4 septembre subsistent
+   sur Test (garages « GARAGE TEST RECETTE » et « Garage Démo Vidéo ») :
+   antérieures à ce lot, d'autres jeux d'essai, jamais touchées ici. Rien ne
+   lit la file de Test.
