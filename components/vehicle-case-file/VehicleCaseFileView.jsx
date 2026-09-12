@@ -4,9 +4,8 @@ import { useEffect, useRef } from "react";
 import { X, Car, Phone, Mail, Wrench, ReceiptText, CalendarClock, ClipboardList, ClipboardCheck, ArrowRight, AlertTriangle } from "lucide-react";
 import { ACCENT, ACCENT_SOFT, NAVY } from "../garage-os/tokens";
 import { construireDossierVehicule } from "./calculs";
+import { libelleQuiAgit } from "../atelier/filVehicule";
 import {
-  STATUT_GLOBAL_LABEL,
-  STATUT_GLOBAL_TONE,
   DEVIS_STATUT_LABEL,
   DEVIS_STATUT_TONE,
   FACTURE_STATUT_LABEL,
@@ -54,6 +53,7 @@ export default function VehicleCaseFileView({
   client,
   rendezVous = [],
   devis = [],
+  ordresReparation = [],
   factures = [],
   workshopStages = [],
   onClose,
@@ -79,7 +79,7 @@ export default function VehicleCaseFileView({
 
   if (!vehicule) return null;
 
-  const dossier = construireDossierVehicule({ vehicule, client, rendezVous, devis, factures });
+  const dossier = construireDossierVehicule({ vehicule, client, rendezVous, devis, ordresReparation, factures });
   const etapeAtelierLabel = dossier.etapeAtelier
     ? workshopStages.find((s) => s.key === dossier.etapeAtelier.statut_atelier)?.label || dossier.etapeAtelier.statut_atelier
     : null;
@@ -133,9 +133,7 @@ export default function VehicleCaseFileView({
           <div className="bg-slate-50 rounded-2xl p-4">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="text-[13px] font-medium text-slate-500">Client</div>
-              <Badge tone={STATUT_GLOBAL_TONE[dossier.statutGlobal.cle] || "slate"}>
-                {dossier.statutGlobal.cle === "atelier" ? etapeAtelierLabel : STATUT_GLOBAL_LABEL[dossier.statutGlobal.cle]}
-              </Badge>
+              <Badge tone={dossier.fil.contradiction ? "amber" : "slate"}>{dossier.fil.etat}</Badge>
             </div>
             <div className="text-sm font-semibold text-slate-900 mt-1">{client?.nom || "Client non renseigné"}</div>
             {(client?.telephone || client?.email) && (
@@ -157,6 +155,18 @@ export default function VehicleCaseFileView({
           <div className="rounded-2xl p-4 text-white" style={{ backgroundColor: NAVY }}>
             <div className="text-[12px] uppercase tracking-wide text-white/60">Prochaine action</div>
             <div className="text-[15px] font-semibold mt-1">{dossier.prochaineAction.label}</div>
+            {/* Qui doit agir : sans cette ligne, « le client doit répondre » et
+                « relisez le message » se lisent pareil, alors que l'un demande
+                d'attendre et l'autre d'agir. */}
+            <div className="text-[12.5px] text-white/70 mt-1">{libelleQuiAgit(dossier.fil.quiAgit)}</div>
+            {/* La contradiction se signale sans remplacer l'action : d'abord
+                comprendre, puis agir. */}
+            {dossier.fil.avertissement && (
+              <div className="mt-2 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2">
+                <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-[12px] text-amber-800">{dossier.fil.avertissement}</div>
+              </div>
+            )}
             {dossier.prochaineAction.cible && (
               <button
                 type="button"
@@ -165,6 +175,7 @@ export default function VehicleCaseFileView({
                   if (dossier.prochaineAction.cible === "devis") onOuvrirDevis?.();
                   if (dossier.prochaineAction.cible === "agenda") onOuvrirAgenda?.();
                   if (dossier.prochaineAction.cible === "factures") onOuvrirFactures?.();
+                  if (dossier.prochaineAction.cible === "ordres_reparation") onOuvrirOrdresReparation?.(vehicule?.id);
                 }}
                 className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] font-medium rounded-xl px-3 py-2"
                 style={{ backgroundColor: ACCENT }}
