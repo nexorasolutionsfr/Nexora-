@@ -18,6 +18,8 @@
 // c'est le rôle de Supabase de ne pas le révéler, ce n'est pas à nous de le
 // déduire d'un code d'erreur.
 
+import { RAPPEL_DERNIER_MESSAGE } from "./lienConfirmation.js";
+
 export const DELAI_RENVOI_SECONDES = 60;
 
 // Combien de secondes reste-t-il avant que le bouton se rouvre.
@@ -43,11 +45,14 @@ export function libelleRenvoi({ enCours = false, secondesRestantes = 0 } = {}) {
 // le quota d'envoi — de tout le reste, volontairement neutre : un message
 // d'échec précis renseignerait sur l'existence du compte.
 export function messageRenvoi(erreur, email = "") {
+  // Le fournisseur a accepté la demande : c'est tout ce qu'on sait. On ne dit
+  // ni « envoyé », ni « reçu », ni « délivré » — et on prévient que chaque
+  // renvoi rend les liens précédents inutilisables.
   if (!erreur) {
-    const destinataire = email ? ` à ${email}` : "";
+    const destinataire = email ? ` pour ${email}` : "";
     return {
       ton: "succes",
-      texte: `Nouvel e-mail envoyé${destinataire}. Il peut mettre une minute à arriver.`,
+      texte: `Un nouvel e-mail a été demandé${destinataire}. ${RAPPEL_DERNIER_MESSAGE} Il peut mettre une minute à arriver.`,
     };
   }
 
@@ -58,8 +63,8 @@ export function messageRenvoi(erreur, email = "") {
     return {
       ton: "erreur",
       texte:
-        "Trop de demandes en peu de temps : aucun nouvel e-mail ne peut partir tout de suite. " +
-        "Réessayez dans une heure — le premier message, lui, reste valable.",
+        "Trop de demandes en peu de temps : aucun nouvel e-mail ne peut être demandé tout de suite. " +
+        "Réessayez dans une heure. Le dernier message reçu reste valable.",
     };
   }
 

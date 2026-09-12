@@ -103,7 +103,12 @@ function CreerOrdreModal({ rendezVous, devisList, ordres, garageId, initialRende
     .slice()
     .sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut));
 
-  const rdvInitialValide = initialRendezVousId && rdvEligibles.some((r) => r.id === initialRendezVousId) ? initialRendezVousId : "";
+  // Revue du 2026-09-12 : depuis un devis accepté, le rendez-vous à
+  // prolonger est le seul possible dans neuf cas sur dix — on le prend
+  // d'office plutôt que de le faire chercher dans une liste d'un élément.
+  const rdvInitialValide = initialRendezVousId && rdvEligibles.some((r) => r.id === initialRendezVousId)
+    ? initialRendezVousId
+    : rdvEligibles.length === 1 ? rdvEligibles[0].id : "";
 
   const [rendezVousId, setRendezVousId] = useState(rdvInitialValide);
   const [devisId, setDevisId] = useState("");

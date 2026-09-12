@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { ETATS, GESTES_DEVIS, lireEtat, messageApresValidation, messageBlocage, messageRefusValidation } from "./etatsEnvoi.js";
+import { DOCUMENTS, ETATS, GESTES_DEVIS, GESTES_FACTURE, MESSAGE_FACTURE_GENEREE, gestes, lireEtat, messageApresValidation, messageBlocage, messageFacturePayee, messageRefusValidation } from "./etatsEnvoi.js";
 
 // Recette du 2026-09-11 : un devis tout juste créé affichait « En attente
 // d'envoi » et plus aucun bouton. Un devis neuf doit dire que rien n'est parti
@@ -78,4 +78,87 @@ test("les refus de validation sont dits en clair", () => {
   assert.match(messageRefusValidation("destinataire_absent"), /adresse e-mail/i);
   assert.match(messageRefusValidation("destinataire_different"), /changé/i);
   assert.match(messageRefusValidation("bidule"), /Réessayez/i);
+});
+
+// 12 septembre 2026 : la facture prend le parcours du devis, sans en partager
+// une seule fonction de base — chaque document a les siennes, avec leurs
+// droits.
+test("la facture a ses propres fonctions de base, et les mêmes états que le devis", () => {
+  for (const cle of ["rpcEtat", "rpcApercu", "rpcAutoriser", "idParam"]) {
+    assert.notEqual(DOCUMENTS.facture[cle], DOCUMENTS.devis[cle], `${cle} partagé`);
+    assert.match(DOCUMENTS.facture[cle], /facture/);
+  }
+  for (const etat of Object.keys(ETATS)) {
+    assert.equal(lireEtat({ ok: true, etat }, "facture").titre, lireEtat({ ok: true, etat }, "devis").titre);
+  }
+});
+
+test("les phrases de la facture nomment la facture, pas le devis", () => {
+  assert.match(messageRefusValidation("aucune_notification_en_attente", "facture"), /^La facture .* envoyée\.$/);
+  assert.doesNotMatch(messageRefusValidation("aucune_notification_en_attente", "facture"), /devis/i);
+  const bloque = lireEtat({ ok: true, etat: "bloque", motif: "la facture ou le destinataire a changé depuis la validation" }, "facture");
+  assert.match(bloque.detail, /^La facture ou l'adresse du client a changé/);
+  assert.equal(bloque.peutValider, true);
+  assert.match(DOCUMENTS.facture.lienAjoute, /lien de la facture/);
+});
+
+test("les gestes de la facture sont ceux du devis, sans noter de réponse", () => {
+  assert.equal(gestes("facture"), GESTES_FACTURE);
+  assert.equal(gestes("devis"), GESTES_DEVIS);
+  assert.equal(GESTES_FACTURE.ouvrirEnvoi, GESTES_DEVIS.ouvrirEnvoi);
+  assert.equal(GESTES_FACTURE.confirmerEnvoi, GESTES_DEVIS.confirmerEnvoi);
+  assert.match(GESTES_FACTURE.lienAide, /n'envoie rien/);
+  assert.equal(GESTES_FACTURE.marquerAccepte, undefined);
+});
+
+test("« Facture générée » dit que rien n'est parti", () => {
+  assert.match(MESSAGE_FACTURE_GENEREE, /Rien n'est envoyé/);
+  assert.doesNotMatch(MESSAGE_FACTURE_GENEREE, /envoyée au client|programmé/);
+});
+
+// « Marquer payée » n'écrit à personne — règle du 12 septembre 2026. La phrase
+// exacte est verrouillée ici : la veille, encaisser armait un « Confirmation
+// de paiement » qui partait tout seul.
+test("marquer payée dit qu'aucun message n'est parti", () => {
+  const m = messageFacturePayee({ ok: true, deja_payee: false, envois_mis_de_cote: 0, envoi_incertain: false });
+  assert.equal(m, "Facture marquée payée. Aucun message n'a été envoyé.");
+});
+
+test("un envoi programmé mis de côté est annoncé, avec sa raison", () => {
+  const m = messageFacturePayee({ ok: true, deja_payee: false, envois_mis_de_cote: 1, envoi_incertain: false });
+  assert.match(m, /^Facture marquée payée\. Aucun message n'a été envoyé\./);
+  assert.match(m, /mis de côté/);
+  assert.match(m, /annonçait une facture à régler/);
+});
+
+test("un envoi en cours au moment du paiement se vérifie, il ne se rejoue pas", () => {
+  const m = messageFacturePayee({ ok: true, deja_payee: false, envois_mis_de_cote: 0, envoi_incertain: true });
+  assert.match(m, /Aucun message n'a été envoyé\./);
+  assert.match(m, /vérifiez avec le client/);
+  assert.doesNotMatch(m, /renvoy|réessay/i);
+});
+
+test("les deux suites peuvent se cumuler, sans se contredire", () => {
+  const m = messageFacturePayee({ ok: true, deja_payee: false, envois_mis_de_cote: 1, envoi_incertain: true });
+  assert.match(m, /mis de côté/);
+  assert.match(m, /vérifiez avec le client/);
+});
+
+test("le double clic ne raconte pas deux paiements", () => {
+  const m = messageFacturePayee({ ok: true, deja_payee: true, envois_mis_de_cote: 0, envoi_incertain: false });
+  assert.match(m, /était déjà marquée payée/);
+  assert.match(m, /Aucun message n'a été envoyé\./);
+});
+
+// Le motif posé par `marquer_facture_payee` doit devenir une phrase qui dit
+// quoi faire — sans quoi l'écran affichait le message passe-partout « L'envoi
+// n'a pas pu se faire », qui n'explique rien.
+test("une facture payée avant son envoi explique pourquoi le message attend", () => {
+  const motif = "facture marquée payée avant l'envoi : le message annonçait une facture à régler";
+  const e = lireEtat({ ok: true, etat: "bloque", motif }, "facture");
+  assert.match(e.detail, /marquée payée/);
+  assert.match(e.detail, /Relisez-le/);
+  assert.doesNotMatch(e.detail, /contactez-nous/);
+  assert.equal(e.peutValider, true);
+  assert.equal(messageBlocage(motif, "facture"), e.detail);
 });

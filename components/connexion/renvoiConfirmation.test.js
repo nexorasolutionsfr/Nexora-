@@ -41,11 +41,14 @@ test("le bouton dit l'attente plutôt que de rester grisé sans raison", () => {
   assert.equal(libelleRenvoi(), "Renvoyer l'e-mail");
 });
 
-test("le succès nomme le destinataire et prévient du délai", () => {
+test("le succès nomme le destinataire et prévient du délai, sans prétendre à la réception", () => {
   const message = messageRenvoi(null, "contact@garage-exemple.fr");
   assert.equal(message.ton, "succes");
   assert.match(message.texte, /contact@garage-exemple\.fr/);
   assert.match(message.texte, /minute/);
+  assert.match(message.texte, /a été demandé/);
+  assert.match(message.texte, /dernier message reçu/);
+  assert.doesNotMatch(message.texte, /envoyé|délivré/i);
 });
 
 test("le succès reste lisible même sans adresse sous la main", () => {
