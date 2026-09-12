@@ -164,6 +164,29 @@ export function cibleProchaineAction({ rdv, devis, ordre, facture }) {
   return null;
 }
 
+/**
+ * Les visites précédentes, une ligne par rendez-vous, la plus récente en tête.
+ *
+ * Un véhicule dure, ses visites non. Les empiler dans une chronologie unique
+ * donne, au bout d'un an, une liste où l'on ne distingue plus la vidange de
+ * mardi de celle de l'an dernier. On sépare donc ce qui se passe maintenant
+ * de ce qui est passé — et le passé se replie.
+ */
+export function interventionsPrecedentes(
+  { rendezVous = [], ordresReparation = [], factures = [] },
+  rdvCourantId = null,
+) {
+  return trierParDate(
+    rendezVous.filter((r) => r.id !== rdvCourantId),
+    "date_debut",
+    "desc",
+  ).map((rdv) => ({
+    rdv,
+    ordre: ordresReparation.find((o) => o.rendez_vous_id === rdv.id) || null,
+    facture: factures.find((f) => f.rendez_vous_id === rdv.id) || null,
+  }));
+}
+
 export function detecterDonneesIncompletes({ vehicule, client }) {
   const champsManquantsVehicule = [];
   if (!vehicule?.marque && !vehicule?.modele) champsManquantsVehicule.push("marque/modèle");
@@ -202,6 +225,10 @@ export function construireDossierVehicule({ vehicule, client, rendezVous = [], d
     devisEnAttente: trouverDevisEnAttente(devis),
     factureEnAttente: trouverFactureEnAttente(factures),
     chronologie: construireChronologie({ rendezVous, devis, factures }),
+    interventionsPrecedentes: interventionsPrecedentes(
+      { rendezVous, ordresReparation, factures },
+      intervention.rdv?.id || null,
+    ),
     donneesIncompletes: detecterDonneesIncompletes({ vehicule, client }),
     aRendezVous: rendezVous.length > 0,
     aDevis: devis.length > 0,
