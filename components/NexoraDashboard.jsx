@@ -36,6 +36,9 @@ import { DELAI_RENVOI_SECONDES, libelleRenvoi, messageRenvoi, secondesAvantRenvo
 import { adresseSansErreurAuth, decisionFragment, erreurAuthDansFragment, messageLienEchoue } from "./connexion/lienConfirmation";
 import { offre } from "@/lib/tarifs";
 import VehicleCaseFileView from "./vehicle-case-file/VehicleCaseFileView";
+import { construireDossierVehicule } from "./vehicle-case-file/calculs";
+import RechercheVehicule from "./recherche/RechercheVehicule";
+import { libelleVehicule } from "./recherche/recherche";
 import OnboardingGarage from "./onboarding/OnboardingGarage";
 import MembresSection from "./acces-salaries/MembresSection";
 import AtelierMecanicienScreen from "./acces-salaries/AtelierMecanicienScreen";
@@ -1425,7 +1428,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
   );
 }
 
-function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demandes, devisList = [], setView, onAllerConfigurer, onGererAbonnement, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
+function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demandes, devisList = [], vehicules = [], onOuvrirDossierVehicule, setView, onAllerConfigurer, onGererAbonnement, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   const [cockpitCompteurs, setCockpitCompteurs] = useState(null);
   if (loading) {
@@ -1496,9 +1499,21 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demande
       stripe: d.statut === "accepte" ? "#16A34A" : "#64748B",
       urgent: false,
       title: titreReponse(d, d.client),
-      meta: `${depuisLabel(d.date_validation)} · ${mentionOrigine(d)} · ${formatEuro(d.montant_ttc)} TTC`,
-      action: "Voir la réponse",
-      onAction: () => setView("devis"),
+      // La voiture d'abord : « Accord de M. Martin » ne dit pas sur quel
+      // véhicule, et un garage tient deux voitures du même client. Observé le
+      // 13 septembre 2026 : aucune ligne de cet écran ne nommait la voiture.
+      meta: [
+        libelleVehicule(vehicules.find((v) => v.id === d.vehicule_id)),
+        depuisLabel(d.date_validation),
+        mentionOrigine(d),
+        `${formatEuro(d.montant_ttc)} TTC`,
+      ].filter(Boolean).join(" · "),
+      action: "Ouvrir le dossier",
+      // Le dossier plutôt que l'écran Devis : on garde l'écran d'origine
+      // derrière le panneau, donc la liste et son filtre.
+      onAction: () => (d.vehicule_id && onOuvrirDossierVehicule
+        ? onOuvrirDossierVehicule(d.vehicule_id)
+        : setView("devis")),
     })),
     ...demandesUrgentes.map((d) => ({
       key: `du-${d.id}`,
@@ -1592,9 +1607,15 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demande
       // « Prévisualiser et envoyer » s'affichait aussi pour un devis déjà
       // envoyé : la ligne ouvre le devis, où l'état réel de l'envoi est lu.
       title: `Devis en cours — ${d.client}`,
-      meta: `${d.prestation || "—"} · ${Number(d.montant_ttc || 0).toFixed(0)} € TTC`,
-      action: "Ouvrir le devis",
-      onAction: () => setView("devis"),
+      meta: [
+        libelleVehicule(vehicules.find((v) => v.id === d.vehicule_id)),
+        d.prestation || null,
+        `${Number(d.montant_ttc || 0).toFixed(0)} € TTC`,
+      ].filter(Boolean).join(" · "),
+      action: "Ouvrir le dossier",
+      onAction: () => (d.vehicule_id && onOuvrirDossierVehicule
+        ? onOuvrirDossierVehicule(d.vehicule_id)
+        : setView("devis")),
     })),
   ];
 
@@ -6501,6 +6522,41 @@ if (updateError) {
     return filVehicule({ rdv: appt, devis, ordre, facture });
   };
 
+  // Les véhicules du garage, à plat. Le chargeur les imbrique dans leur
+  // client (`client.vehicules`) : la recherche, elle, raisonne par voiture.
+  // On rattache donc chaque véhicule à son client une fois pour toutes.
+  const tousLesVehicules = useMemo(
+    () =>
+      clients.flatMap((c) => {
+        const liste = Array.isArray(c.vehicules) ? c.vehicules : c.vehicules ? [c.vehicules] : [];
+        return liste.filter(Boolean).map((v) => ({ ...v, client_id: v.client_id || c.id }));
+      }),
+    [clients],
+  );
+
+  // Le fil d'un véhicule, pour la recherche et pour « Aujourd'hui ».
+  // Même sélection d'intervention que le dossier — `construireDossierVehicule`
+  // s'en charge — pour qu'un résultat de recherche et le dossier qu'il ouvre
+  // ne racontent jamais deux histoires différentes.
+  const filDuVehicule = (vehiculeId) => {
+    if (!vehiculeId) return null;
+    const vehicule = tousLesVehicules.find((v) => v.id === vehiculeId);
+    if (!vehicule) return null;
+    return construireDossierVehicule({
+      vehicule,
+      client: clients.find((c) => c.id === vehicule.client_id) || null,
+      rendezVous: rendezVous.filter((r) => r.vehicule_id === vehiculeId),
+      devis: devisList.filter((d) => d.vehicule_id === vehiculeId),
+      ordresReparation: ordresReparation.filter((o) => o.vehicule_id === vehiculeId),
+      factures: factures.filter((f) => f.vehicule_id === vehiculeId),
+    }).fil;
+  };
+
+  // Ouvrir un dossier depuis la recherche ne change pas de vue : la liste et
+  // son filtre restent derrière le panneau, et les retrouver ne coûte qu'une
+  // fermeture. C'est la règle « on ne perd pas ce qu'on regardait ».
+  const ouvrirDossierDepuisRecherche = (vehiculeId) => setDossierVehiculeId(vehiculeId);
+
   const handleMarquerFacturePayee = async (id) => {
     const { data, error } = await supabase.rpc("marquer_facture_payee", { p_facture_id: id });
     if (error || !data?.ok) {
@@ -7142,16 +7198,33 @@ if (updateError) {
   />
 )}
       <main className="flex-1 min-w-0">
-        <div className="sticky top-0 z-30 flex items-center justify-between px-5 md:px-8 py-5 border-b border-slate-200 bg-white">
+        <div className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-y-3 px-5 md:px-8 py-4 sm:py-5 border-b border-slate-200 bg-white">
           <div className="flex items-center gap-3">
             <button onClick={() => setMobileMenuOpen(true)} className="md:hidden -ml-1 p-1.5 rounded-lg text-slate-500 hover:bg-slate-100">
               <Menu size={22} />
             </button>
-            <div>
-              <div className="text-lg font-semibold text-slate-900">{titles[view]}</div>
-              <div className="text-[13px] text-slate-500">{sousTitres[view] || garageData.nom_garage}</div>
+            <div className="min-w-0">
+              <div className="text-lg font-semibold text-slate-900 truncate">{titles[view]}</div>
+              <div className="text-[13px] text-slate-500 truncate">{sousTitres[view] || garageData.nom_garage}</div>
             </div>
           </div>
+          {/* Retrouver une voiture depuis n'importe quelle vue.
+              Une seule instance : sur téléphone elle passe à la ligne en pleine
+              largeur, sur ordinateur elle se range à droite du titre. Deux
+              composants montés en parallèle auraient dupliqué l'état de saisie
+              — et c'est exactement ce qui est arrivé à la première version.
+              Le mécanicien n'a pas accès aux fiches clients : la barre ne lui
+              est pas proposée, elle ne lui donnerait rien. */}
+          {peutVoir(monRole, "clients") && (
+            <div className="order-last w-full sm:order-none sm:w-auto sm:ml-4 shrink-0">
+              <RechercheVehicule
+                vehicules={tousLesVehicules}
+                clients={clients}
+                filPourVehicule={filDuVehicule}
+                onOuvrirVehicule={ouvrirDossierDepuisRecherche}
+              />
+            </div>
+          )}
         </div>
 
         {mobileMenuOpen && (
@@ -7209,7 +7282,7 @@ if (updateError) {
         )}
 
         <div key={view} className="nx-vue p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView monRole={monRole} stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
+          {view === "aujourdhui" && <AujourdhuiView monRole={monRole} vehicules={tousLesVehicules} onOuvrirDossierVehicule={ouvrirDossierDepuisRecherche} stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={setDossierVehiculeId} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
