@@ -48,11 +48,14 @@ test("le dirigeant n'est bridé sur aucune vue", () => {
   assert.equal(peutVoir(ROLE_DIRIGEANT, "une-vue-ajoutee-plus-tard"), true);
 });
 
-test("l'accueil voit l'opérationnel, jamais la facturation ni les réglages", () => {
+test("l'accueil voit l'opérationnel et les factures, jamais les réglages", () => {
   assert.equal(peutVoir(ROLE_ACCUEIL, "clients"), true);
   assert.equal(peutVoir(ROLE_ACCUEIL, "devis"), true);
   assert.equal(peutVoir(ROLE_ACCUEIL, "atelier"), true);
-  assert.equal(peutVoir(ROLE_ACCUEIL, "factures"), false);
+  // Décision produit du 12 septembre 2026 : le comptoir encaisse.
+  assert.equal(peutVoir(ROLE_ACCUEIL, "factures"), true);
+  // Ce qui reste au dirigeant, et qui ne doit pas suivre par inadvertance.
+  assert.equal(peutVoir(ROLE_ACCUEIL, "historique"), false);
   assert.equal(peutVoir(ROLE_ACCUEIL, "statistiques"), false);
   assert.equal(peutVoir(ROLE_ACCUEIL, "parametres"), false);
   assert.equal(peutVoir(ROLE_ACCUEIL, "membres"), false);
@@ -73,12 +76,14 @@ test("un rôle absent ou inconnu ne donne accès à rien", () => {
   assert.equal(estRoleConnu(ROLE_MECANICIEN), true);
 });
 
-test("seul le dirigeant gère les accès et la facturation", () => {
+test("seul le dirigeant gère les accès ; la facturation est aussi au comptoir", () => {
   assert.equal(peutGererLesAcces(ROLE_DIRIGEANT), true);
   assert.equal(peutGererLesAcces(ROLE_ACCUEIL), false);
   assert.equal(peutGererLesAcces(ROLE_MECANICIEN), false);
-  assert.equal(peutFacturer(ROLE_ACCUEIL), false);
   assert.equal(peutFacturer(ROLE_DIRIGEANT), true);
+  assert.equal(peutFacturer(ROLE_ACCUEIL), true);
+  assert.equal(peutFacturer(ROLE_MECANICIEN), false);
+  assert.equal(peutFacturer(null), false);
 });
 
 test("chargerMonRole ne remonte qu'un rôle connu", async () => {

@@ -23,7 +23,7 @@ export const DESCRIPTIONS_ROLES = {
   [ROLE_DIRIGEANT]:
     "Contrôle complet : clients, atelier, facturation, statistiques, réglages et gestion des accès.",
   [ROLE_ACCUEIL]:
-    "Clients, véhicules, rendez-vous, devis, contrôle véhicule et suivi d'atelier. Ni facturation, ni réglages, ni gestion des accès.",
+    "Clients, véhicules, rendez-vous, devis, factures, contrôle véhicule et suivi d'atelier. Ni statistiques, ni réglages, ni gestion des accès.",
   [ROLE_MECANICIEN]:
     "Uniquement les ordres de réparation qui lui sont affectés, leurs étapes et ses constats techniques. Aucun prix, aucune coordonnée client.",
 };
@@ -38,6 +38,12 @@ const VUES_ACCUEIL = [
   "clients",
   "vehicules",
   "devis",
+  // Décision produit du 12 septembre 2026 : l'accueil tient le comptoir, donc
+  // il encaisse et transmet les factures. Les policies `factures_accueil_*`
+  // (20260916000200) ouvrent la table en lecture, création et modification —
+  // sans suppression, et sans rien d'autre. L'historique des devis,
+  // les statistiques, les réglages et les accès restent au dirigeant.
+  "factures",
   "verifier",
   "inspections",
   "atelier",
@@ -64,8 +70,12 @@ export function peutGererLesAcces(role) {
   return role === ROLE_DIRIGEANT;
 }
 
+// Établir une facture, l'encaisser, préparer son envoi. Les mêmes contrôles
+// s'appliquent en base pour les deux rôles — `a_acces_garage(garage_id,
+// 'dirigeant', 'accueil')` sur les fonctions d'envoi, policies dédiées sur la
+// table. Ce prédicat-ci ne sert qu'à ne pas afficher ce qui reviendrait vide.
 export function peutFacturer(role) {
-  return role === ROLE_DIRIGEANT;
+  return role === ROLE_DIRIGEANT || role === ROLE_ACCUEIL;
 }
 
 export function estRoleConnu(role) {
