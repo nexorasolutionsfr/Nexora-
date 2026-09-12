@@ -172,6 +172,79 @@ Environ **21 clics**, **14 champs**, **0 impasse**.
   faut la retaper ou la choisir dans « Pré-remplir ».
 - P3 listés plus haut, non traités.
 
+## Suite du 12 septembre 2026 — revue, migrations, envoi réel
+
+### Constats de la revue, vérifiés dans le code
+
+Quatre sont exacts et corrigés : la fenêtre de devis continuait avec un
+véhicule nul après un échec d'enregistrement, et le « Devis créé » effaçait
+l'avertissement ; une ligne de catalogue manquée n'allait qu'en console ;
+l'ajout de véhicule depuis la fiche n'avait aucun verrou ; les réponses des
+clients n'étaient ajoutées qu'à la variante « zones » de l'accueil, pas au
+Cockpit. Un cinquième l'est aussi : le compteur « Notifications à vérifier »
+n'était lu qu'au montage, si bien que masquer l'entrée à zéro la rendait
+introuvable après coup.
+
+Un constat me concernait directement : `reserver_notifications` ne bornait pas
+par `p_garages` les UPDATE qui mettent de côté un document modifié. Ma phrase
+du 11 septembre — « simulation bornée au garage » — était donc infondée.
+Relevé fait : aucune ligne d'un autre garage n'a été mise de côté au motif
+« changé depuis la validation ». Le bornage est désormais écrit
+(`20260915000200`).
+
+### Migrations
+
+| Migration | Test | Production |
+|---|---|---|
+| `20260915000100` un devis créé n'est pas armé | appliquée le 11 | **appliquée le 12** (dry-run en transaction annulée, puis application ; files vides : 0 en attente, 0 en cours) |
+| `20260915000200` mise à l'écart bornée au garage | appliquée | **refusée à la session de l'agent** |
+| `20260915000300` aperçu aligné sur le message envoyé | appliquée | **refusée à la session de l'agent** |
+
+Compatibilité vérifiée avant l'application en Production : avec le code de
+`main` servi sur Test après migration, un devis créé affiche « À valider — Le
+devis est prêt. Rien ne partira tant que vous ne l'aurez pas validé » et le
+bouton « Valider et envoyer au client ».
+
+### Divergence aperçu / message envoyé
+
+Le workflow « Nouveau devis (socle) » **ne passe pas** par
+`apercu_message_devis` : il reconstruit le texte, avec l'immatriculation et
+« pour votre <véhicule> ». L'aperçu est aligné mot pour mot
+(`20260915000300`). Tant que les deux textes vivent à deux endroits, ils
+peuvent redivorcer.
+
+### Envoi réel, de bout en bout (Test)
+
+Créé depuis l'interface : client « Client Recette Envoi »
+(`baptiste.papoul52+nexora-recette@gmail.com`), Peugeot 208 `DEMO-222-DM`,
+devis d'une ligne à 144,00 € TTC. Aperçu relu, envoi autorisé explicitement.
+
+Traitement : réservation par `reserver_notifications` bornée au garage
+synthétique, envoi par le **vrai transport SMTP Brevo** (identifiant n8n
+existant, réutilisé par référence), clôture par `terminer_notification`. Seule
+la boucle d'orchestration était locale ; en Production c'est l'horloge n8n.
+
+- Remise au fournisseur : exécution n8n `success` à 00:04:33.
+- Réception en boîte : 00:04:35, expéditeur `…@11919348.brevosend.com`.
+- Lien reçu : `http://localhost:3111/devis/…` — l'application **Test**, ouverte
+  et lue : 144,00 €, détail de la ligne, HT/TVA/TTC.
+- Acceptation par le client, puis côté garage : « Devis accepté par Client
+  Recette Envoi — reçu à l'instant — Voir la réponse » sur l'accueil et dans
+  l'onglet Devis.
+- Ligne close en `envoye` **après** la preuve de réception, jamais avant.
+
+Trois lignes antérieures du même garage, dont le destinataire n'était pas une
+adresse réelle, ont été mises de côté avec motif explicite avant l'envoi —
+ciblé, réversible, aucune suppression.
+
+### Rôles, après corrections
+
+- Dirigeant : parcours complet ci-dessus.
+- Accueil : entrée « Devis » dans le menu (droit qu'il avait déjà, sans
+  élargissement), pas d'onglet Factures ni Historique, mise en route réduite à
+  ce qu'il peut ouvrir (3 étapes), aucune erreur de chargement.
+- Mécanicien : écran « Mon atelier » inchangé.
+
 ### Hors périmètre, documenté
 
 - **Facture** : `notifier_nouvelle_facture` a le même défaut que P1-a (mise en

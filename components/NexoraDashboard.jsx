@@ -2740,7 +2740,7 @@ function FacturationView({ monRole = ROLE_DIRIGEANT, view, setView, devisList, c
           <button key={key} onClick={() => setView(key)} className="text-[13px] font-medium px-4 py-1.5 rounded-lg" style={view === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>{label}</button>
         ))}
       </div>
-      {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} onLignesChange={onLignesChange} onToast={onToast} onCreerVehicule={onCreerVehicule} ouvrirCreation={ouvrirCreation} onCreationOuverte={onCreationOuverte} devisOuvertId={devisOuvertId} onCreerOrdreReparation={onCreerOrdreReparation} />}
+      {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} onLignesChange={onLignesChange} onToast={onToast} onCreerVehicule={onCreerVehicule} ouvrirCreation={ouvrirCreation} onCreationOuverte={onCreationOuverte} devisOuvertId={devisOuvertId} onCreerOrdreReparation={onCreerOrdreReparation} historiqueAccessible={tabs.some(([cle]) => cle === "historique")} />}
       {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={onGenererFacture} onMarquerPayee={onMarquerPayee} onSauvegarder={onSauvegarderFacture} facturesLiens={facturesLiens} facturesBusyId={facturesBusyId} onGenererLien={onGenererLienFacture} onRevoquerLien={onRevoquerLienFacture} onToast={onToast} />}
       {view === "historique" && <HistoriqueView devisList={devisList} garageId={garageId} onCreerOrdreReparation={onCreerOrdreReparation} prestations={prestations} />}
     </div>
@@ -2893,7 +2893,7 @@ function HistoriqueView({ devisList, garageId, onCreerOrdreReparation, prestatio
 
 const dateHeureCourte = (d) => (d ? new Date(d).toLocaleString("fr-FR", { timeZone: APP_TIME_ZONE, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
 
-function DevisView({ devisList: devisListToutesSources, clients, prestations, garageData, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient, onCreerVehicule, devisLiens = {}, devisBusyId, onGenererLien, onRevoquerLien, onLignesChange, onToast, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null, onCreerOrdreReparation }) {
+function DevisView({ devisList: devisListToutesSources, clients, prestations, garageData, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient, onCreerVehicule, devisLiens = {}, devisBusyId, onGenererLien, onRevoquerLien, onLignesChange, onToast, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null, onCreerOrdreReparation, historiqueAccessible = true }) {
   const devisList = devisListToutesSources.filter((d) => d.statut === "en_attente");
   // Recette du 2026-09-11 : un devis accepté disparaissait d'ici sans laisser
   // de trace ; il ne restait que l'onglet Historique. Les réponses récentes
@@ -2925,7 +2925,10 @@ function DevisView({ devisList: devisListToutesSources, clients, prestations, ga
         <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-5 pt-4 pb-2">
             <div className="font-semibold text-slate-900 text-[14.5px]">Réponses des clients</div>
-            <div className="text-[12.5px] text-slate-500">Les sept derniers jours. Tout l&apos;historique est dans l&apos;onglet Historique.</div>
+            {/* Un compte accueil n'a pas d'onglet Historique : ne l'y envoyons pas. */}
+            <div className="text-[12.5px] text-slate-500">
+              Les sept derniers jours.{historiqueAccessible ? " Tout l'historique est dans l'onglet Historique." : ""}
+            </div>
           </div>
           <div className="divide-y divide-slate-100">
             {reponses.map((d) => (
