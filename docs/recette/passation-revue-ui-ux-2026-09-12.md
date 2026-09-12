@@ -5,10 +5,12 @@ sans déclencher d'envoi réel et sans toucher à un compte de prospect. Aucun
 secret n'y figure : les accès passent par des outils du dépôt et par des
 fichiers `.env.local` non versionnés, déjà en place sur le Mac.
 
-Mis à jour après la livraison de la PR #82 (fusionnée le 12 septembre), puis
-après le lot « confirmation et envoi des factures » du même jour (branche
-`fix/confirmation-et-envoi-factures`, **non fusionnée**, voir
-`docs/recette/envoi-factures-et-confirmation-2026-09-12.md`).
+Mis à jour après trois livraisons du 12 septembre 2026 : la PR #82, puis la
+**PR #83 — fusionnée à 10:06 UTC (merge `abef1fa`), migrations appliquées en
+Production** (voir `docs/recette/envoi-factures-et-confirmation-2026-09-12.md`),
+puis le chantier « parcours quotidien » (branche
+`ux/parcours-quotidien-lisible`, **non fusionnée**, voir
+`docs/recette/parcours-quotidien-2026-09-12.md`).
 
 ## Où est le code
 
@@ -17,7 +19,8 @@ après le lot « confirmation et envoi des factures » du même jour (branche
 | Dépôt | `nexorasolutionsfr/Nexora-` |
 | Copie de travail principale | `/Users/Baptiste/Documents/Codex/2026-08-27/files-mentioned-by-the-user-tu/nexora-dashboard` (branche `feature/landing-garage-v1`, modifications en cours — **ne pas s'en servir pour la revue**) |
 | Worktree de référence | `…/nexora-dix-minutes-worktree`, branche `ux/dix-premieres-minutes` (= `main`) |
-| Worktree du lot en cours | `…/nexora-factures-envoi-worktree`, branche `fix/confirmation-et-envoi-factures`, servie sur `http://localhost:3112` pendant la recette |
+| Worktree du lot précédent | `…/nexora-factures-envoi-worktree`, branche `fix/confirmation-et-envoi-factures` (**fusionnée**, PR #83) |
+| Worktree du lot en cours | `…/nexora-ux-quotidien-worktree`, branche `ux/parcours-quotidien-lisible`, servie sur `http://localhost:3113` pendant la recette |
 | PR | [#82](https://github.com/nexorasolutionsfr/Nexora-/pull/82), **fusionnée** |
 | Commit de fusion sur `main` | `6968684` |
 | Dernier commit de la branche avant fusion | `b9bdd08` |
@@ -152,20 +155,27 @@ Test et Production, depuis le 12 septembre :
 Les définitions de `reserver_notifications` et `apercu_message_devis` portent
 la même empreinte sur les deux projets.
 
-## Dettes connues, à ne pas confondre avec des régressions
+## État des envois, après la PR #83
 
-- **La facture armée dès la génération** : corrigée sur la branche
-  `fix/confirmation-et-envoi-factures` (migration `20260916000100`, appliquée
-  sur **Test seulement**, geste d'envoi dans la fenêtre Factures). Tant que la
-  PR n'est pas fusionnée et la migration appliquée, **la Production garde le
-  défaut**.
-- **Le message part de deux sources** : l'aperçu vient d'une fonction SQL,
-  le message envoyé est reconstruit dans un nœud de code n8n. Le 12 septembre
-  au matin, ils différaient encore au chiffre près (« 144.00 € » / « 144 € ») ;
-  la branche aligne l'écriture du montant. Rien n'empêche techniquement qu'ils
-  redivergent.
-- **« Marquer payée » arme une confirmation de paiement automatique**
-  (`notifier_facture_payee`), sans relecture ; relevé, non traité.
+- **La facture n'est plus armée à sa génération**, et **« Marquer payée »
+  n'envoie plus rien** : migrations `20260916000100` et `20260916000200`,
+  appliquées en Production le 12 septembre. Le déclencheur
+  `notifier_facture_payee` a été supprimé.
+- **Le rôle accueil gère les factures** depuis la même livraison.
+- **Le message part encore de deux sources** : l'aperçu vient d'une fonction
+  SQL, le message envoyé est reconstruit dans un nœud de code n8n. Ils sont
+  alignés, au chiffre près depuis `montant_comme_le_traitement`, sans garantie
+  que ça dure.
+- **Restant sur la branche `ux/parcours-quotidien-lisible`, non fusionnée** :
+  une acceptation ou un refus de devis arme encore, **en Production**, un
+  e-mail non relu (`notifier_devis_maj`). Corrigé par `20260917000100`, sur
+  Test seulement.
+
+## Preuve d'envoi encore à faire
+
+Un envoi réel de facture de bout en bout (Brevo, réception, lien ouvert) et un
+vrai compte accueil en Production n'ont pas été joués : la publication du
+12 septembre n'a créé aucune donnée en Production.
 
 ## Petit écart d'interface, volontairement laissé
 

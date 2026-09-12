@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { saluationHoraire, dateLongueFR } from "./calculs";
-import { resumeJournee } from "./resumeJournee";
+import { salutationGarage, dateLongueFR } from "./calculs";
+import { compteursAAfficher, resumeJournee } from "./resumeJournee";
 import { ACCENT, NAVY } from "./tokens";
 
 // L'en-tête de l'accueil : ce qu'un associé annoncerait en arrivant.
@@ -69,15 +69,16 @@ export default function MorningHeader({
   garageData,
   openState,
   rdvAujourdhui = 0,
+  rdvDejaPasses = 0,
   vehiculesEngages = 0,
   decisionsEnAttente = 0,
   montantRisque = 0,
   setView,
 }) {
-  const salutation = saluationHoraire();
   const date = dateLongueFR();
   const resume = resumeJournee({
     rdvAujourdhui,
+    rdvDejaPasses,
     vehiculesEngages,
     decisionsEnAttente,
     montantRisque,
@@ -90,7 +91,7 @@ export default function MorningHeader({
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <div className="text-[19px] md:text-[21px] font-bold tracking-tight" style={{ color: NAVY }}>
-            {salutation}, {garageData?.nom_garage || "votre garage"}
+            {salutationGarage(garageData?.nom_garage)}
           </div>
           <div className="text-[13px] text-slate-500 mt-0.5 capitalize">{date}</div>
         </div>
@@ -125,13 +126,16 @@ export default function MorningHeader({
       </div>
 
       {/* Les quatre chiffres, sur une ligne. Cliquables : le compteur qu'on
-          lit est celui qu'on veut ouvrir. */}
+          lit est celui qu'on veut ouvrir. Absents tant qu'ils sont tous à
+          zéro : voir compteursAAfficher(). */}
+      {compteursAAfficher({ rdvAujourdhui, vehiculesEngages, decisionsEnAttente, montantRisque }) && (
       <div className="mt-3 pt-3 border-t border-slate-100 flex items-start gap-3">
         <Compteur label="Rendez-vous" valeur={rdvAujourdhui} onClick={setView ? () => setView("agenda") : undefined} />
         <Compteur label="En atelier" valeur={vehiculesEngages} onClick={setView ? () => setView("atelier") : undefined} />
         <Compteur label="Priorités" valeur={decisionsEnAttente} />
         <Compteur label="À risque" valeur={montantRisque} suffixe=" €" />
       </div>
+      )}
     </div>
   );
 }

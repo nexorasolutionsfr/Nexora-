@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { saluationHoraire, dateLongueFR } from './calculs.js'
+import { salutationGarage, saluationHoraire, dateLongueFR } from './calculs.js'
 
 // Toutes les heures sont exprimées en UTC et converties en Europe/Paris par la
 // fonction elle-même. Le 10/09/2026 est en CEST (UTC+2).
@@ -44,4 +44,18 @@ test('les bornes 6 h et 18 h basculent au bon moment', () => {
 
 test('dateLongueFR met une majuscule au jour', () => {
   assert.equal(dateLongueFR(new Date('2026-09-10T10:00:00Z')), 'Jeudi 10 septembre 2026')
+})
+
+// Recette du 12 septembre 2026 : un nom de garage vide ou fait d'espaces
+// donnait « Bonjour , », virgule orpheline comprise.
+test('la salutation ne laisse jamais de virgule orpheline', () => {
+  assert.equal(salutationGarage('Garage Dupont', 'Bonjour'), 'Bonjour, Garage Dupont')
+  assert.equal(salutationGarage('  Garage Dupont  ', 'Bonsoir'), 'Bonsoir, Garage Dupont')
+  assert.equal(salutationGarage('', 'Bonjour'), 'Bonjour')
+  assert.equal(salutationGarage('   ', 'Bonjour'), 'Bonjour')
+  assert.equal(salutationGarage(null, 'Bonjour'), 'Bonjour')
+  assert.equal(salutationGarage(undefined, 'Bonsoir'), 'Bonsoir')
+  for (const nom of ['', '  ', null, undefined]) {
+    assert.doesNotMatch(salutationGarage(nom, 'Bonjour'), /,/, 'virgule sans nom')
+  }
 })

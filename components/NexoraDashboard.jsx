@@ -23,13 +23,15 @@ import EnvoiFacture from "./envoi/EnvoiFacture";
 import { GESTES_DEVIS, GESTES_FACTURE, MESSAGE_FACTURE_GENEREE, messageFacturePayee } from "./envoi/etatsEnvoi";
 import FactureVueClient from "./facture-vue-client/FactureVueClient";
 import { vueDepuisFactureGarage } from "./facture-vue-client/vueFacture";
-import { libelleReponse, reponsesRecentes } from "./envoi/reponsesClients";
+import { libelleReponse, mentionOrigine, reponsesRecentes, titreReponse } from "./envoi/reponsesClients";
 import DevisVueClient from "./devis-lignes/DevisVueClient";
 import { vueDepuisDevisGarage } from "./devis-lignes/vueClient";
 import { vehiculeDepuisSaisie } from "./clients/vehicule";
 import { MESSAGE_VEHICULE_ECHEC, lectureCreationClient, messageDevisCree } from "./clients/creationClient";
 import { horairesRenseignes } from "./garage-os/miseEnRoute";
 import { CANAUX as CANAUX_ENVOI, CAPACITES, canalEffectif, mentionCanalIndisponible } from "./parametres/capacites";
+import { lignesEtatEnvois } from "./garage-os/etatDesEnvois";
+import { actionOrdreReparation, filVehicule, libelleQuiAgit } from "./atelier/filVehicule";
 import { DELAI_RENVOI_SECONDES, libelleRenvoi, messageRenvoi, secondesAvantRenvoi } from "./connexion/renvoiConfirmation";
 import { adresseSansErreurAuth, decisionFragment, erreurAuthDansFragment, messageLienEchoue } from "./connexion/lienConfirmation";
 import { offre } from "@/lib/tarifs";
@@ -550,7 +552,7 @@ function LienPaiementField({ appt, onSave }) {
   );
 }
 
-function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, onUpdateStatutAtelier, onUpdateLienPaiement, atelierLien, atelierQr, atelierBusy, onGenererLienAtelier, onRevoquerLienAtelier, onOuvrirOrdreReparation }) {
+function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, onUpdateStatutAtelier, onUpdateLienPaiement, atelierLien, atelierQr, atelierBusy, onGenererLienAtelier, onRevoquerLienAtelier, onOuvrirOrdreReparation, fil = null, ordre = null }) {
   if (!appt) return null;
 
   const client = appt.client;
@@ -570,6 +572,35 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
         </div>
         <div className="text-lg font-semibold text-slate-900 mt-3">{client}</div>
         <div className="text-sm text-slate-500">{vehicule} · {appt.immatriculation}</div>
+
+        {/* Où en est cette voiture, et ce qu'on fait maintenant. Trois écrans
+            portaient trois statuts sans jamais dire la suite ; la règle est
+            dans atelier/filVehicule.js, où elle est testée. */}
+        {fil && (
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="text-[13px] font-semibold text-slate-900">{fil.etat}</div>
+              <span
+                className="text-[11.5px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap"
+                style={
+                  fil.quiAgit === "client"
+                    ? { backgroundColor: "#EFF4FE", color: "#1D4ED8" }
+                    : fil.quiAgit === "personne"
+                      ? { backgroundColor: "#F1F5F9", color: "#475569" }
+                      : { backgroundColor: "#FEF3E2", color: "#B45309" }
+                }
+              >
+                {libelleQuiAgit(fil.quiAgit)}
+              </span>
+            </div>
+            <div className="text-[12.5px] text-slate-600 leading-snug mt-1">{fil.prochaineAction}</div>
+            {fil.avertissement && (
+              <div className="text-[12.5px] leading-snug mt-1.5 flex items-start gap-1.5" style={{ color: "#B45309" }}>
+                <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {fil.avertissement}
+              </div>
+            )}
+          </div>
+        )}
         {onUpdateStatutAtelier && (
           <label className="block mt-3">
             <select
@@ -599,12 +630,17 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
           </div>
           {onAssignMecanicien && <label className="block pt-2"><span className="text-[12.5px] font-medium text-slate-500">Mécanicien</span><select value={appt.mecanicien_id || ""} onChange={(e) => onAssignMecanicien(appt.id, e.target.value || null)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"><option value="">Non assigné</option>{mecaniciens.filter((m) => m.actif !== false).map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}</select></label>}
           {onOuvrirOrdreReparation && (
+            // Revue du 12 septembre 2026 : le bouton disait « Préparer la
+            // fiche atelier » même quand l'ordre existait — et même quand il
+            // était terminé. Il dit maintenant ce qu'il fait vraiment, et les
+            // deux mots ne sont plus confondus : l'ordre de réparation est le
+            // document, la fiche atelier la vue qui en découle.
             <button
               type="button"
               onClick={() => onOuvrirOrdreReparation(appt.id)}
               className="mt-3 w-full min-h-[44px] rounded-xl border border-slate-200 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 flex items-center justify-center gap-1.5"
             >
-              <ClipboardCheck size={14} /> Préparer la fiche atelier
+              <ClipboardCheck size={14} /> {actionOrdreReparation(ordre)}
             </button>
           )}
         </div>
@@ -1402,6 +1438,12 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demande
     .filter((r) => new Date(r.date_fin) >= now)
     .sort((a, b) => new Date(a.date_debut) - new Date(b.date_debut));
   const todayAppts = upcomingAppts.filter((r) => r.date_key === todayKey);
+  // Les rendez-vous du jour déjà terminés : ils ne sont plus « attendus »,
+  // mais ils ont eu lieu — dire « aucun rendez-vous aujourd'hui » à 13 h
+  // quand une voiture est passée à 9 h est faux.
+  const rdvDejaPassesAujourdhui = rendezVous.filter(
+    (r) => dateKey(new Date(r.date_debut)) === todayKey && new Date(r.date_fin) < now
+  ).length;
 
   // ---- Client fidèle dormant (utilisé par "Argent à risque") -----------------------
   const oneYearAgo = new Date(now);
@@ -1453,8 +1495,8 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demande
       key: `rep-${d.id}`,
       stripe: d.statut === "accepte" ? "#16A34A" : "#64748B",
       urgent: false,
-      title: `${libelleReponse(d)} par ${d.client}`,
-      meta: `${depuisLabel(d.date_validation)} · ${d.prestations?.nom || "—"} · ${formatEuro(d.montant_ttc)} TTC`,
+      title: titreReponse(d, d.client),
+      meta: `${depuisLabel(d.date_validation)} · ${mentionOrigine(d)} · ${formatEuro(d.montant_ttc)} TTC`,
       action: "Voir la réponse",
       onAction: () => setView("devis"),
     })),
@@ -1684,7 +1726,6 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demande
   };
 
   // ---- Barre de statut des intégrations — dérivée des vraies données, rien en dur -
-  const automatisationActive = !!garageData?.automatisation_active;
   const canalEstChoisi = (key) => Object.values(canauxChoisis).includes(key);
 
   // ---- Ligne compacte d'identité — remplace la grande carte pour laisser "À traiter
@@ -1711,6 +1752,7 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demande
           garageData={garageData}
           openState={openState}
           rdvAujourdhui={todayAppts.length}
+          rdvDejaPasses={rdvDejaPassesAujourdhui}
           vehiculesEngages={vehiculesEngages}
           decisionsEnAttente={decisionsEnAttente}
           montantRisque={montantRisque}
@@ -1850,18 +1892,40 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demande
           />
         </div>
 
+        {/* Revue du 12 septembre 2026 : un garage sans facture lisait
+            « 0 € · 0 · — ». Trois cases vides ne renseignent pas, elles
+            occupent. Tant qu'aucune facture n'existe, on dit ce qui remplira
+            ce bloc ; il reprend sa forme chiffrée dès la première. */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
           <div className="font-semibold text-slate-900 text-[14.5px] mb-3">Ce mois-ci</div>
-          <div className="text-[26px] font-bold text-slate-900 tracking-tight tabular-nums">{caMoisCourant.toLocaleString("fr-FR")} €</div>
-          <div className="text-[12px] text-slate-500 mt-0.5 mb-3">Chiffre d'affaires</div>
-          <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
-            <span className="text-slate-500">RDV facturés</span>
-            <span className="font-semibold text-slate-900">{rdvFactures}</span>
-          </div>
-          <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
-            <span className="text-slate-500">Panier moyen</span>
-            <span className="font-semibold text-slate-900">{panierMoyen ? `${panierMoyen} €` : "—"}</span>
-          </div>
+          {factures.length === 0 ? (
+            <div className="text-[13px] text-slate-500 leading-snug">
+              Votre chiffre d&apos;affaires s&apos;affichera ici dès votre première facture.
+              {peutFacturer(monRole) && (
+                <button
+                  type="button"
+                  onClick={() => setView("factures")}
+                  className="block mt-2 text-[12.5px] font-semibold"
+                  style={{ color: ACCENT }}
+                >
+                  Ouvrir la facturation
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="text-[26px] font-bold text-slate-900 tracking-tight tabular-nums">{caMoisCourant.toLocaleString("fr-FR")} €</div>
+              <div className="text-[12px] text-slate-500 mt-0.5 mb-3">Chiffre d&apos;affaires</div>
+              <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
+                <span className="text-slate-500">RDV facturés</span>
+                <span className="font-semibold text-slate-900">{rdvFactures}</span>
+              </div>
+              <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
+                <span className="text-slate-500">Panier moyen</span>
+                <span className="font-semibold text-slate-900">{panierMoyen ? `${panierMoyen} €` : "—"}</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -1907,31 +1971,36 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demande
       </details>
       )}
 
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-2">
-        <div className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: automatisationActive ? "#16A34A" : "#CBD5E1" }} />
-          Email — <b className="text-slate-900">{automatisationActive ? "actif" : "réponses manuelles"}</b>
+      {/* Ce que Nexora envoie, et ce qu'il n'envoie pas. La pastille
+          « Email — actif » annonçait un automatisme que rien ne fait ; ces
+          lignes ne décrivent que des comportements réels (voir
+          garage-os/etatDesEnvois.js). */}
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3.5">
+        <div className="text-[12.5px] font-semibold text-slate-700 mb-2">Ce qui part vers vos clients</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-2">
+          {lignesEtatEnvois({
+            automatiqueDisponible: CAPACITES.reponseAutomatique.disponible,
+            canauxEnAttente: ["sms", "whatsapp"].filter((c) => canalEstChoisi(c)),
+          }).map((ligne) => (
+            <div key={ligne.cle} className="flex items-start gap-2 text-[12.5px] text-slate-500 leading-snug">
+              <span
+                className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
+                style={{ backgroundColor: ligne.ton === "attention" ? "#B45309" : ligne.ton === "pret" ? "#16A34A" : "#CBD5E1" }}
+              />
+              <span>
+                <b className="text-slate-900 font-semibold">{ligne.titre}</b> — {ligne.detail}
+              </span>
+            </div>
+          ))}
+          {/* Tant que la connexion Google n'existe pas, annoncer « non connecté »
+              désigne un manque là où il n'y a rien à connecter. */}
+          {GOOGLE_CALENDAR_CONFIGURE && (
+            <div className="flex items-start gap-2 text-[12.5px] text-slate-500 leading-snug">
+              <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: garageData?.google_agenda_connecte ? "#16A34A" : "#CBD5E1" }} />
+              <span><b className="text-slate-900 font-semibold">Google Calendar</b> — {garageData?.google_agenda_connecte ? "connecté" : "non connecté"}</span>
+            </div>
+          )}
         </div>
-        {canalEstChoisi("sms") && (
-          <div className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#B45309" }} />
-            SMS — <b className="text-slate-900">canal choisi, activation à finaliser</b>
-          </div>
-        )}
-        {canalEstChoisi("whatsapp") && (
-          <div className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#B45309" }} />
-            WhatsApp — <b className="text-slate-900">canal choisi, activation à finaliser</b>
-          </div>
-        )}
-        {/* Tant que la connexion Google n'existe pas, annoncer « non connecté »
-            désigne un manque là où il n'y a rien à connecter. */}
-        {GOOGLE_CALENDAR_CONFIGURE && (
-          <div className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: garageData?.google_agenda_connecte ? "#16A34A" : "#CBD5E1" }} />
-            Google Calendar — <b className="text-slate-900">{garageData?.google_agenda_connecte ? "connecté" : "non connecté"}</b>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -2417,9 +2486,13 @@ function RescheduleModal({ proposition, garageId, onClose, onConfirm }) {
   );
 }
 
-function CreerRdvModal({ clients, prestations, date, heure, onClose, onCreate, onCreerClient, onCreerVehicule }) {
+function CreerRdvModal({ clients, prestations, date, heure, onClose, onCreate, onCreerClient, onCreerVehicule, clientPreselectionne = null }) {
   const [query, setQuery] = useState("");
-  const [clientId, setClientId] = useState("");
+  // Ouvert depuis la fiche d'un client, le rendez-vous n'a pas à redemander
+  // de qui il s'agit — ni sa voiture quand il n'en a qu'une (revue du
+  // 12 septembre 2026 : après avoir créé un client, il fallait rouvrir
+  // l'agenda et le rechercher).
+  const [clientId, setClientId] = useState(clientPreselectionne?.id || "");
   const [prestationId, setPrestationId] = useState("");
   const [heureChoisie, setHeureChoisie] = useState(heure || "09:00");
   const [creating, setCreating] = useState(false);
@@ -2431,7 +2504,11 @@ function CreerRdvModal({ clients, prestations, date, heure, onClose, onCreate, o
   // Reste facultatif — on n'oblige personne à connaître le véhicule dès la
   // prise de rendez-vous — mais il devient enfin renseignable, ce qui est la
   // condition pour qu'un ordre de réparation puisse s'y rattacher ensuite.
-  const [vehiculeId, setVehiculeId] = useState("");
+  const [vehiculeId, setVehiculeId] = useState(() => {
+    const v = clientPreselectionne?.vehicules;
+    const liste = Array.isArray(v) ? v : v ? [v] : [];
+    return liste.length === 1 ? liste[0].id : "";
+  });
   const [nouveauVehicule, setNouveauVehicule] = useState(false);
   const [marqueNouveau, setMarqueNouveau] = useState("");
   const [modeleNouveau, setModeleNouveau] = useState("");
@@ -2960,12 +3037,12 @@ function DevisView({ devisList: devisListToutesSources, clients, prestations, ga
                     <Badge tone={d.statut === "accepte" ? "green" : "red"}>{libelleReponse(d)}</Badge>
                   </div>
                   <div className="text-[12.5px] text-slate-500 mt-0.5">
-                    {[[d.vehicule, d.immatriculation].filter(Boolean).join(" · "), d.prestations?.nom, `${formatEuro(d.montant_ttc)} TTC`, dateHeureCourte(d.date_validation)].filter(Boolean).join(" · ")}
+                    {[[d.vehicule, d.immatriculation].filter(Boolean).join(" · "), d.prestations?.nom, `${formatEuro(d.montant_ttc)} TTC`, dateHeureCourte(d.date_validation), mentionOrigine(d)].filter(Boolean).join(" · ")}
                   </div>
                 </div>
                 {d.statut === "accepte" && onCreerOrdreReparation && (
                   <button type="button" onClick={() => onCreerOrdreReparation(d)} className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 whitespace-nowrap">
-                    Créer la fiche atelier
+                    Créer l&apos;ordre de réparation
                   </button>
                 )}
               </div>
@@ -4182,10 +4259,11 @@ const TRAVAIL_DIFFERE_STATUT_LABEL = {
   refus_definitif: "Refus définitif",
 };
 
-function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], travauxDifferes = [], onCreerDevis, onCreerClient, onCreerVehicule, onOuvrirTravailDiffereModal, onToast, onOuvrirDossierVehicule, ouvrirCreation = false, onCreationOuverte }) {
+function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], travauxDifferes = [], onCreerDevis, onCreerClient, onCreerVehicule, onCreerRdv, onOuvrirTravailDiffereModal, onToast, onOuvrirDossierVehicule, ouvrirCreation = false, onCreationOuverte }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [devisModalOpen, setDevisModalOpen] = useState(false);
+  const [rdvModalOpen, setRdvModalOpen] = useState(false);
   const [nouveauClientOuvert, setNouveauClientOuvert] = useState(Boolean(ouvrirCreation));
   const [ajoutVehicule, setAjoutVehicule] = useState(false);
   const [vehiculeSaisi, setVehiculeSaisi] = useState(VEHICULE_VIDE);
@@ -4316,7 +4394,28 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
             <div><div className="text-lg font-semibold text-slate-900">{selected?.nom}</div><div className="text-[12.5px] text-slate-500">Dossier client et véhicule</div></div>
             {selected?.fidele && <Badge tone="amber">⭐ Client fidèle</Badge>}
           </div>
-          <div className="flex items-center gap-2 flex-wrap"><a href={selected?.telephone ? `tel:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><Phone size={13} />Appeler</a><a href={selected?.telephone ? `sms:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><MessageSquare size={13} />SMS</a><button onClick={() => setDevisModalOpen(true)} className="px-3 py-2 rounded-xl text-[12.5px] font-medium text-white flex items-center gap-1.5" style={{ backgroundColor: ACCENT }}><ReceiptText size={13} />Faire un devis</button>{selected && <button onClick={() => onOuvrirTravailDiffereModal && onOuvrirTravailDiffereModal(selected.id)} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><Clock size={13} />Travail différé</button>}</div>
+          <div className="flex items-center gap-2 flex-wrap"><a href={selected?.telephone ? `tel:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><Phone size={13} />Appeler</a><a href={selected?.telephone ? `sms:${selected.telephone.replace(/\s/g, "")}` : undefined} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><MessageSquare size={13} />SMS</a><button onClick={() => setDevisModalOpen(true)} className="px-3 py-2 rounded-xl text-[12.5px] font-medium text-white flex items-center gap-1.5" style={{ backgroundColor: ACCENT }}><ReceiptText size={13} />Faire un devis</button>{onCreerRdv && selected && <button onClick={() => setRdvModalOpen(true)} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><Calendar size={13} />Planifier un rendez-vous</button>}{selected && <button onClick={() => onOuvrirTravailDiffereModal && onOuvrirTravailDiffereModal(selected.id)} className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-medium text-slate-700 flex items-center gap-1.5"><Clock size={13} />Travail différé</button>}</div>
+          {/* Revue du 12 septembre 2026 : après avoir créé un client et sa
+              voiture, la suite naturelle — le rendez-vous — obligeait à
+              rouvrir l'agenda et à rechercher le client. Il est déjà choisi
+              ici, sa voiture aussi quand il n'en a qu'une. */}
+          {rdvModalOpen && selected && onCreerRdv && (
+            <CreerRdvModal
+              clients={clients}
+              prestations={prestations}
+              clientPreselectionne={selected}
+              date={new Date().toISOString().slice(0, 10)}
+              heure="09:00"
+              onClose={() => setRdvModalOpen(false)}
+              onCreate={async (payload) => {
+                const ok = await onCreerRdv(payload);
+                setRdvModalOpen(false);
+                return ok;
+              }}
+              onCreerClient={onCreerClient}
+              onCreerVehicule={onCreerVehicule}
+            />
+          )}
           {devisModalOpen && selected && (
             <GenererDevisModal
               clients={clients}
@@ -5102,6 +5201,7 @@ function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = nul
   const [propositions, setPropositions] = useState([]);
   const [devisList, setDevisList] = useState([]);
   const [factures, setFactures] = useState([]);
+  const [ordresReparation, setOrdresReparation] = useState([]);
   const [toast, setToast] = useState(null);
   const [selectedAppt, setSelectedAppt] = useState(null);
   const [atelierLiens, setAtelierLiens] = useState({});
@@ -5689,6 +5789,31 @@ setPropositions(formattedPropositions);
   }, []);
 
 
+  // Les ordres de réparation, en lecture seule : le panneau d'un rendez-vous
+  // doit savoir si un ordre existe déjà avant de proposer d'en créer un
+  // (revue du 12 septembre 2026 — « Préparer la fiche atelier » s'affichait
+  // même quand l'ordre était terminé).
+  useEffect(() => {
+    async function loadOrdresReparation() {
+      const { data, error } = await supabase
+        .from("ordres_reparation")
+        .select("id, rendez_vous_id, devis_id, statut")
+        .eq("garage_id", garageId);
+      if (error) {
+        // Un panneau sans ordre connu reste utilisable : il proposera de le
+        // créer, et la section Ordres redirigera vers celui qui existe.
+        console.error("Erreur chargement ordres de réparation :", error);
+        return;
+      }
+      setOrdresReparation(data || []);
+    }
+    loadOrdresReparation();
+    // `view` en dépendance : un ordre créé depuis sa propre section doit être
+    // connu du panneau d'un rendez-vous dès qu'on y revient. Sans cela, le
+    // panneau proposait encore « Créer l'ordre de réparation » pour un ordre
+    // qui existait déjà (recette du 12 septembre 2026).
+  }, [versionDevis, view]);
+
   useEffect(() => {
     async function loadFactures() {
       const { data, error } = await supabase
@@ -5961,11 +6086,16 @@ if (updateError) {
   // Noter une réponse reçue par téléphone ou au comptoir. Si le client a déjà
   // répondu par le lien entre-temps, la mise à jour ne touche aucune ligne :
   // on le dit et on relit, au lieu d'afficher un succès qui n'a pas eu lieu.
+  // Enregistrer une réponse obtenue autrement qu'par le lien du client.
+  // `reponse_origine` part dans le même UPDATE que le statut : ensuite, le
+  // devis est verrouillé par `devis_check_immuabilite` et plus rien ne peut
+  // le compléter. Sans cette colonne, l'écran affichait la même phrase que
+  // pour un clic du client (migration 20260917000100).
   const noterReponseDevis = async (id, statut) => {
     const date = new Date().toISOString();
     const { data, error } = await supabase
       .from("devis")
-      .update({ statut, date_validation: date })
+      .update({ statut, date_validation: date, reponse_origine: "garage" })
       .eq("id", id)
       .eq("statut", "en_attente")
       .select("id");
@@ -5981,8 +6111,12 @@ if (updateError) {
     }
     // Le devis garde sa place avec son nouveau statut : il rejoint « Réponses
     // des clients » et l'historique au lieu de disparaître.
-    setDevisList((prev) => prev.map((d) => (d.id === id ? { ...d, statut, date_validation: date } : d)));
-    flashToast(statut === "accepte" ? "Réponse notée : devis accepté" : "Réponse notée : devis refusé");
+    setDevisList((prev) => prev.map((d) => (d.id === id ? { ...d, statut, date_validation: date, reponse_origine: "garage" } : d)));
+    flashToast(
+      statut === "accepte"
+        ? "Acceptation enregistrée. Aucun message n'a été envoyé au client."
+        : "Refus enregistré. Aucun message n'a été envoyé au client."
+    );
   };
   const handleAcceptDevis = (id) => noterReponseDevis(id, "accepte");
   const handleRefuseDevis = (id) => noterReponseDevis(id, "refuse");
@@ -6347,6 +6481,22 @@ if (updateError) {
   // programmé dans une seule transaction : il n'existe aucun instant où la
   // facture est payée et le message « à régler » encore armé. Un envoi déjà
   // en cours n'est pas touché — il est signalé, pas rejoué.
+  // Le fil d'une voiture : on rassemble les quatre statuts qui vivaient sur
+  // quatre écrans, et `filVehicule` en tire l'état, le geste suivant et son
+  // auteur. Le devis est rattaché par client + véhicule — `devis` n'a pas de
+  // lien direct vers le rendez-vous — et l'ordre par son rendez-vous.
+  const filDuRendezVous = (appt) => {
+    if (!appt) return null;
+    const ordre = ordresReparation.find((o) => o.rendez_vous_id === appt.id) || null;
+    const facture = factures.find((f) => f.rendez_vous_id === appt.id) || null;
+    const devis = (ordre?.devis_id && devisList.find((d) => d.id === ordre.devis_id))
+      || devisList
+        .filter((d) => d.client_id === appt.client_id && (!appt.vehicule_id || d.vehicule_id === appt.vehicule_id))
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
+      || null;
+    return filVehicule({ rdv: appt, devis, ordre, facture });
+  };
+
   const handleMarquerFacturePayee = async (id) => {
     const { data, error } = await supabase.rpc("marquer_facture_payee", { p_facture_id: id });
     if (error || !data?.ok) {
@@ -7106,6 +7256,7 @@ if (updateError) {
           )}
           {view === "clients" && (
             <ClientsView
+              onCreerRdv={handleCreerRdvManuel}
               clients={clients}
               rendezVous={rendezVous}
               prestations={prestations}
@@ -7159,7 +7310,7 @@ if (updateError) {
       </main>
 
       <Toast toast={toast} />
-      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} onUpdateStatutAtelier={updateStatutAtelier} onUpdateLienPaiement={updateLienPaiement} atelierLien={selectedAppt ? atelierLiens[selectedAppt.id] : null} atelierQr={selectedAppt ? atelierQr[selectedAppt.id] : null} atelierBusy={selectedAppt ? atelierBusyId === selectedAppt.id : false} onGenererLienAtelier={genererLienAtelier} onRevoquerLienAtelier={revoquerLienAtelier} onOuvrirOrdreReparation={(rdvId) => { setSelectedAppt(null); setFocusOrdreRendezVousId(rdvId); setView("ordres-reparation"); }} />
+      <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} onUpdateStatutAtelier={updateStatutAtelier} onUpdateLienPaiement={updateLienPaiement} atelierLien={selectedAppt ? atelierLiens[selectedAppt.id] : null} atelierQr={selectedAppt ? atelierQr[selectedAppt.id] : null} atelierBusy={selectedAppt ? atelierBusyId === selectedAppt.id : false} onGenererLienAtelier={genererLienAtelier} onRevoquerLienAtelier={revoquerLienAtelier} fil={filDuRendezVous(selectedAppt)} ordre={selectedAppt ? ordresReparation.find((o) => o.rendez_vous_id === selectedAppt.id) || null : null} onOuvrirOrdreReparation={(rdvId) => { setSelectedAppt(null); setFocusOrdreRendezVousId(rdvId); setView("ordres-reparation"); }} />
       {dossierVehiculeId && dossierClient && dossierVehicule && (
         <VehicleCaseFileView
           vehicule={dossierVehicule}

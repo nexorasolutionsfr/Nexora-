@@ -23,6 +23,11 @@ const STATUT_TONE_TEXT = {
 // horaire pleine page — plus lisible sur tablette et mobile en garage.
 export default function VotreJournee({ todayAppts = [], stageCounts = [], mecaniciensActifs = [], alertesAtelier = 0, onSelectAppt, setView }) {
   const alertes = alertesAtelier;
+  // Revue du 12 septembre 2026 : sur un garage sans voiture, cette ligne
+  // affichait huit zéros côte à côte — « 0 À VENIR · 0 VÉHICULE DÉPOSÉ · 0
+  // DIAGNOSTIC… ». Une progression sans rien à faire progresser n'est pas une
+  // information ; elle revient dès la première voiture prise en charge.
+  const atelierEnCours = stageCounts.some((s) => Number(s.count) > 0);
   const now = new Date();
   const prochains = todayAppts
     .filter((a) => new Date(a.date_fin || a.date_debut) >= now)
@@ -49,6 +54,7 @@ export default function VotreJournee({ todayAppts = [], stageCounts = [], mecani
         </div>
       )}
 
+      {atelierEnCours && (
       <div className="px-5 py-4">
         <div className="text-[12px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Progression atelier</div>
         <div className="flex divide-x divide-slate-100 -mx-1 overflow-x-auto pb-1">
@@ -63,6 +69,7 @@ export default function VotreJournee({ todayAppts = [], stageCounts = [], mecani
           <div className="mt-2 text-[12px] text-slate-400">Ajoutez vos mécaniciens dans Paramètres pour suivre leur charge de travail.</div>
         )}
       </div>
+      )}
 
       <div className="border-t border-slate-100">
         <div className="px-5 pt-3 pb-1 text-[12px] font-semibold uppercase tracking-wide text-slate-400">Prochains rendez-vous</div>

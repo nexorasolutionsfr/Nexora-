@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ArrowRight, Check, Rocket } from "lucide-react";
-import { etatMiseEnRoute } from "./miseEnRoute";
+import { GROUPE_UTILISER, etatMiseEnRoute, groupesRestants } from "./miseEnRoute";
 import { ACCENT, ACCENT_SOFT } from "./tokens";
 
 const CLE_STOCKAGE = "nexora-mise-en-route-passees";
@@ -33,7 +33,16 @@ function ecrirePassees(cles) {
 /**
  * La liste de mise en route, affichée en haut de l'accueil.
  *
- * Elle disparaît d'elle-même dès qu'il n'y a plus rien à proposer — voir
+ * DEUX GROUPES, ET CE N'EST PAS DÉCORATIF (revue du 12 septembre 2026)
+ *
+ * Les cinq étapes étaient à plat : « Votre premier client », « Votre premier
+ * devis », « Vos horaires », « Votre équipe », « Votre premier rendez-vous ».
+ * Un garagiste y lisait cinq corvées de même poids, dont deux de paramétrage —
+ * et le paramétrage ne lui fait rien gagner. Les trois qui mènent à une
+ * facture passent devant, avec un bouton qui nomme le geste ; la configuration
+ * suit, plus discrète.
+ *
+ * La liste disparaît d'elle-même dès qu'il n'y a plus rien à proposer — voir
  * miseEnRoute.js. Un garage installé ne la voit jamais.
  */
 export default function MiseEnRoute({ garageData, mecaniciens, clients, rendezVous, devis = [], role = null, onAller }) {
@@ -49,6 +58,8 @@ export default function MiseEnRoute({ garageData, mecaniciens, clients, rendezVo
     setPassees(suite);
     ecrirePassees(suite);
   };
+
+  const groupes = groupesRestants(etat.restantes);
 
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -74,51 +85,75 @@ export default function MiseEnRoute({ garageData, mecaniciens, clients, rendezVo
         </div>
       </div>
 
-      <div className="px-2.5 pb-2">
-        {etat.restantes.map((etape) => (
-          // La ligne ENTIÈRE est la cible, pas un bouton de 110 px à son
-          // extrémité : sur un téléphone de 375 px, ce bouton mangeait un
-          // tiers de la largeur et faisait tenir le texte sur quatre lignes.
-          // Un chevron suffit à dire que ça mène quelque part.
-          //
-          // `div` et non `button` : « Passer » vit à l'intérieur, et un bouton
-          // dans un bouton n'est pas du HTML valide.
-          <div
-            key={etape.cle}
-            role="button"
-            tabIndex={0}
-            onClick={() => onAller(etape.vue, etape.onglet, etape.creation)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onAller(etape.vue, etape.onglet, etape.creation);
-              }
-            }}
-            className="flex items-start gap-2.5 px-2.5 py-3 border-t border-slate-50 cursor-pointer hover:bg-slate-50/70 transition-colors"
-          >
-            <span className="w-[18px] h-[18px] mt-0.5 rounded-full border-2 border-slate-200 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="text-[13.5px] font-medium text-slate-900 leading-snug">{etape.titre}</div>
-              <div className="text-[12px] text-slate-500 leading-snug mt-0.5">
-                {etape.pourquoi}{" "}
-                {/* « Passer » est une sortie : trouvable, jamais concurrente
-                    de l'action. D'où le texte souligné plutôt qu'un bouton. */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    passer(etape.cle);
-                  }}
-                  className="text-slate-400 underline underline-offset-2 hover:text-slate-600"
-                >
-                  Passer
-                </button>
-              </div>
+      {groupes.map((groupe) => {
+        const metier = groupe.cle === GROUPE_UTILISER;
+        return (
+          <div key={groupe.cle} className="border-t border-slate-100">
+            <div className="px-5 pt-3 pb-1 text-[12px] font-semibold uppercase tracking-wide text-slate-400">
+              {groupe.titre}
             </div>
-            <ArrowRight size={15} className="shrink-0 mt-0.5" style={{ color: ACCENT }} />
+            <div className="px-2.5 pb-2">
+              {groupe.etapes.map((etape) => (
+                // La ligne entière reste la cible — sur un téléphone de 375 px,
+                // un bouton de 110 px à l'extrémité mangeait un tiers de la
+                // largeur. Le bouton nommé s'ajoute pour les étapes métier :
+                // c'est là qu'il faut que le geste se lise sans réfléchir.
+                //
+                // `div` et non `button` : « Plus tard » vit à l'intérieur, et
+                // un bouton dans un bouton n'est pas du HTML valide.
+                <div
+                  key={etape.cle}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={etape.action}
+                  onClick={() => onAller(etape.vue, etape.onglet, etape.creation)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onAller(etape.vue, etape.onglet, etape.creation);
+                    }
+                  }}
+                  className={`flex items-start gap-2.5 px-2.5 ${metier ? "py-3" : "py-2.5"} cursor-pointer hover:bg-slate-50/70 transition-colors rounded-xl`}
+                >
+                  <span className="w-[18px] h-[18px] mt-0.5 rounded-full border-2 border-slate-200 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className={`${metier ? "text-[13.5px] font-semibold" : "text-[13px] font-medium"} text-slate-900 leading-snug`}>
+                      {etape.titre}
+                    </div>
+                    <div className="text-[12px] text-slate-500 leading-snug mt-0.5">
+                      {etape.pourquoi}{" "}
+                      {/* Une sortie, pas une action : trouvable, jamais
+                          concurrente du geste. Et seulement sur ce qui peut
+                          réellement attendre — la configuration. */}
+                      {etape.reportable && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            passer(etape.cle);
+                          }}
+                          className="text-slate-400 underline underline-offset-2 hover:text-slate-600"
+                        >
+                          Plus tard
+                        </button>
+                      )}
+                    </div>
+                    {metier && (
+                      <span
+                        className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-semibold px-3 py-1.5 rounded-lg text-white"
+                        style={{ backgroundColor: ACCENT }}
+                      >
+                        {etape.action} <ArrowRight size={13} />
+                      </span>
+                    )}
+                  </div>
+                  {!metier && <ArrowRight size={15} className="shrink-0 mt-0.5" style={{ color: ACCENT }} />}
+                </div>
+              ))}
+            </div>
           </div>
-        ))}
-      </div>
+        );
+      })}
 
       {etat.faites > 0 && (
         <div className="px-5 py-2.5 border-t border-slate-100 flex items-center gap-1.5 text-[12px] text-slate-400">

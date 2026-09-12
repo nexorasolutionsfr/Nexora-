@@ -16,6 +16,20 @@ const ETAPES_ALERTE = ["attente_client", "attente_piece"];
 // suivent la même fenêtre que le reste de l'aperçu "Votre journée".
 const ETAPES_LIMITEES_AUJOURDHUI = ["a_venir", "pret", "restitue"];
 
+/**
+ * La ligne de salutation, en entier.
+ *
+ * Recette du 12 septembre 2026 : l'en-tête écrivait `{salutation}, {nom}` sans
+ * regarder le nom. Un garage dont le nom est vide — ou fait d'espaces, ce que
+ * la mise en service laisse passer — donnait « Bonjour , », virgule orpheline
+ * comprise. Le nom est rogné ; s'il ne reste rien, la salutation se suffit à
+ * elle-même et la virgule disparaît avec lui.
+ */
+export function salutationGarage(nomGarage, salutation = saluationHoraire()) {
+  const nom = typeof nomGarage === "string" ? nomGarage.trim() : "";
+  return nom ? `${salutation}, ${nom}` : salutation;
+}
+
 export function saluationHoraire(now = new Date()) {
   // `format()` d'une heure SEULE en fr-FR rend « 11 h », pas « 11 » : le
   // Number() qui lisait cette chaine valait donc NaN, et comme toute

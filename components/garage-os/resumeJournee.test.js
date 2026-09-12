@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { resumeJournee } from './resumeJournee.js'
+import { compteursAAfficher, resumeJournee } from './resumeJournee.js'
 
 // `toLocaleString("fr-FR")` sépare les milliers par une espace insécable
 // étroite (U+202F), pas par une espace ordinaire — et le caractère exact
@@ -78,4 +78,38 @@ test('rien n’est jamais estimé : zéro voiture ne devient pas « calme journ�
     const t = resumeJournee(cas).texte
     assert.ok(!/calme|chargée|tranquille|belle|bonne/i.test(t), t)
   }
+})
+
+// Revue du 12 septembre 2026 : un garage neuf affichait « 0 · 0 · 0 · 0 € »
+// au-dessus de sa liste de démarrage. Une rangée de zéros n'est pas une
+// information ; elle prend la place de ce qu'il faut faire.
+test('la rangée de compteurs disparaît quand tout est à zéro', () => {
+  assert.equal(compteursAAfficher(), false)
+  assert.equal(compteursAAfficher({ rdvAujourdhui: 0, vehiculesEngages: 0, decisionsEnAttente: 0, montantRisque: 0 }), false)
+  // « — » (non calculable) n'est pas « il y en a ».
+  assert.equal(compteursAAfficher({ decisionsEnAttente: null, montantRisque: null }), false)
+})
+
+test('un seul chiffre qui porte quelque chose fait revenir la rangée', () => {
+  assert.equal(compteursAAfficher({ rdvAujourdhui: 1 }), true)
+  assert.equal(compteursAAfficher({ vehiculesEngages: 2 }), true)
+  assert.equal(compteursAAfficher({ decisionsEnAttente: 1 }), true)
+  assert.equal(compteursAAfficher({ montantRisque: 150 }), true)
+})
+
+// Recette du 12 septembre 2026 : à 13 h, un garage qui avait reçu une voiture
+// à 9 h lisait « Aucun rendez-vous aujourd'hui ».
+test("une journée dont les rendez-vous sont passés ne se dit pas vide", () => {
+  const r = resumeJournee({ rdvAujourdhui: 0, rdvDejaPasses: 2 })
+  assert.match(r.texte, /Plus de rendez-vous aujourd'hui/)
+  assert.doesNotMatch(r.texte, /Aucun rendez-vous/)
+})
+
+test("une journée réellement sans rendez-vous le dit toujours", () => {
+  assert.match(resumeJournee({ rdvAujourdhui: 0, rdvDejaPasses: 0 }).texte, /Aucun rendez-vous aujourd'hui/)
+  assert.match(resumeJournee({ rdvAujourdhui: 0 }).texte, /Aucun rendez-vous aujourd'hui/)
+})
+
+test("des rendez-vous encore à venir priment sur ceux déjà passés", () => {
+  assert.match(resumeJournee({ rdvAujourdhui: 2, rdvDejaPasses: 3 }).texte, /2 voitures attendues aujourd'hui/)
 })

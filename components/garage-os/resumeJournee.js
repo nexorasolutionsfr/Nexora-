@@ -38,8 +38,31 @@ function euros(montant) {
  * @param {boolean} etat.ferme             le garage est fermé aujourd'hui
  * @returns {{texte: string, ton: "calme" | "attention"}}
  */
+/**
+ * Faut-il afficher la rangée des quatre compteurs ?
+ *
+ * Recette du 12 septembre 2026, garage neuf : l'en-tête affichait
+ * « 0 · 0 · 0 · 0 € » au-dessus d'une liste de mise en route. Quatre zéros ne
+ * disent rien que la phrase juste au-dessus ne dise déjà — « Aucun rendez-vous
+ * aujourd'hui — rien qui bloque » — et ils occupent la place de ce qu'il faut
+ * faire. La rangée n'apparaît que lorsqu'au moins un chiffre porte quelque
+ * chose ; elle revient d'elle-même dès la première voiture attendue.
+ *
+ * `null` (valeur non calculable dans le mode courant) ne compte pas comme une
+ * information : c'est « je ne sais pas », pas « il y en a ».
+ */
+export function compteursAAfficher({
+  rdvAujourdhui = 0,
+  vehiculesEngages = 0,
+  decisionsEnAttente = 0,
+  montantRisque = 0,
+} = {}) {
+  return [rdvAujourdhui, vehiculesEngages, decisionsEnAttente, montantRisque].some((v) => Number(v) > 0);
+}
+
 export function resumeJournee({
   rdvAujourdhui = 0,
+  rdvDejaPasses = 0,
   vehiculesEngages = 0,
   decisionsEnAttente = 0,
   montantRisque = 0,
@@ -57,7 +80,11 @@ export function resumeJournee({
   if (ferme) {
     // rien : la pastille parle
   } else if (rdvAujourdhui === 0) {
-    morceaux.push("Aucun rendez-vous aujourd'hui");
+    // Recette du 12 septembre 2026 : à 13 h, un garage qui avait reçu une
+    // voiture à 9 h lisait « Aucun rendez-vous aujourd'hui ». Le compteur ne
+    // retient que ce qui est encore à venir — ce qui est juste pour
+    // « attendues », faux pour « aucun ». On distingue les deux.
+    morceaux.push(rdvDejaPasses > 0 ? "Plus de rendez-vous aujourd'hui" : "Aucun rendez-vous aujourd'hui");
   } else {
     morceaux.push(`${rdvAujourdhui} ${pluriel(rdvAujourdhui, "voiture attendue", "voitures attendues")} aujourd'hui`);
   }
