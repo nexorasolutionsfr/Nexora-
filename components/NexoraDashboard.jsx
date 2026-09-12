@@ -5797,7 +5797,11 @@ setPropositions(formattedPropositions);
     async function loadOrdresReparation() {
       const { data, error } = await supabase
         .from("ordres_reparation")
-        .select("id, rendez_vous_id, devis_id, statut")
+        // `vehicule_id` : le dossier véhicule rattache l'ordre à la voiture,
+        // pas au rendez-vous — sans cette colonne, son filtre ne trouve jamais
+        // rien et le fil repart sans l'ordre. Défaut trouvé en recette le
+        // 13 septembre 2026, après la première version de ce correctif.
+        .select("id, rendez_vous_id, vehicule_id, devis_id, statut")
         .eq("garage_id", garageId);
       if (error) {
         // Un panneau sans ordre connu reste utilisable : il proposera de le
