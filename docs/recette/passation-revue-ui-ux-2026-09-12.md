@@ -16,11 +16,12 @@ Mis à jour après la livraison de la PR #82 (fusionnée le 12 septembre).
 | Worktree de référence | `…/nexora-dix-minutes-worktree`, branche `ux/dix-premieres-minutes` |
 | PR | [#82](https://github.com/nexorasolutionsfr/Nexora-/pull/82), **fusionnée** |
 | Commit de fusion sur `main` | `6968684` |
-| Dernier commit de la branche | `b9bdd08` |
+| Dernier commit de la branche avant fusion | `b9bdd08` |
 | Commits de la branche | `5313493`, `9b43a72`, `bda8e88`, `d080305`, `389ba05`, `2be1e00`, `f69ab31`, `4f7b2ee`, `3680298`, `e4693d9`, `b9bdd08` |
 
-Le worktree de référence reste sur sa branche : son contenu est celui qui a
-été fusionné, et c'est lui qui sert l'application Test.
+Le worktree de référence reste sur sa branche, mais celle-ci a été avancée
+sur `main` après la fusion : son contenu est donc exactement celui de `main`,
+documents compris. C'est lui qui sert l'application Test.
 
 ## Où est l'application
 
