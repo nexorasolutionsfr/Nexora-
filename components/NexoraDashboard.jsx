@@ -20,7 +20,7 @@ import { estFerme, heureReservable, heuresOuvrables } from "./agenda/horaires";
 import ConnexionShell from "./connexion/ConnexionShell";
 import EnvoiDevis from "./envoi/EnvoiDevis";
 import EnvoiFacture from "./envoi/EnvoiFacture";
-import { GESTES_DEVIS, GESTES_FACTURE, MESSAGE_FACTURE_GENEREE } from "./envoi/etatsEnvoi";
+import { GESTES_DEVIS, GESTES_FACTURE, MESSAGE_FACTURE_GENEREE, messageFacturePayee } from "./envoi/etatsEnvoi";
 import FactureVueClient from "./facture-vue-client/FactureVueClient";
 import { vueDepuisFactureGarage } from "./facture-vue-client/vueFacture";
 import { libelleReponse, reponsesRecentes } from "./envoi/reponsesClients";
@@ -316,6 +316,11 @@ const navItems = navGroups.flatMap((g) => g.items);
 // Une vue absente de cette table n'est ouverte qu'au dirigeant.
 const NAV_VERS_VUE_ROLE = {
   aujourdhui: "accueil",
+  // « Facturation » ouvre les devis et les factures. L'entrée n'est proposée
+  // qu'à un rôle qui a les factures — sinon la règle ci-dessous la remplace
+  // par « Devis » seul. Sans cette ligne, l'entrée disparaissait pour tout
+  // rôle restreint, y compris celui qui vient de gagner les factures.
+  facturation: "factures",
   devis: "devis",
   agenda: "agenda",
   atelier: "atelier",
@@ -3784,6 +3789,14 @@ function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer
 
   const categoriesDisponibles = [...new Set(prestations.map((p) => p.categorie).filter(Boolean))];
 
+  // La fenêtre ouverte se relit dans la liste : quand la facture change —
+  // marquée payée, modifiée —, elle montre l'état enregistré, pas celui
+  // qu'elle avait à l'ouverture. L'état d'envoi, lui, se relit tout seul
+  // (EnvoiFacture, clé sur le statut et le montant).
+  const factureAffichee = factureOuverte
+    ? facturesEnrichies.find((f) => f.id === factureOuverte.id) || factureOuverte
+    : null;
+
   const trenteJours = Date.now() - 30 * 24 * 60 * 60 * 1000;
   const facturesFiltrees = facturesEnrichies.filter((f) => {
     const q = query.toLowerCase();
@@ -3876,9 +3889,9 @@ function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer
         )}
       </div>
 
-      {factureOuverte && (
+      {factureAffichee && (
         <FactureDetailModal
-          facture={factureOuverte}
+          facture={factureAffichee}
           garageData={garageData}
           onClose={() => setFactureOuverte(null)}
           onSauvegarder={async (payload) => {
@@ -6329,17 +6342,19 @@ if (updateError) {
     return data;
   };
 
+  // Encaisser n'écrit à personne. `marquer_facture_payee` (20260916000200)
+  // fait le passage au statut payé ET la mise à l'écart de l'envoi qui était
+  // programmé dans une seule transaction : il n'existe aucun instant où la
+  // facture est payée et le message « à régler » encore armé. Un envoi déjà
+  // en cours n'est pas touché — il est signalé, pas rejoué.
   const handleMarquerFacturePayee = async (id) => {
-    const { error } = await supabase
-      .from("factures")
-      .update({ statut: "payee", date_paiement: new Date().toISOString() })
-      .eq("id", id);
-    if (error) {
-      flashToast("Impossible de marquer comme payée", "error");
+    const { data, error } = await supabase.rpc("marquer_facture_payee", { p_facture_id: id });
+    if (error || !data?.ok) {
+      flashToast("Impossible de marquer cette facture payée. Réessayez dans un instant.", "error");
       return;
     }
-    setFactures((prev) => prev.map((f) => (f.id === id ? { ...f, statut: "payee", date_paiement: new Date().toISOString() } : f)));
-    flashToast("Facture marquée payée");
+    setFactures((prev) => prev.map((f) => (f.id === id ? { ...f, statut: "payee", date_paiement: data.date_paiement } : f)));
+    flashToast(messageFacturePayee(data));
   };
 
   const handleSauvegarderFacture = async (id, { motif, lignes }) => {

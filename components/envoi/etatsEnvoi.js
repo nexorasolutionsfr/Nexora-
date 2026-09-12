@@ -102,6 +102,11 @@ export function document(cle) {
 // Les motifs techniques deviennent des phrases qu'un garagiste peut suivre.
 function motifs(doc) {
   return [
+    // Le paiement d'abord : c'est le seul motif dont la conduite à tenir n'est
+    // pas « revalidez », mais « relisez, ce message n'a peut-être plus lieu
+    // d'être ». Il est posé par `marquer_facture_payee` (20260916000200).
+    [/marquée payée avant l.envoi/i,
+     "Cette facture a été marquée payée : le message préparé annonçait une facture à régler. Relisez-le avant de l'envoyer quand même."],
     // L'ordre compte : le motif du changement mentionne aussi « destinataire ».
     [/a changé depuis la validation/i,
      `${doc.article} ou l'adresse du client a changé depuis votre validation. Revalidez pour envoyer la version à jour.`],
@@ -192,3 +197,29 @@ export function messageRefusValidation(raison, cle = "devis") {
 // Ce que dit l'écran juste après « Générer la facture » : le document existe,
 // rien n'est parti, et c'est au garage de décider.
 export const MESSAGE_FACTURE_GENEREE = "Facture générée. Rien n'est envoyé au client : relisez-la, puis décidez de l'envoi.";
+
+// Ce que dit l'écran après « Marquer payée ».
+//
+// Règle du 12 septembre 2026 : encaisser n'écrit à personne. La phrase le dit
+// en toutes lettres, parce que le contraire était vrai la veille — un
+// « Confirmation de paiement » partait tout seul. Deux suites possibles, et
+// seulement si elles ont eu lieu :
+//
+//  - un envoi était programmé : il annonçait une facture à régler, il a été
+//    mis de côté dans la même transaction. On le dit, sinon le garage
+//    découvrirait plus tard un envoi « Bloqué » sans savoir pourquoi ;
+//  - un envoi était en cours : on ne sait pas s'il est parti, on ne le rejoue
+//    pas, et c'est au garage de vérifier auprès du client.
+export function messageFacturePayee(resultat) {
+  if (resultat?.deja_payee) {
+    return "Cette facture était déjà marquée payée. Aucun message n'a été envoyé.";
+  }
+  const phrases = ["Facture marquée payée. Aucun message n'a été envoyé."];
+  if (Number(resultat?.envois_mis_de_cote) > 0) {
+    phrases.push("L'envoi qui était programmé a été mis de côté : il annonçait une facture à régler.");
+  }
+  if (resultat?.envoi_incertain) {
+    phrases.push("Un envoi était en cours au moment du paiement : vérifiez avec le client ce qu'il a reçu avant de lui écrire à nouveau.");
+  }
+  return phrases.join(" ");
+}
