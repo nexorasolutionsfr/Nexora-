@@ -1861,7 +1861,7 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demande
         setView={setView}
       />
 
-      <AccesRapides setView={setView} inspectionsActif={INSPECTIONS_MODULE_ACTIF} demandesActif={demandes.length > 0} />
+      <AccesRapides setView={setView} inspectionsActif={INSPECTIONS_MODULE_ACTIF} demandesActif={demandes.length > 0} facturationActive={peutFacturer(monRole)} />
 
       <ParcoursExplique />
 

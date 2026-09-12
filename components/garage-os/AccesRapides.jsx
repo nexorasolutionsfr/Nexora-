@@ -22,7 +22,11 @@ function Raccourci({ icon: Icon, label, onClick }) {
 // `demandesActif` : « Demandes » n'apparaît que si le garage en a reçu. Rien ne
 // les alimente encore pour un garage neuf ; un raccourci vers une boîte vide
 // promet une fonction qui n'est pas là (recette du 2026-09-11).
-export default function AccesRapides({ setView, inspectionsActif = false, demandesActif = true }) {
+//
+// `facturationActive` : le rôle accueil n'a ni les factures ni les règlements.
+// Lui proposer « Devis / Facturation » nomme un écran qu'il n'aura pas ; le
+// raccourci reste, sous le seul nom de ce qu'il ouvrira vraiment.
+export default function AccesRapides({ setView, inspectionsActif = false, demandesActif = true, facturationActive = true }) {
   return (
     <div className="space-y-2">
       <div className="px-1 text-[12.5px] font-semibold text-slate-700">Accès rapides</div>
@@ -30,7 +34,7 @@ export default function AccesRapides({ setView, inspectionsActif = false, demand
         <Raccourci icon={Calendar} label="Agenda" onClick={() => setView("agenda")} />
         <Raccourci icon={Wrench} label="Atelier" onClick={() => setView("atelier")} />
         {demandesActif && <Raccourci icon={Inbox} label="Demandes" onClick={() => setView("demandes")} />}
-        <Raccourci icon={ReceiptText} label="Devis / Facturation" onClick={() => setView("devis")} />
+        <Raccourci icon={ReceiptText} label={facturationActive ? "Devis / Facturation" : "Devis"} onClick={() => setView("devis")} />
         {inspectionsActif && <Raccourci icon={ClipboardList} label="Contrôle véhicule" onClick={() => setView("inspections")} />}
       </div>
     </div>
