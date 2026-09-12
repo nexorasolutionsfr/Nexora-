@@ -38,9 +38,12 @@ test("lien, envoi et réponse du client ne se confondent pas", () => {
   }
   // Le lien dit ce qu'il ne fait pas.
   assert.match(GESTES_DEVIS.lienAide, /n'envoie rien/);
-  // Noter la réponse désigne le client, pas le garage.
-  assert.match(GESTES_DEVIS.marquerAccepte, /^Il /);
-  assert.match(GESTES_DEVIS.marquerRefuse, /^Il /);
+  // Revue du 2026-09-12 : « Il a accepté » ne disait pas qu'on enregistrait
+  // une réponse obtenue ailleurs. Le libellé nomme la saisie.
+  assert.match(GESTES_DEVIS.marquerAccepte, /^Enregistrer /);
+  assert.match(GESTES_DEVIS.marquerRefuse, /^Enregistrer /);
+  assert.match(GESTES_DEVIS.marquerAccepte, /re(ç|c)ue? autrement/);
+  assert.match(GESTES_DEVIS.marquerRefuse, /re(ç|c)u autrement/);
 });
 
 test("la mise en file ne se présente pas comme un envoi réussi", () => {
@@ -161,4 +164,14 @@ test("une facture payée avant son envoi explique pourquoi le message attend", (
   assert.doesNotMatch(e.detail, /contactez-nous/);
   assert.equal(e.peutValider, true);
   assert.equal(messageBlocage(motif, "facture"), e.detail);
+});
+
+// Le devis répondu avant l'envoi : un motif que le garage peut lire, pas le
+// message passe-partout « L'envoi n'a pas pu se faire ».
+test("un devis répondu avant son envoi explique pourquoi rien n'est parti", () => {
+  const motif = "le devis a reçu une réponse avant l'envoi : ce message proposait un devis déjà traité";
+  const e = lireEtat({ ok: true, etat: "bloque", motif }, "devis");
+  assert.match(e.detail, /reçu sa réponse avant/);
+  assert.match(e.detail, /Rien n'a été envoyé/);
+  assert.doesNotMatch(e.detail, /contactez-nous/);
 });

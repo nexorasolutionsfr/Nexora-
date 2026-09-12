@@ -107,6 +107,10 @@ function motifs(doc) {
     // d'être ». Il est posé par `marquer_facture_payee` (20260916000200).
     [/marquée payée avant l.envoi/i,
      "Cette facture a été marquée payée : le message préparé annonçait une facture à régler. Relisez-le avant de l'envoyer quand même."],
+    // Posé par `notifier_devis_maj` (20260917000100) quand la réponse arrive
+    // avant que le message « un devis vous attend » ne soit parti.
+    [/réponse avant l.envoi/i,
+     "Ce devis a reçu sa réponse avant que le message ne parte : il proposait un devis déjà traité. Rien n'a été envoyé."],
     // L'ordre compte : le motif du changement mentionne aussi « destinataire ».
     [/a changé depuis la validation/i,
      `${doc.article} ou l'adresse du client a changé depuis votre validation. Revalidez pour envoyer la version à jour.`],
@@ -159,9 +163,14 @@ export const GESTES_DEVIS = {
   lien: "Obtenir un lien à transmettre vous-même",
   lienAide: "Ce lien n'envoie rien : copiez-le pour le transmettre vous-même (SMS, WhatsApp…).",
   lienCopie: "Lien copié",
+  // Revue du 12 septembre 2026 : « Il a accepté » ne disait pas qu'on
+  // enregistrait une réponse obtenue ailleurs — et le clic armait en plus un
+  // e-mail « Votre devis a été confirmé » que personne n'avait relu (corrigé
+  // en base par 20260917000100). Le libellé dit maintenant le geste : une
+  // saisie, pas une réponse du client.
   reponseAutre: "Le client vous a répondu par téléphone ou au comptoir ?",
-  marquerAccepte: "Il a accepté",
-  marquerRefuse: "Il a refusé",
+  marquerAccepte: "Enregistrer une acceptation reçue autrement",
+  marquerRefuse: "Enregistrer un refus reçu autrement",
 };
 
 // Les gestes de la facture : les mêmes mots, pour les mêmes gestes. Une
