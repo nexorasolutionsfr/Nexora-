@@ -184,6 +184,38 @@ export function devisSansRattachement({ devis = [], ordresReparation = [] }) {
    la phrase et la personne qui agit — une seule décision, au même endroit,
    couverte par les mêmes tests. */
 
+/**
+ * Les visites précédentes, une ligne par rendez-vous, la plus récente en tête.
+ *
+ * Un véhicule dure, ses visites non. Les empiler dans une chronologie unique
+ * donne, au bout d'un an, une liste où l'on ne distingue plus la vidange de
+ * mardi de celle de l'an dernier. On sépare donc ce qui se passe maintenant
+ * de ce qui est passé — et le passé se replie.
+ *
+ * Le devis d'une visite passée y figure quand l'ordre le rattache. Les autres
+ * — refusés, restés sans suite, jamais acceptés — n'ont aucun lien avec une
+ * visite : ils sortent par `devisSansRattachement`, pas d'ici. Aucun document
+ * ne disparaît ; c'est la seule façon honnête de les ranger avec ce modèle.
+ */
+export function interventionsPrecedentes(
+  { rendezVous = [], devis = [], ordresReparation = [], factures = [] },
+  rdvCourantId = null,
+) {
+  return trierParDate(
+    rendezVous.filter((r) => r.id !== rdvCourantId),
+    "date_debut",
+    "desc",
+  ).map((rdv) => {
+    const ordre = ordresReparation.find((o) => o.rendez_vous_id === rdv.id) || null;
+    return {
+      rdv,
+      ordre,
+      devis: (ordre?.devis_id && devis.find((d) => d.id === ordre.devis_id)) || null,
+      facture: factures.find((f) => f.rendez_vous_id === rdv.id) || null,
+    };
+  });
+}
+
 export function detecterDonneesIncompletes({ vehicule, client }) {
   const champsManquantsVehicule = [];
   if (!vehicule?.marque && !vehicule?.modele) champsManquantsVehicule.push("marque/modèle");
@@ -246,6 +278,10 @@ export function construireDossierVehicule(
     devisEnAttente: trouverDevisEnAttente(devis),
     factureEnAttente: trouverFactureEnAttente(factures),
     chronologie: construireChronologie({ rendezVous, devis, factures }),
+    interventionsPrecedentes: interventionsPrecedentes(
+      { rendezVous, devis, ordresReparation, factures },
+      intervention.rdv?.id || null,
+    ),
     donneesIncompletes: detecterDonneesIncompletes({ vehicule, client }),
     aRendezVous: rendezVous.length > 0,
     aDevis: devis.length > 0,
