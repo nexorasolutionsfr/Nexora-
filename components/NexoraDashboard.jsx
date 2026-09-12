@@ -35,6 +35,7 @@ import MembresSection from "./acces-salaries/MembresSection";
 import AtelierMecanicienScreen from "./acces-salaries/AtelierMecanicienScreen";
 import {
   peutVoir,
+  peutFacturer,
   ROLE_DIRIGEANT,
   ROLE_MECANICIEN,
   peutGererLesAcces,
@@ -6708,6 +6709,13 @@ if (updateError) {
   // qu'on attend de lui sur la page qu'il vient d'ouvrir — surtout sur les
   // écrans qu'il n'ouvre qu'une fois par semaine. La place est la même, ce
   // qu'elle porte est utile.
+  // L'accueil n'a ni les factures ni les règlements : lui annoncer
+  // « Devis, factures et règlements » promet deux écrans qu'il n'aura jamais.
+  // Le sous-titre dit ce que ce rôle-là trouvera réellement sur la page.
+  const sousTitreDevis = peutFacturer(monRole)
+    ? "Devis, factures et règlements"
+    : "Vos devis, de la création à la réponse du client";
+
   const sousTitres = {
     aujourdhui: "Ce qui vous attend aujourd'hui, et ce qui bloque",
     atelier: "Où en est chaque voiture, en un coup d'œil",
@@ -6715,10 +6723,10 @@ if (updateError) {
     valider: "Les demandes de rendez-vous qui attendent votre accord",
     demandes: "Ce que vos clients vous ont écrit, trié pour vous",
     clients: "Vos clients, leurs véhicules et leur historique",
-    devis: "Devis, factures et règlements",
+    devis: sousTitreDevis,
     verifier: "Les envois automatiques qui n'ont pas abouti",
     factures: "Vos factures et les règlements reçus",
-    facturation: "Devis, factures et règlements",
+    facturation: sousTitreDevis,
     inspections: "Le tour du véhicule en photos, envoyé au client pour accord avant d'intervenir",
     ordres: "La fiche interne qui suit chaque réparation, de la préparation à la restitution",
     statistiques: "Ce que le garage a produit, et ce qui progresse",
