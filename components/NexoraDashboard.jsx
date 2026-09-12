@@ -19,7 +19,10 @@ import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtel
 import { estFerme, heureReservable, heuresOuvrables } from "./agenda/horaires";
 import ConnexionShell from "./connexion/ConnexionShell";
 import EnvoiDevis from "./envoi/EnvoiDevis";
-import { GESTES_DEVIS } from "./envoi/etatsEnvoi";
+import EnvoiFacture from "./envoi/EnvoiFacture";
+import { GESTES_DEVIS, GESTES_FACTURE, MESSAGE_FACTURE_GENEREE } from "./envoi/etatsEnvoi";
+import FactureVueClient from "./facture-vue-client/FactureVueClient";
+import { vueDepuisFactureGarage } from "./facture-vue-client/vueFacture";
 import { libelleReponse, reponsesRecentes } from "./envoi/reponsesClients";
 import DevisVueClient from "./devis-lignes/DevisVueClient";
 import { vueDepuisDevisGarage } from "./devis-lignes/vueClient";
@@ -28,6 +31,7 @@ import { MESSAGE_VEHICULE_ECHEC, lectureCreationClient, messageDevisCree } from 
 import { horairesRenseignes } from "./garage-os/miseEnRoute";
 import { CANAUX as CANAUX_ENVOI, CAPACITES, canalEffectif, mentionCanalIndisponible } from "./parametres/capacites";
 import { DELAI_RENVOI_SECONDES, libelleRenvoi, messageRenvoi, secondesAvantRenvoi } from "./connexion/renvoiConfirmation";
+import { adresseSansErreurAuth, decisionFragment, erreurAuthDansFragment, messageLienEchoue } from "./connexion/lienConfirmation";
 import { offre } from "@/lib/tarifs";
 import VehicleCaseFileView from "./vehicle-case-file/VehicleCaseFileView";
 import OnboardingGarage from "./onboarding/OnboardingGarage";
@@ -573,7 +577,11 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
             </select>
           </label>
         )}
-        {onUpdateLienPaiement && <LienPaiementField key={appt.id} appt={appt} onSave={onUpdateLienPaiement} />}
+        {/* Revue du 2026-09-12 : le champ « Lien de paiement » enregistrait une
+            adresse que rien ne lit — ni la page publique, ni le message
+            « Véhicule prêt » (qui attend une valeur que rien ne remplit). Un
+            réglage sans effet est une promesse fausse : il n'est plus proposé
+            tant qu'aucun envoi ne s'en sert. Le composant reste, la colonne aussi. */}
         <div className="mt-4 space-y-2.5">
           <div className="flex items-center gap-2 text-sm text-slate-700"><Clock size={15} className="text-slate-400" /> {appt.debut} – {appt.fin}</div>
           <div className="flex items-center gap-2 text-sm">
@@ -2427,6 +2435,13 @@ function CreerRdvModal({ clients, prestations, date, heure, onClose, onCreate, o
   const clientChoisi = clients.find((c) => c.id === clientId) || null;
   const vehiculesClient = Array.isArray(clientChoisi?.vehicules) ? clientChoisi.vehicules : clientChoisi?.vehicules ? [clientChoisi.vehicules] : [];
   const vehiculeChoisi = vehiculesClient.find((v) => v.id === vehiculeId) || null;
+  // Revue du 2026-09-12 : un client qui n'a qu'une voiture n'a pas à la
+  // choisir — sans ce réflexe, le rendez-vous se créait « sans véhicule ».
+  const choisirClient = (c) => {
+    setClientId(c.id);
+    const voitures = Array.isArray(c?.vehicules) ? c.vehicules : c?.vehicules ? [c.vehicules] : [];
+    setVehiculeId(voitures.length === 1 ? voitures[0].id : "");
+  };
   const libelleVehicule = (v) => [`${v.marque || ""} ${v.modele || ""}`.trim(), v.immatriculation].filter(Boolean).join(" · ") || "Véhicule";
   const vehiculeNouveauValide = Boolean(marqueNouveau.trim() || modeleNouveau.trim() || immatNouveau.trim());
   const clientsFiltres = clients.filter((c) => !query || c.nom?.toLowerCase().includes(query.toLowerCase()));
@@ -2505,7 +2520,7 @@ function CreerRdvModal({ clients, prestations, date, heure, onClose, onCreate, o
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Chercher un client..." className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
               <div className="mt-1 max-h-[140px] overflow-y-auto">
                 {clientsFiltres.slice(0, 20).map((c) => (
-                  <button key={c.id} onClick={() => setClientId(c.id)} className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-slate-50">{c.nom}</button>
+                  <button key={c.id} onClick={() => choisirClient(c)} className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-slate-50">{c.nom}</button>
                 ))}
               </div>
             </>
@@ -3792,7 +3807,7 @@ function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer
                   <div className="font-medium text-slate-900 text-[14px]">{r.client}</div>
                   <div className="text-[12.5px] text-slate-500">{[r.vehicule, r.immatriculation, r.prestation].filter(Boolean).join(" · ")}</div>
                 </div>
-                <button onClick={() => onGenerer(r)} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl" style={{ backgroundColor: ACCENT }}>
+                <button onClick={async () => { const f = await onGenerer(r); if (f) setFactureOuverte(f); }} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl" style={{ backgroundColor: ACCENT }}>
                   <ReceiptText size={15} /> Générer la facture
                 </button>
               </div>
@@ -3838,7 +3853,7 @@ function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <div className="font-medium text-slate-900 text-[14px]">{f.numero}</div>
-                    <Badge tone={f.statut === "payee" ? "green" : "amber"}>{f.statut === "payee" ? "Payée" : "En attente"}</Badge>
+                    <Badge tone={f.statut === "payee" ? "green" : "amber"}>{f.statut === "payee" ? "Payée" : "Non payée"}</Badge>
                     <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: catColor(f.categorie).bar }} />
                   </div>
                   <div className="text-[12.5px] text-slate-500">
@@ -3847,7 +3862,7 @@ function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => setFactureOuverte(f)} className="text-sm font-medium px-3.5 py-2 rounded-xl border border-slate-200 text-slate-600">
-                    Voir
+                    Ouvrir
                   </button>
                   {f.statut !== "payee" && (
                     <button onClick={() => onMarquerPayee(f.id)} className="text-sm font-medium text-white px-3.5 py-2 rounded-xl" style={{ backgroundColor: "#16A34A" }}>
@@ -3881,8 +3896,13 @@ function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer
   );
 }
 
+// La fenêtre d'une facture, en trois temps qui ne se confondent pas — les
+// mêmes que la carte devis : écrire au client par e-mail, après relecture du
+// message ; obtenir un lien à lui transmettre soi-même, qui n'envoie rien ;
+// voir la page qu'il ouvrira. Générer la facture n'a rien envoyé.
 function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien, busy, onGenererLien, onRevoquerLien, onToast }) {
   const [modeEdition, setModeEdition] = useState(false);
+  const [apercuOuvert, setApercuOuvert] = useState(false);
   const [motif, setMotif] = useState(facture.motif || "");
   const [lignes, setLignes] = useState(
     Array.isArray(facture.lignes) && facture.lignes.length
@@ -3914,7 +3934,7 @@ function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien,
       <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-2xl text-slate-900 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Facture {facture.numero}</h2>
-          <Badge tone={facture.statut === "payee" ? "green" : "amber"}>{facture.statut === "payee" ? "Payée" : "En attente"}</Badge>
+          <Badge tone={facture.statut === "payee" ? "green" : "amber"}>{facture.statut === "payee" ? "Payée" : "Non payée"}</Badge>
         </div>
 
         <div className="mt-4 bg-slate-50 rounded-xl p-3 text-[13px] text-slate-700">
@@ -3990,6 +4010,19 @@ function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien,
             </>
           )}
         </div>
+        {/* 1. Écrire au client : son propre bloc, avec l'état réel de la file. */}
+        {!modeEdition && (
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+              <div className="text-[12.5px] font-semibold text-slate-700">Envoyer au client</div>
+              <button type="button" onClick={() => setApercuOuvert(true)} className="flex items-center gap-1.5 text-[12.5px] font-medium text-slate-600 hover:text-slate-800">
+                <Eye size={14} /> {GESTES_FACTURE.apercu}
+              </button>
+            </div>
+            <EnvoiFacture factureId={facture.id} cle={`${facture.montant_ttc}|${facture.statut}|${facture.motif || ""}`} onToast={onToast} />
+          </div>
+        )}
+        {/* 2. Un lien à transmettre soi-même : n'envoie rien. */}
         {!modeEdition && onGenererLien && (
           <div className="mt-4 pt-4 border-t border-slate-100">
             {lien ? (
@@ -4000,7 +4033,7 @@ function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien,
                 </div>
                 <button
                   type="button"
-                  onClick={async () => { try { await navigator.clipboard.writeText(lien); } catch {} }}
+                  onClick={async () => { try { await navigator.clipboard.writeText(lien); onToast?.(GESTES_FACTURE.lienCopie); } catch { onToast?.("Impossible de copier : sélectionnez le lien à la main", "error"); } }}
                   className="flex items-center gap-1 text-[12px] font-medium text-slate-600 hover:text-slate-800"
                 >
                   <Copy size={12} /> Copier
@@ -4021,11 +4054,37 @@ function FactureDetailModal({ facture, garageData, onClose, onSauvegarder, lien,
                 onClick={() => onGenererLien(facture.id)}
                 className="flex items-center gap-1.5 text-[12.5px] font-medium text-slate-600 hover:text-slate-800 disabled:opacity-50"
               >
-                <Link2 size={13} /> {busy ? "Génération…" : "Générer le lien client"}
+                <Link2 size={13} /> {busy ? "Génération…" : GESTES_FACTURE.lien}
               </button>
             )}
+            <div className="text-[11.5px] text-slate-400 mt-1.5">{GESTES_FACTURE.lienAide}</div>
           </div>
         )}
+        {apercuOuvert && <FactureApercuModal facture={facture} garageData={garageData} onClose={() => setApercuOuvert(false)} />}
+      </div>
+    </div>
+  );
+}
+
+// Ce que le client ouvrira depuis le lien de la facture : le même composant
+// que la page publique (facture-vue-client), donc le même dessin.
+function FactureApercuModal({ facture, garageData, onClose }) {
+  return (
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="nx-panneau bg-white rounded-2xl w-full max-w-md text-slate-900 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 pt-5">
+          <h2 className="text-lg font-semibold text-slate-900">Ce que verra le client</h2>
+          <button type="button" onClick={onClose} aria-label="Fermer" className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+        </div>
+        <p className="px-6 mt-1 text-[12.5px] text-slate-500">La page qu&apos;il ouvre depuis le lien de la facture, telle quelle.</p>
+        <div className="mt-3 px-6 overflow-y-auto min-h-0">
+          <div style={{ background: "#F5F7FA", padding: 20, borderRadius: 16, fontFamily: "-apple-system, sans-serif" }}>
+            <FactureVueClient vue={vueDepuisFactureGarage(facture, garageData?.nom_garage)} />
+          </div>
+        </div>
+        <div className="px-6 pb-5 pt-3">
+          <button type="button" onClick={onClose} className="w-full text-sm font-medium px-4 py-2 rounded-xl border border-slate-200 text-slate-600">Fermer</button>
+        </div>
       </div>
     </div>
   );
@@ -6263,7 +6322,11 @@ if (updateError) {
       return;
     }
     setFactures((prev) => [data, ...prev]);
-    flashToast("Facture générée");
+    // Une facture générée n'est pas une facture envoyée : la notification naît
+    // `sans_lien` (20260916000100). La fenêtre s'ouvre sur la facture pour que
+    // le geste d'envoi soit sous les yeux, pas à chercher.
+    flashToast(MESSAGE_FACTURE_GENEREE);
+    return data;
   };
 
   const handleMarquerFacturePayee = async (id) => {
@@ -7376,6 +7439,7 @@ function InscriptionScreen({ onBack }) {
     const { error: erreurRenvoi } = await supabase.auth.resend({
       type: "signup",
       email: email.trim(),
+      options: { emailRedirectTo: adresseRetourInscription() },
     });
     setRenvoiEnCours(false);
     setMessageDeRenvoi(messageRenvoi(erreurRenvoi, email.trim()));
@@ -7451,7 +7515,7 @@ function InscriptionScreen({ onBack }) {
     return (
       <ConnexionShell
         titre="Vérifiez vos e-mails"
-        sousTitre={`Un message vient de partir vers ${email}. Ouvrez-le pour activer votre espace.`}
+        sousTitre={`Un e-mail de confirmation a été demandé pour ${email}. Ouvrez le dernier message reçu pour activer votre espace.`}
       >
         <p style={{ fontSize: 13.5, color: "#64748B", lineHeight: 1.55, margin: 0 }}>
           Rien reçu au bout de quelques minutes ? Regardez dans vos indésirables.
@@ -7532,13 +7596,98 @@ function InscriptionScreen({ onBack }) {
   );
 }
 
-function LoginScreen() {
+// Un lien de confirmation qui ne marche plus : on le dit, et on propose un
+// nouvel e-mail. Les phrases et le délai de renvoi sont ceux de l'écran
+// « Vérifiez vos e-mails » (connexion/renvoiConfirmation.js, testé) ; le
+// message d'échec du lien vient de connexion/lienConfirmation.js.
+function LienEchoueScreen({ erreur, onBack }) {
+  const [email, setEmail] = useState("");
+  const [prochainRenvoi, setProchainRenvoi] = useState(0);
+  const [attenteRenvoi, setAttenteRenvoi] = useState(0);
+  const [renvoiEnCours, setRenvoiEnCours] = useState(false);
+  const [messageDeRenvoi, setMessageDeRenvoi] = useState(null);
+
+  useEffect(() => {
+    if (!prochainRenvoi) return undefined;
+    const battement = () => setAttenteRenvoi(secondesAvantRenvoi(prochainRenvoi));
+    battement();
+    const minuteur = setInterval(battement, 1000);
+    return () => clearInterval(minuteur);
+  }, [prochainRenvoi]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (attenteRenvoi > 0 || renvoiEnCours) return;
+    setRenvoiEnCours(true);
+    setMessageDeRenvoi(null);
+    const { error: erreurRenvoi } = await supabase.auth.resend({
+      type: "signup",
+      email: email.trim(),
+      options: { emailRedirectTo: adresseRetourInscription() },
+    });
+    setRenvoiEnCours(false);
+    setMessageDeRenvoi(messageRenvoi(erreurRenvoi, email.trim()));
+    // Le délai se referme même après un échec : marteler n'aide pas.
+    setProchainRenvoi(Date.now() + DELAI_RENVOI_SECONDES * 1000);
+  }
+
+  return (
+    <ConnexionShell
+      titre="Lien expiré"
+      sousTitre={messageLienEchoue(erreur)}
+      bas={
+        <div style={{ borderTop: "1px solid #E2E8F0", paddingTop: 16, textAlign: "center" }}>
+          <span style={{ fontSize: 13.5, color: "#64748B" }}>Vous avez déjà activé votre espace ? </span>
+          <button type="button" onClick={onBack} className="nx-lien" style={{ color: ACCENT, fontWeight: 600 }}>
+            Se connecter
+          </button>
+        </div>
+      }
+    >
+      <form onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="nx-lien-email" className="nx-label">Adresse e-mail de votre inscription</label>
+          <input id="nx-lien-email" type="email" placeholder="vous@exemple.com" value={email}
+            onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className="nx-champ" />
+        </div>
+        <div aria-live="polite" style={{ marginTop: messageDeRenvoi ? 16 : 0 }}>
+          {messageDeRenvoi && (messageDeRenvoi.ton === "succes" ? (
+            <div style={{
+              display: "flex", gap: 8, alignItems: "flex-start",
+              background: "#ECFDF5", color: "#065F46", borderRadius: 10,
+              padding: "10px 12px", fontSize: 13.5, lineHeight: 1.45,
+            }}>
+              <span aria-hidden>✓</span><span>{messageDeRenvoi.texte}</span>
+            </div>
+          ) : (
+            <div className="nx-erreur">
+              <span aria-hidden>!</span><span>{messageDeRenvoi.texte}</span>
+            </div>
+          ))}
+        </div>
+        <button type="submit" disabled={renvoiEnCours || attenteRenvoi > 0} className="nx-bouton" style={{ marginTop: 20 }}>
+          {renvoiEnCours && <span className="nx-rond" />}
+          {renvoiEnCours ? "Demande en cours…" : attenteRenvoi > 0 ? `Demander un nouvel e-mail (${attenteRenvoi} s)` : "Demander un nouvel e-mail de confirmation"}
+        </button>
+      </form>
+    </ConnexionShell>
+  );
+}
+
+function LoginScreen({ erreurLien = null }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [forgotPassword, setForgotPassword] = useState(false);
   const [inscription, setInscription] = useState(false);
+  // L'erreur du fragment arrive après le montage (elle attend que la session
+  // soit connue) : on ouvre l'écran dédié dès qu'elle est là, et on le referme
+  // d'un clic vers la connexion.
+  const [lienEchoue, setLienEchoue] = useState(false);
+  useEffect(() => {
+    if (erreurLien) setLienEchoue(true);
+  }, [erreurLien]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -7552,6 +7701,7 @@ function LoginScreen() {
     }
   }
 
+  if (lienEchoue) return <LienEchoueScreen erreur={erreurLien} onBack={() => setLienEchoue(false)} />;
   if (forgotPassword) return <ForgotPasswordScreen onBack={() => setForgotPassword(false)} />;
   if (inscription) return <InscriptionScreen onBack={() => setInscription(false)} />;
 
@@ -7614,6 +7764,9 @@ export default function NexoraDashboard() {
   // cas du propriétaire, et c'est le seul rôle qui existait avant l'entrée
   // des salariés.
   const [monRole, setMonRole] = useState(ROLE_DIRIGEANT);
+  // Un ancien lien de confirmation ouvert après coup (Production, 12 septembre
+  // 2026) : Supabase renvoie ici avec `#error=…&error_code=otp_expired`.
+  const [erreurLien, setErreurLien] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -7628,6 +7781,23 @@ export default function NexoraDashboard() {
     });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  // supabase-js ne retire le fragment d'erreur que s'il y trouve une session :
+  // on s'en charge. Avec une session, l'erreur périmée disparaît de l'adresse
+  // sans un mot — la personne est connectée. Sans session, l'écran de
+  // connexion l'explique et propose un nouvel e-mail. Les décisions sont dans
+  // connexion/lienConfirmation.js, où elles sont testées ; un fragment qui
+  // porte une session n'est jamais touché.
+  useEffect(() => {
+    if (session === undefined || typeof window === "undefined") return;
+    const decision = decisionFragment({ fragment: window.location.hash, session });
+    if (decision === "nettoyer") {
+      window.history.replaceState(window.history.state, "", adresseSansErreurAuth(window.location.href));
+      setErreurLien(null);
+    } else if (decision === "expliquer") {
+      setErreurLien(erreurAuthDansFragment(window.location.hash));
+    }
+  }, [session]);
 
   useEffect(() => {
     if (!session) return;
@@ -7735,7 +7905,7 @@ export default function NexoraDashboard() {
     );
   }
   if (!session) {
-    return <LoginScreen />;
+    return <LoginScreen erreurLien={erreurLien} />;
   }
   if (besoinOnboarding) {
     return (

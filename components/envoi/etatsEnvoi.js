@@ -3,8 +3,8 @@
 // POURQUOI CE MODULE
 //
 // La file est verrouillée : l'application ne peut pas la lire directement,
-// elle demande son état à `etat_envoi_devis`. Restait à traduire cet état en
-// une phrase juste. Deux pièges à éviter, et ce sont les deux qu'on voyait
+// elle demande son état à `etat_envoi_devis` ou `etat_envoi_facture`. Restait
+// à traduire cet état en une phrase juste. Deux pièges à éviter, et ce sont les deux qu'on voyait
 // ailleurs dans le produit :
 //
 //  - dire « Envoyé » dès la mise en file. Le message n'est pas parti ; il est
@@ -12,6 +12,10 @@
 //  - proposer « Réessayer » sur un envoi dont on ignore l'issue. Le
 //    fournisseur a peut-être accepté : renvoyer, c'est écrire deux fois au
 //    client. Un envoi incertain se vérifie, il ne se rejoue pas.
+//
+// Depuis le 12 septembre 2026, la facture suit exactement le même parcours
+// que le devis : même composant, mêmes états, mêmes phrases — seuls le nom du
+// document et les fonctions de base changent. Ils sont nommés ici, une fois.
 
 export const ETATS = {
   aucune: {
@@ -63,33 +67,67 @@ export const ETATS = {
   },
 };
 
-// Les motifs techniques deviennent des phrases qu'un garagiste peut suivre.
-const MOTIFS = [
-  // L'ordre compte : le motif du changement mentionne aussi « destinataire ».
-  [/a changé depuis la validation/i,
-   "Le devis ou l'adresse du client a changé depuis votre validation. Revalidez pour envoyer la version à jour."],
-  [/adresse e-mail du client absente|destinataire absent/i,
-   "Ce client n'a pas d'adresse e-mail. Complétez sa fiche, puis validez à nouveau."],
-  [/refus du fournisseur|rate limit|quota/i,
-   "Le service d'envoi a refusé le message. Il sera repris automatiquement."],
-];
+// Les deux documents qu'on envoie au client, et ce qui les distingue. Les
+// fonctions de base portent le contrôle des droits ; l'écran ne fait que les
+// appeler avec l'identifiant du document.
+export const DOCUMENTS = {
+  devis: {
+    nom: "devis",
+    article: "Le devis",
+    pronom: "Il",
+    accord: "",
+    rpcEtat: "etat_envoi_devis",
+    rpcApercu: "apercu_message_devis",
+    rpcAutoriser: "autoriser_envoi_devis",
+    idParam: "p_devis_id",
+    lienAjoute: "Le lien du devis est ajouté au moment de l'envoi ; il apparaît ici en pointillés.",
+  },
+  facture: {
+    nom: "facture",
+    article: "La facture",
+    pronom: "Elle",
+    accord: "e",
+    rpcEtat: "etat_envoi_facture",
+    rpcApercu: "apercu_message_facture",
+    rpcAutoriser: "autoriser_envoi_facture",
+    idParam: "p_facture_id",
+    lienAjoute: "Le lien de la facture est ajouté au moment de l'envoi ; il apparaît ici en pointillés.",
+  },
+};
 
-export function messageBlocage(motif) {
+export function document(cle) {
+  return DOCUMENTS[cle] || DOCUMENTS.devis;
+}
+
+// Les motifs techniques deviennent des phrases qu'un garagiste peut suivre.
+function motifs(doc) {
+  return [
+    // L'ordre compte : le motif du changement mentionne aussi « destinataire ».
+    [/a changé depuis la validation/i,
+     `${doc.article} ou l'adresse du client a changé depuis votre validation. Revalidez pour envoyer la version à jour.`],
+    [/adresse e-mail du client absente|destinataire absent/i,
+     "Ce client n'a pas d'adresse e-mail. Complétez sa fiche, puis validez à nouveau."],
+    [/refus du fournisseur|rate limit|quota/i,
+     "Le service d'envoi a refusé le message. Il sera repris automatiquement."],
+  ];
+}
+
+export function messageBlocage(motif, cle = "devis") {
   if (!motif) return "Rien n'est parti. Validez à nouveau pour réessayer.";
-  for (const [motif_regex, phrase] of MOTIFS) {
+  for (const [motif_regex, phrase] of motifs(document(cle))) {
     if (motif_regex.test(motif)) return phrase;
   }
   // On ne recopie jamais le motif brut : il peut contenir un détail interne.
   return "L'envoi n'a pas pu se faire. Validez à nouveau, ou contactez-nous si cela se reproduit.";
 }
 
-export function lireEtat(reponse) {
+export function lireEtat(reponse, cle = "devis") {
   const brut = reponse && reponse.ok ? reponse.etat : null;
   const etat = ETATS[brut] || ETATS.aucune;
   return {
     ...etat,
     cle: brut || "aucune",
-    detail: brut === "bloque" ? messageBlocage(reponse && reponse.motif) : etat.detail,
+    detail: brut === "bloque" ? messageBlocage(reponse && reponse.motif, cle) : etat.detail,
     destinataire: (reponse && reponse.destinataire) || null,
   };
 }
@@ -100,7 +138,7 @@ export function lireEtat(reponse) {
 export function messageApresValidation(dejaAutorise) {
   return dejaAutorise
     ? "Cet envoi était déjà programmé : rien n'a été ajouté."
-    : "Envoi programmé. La carte passera à « Envoyé » quand le message sera parti.";
+    : "Envoi programmé. Cet écran affichera « Envoyé » quand le message sera parti.";
 }
 
 // Les gestes de la carte devis, nommés une fois pour toutes.
@@ -121,16 +159,36 @@ export const GESTES_DEVIS = {
   marquerRefuse: "Il a refusé",
 };
 
-// Les refus renvoyés par `autoriser_envoi_devis`, en français.
-export function messageRefusValidation(raison) {
+// Les gestes de la facture : les mêmes mots, pour les mêmes gestes. Une
+// facture n'attend pas de réponse : pas de « Il a accepté ».
+export const GESTES_FACTURE = {
+  ouvrirEnvoi: GESTES_DEVIS.ouvrirEnvoi,
+  confirmerEnvoi: GESTES_DEVIS.confirmerEnvoi,
+  apercu: GESTES_DEVIS.apercu,
+  lien: GESTES_DEVIS.lien,
+  lienAide: GESTES_DEVIS.lienAide,
+  lienCopie: GESTES_DEVIS.lienCopie,
+};
+
+export function gestes(cle) {
+  return cle === "facture" ? GESTES_FACTURE : GESTES_DEVIS;
+}
+
+// Les refus renvoyés par `autoriser_envoi_*`, en français.
+export function messageRefusValidation(raison, cle = "devis") {
+  const doc = document(cle);
   switch (raison) {
     case "destinataire_absent":
       return "Ce client n'a pas d'adresse e-mail. Complétez sa fiche pour pouvoir lui écrire.";
     case "destinataire_different":
       return "L'adresse du client a changé depuis l'affichage. Rouvrez l'aperçu pour vérifier, puis validez.";
     case "aucune_notification_en_attente":
-      return "Ce devis n'a pas d'envoi en attente. Il a peut-être déjà été envoyé.";
+      return `${doc.article} n'a pas d'envoi en attente. ${doc.pronom} a peut-être déjà été envoyé${doc.accord}.`;
     default:
       return "La validation n'a pas abouti. Réessayez dans un instant.";
   }
 }
+
+// Ce que dit l'écran juste après « Générer la facture » : le document existe,
+// rien n'est parti, et c'est au garage de décider.
+export const MESSAGE_FACTURE_GENEREE = "Facture générée. Rien n'est envoyé au client : relisez-la, puis décidez de l'envoi.";

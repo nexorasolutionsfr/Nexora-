@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { ETATS, GESTES_DEVIS, lireEtat, messageApresValidation, messageBlocage, messageRefusValidation } from "./etatsEnvoi.js";
+import { DOCUMENTS, ETATS, GESTES_DEVIS, GESTES_FACTURE, MESSAGE_FACTURE_GENEREE, gestes, lireEtat, messageApresValidation, messageBlocage, messageRefusValidation } from "./etatsEnvoi.js";
 
 // Recette du 2026-09-11 : un devis tout juste créé affichait « En attente
 // d'envoi » et plus aucun bouton. Un devis neuf doit dire que rien n'est parti
@@ -78,4 +78,40 @@ test("les refus de validation sont dits en clair", () => {
   assert.match(messageRefusValidation("destinataire_absent"), /adresse e-mail/i);
   assert.match(messageRefusValidation("destinataire_different"), /changé/i);
   assert.match(messageRefusValidation("bidule"), /Réessayez/i);
+});
+
+// 12 septembre 2026 : la facture prend le parcours du devis, sans en partager
+// une seule fonction de base — chaque document a les siennes, avec leurs
+// droits.
+test("la facture a ses propres fonctions de base, et les mêmes états que le devis", () => {
+  for (const cle of ["rpcEtat", "rpcApercu", "rpcAutoriser", "idParam"]) {
+    assert.notEqual(DOCUMENTS.facture[cle], DOCUMENTS.devis[cle], `${cle} partagé`);
+    assert.match(DOCUMENTS.facture[cle], /facture/);
+  }
+  for (const etat of Object.keys(ETATS)) {
+    assert.equal(lireEtat({ ok: true, etat }, "facture").titre, lireEtat({ ok: true, etat }, "devis").titre);
+  }
+});
+
+test("les phrases de la facture nomment la facture, pas le devis", () => {
+  assert.match(messageRefusValidation("aucune_notification_en_attente", "facture"), /^La facture .* envoyée\.$/);
+  assert.doesNotMatch(messageRefusValidation("aucune_notification_en_attente", "facture"), /devis/i);
+  const bloque = lireEtat({ ok: true, etat: "bloque", motif: "la facture ou le destinataire a changé depuis la validation" }, "facture");
+  assert.match(bloque.detail, /^La facture ou l'adresse du client a changé/);
+  assert.equal(bloque.peutValider, true);
+  assert.match(DOCUMENTS.facture.lienAjoute, /lien de la facture/);
+});
+
+test("les gestes de la facture sont ceux du devis, sans noter de réponse", () => {
+  assert.equal(gestes("facture"), GESTES_FACTURE);
+  assert.equal(gestes("devis"), GESTES_DEVIS);
+  assert.equal(GESTES_FACTURE.ouvrirEnvoi, GESTES_DEVIS.ouvrirEnvoi);
+  assert.equal(GESTES_FACTURE.confirmerEnvoi, GESTES_DEVIS.confirmerEnvoi);
+  assert.match(GESTES_FACTURE.lienAide, /n'envoie rien/);
+  assert.equal(GESTES_FACTURE.marquerAccepte, undefined);
+});
+
+test("« Facture générée » dit que rien n'est parti", () => {
+  assert.match(MESSAGE_FACTURE_GENEREE, /Rien n'est envoyé/);
+  assert.doesNotMatch(MESSAGE_FACTURE_GENEREE, /envoyée au client|programmé/);
 });
