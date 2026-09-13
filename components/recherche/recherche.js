@@ -73,6 +73,66 @@ function correspond(terme, { nomClient, immatriculation, telephone }) {
 }
 
 /**
+ * CE QU'ON PEUT CHERCHER PAR NUMÉRO, ET CE QU'ON NE PEUT PAS
+ *
+ * Relevé en base le 13 septembre 2026, colonne par colonne :
+ *
+ *   — `factures.numero` existe, il est rempli par le trigger
+ *     `assigner_numero_facture`, il a la forme « F-2026-0003 », il est
+ *     immuable, et il est imprimé sur la facture que le client reçoit.
+ *     C'est une vraie référence commerciale : on la cherche.
+ *   — `devis` n'a aucune colonne de numéro. Ni la page publique du devis, ni
+ *     l'e-mail, ni le PDF n'en affichent un. Le garagiste n'a donc jamais un
+ *     numéro de devis sous les yeux — il n'y a rien à chercher.
+ *   — `ordres_reparation` non plus.
+ *
+ * Le dossier véhicule affiche « Réf. 3F2A1B », dérivée des six premiers
+ * caractères de l'identifiant technique. Elle n'apparaît nulle part ailleurs
+ * et n'est sur aucun document : la rendre cherchable donnerait un champ où
+ * l'on ne peut rien taper de mémoire. On ne la cherche pas, et on n'invente
+ * pas de numérotation à sa place — un numéro de devis est une pièce
+ * comptable, pas une commodité d'interface.
+ *
+ * Le plus petit changement futur qui débloquerait la recherche de devis est
+ * écrit dans `docs/architecture/recherche-documents.md`.
+ */
+export function rechercherFactures({ terme, factures = [], clients = [], vehicules = [] }, limite = 4) {
+  const t = normaliserReference(terme);
+  // Trois caractères : « F-2 » ne désigne rien, « 003 » commence à désigner.
+  if (t.length < 3) return [];
+
+  const clientsParId = new Map(clients.map((c) => [c.id, c]));
+  const vehiculesParId = new Map(vehicules.map((v) => [v.id, v]));
+  const resultats = [];
+
+  for (const facture of factures) {
+    const numero = normaliserReference(facture?.numero);
+    if (!numero || !numero.includes(t)) continue;
+    resultats.push({
+      type: "facture",
+      document: facture,
+      // La facture porte déjà son véhicule et son client en base : on les
+      // relit ici pour que la ligne de résultat dise de quelle voiture il
+      // s'agit, sans quoi « F-2026-0003 » ne désigne rien de reconnaissable.
+      vehicule: vehiculesParId.get(facture.vehicule_id) || facture.vehicules || null,
+      client: clientsParId.get(facture.client_id) || facture.clients || null,
+      exact: numero === t,
+    });
+  }
+
+  resultats.sort((a, b) => {
+    if (a.exact !== b.exact) return a.exact ? -1 : 1;
+    return String(b.document?.numero || "").localeCompare(String(a.document?.numero || ""));
+  });
+  return resultats.slice(0, limite);
+}
+
+/** Majuscules, sans séparateurs : « f 2026 0003 » trouve « F-2026-0003 ». */
+export function normaliserReference(valeur) {
+  return normaliserTexte(valeur).replace(/[^a-z0-9]/g, "").toUpperCase();
+}
+
+/**
  * Les véhicules du garage qui correspondent au terme, les plus pertinents
  * d'abord : une plaque tapée en entier passe avant un nom qui contient les
  * mêmes lettres par hasard.

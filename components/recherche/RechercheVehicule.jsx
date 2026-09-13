@@ -17,9 +17,9 @@
 //    occupées ; le premier résultat est présélectionné.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, X, CornerDownLeft } from "lucide-react";
+import { Search, X, CornerDownLeft, ReceiptText } from "lucide-react";
 import { ACCENT, ACCENT_SOFT } from "../garage-os/tokens";
-import { libelleCorrespondance, libelleVehicule, rechercherVehicules } from "./recherche";
+import { libelleCorrespondance, libelleVehicule, rechercherFactures, rechercherVehicules } from "./recherche";
 
 const TON_QUI_AGIT = {
   garage: { fond: "#FEF3E2", texte: "#B45309", mot: "À vous" },
@@ -27,16 +27,35 @@ const TON_QUI_AGIT = {
   personne: { fond: "#F1F5F9", texte: "#475569", mot: "Rien à faire" },
 };
 
-export default function RechercheVehicule({ vehicules = [], clients = [], filPourVehicule, onOuvrirVehicule }) {
+export default function RechercheVehicule({ vehicules = [], clients = [], factures = [], filPourVehicule, onOuvrirVehicule, onOuvrirFacture }) {
   const [terme, setTerme] = useState("");
   const [ouvert, setOuvert] = useState(false);
   const [surligne, setSurligne] = useState(0);
   const champRef = useRef(null);
   const conteneurRef = useRef(null);
 
-  const resultats = useMemo(
+  // Deux listes, une seule navigation.
+  //
+  // Les voitures et les factures ne se classent pas ensemble : « BI-909-II »
+  // et « F-2026-0003 » ne sont pas deux façons de dire la même chose, et un
+  // score commun inventé les mélangerait sans que personne sache pourquoi
+  // l'un passe devant l'autre. On les affiche donc en deux groupes nommés —
+  // les voitures d'abord, c'est la recherche de tous les jours — mais les
+  // flèches et Entrée parcourent la suite des deux, sans rupture.
+  const resultatsVehicules = useMemo(
     () => rechercherVehicules({ terme, vehicules, clients }),
     [terme, vehicules, clients],
+  );
+  const resultatsFactures = useMemo(
+    () => rechercherFactures({ terme, factures, clients, vehicules }),
+    [terme, factures, clients, vehicules],
+  );
+  const resultats = useMemo(
+    () => [
+      ...resultatsVehicules.map((r) => ({ ...r, type: "vehicule" })),
+      ...resultatsFactures,
+    ],
+    [resultatsVehicules, resultatsFactures],
   );
 
   useEffect(() => setSurligne(0), [terme]);
@@ -62,7 +81,17 @@ export default function RechercheVehicule({ vehicules = [], clients = [], filPou
 
   function choisir(resultat) {
     if (!resultat) return;
-    onOuvrirVehicule?.(resultat.vehicule.id);
+    if (resultat.type === "facture") {
+      // La facture s'ouvre dans le dossier de sa voiture, à l'endroit où elle
+      // se trouve — c'est là que le garagiste vérifie de quoi elle parle, pas
+      // dans une liste de factures détachée de son véhicule. Une facture dont
+      // le véhicule a été dissocié n'ouvre rien : mieux vaut ne rien faire
+      // qu'ouvrir le dossier d'une autre voiture.
+      if (!resultat.vehicule?.id) return;
+      onOuvrirFacture?.(resultat.vehicule.id, resultat.document.id);
+    } else {
+      onOuvrirVehicule?.(resultat.vehicule.id);
+    }
     setTerme("");
     setOuvert(false);
     champRef.current?.blur();
@@ -91,8 +120,8 @@ export default function RechercheVehicule({ vehicules = [], clients = [], filPou
           onChange={(e) => { setTerme(e.target.value); setOuvert(true); }}
           onFocus={() => setOuvert(true)}
           onKeyDown={surTouche}
-          placeholder="Plaque, client, téléphone…"
-          aria-label="Rechercher une voiture par plaque, client ou téléphone"
+          placeholder="Plaque, client, téléphone, n° de facture…"
+          aria-label="Rechercher une voiture par plaque, client ou téléphone, ou une facture par son numéro"
           className="w-full bg-transparent text-[14px] text-slate-900 outline-none placeholder:text-slate-400"
         />
         {terme ? (
@@ -117,18 +146,30 @@ export default function RechercheVehicule({ vehicules = [], clients = [], filPou
             // Un écran vide qui explique ce qu'il accepte vaut mieux qu'un
             // « aucun résultat » sec : souvent, on cherchait juste autrement.
             <div className="px-4 py-5 text-center">
-              <div className="text-[13.5px] font-medium text-slate-700">Aucune voiture trouvée</div>
+              <div className="text-[13.5px] font-medium text-slate-700">Rien trouvé</div>
               <div className="text-[12.5px] text-slate-500 mt-1">
-                Essayez une plaque (AB-123-CD), un nom de client ou un numéro de téléphone.
+                Essayez une plaque (AB-123-CD), un nom de client, un numéro de téléphone
+                ou un numéro de facture (F-2026-0003).
               </div>
             </div>
           ) : (
             <ul role="listbox" className="max-h-[min(420px,60vh)] overflow-y-auto py-1.5">
               {resultats.map((r, i) => {
-                const fil = filPourVehicule?.(r.vehicule.id) || null;
+                const estFacture = r.type === "facture";
+                // Un en-tête par groupe, posé sur le premier de sa sorte :
+                // le lecteur doit savoir s'il regarde une voiture ou un
+                // document avant de cliquer.
+                const premierDuGroupe = i === 0 || resultats[i - 1].type !== r.type;
+                const fil = !estFacture && r.vehicule?.id ? filPourVehicule?.(r.vehicule.id) || null : null;
                 const ton = TON_QUI_AGIT[fil?.quiAgit] || TON_QUI_AGIT.personne;
+                const cle = estFacture ? `facture-${r.document.id}` : `vehicule-${r.vehicule.id}`;
                 return (
-                  <li key={r.vehicule.id} role="option" aria-selected={i === surligne}>
+                  <li key={cle} role="option" aria-selected={i === surligne}>
+                    {premierDuGroupe && (
+                      <div className="px-3.5 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        {estFacture ? "Factures" : "Voitures"}
+                      </div>
+                    )}
                     <button
                       type="button"
                       onMouseEnter={() => setSurligne(i)}
@@ -136,20 +177,30 @@ export default function RechercheVehicule({ vehicules = [], clients = [], filPou
                       className="w-full text-left px-3.5 py-3 flex items-start gap-3 transition-colors"
                       style={{ backgroundColor: i === surligne ? ACCENT_SOFT : "transparent" }}
                     >
+                      {estFacture && <ReceiptText size={16} className="shrink-0 mt-0.5 text-slate-400" />}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-2 flex-wrap">
                           <span className="text-[14px] font-semibold text-slate-900 truncate">
-                            {libelleVehicule(r.vehicule)}
+                            {estFacture ? r.document.numero : libelleVehicule(r.vehicule)}
                           </span>
                           <span className="text-[11px] text-slate-400 shrink-0">
-                            {libelleCorrespondance(r.champ)}
+                            {estFacture ? "numéro de facture" : libelleCorrespondance(r.champ)}
                           </span>
                         </div>
                         <div className="text-[12.5px] text-slate-600 truncate mt-0.5">
-                          {r.client?.nom || "Client non renseigné"}
+                          {estFacture
+                            ? [libelleVehicule(r.vehicule), r.client?.nom].filter(Boolean).join(" · ") || "Véhicule non renseigné"
+                            : r.client?.nom || "Client non renseigné"}
                         </div>
-                        {fil && (
-                          <div className="text-[12.5px] text-slate-500 truncate mt-1">{fil.etat}</div>
+                        {estFacture ? (
+                          <div className="text-[12.5px] text-slate-500 truncate mt-1">
+                            {r.document.statut === "payee" ? "Payée" : "En attente de règlement"}
+                            {r.document.montant_ttc != null
+                              ? ` · ${Number(r.document.montant_ttc).toFixed(2).replace(".", ",")} €`
+                              : ""}
+                          </div>
+                        ) : (
+                          fil && <div className="text-[12.5px] text-slate-500 truncate mt-1">{fil.etat}</div>
                         )}
                       </div>
                       {fil && (
