@@ -116,9 +116,42 @@ export function filVehicule({
     );
   }
 
-  // Atelier engagé : la fiche atelier suit les travaux.
+  // UNE ATTENTE N'EST PAS UN TRAVAIL EN COURS
+  //
+  // Les six étapes engagées renvoyaient toutes la même phrase — « Voiture à
+  // l'atelier, suivez l'avancement », à vous de jouer. Constaté en recette le
+  // 13 septembre 2026 sur BD-404-DD : la carte de l'atelier disait « Attente
+  // de la réponse du client » pendant que le dossier disait « À vous de
+  // jouer ». Deux écrans, deux vérités, sur la donnée la plus simple qui
+  // soit : qui doit bouger. C'est exactement ce que ce module existe pour
+  // empêcher.
+  //
+  // `attente_client` : la balle est au client. Le garage n'a qu'à enregistrer
+  // sa réponse quand elle arrive.
+  if (etape === "attente_client") {
+    return fil(
+      "En attente de la réponse du client",
+      "Le client doit répondre. Notez sa réponse dès qu'il vous l'aura donnée.",
+      AGIT_CLIENT,
+      CIBLE_ATELIER,
+      { contradiction, ordreStatut, etape, aRendezVous },
+    );
+  }
+  // `attente_piece` : aucun tiers ne tranche, mais c'est le garage qui a passé
+  // la commande — c'est donc lui qui la suit. Ce n'est pas « rien à faire ».
+  if (etape === "attente_piece") {
+    return fil(
+      "En attente d'une pièce",
+      "La pièce commandée n'est pas arrivée. Reprenez les travaux dès sa réception.",
+      AGIT_GARAGE,
+      CIBLE_ATELIER,
+      { contradiction, ordreStatut, etape, aRendezVous },
+    );
+  }
+
+  // Atelier engagé, et le travail avance réellement.
   if (ETAPES_ATELIER_ENGAGEES.has(etape)) {
-    return fil("Voiture à l'atelier", "Suivez l'avancement depuis la fiche atelier.", AGIT_GARAGE, CIBLE_ATELIER, { contradiction, ordreStatut, etape, aRendezVous });
+    return fil("Voiture à l'atelier", "Suivez l'avancement depuis l'écran Atelier.", AGIT_GARAGE, CIBLE_ATELIER, { contradiction, ordreStatut, etape, aRendezVous });
   }
 
   // L'ordre existe et n'est pas terminé : on ne propose plus d'en « préparer »
@@ -184,7 +217,13 @@ export function filVehicule({
 }
 
 const LIBELLES_CIBLE = {
-  [CIBLE_ATELIER]: "Ouvrir la fiche atelier",
+  // `CIBLE_ATELIER` mène à l'écran Atelier, pas à un ordre de réparation.
+  // Le libellé disait « Ouvrir la fiche atelier » — le mot que le vocabulaire
+  // en tête de ce fichier réserve à la vue d'un ordre. Sur BD-404-DD, qui n'a
+  // aucun ordre, le bouton promettait donc un document inexistant et menait à
+  // la liste (recette du 13 septembre 2026). Même faute que celle corrigée
+  // pour `CIBLE_ORDRE` la veille, au mot près.
+  [CIBLE_ATELIER]: "Voir dans l'Atelier",
   [CIBLE_DEVIS]: "Ouvrir le devis",
   [CIBLE_AGENDA]: "Voir le rendez-vous",
   [CIBLE_FACTURES]: "Ouvrir la facture",
