@@ -28,6 +28,7 @@ import DevisVueClient from "./devis-lignes/DevisVueClient";
 import { vueDepuisDevisGarage } from "./devis-lignes/vueClient";
 import { vehiculeDepuisSaisie } from "./clients/vehicule";
 import { MESSAGE_VEHICULE_ECHEC, lectureCreationClient, messageDevisCree } from "./clients/creationClient";
+import { usePrevenirClient } from "./atelier/usePrevenirClient";
 import { estDoublonDePlaque, messageErreurVehicule } from "./clients/erreurVehicule";
 import { horairesRenseignes } from "./garage-os/miseEnRoute";
 import { CANAUX as CANAUX_ENVOI, CAPACITES, canalEffectif, mentionCanalIndisponible } from "./parametres/capacites";
@@ -1130,80 +1131,27 @@ function AtelierView({
   const [imprimant, setImprimant] = useState(false);
   const [etapeEnCours, setEtapeEnCours] = useState(null);
 
-  // PRÉVENIR LE CLIENT — l'état réel des envois, demandé, jamais supposé
+  // PRÉVENIR LE CLIENT — une implémentation, deux écrans
+  //
+  // Le même geste part de l'Atelier (file « Prêtes ») et d'Aujourd'hui
+  // (colonne « Voitures prêtes »). Deux implémentations donneraient deux
+  // comportements, et c'est sur un envoi au client que l'écart se paierait.
+  // Voir `usePrevenirClient`.
   //
   // `notifications_atelier` n'est lisible par aucun rôle applicatif : seule
   // `etat_envoi_atelier` y donne accès. On l'interroge pour les voitures
-  // prêtes, et pour elles seules — c'est le seul endroit où la question se
-  // pose. Tant qu'elle n'a pas répondu, la carte propose le geste : au pire on
-  // clique, et la base refuse un envoi déjà autorisé.
-  const [etatsEnvoiAtelier, setEtatsEnvoiAtelier] = useState({});
-  const [prevenir, setPrevenir] = useState(null); // { appt, apercu, chargement, erreur, enCours }
+  // prêtes, et pour elles seules.
+  const { prevenir, etats: etatsEnvoiAtelier, lireEtat, ouvrirPrevenir, confirmerPrevenir, fermerPrevenir } =
+    usePrevenirClient({ onToast });
   const pretsIds = (groupeParCle(GROUPE_PRETES)?.rendezVous || []).map((r) => r.id).join(",");
 
   useEffect(() => {
     const ids = pretsIds ? pretsIds.split(",") : [];
-    if (ids.length === 0) { setEtatsEnvoiAtelier({}); return; }
+    if (ids.length === 0) return;
     let annule = false;
-    (async () => {
-      const paires = await Promise.all(ids.map(async (id) => {
-        const { data, error } = await supabase.rpc("etat_envoi_atelier", { p_rendez_vous_id: id });
-        return [id, error || !data?.ok ? null : data];
-      }));
-      if (!annule) setEtatsEnvoiAtelier(Object.fromEntries(paires));
-    })();
+    (async () => { for (const id of ids) { if (annule) return; await lireEtat(id); } })();
     return () => { annule = true; };
-  }, [pretsIds]);
-
-  const rafraichirEtatEnvoi = async (rdvId) => {
-    const { data, error } = await supabase.rpc("etat_envoi_atelier", { p_rendez_vous_id: rdvId });
-    if (!error && data?.ok) setEtatsEnvoiAtelier((p) => ({ ...p, [rdvId]: data }));
-  };
-
-  const ouvrirPrevenir = async (appt) => {
-    setPrevenir({ appt, apercu: null, chargement: true, erreur: null, enCours: false });
-    const { data, error } = await supabase.rpc("apercu_message_atelier", { p_rendez_vous_id: appt.id });
-    if (error || !data?.ok) {
-      setPrevenir({ appt, apercu: null, chargement: false, enCours: false,
-        erreur: "Impossible de préparer le message. Réessayez dans un instant." });
-      return;
-    }
-    if (!data.destinataire) {
-      // Pas d'adresse : on ne propose pas un envoi qui ne peut pas partir.
-      setPrevenir({ appt, apercu: data, chargement: false, enCours: false,
-        erreur: "Ce client n'a pas d'adresse e-mail enregistrée. Ajoutez-la dans sa fiche, ou prévenez-le autrement." });
-      return;
-    }
-    setPrevenir({ appt, apercu: data, chargement: false, erreur: null, enCours: false });
-  };
-
-  const confirmerPrevenir = async (destinataire) => {
-    const appt = prevenir?.appt;
-    if (!appt) return;
-    setPrevenir((p) => ({ ...p, enCours: true }));
-    const { data, error } = await supabase.rpc("autoriser_envoi_atelier", {
-      p_rendez_vous_id: appt.id,
-      p_destinataire: destinataire,
-    });
-    if (error) {
-      setPrevenir((p) => ({ ...p, enCours: false, erreur: "Envoi refusé. Vérifiez vos droits, puis réessayez." }));
-      return;
-    }
-    if (data?.ok === false) {
-      const motifs = {
-        destinataire_absent: "Ce client n'a pas d'adresse e-mail enregistrée.",
-        destinataire_different: "L'adresse du client a changé depuis l'aperçu. Rouvrez le message pour la relire.",
-        vehicule_pas_pret: "Cette voiture n'est plus notée prête. Aucun message n'a été envoyé.",
-        deja_envoye: "Le client a déjà été prévenu pour cette voiture.",
-      };
-      setPrevenir((p) => ({ ...p, enCours: false, erreur: motifs[data.raison] || "Envoi refusé." }));
-      await rafraichirEtatEnvoi(appt.id);
-      return;
-    }
-    setPrevenir(null);
-    await rafraichirEtatEnvoi(appt.id);
-    onToast?.(data?.deja_autorise ? "Message déjà autorisé" : "Message autorisé");
-  };
+  }, [pretsIds, lireEtat]);
 
   const imprimerEtiquettes = async () => {
     if (!onGenererEtiquettes || imprimant) return;
@@ -1414,7 +1362,7 @@ function AtelierView({
         chargement={prevenir.chargement}
         erreur={prevenir.erreur}
         enCours={prevenir.enCours}
-        onAnnuler={() => setPrevenir(null)}
+        onAnnuler={fermerPrevenir}
         onConfirmer={confirmerPrevenir}
       />
     )}
