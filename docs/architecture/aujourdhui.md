@@ -222,11 +222,24 @@ Même règle pour le reste de la page :
 | demandes, devis à traiter, prêt à valider | **sous les priorités**, dans la colonne de travail |
 | devis en attente | « Prêt à valider » — la pastille « Nexora a repéré » s'efface quand le bloc les liste |
 | chiffre d'affaires du mois | **une ligne** qui mène à Statistiques |
-| visite restituée depuis plus de 7 jours | **Facturation**, « RDV terminés à facturer » — sans limite de date |
+| une visite à facturer | **les deux** : la priorité reste tant que la facture manque, et Facturation la liste aussi. Elle ne disparaît pas avec l'âge |
 | travaux différés, appels à rappeler | « Argent à risque » et les deux gestes d'ajout, qui n'existent nulle part ailleurs |
 
-Et le résumé compte des **actions**, pas des voitures : « 9 actions vous
-attendent », avec « sur N voitures » dès que les deux chiffres diffèrent.
+Et le résumé compte des **actions**, pas des voitures : « 11 actions vous
+attendent, sur 9 voitures », réduit à « N actions vous attendent » quand les
+deux chiffres coïncident.
+
+### Ce que le dédoublonnage regroupe, et ce qu'il ne regroupe jamais
+
+Il porte sur ce qui **porte l'action**, par son identifiant stable : l'id du
+document pour une relance de devis ou de facture — un même devis est rattaché
+à plusieurs rendez-vous du véhicule, c'est une seule relance — et l'id de
+l'intervention pour tout le reste.
+
+**Deux interventions distinctes font deux actions**, même véhicule et même
+libellé. La date de leur visite s'ajoute alors pour les distinguer, et
+seulement sur ces lignes-là. Regrouper sur le véhicule aurait effacé la
+seconde facture : masquer une tâche est pire que la répéter.
 
 ## Les rôles
 

@@ -343,34 +343,68 @@ test("un créneau dépassé nomme la FIN des travaux, pas l'heure d'arrivée", (
 
 // --- Ce que la revue du 13 septembre a trouvé sur la page entière ----------
 
-test("la même phrase sur la même voiture ne fait pas deux tâches", () => {
-  // Relevé en revue : une Clio portait TROIS lignes, dont deux mot pour mot
-  // identiques, parce qu'elle avait plusieurs visites. Le garage lisait deux
-  // fois le même travail.
-  const vieille = new Date("2026-09-05T09:00:00+02:00").toISOString();
-  const commun = { etape: "restitue", debut: vieille, fin: vieille, ordre: { statut: "termine" } };
-  const lignes = classerPriorites([
-    { ...dossier({ ...commun, id: "v1" }), rdv: { id: "v1", vehicule_id: "AUTO", statut_atelier: "restitue", date_debut: vieille, date_fin: vieille } },
-    { ...dossier({ ...commun, id: "v2" }), rdv: { id: "v2", vehicule_id: "AUTO", statut_atelier: "restitue", date_debut: vieille, date_fin: vieille } },
-  ], MAINTENANT);
-  const textes = lignes.map((l) => l.raison);
-  assert.equal(new Set(textes).size, textes.length, `lignes répétées : ${JSON.stringify(textes)}`);
-});
+/** Un dossier construit autour d'une intervention nommée, comme l'écran le fait. */
+function visite({ id, vehicule, debut, etape = "restitue", devis = null, facture = null, etatEnvoiDevis = null, etatEnvoiFacture = null, ordre = undefined }) {
+  const rdv = { id, vehicule_id: vehicule, statut_atelier: etape, date_debut: debut, date_fin: debut };
+  // Une visite rendue porte un ordre terminé ; une voiture encore à l'atelier,
+  // non — sinon le fil signale une contradiction, à juste titre.
+  if (ordre === undefined) ordre = etape === "restitue" ? { statut: "termine" } : null;
+  return {
+    id, rdv, devis, facture, etatEnvoiDevis, etatEnvoiFacture,
+    fil: filVehicule({ rdv, devis, ordre, facture, etatEnvoiDevis, etatEnvoiFacture }),
+  };
+}
 
-test("une visite rendue il y a longtemps quitte Aujourd'hui", () => {
-  // Six mois après, une facture manquante est du rattrapage : son écran est
-  // Facturation, et le fil le dit lui-même.
-  const vieux = new Date("2026-03-01T09:00:00+02:00").toISOString();
-  const d = dossier({ etape: "restitue", debut: vieux, fin: vieux, ordre: { statut: "termine" } });
-  assert.equal(raisonDePriorite(d, MAINTENANT), null);
-});
-
-test("une voiture rendue cette semaine reste visible", () => {
-  // Rendue vendredi, on est dimanche : le garage doit encore la voir.
-  const vendredi = new Date("2026-09-11T09:00:00+02:00").toISOString();
-  const d = dossier({ etape: "restitue", debut: vendredi, fin: vendredi, ordre: { statut: "termine" } });
+test("une visite ancienne mais rendue aujourd'hui reste à facturer", () => {
+  // La fenêtre de sept jours mesurait `date_debut` — l'heure du RENDEZ-VOUS,
+  // pas celle de la restitution. Une voiture entrée il y a quinze jours et
+  // rendue ce matin en sortait, le jour même où sa facture devenait à faire.
+  //
+  // Et au fond : une facture qui reste à établir reste à établir. L'âge du
+  // rendez-vous ne la rend pas faite.
+  const ilYAQuinzeJours = new Date("2026-08-29T09:00:00+02:00").toISOString();
+  const d = visite({ id: "v-ancienne", vehicule: "AUTO", debut: ilYAQuinzeJours });
   const r = raisonDePriorite(d, MAINTENANT);
-  assert.ok(r, "une visite de cette semaine ne doit pas disparaître");
+  assert.ok(r, "une facture encore à faire ne se résout pas en vieillissant");
+});
+
+test("deux interventions distinctes du même véhicule font deux actions", () => {
+  // Le dédoublonnage groupait sur le VÉHICULE : deux rendez-vous à facturer
+  // devenaient une seule ligne, et la seconde facture n'était plus réclamée
+  // nulle part. Masquer une tâche est pire que la répéter.
+  const juillet = new Date("2026-07-30T09:00:00+02:00").toISOString();
+  const aout = new Date("2026-08-12T09:00:00+02:00").toISOString();
+  const lignes = classerPriorites([
+    visite({ id: "rdv-1", vehicule: "AUTO", debut: juillet }),
+    visite({ id: "rdv-2", vehicule: "AUTO", debut: aout }),
+  ], MAINTENANT);
+
+  assert.equal(lignes.length, 2, "deux interventions à facturer sont deux actions");
+  assert.deepEqual(lignes.map((l) => l.rdv.id).sort(), ["rdv-1", "rdv-2"]);
+  // Même libellé : la date de la visite doit les distinguer.
+  assert.equal(lignes[0].raison, lignes[1].raison);
+  assert.ok(lignes.every((l) => l.precision), "des lignes jumelles portent leur date");
+  assert.notEqual(lignes[0].precision, lignes[1].precision);
+  assert.match(lignes[0].precision, /Visite du 30 juillet/);
+  assert.match(lignes[1].precision, /Visite du 12 août/);
+});
+
+test("une même action remontée deux fois ne compte qu'une fois", () => {
+  // UN devis appartient au véhicule, pas à une visite : `devisList.find`
+  // l'apparie par `vehicule_id`, donc il se retrouve sur chacun des
+  // rendez-vous de la voiture. C'est une seule relance.
+  const devis = { id: "devis-1", statut: "en_attente" };
+  const hier = new Date("2026-09-12T09:00:00+02:00").toISOString();
+  const avantHier = new Date("2026-09-11T09:00:00+02:00").toISOString();
+  const lignes = classerPriorites([
+    visite({ id: "rdv-a", vehicule: "AUTO", debut: hier, etape: "intervention", devis, etatEnvoiDevis: "aucune" }),
+    visite({ id: "rdv-b", vehicule: "AUTO", debut: avantHier, etape: "intervention", devis, etatEnvoiDevis: "aucune" }),
+  ], MAINTENANT);
+
+  const relances = lignes.filter((l) => l.raisonCle === "document_a_envoyer");
+  assert.equal(relances.length, 1, `un seul devis, une seule relance : ${JSON.stringify(lignes.map((l) => l.raison))}`);
+  // Et une ligne unique ne porte pas de précision : elle ne distingue rien.
+  assert.equal(relances[0].precision, undefined);
 });
 
 test("le résumé compte des actions, et sait sur combien de voitures", () => {

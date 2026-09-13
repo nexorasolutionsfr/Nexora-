@@ -94,6 +94,12 @@ function LignePriorite({ ligne, onAction }) {
         </div>
         <div className={`text-[13px] mt-0.5 ${ligne.urgent ? "font-medium" : ""}`} style={{ color: ligne.urgent ? "#B45309" : "#334155" }}>
           {ligne.raison}
+          {/* Deux interventions de la même voiture peuvent porter le même
+              libellé — deux factures à établir, par exemple. Ce sont deux
+              tâches : elles restent toutes les deux, et la date de la visite
+              les distingue sans ouvrir les dossiers. Le module ne la pose que
+              sur les lignes réellement jumelles. */}
+          {ligne.precision ? <span className="text-slate-400"> · {ligne.precision}</span> : null}
         </div>
       </div>
       <button

@@ -87,20 +87,62 @@ partie de l'ancien**, et les deux ne disaient pas la même chose.
 | « Demandes et devis à traiter » et « Prêt à valider » vivaient tout en bas, après trois autres cadres. | Ils remontent **sous les priorités, dans la colonne large** — là où l'écran de bureau laissait du vide. Mêmes lignes, mêmes actions. |
 | « Nexora a repéré · **2 devis en attente** » annonçait exactement les deux lignes de « Prêt à valider », trois cadres plus bas. On pouvait croire à quatre devis. | Les pastilles ne gardent que ce qui n'a **pas d'autre présence** sur la page. |
 | « Ce mois-ci » répétait trois chiffres qu'on retrouve dans Statistiques. | Réduit à **une ligne** qui mène au détail. Rien n'est perdu. |
-| **La Clio BB-202-BB comptait trois lignes**, dont deux mot pour mot identiques : « Générez la facture depuis l'écran Facturation. » Elles venaient de visites restituées il y a 45 et 180 jours. | Deux gardes dans `priorites.js` : une visite **restituée depuis plus de 7 jours** quitte Aujourd'hui, et la **même phrase sur la même voiture** ne fait plus deux tâches. |
-| « **11 demandent une décision de votre part** » se lisait comme onze voitures. | La phrase dit maintenant **« 9 actions vous attendent »**, et précise « sur N voitures » quand les deux chiffres diffèrent. |
+| **La Clio BB-202-BB comptait trois lignes**, dont deux mot pour mot identiques : « Générez la facture depuis l'écran Facturation. » | Dédoublonnage sur l'**identifiant de l'action**, et date de la visite sur les lignes jumelles — voir ci-dessous. |
+| « **11 demandent une décision de votre part** » se lisait comme onze voitures. | La phrase dit maintenant **« 11 actions vous attendent, sur 9 voitures »**, et se réduit à « N actions vous attendent » quand les deux chiffres coïncident. |
 
-### Aucune action perdue — vérifié, pas supposé
+### Deux corrections de la revue de code, avant publication
 
-Les deux lignes retirées des priorités sont **présentes dans Facturation**,
-onglet Factures, bloc « RDV terminés à facturer », chacune avec son bouton
-« Générer la facture » :
+La première version de ces gardes en faisait trop. Relu au SHA `38fb8bb`, puis
+corrigé :
+
+**1. Une action nécessaire ne se périme pas.** Une fenêtre de sept jours
+écartait les visites closes. Elle mesurait `date_debut` — l'heure du
+RENDEZ-VOUS, pas celle de la restitution : une voiture entrée il y a quinze
+jours et rendue ce matin en sortait, **le jour même où sa facture devenait à
+faire**. Et au fond, une facture qui reste à établir reste à établir : l'âge du
+rendez-vous ne la rend pas faite. **La fenêtre est retirée.** La longueur de la
+liste se maîtrise par la limite d'affichage et « Voir toutes », qui masquent
+sans rien effacer.
+
+**2. Deux interventions distinctes restent deux actions.** Le dédoublonnage
+groupait sur `vehicule_id + raison + texte` : deux rendez-vous à facturer de la
+même voiture devenaient une seule ligne, et la seconde facture n'était plus
+réclamée nulle part. Masquer une tâche est pire que la répéter.
+
+Le dédoublonnage porte désormais sur ce qui porte l'action, par son
+identifiant stable :
+
+| Type de ligne | Identité |
+|---|---|
+| relance d'un document | l'**id du devis ou de la facture** — un même devis est rattaché à plusieurs rendez-vous du véhicule (`devisList.find` apparie par `vehicule_id`), c'est **une** relance |
+| tout le reste | l'**id de l'intervention** — deux interventions, deux actions |
+
+Et deux lignes jumelles **restent distinguables** : la date de leur visite
+s'ajoute, uniquement sur celles qui partagent voiture et libellé.
+
+> BB-202-BB · Renault Clio IV · Étienne Vasseur
+> Générez la facture depuis l'écran Facturation. · **Visite du 17 mars**
+>
+> BB-202-BB · Renault Clio IV · Étienne Vasseur
+> Générez la facture depuis l'écran Facturation. · **Visite du 30 juillet**
+
+Capture : `APRES5-aujourdhui-deux-interventions-distinctes.png`.
+
+Trois tests couvrent exactement ces cas (`priorites.test.js`) : un rendez-vous
+commencé il y a quinze jours et restitué aujourd'hui avec facture manquante ;
+deux interventions distinctes du même véhicule, chacune à facturer ; une même
+action remontée deux fois, une seule occurrence.
+
+### Rien n'est perdu, et ça se vérifie ailleurs aussi
+
+Les visites à facturer sont **aussi** dans Facturation, onglet Factures, bloc
+« RDV terminés à facturer », chacune avec son bouton « Générer la facture » :
 
 > Étienne Vasseur — Renault Clio IV · BB-202-BB · **Révision complète**
 > Étienne Vasseur — Renault Clio IV · BB-202-BB · **Vidange**
 
 Capture : `APRES4-facturation-visites-a-facturer.png`. Ce bloc n'a aucune
-limite de date : il liste **tout** rendez-vous restitué sans facture.
+limite de date.
 
 Les demandes, les appels à rappeler et les validations gardent leur bloc et
 leurs boutons ; « Argent à risque » et « Ajouter un travail à relancer »

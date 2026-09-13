@@ -24,13 +24,6 @@ import { AGIT_GARAGE, CIBLE_ATELIER } from "../atelier/filVehicule.js";
  * derrière la limite d'affichage : une contradiction qu'on ne voit pas se
  * propage, et un client qui attend sans le savoir attend pour rien.
  */
-/**
- * Au-delà de ce délai, une visite déjà restituée quitte Aujourd'hui : ce qui
- * lui manque (une facture, le plus souvent) se rattrape depuis Facturation,
- * pas depuis l'écran du matin.
- */
-export const JOURS_VISITE_CLOSE = 7;
-
 export const RAISONS = [
   { cle: "contradiction", rang: 0, urgent: true },
   { cle: "notification_bloquee", rang: 1, urgent: true },
@@ -140,22 +133,21 @@ export function raisonDePriorite({ fil, rdv, etatEnvoiDevis = null, etatEnvoiFac
   // Le reste ne concerne que ce qui attend un geste DU GARAGE.
   if (fil.quiAgit !== AGIT_GARAGE) return null;
 
-  // UNE VISITE RENDUE IL Y A SIX MOIS N'EST PAS UNE DÉCISION D'AUJOURD'HUI
+  // PAS DE PÉREMPTION SUR UNE ACTION ENCORE NÉCESSAIRE
   //
-  // Trouvé en revue le 13 septembre : une Clio comptait TROIS lignes, dont
-  // deux mot pour mot identiques — « Générez la facture depuis l'écran
-  // Facturation. » Elles venaient de visites restituées il y a 45 et 180
-  // jours. C'est du rattrapage de facturation, et son écran existe : le fil
-  // le dit lui-même dans sa phrase.
+  // Une fenêtre de sept jours avait été posée ici pour écarter les visites
+  // closes. Elle était fausse deux fois, et elle est retirée :
   //
-  // Même doctrine que pour l'arrivée : « une voiture d'avant-hier restée à
-  // venir relève du ménage, pas de l'urgence ». On garde une semaine, pour
-  // qu'une voiture rendue vendredi soit encore là le lundi.
-  if (etape === "restitue" && rdv?.date_debut) {
-    const rendu = new Date(rdv.date_debut);
-    const joursDepuis = (maintenant.getTime() - rendu.getTime()) / 86400000;
-    if (!Number.isNaN(joursDepuis) && joursDepuis > JOURS_VISITE_CLOSE) return null;
-  }
+  //   * elle mesurait `date_debut`, l'heure du RENDEZ-VOUS, pas celle de la
+  //     restitution. Une voiture entrée il y a quinze jours et rendue ce matin
+  //     en sortait — le jour même où sa facture devenait à faire ;
+  //   * et surtout, une facture qui reste à établir reste à établir. L'âge du
+  //     rendez-vous ne la rend pas faite. Une tâche ne se résout pas toute
+  //     seule en vieillissant, et la faire disparaître de l'écran, c'est
+  //     exactement la promettre traitée.
+  //
+  // La longueur de la liste se maîtrise par la limite d'affichage et « Voir
+  // toutes », qui masquent sans rien effacer.
 
   // Les travaux devaient être finis. Le garage peut agir : prévenir, ou finir.
   if (["depose", "diagnostic", "intervention"].includes(etape) && rdv?.date_fin && memeJour(rdv.date_debut, maintenant)) {
@@ -214,22 +206,72 @@ export function classerPriorites(dossiers = [], maintenant = new Date()) {
     return ta - tb;
   });
 
-  // LA MÊME PHRASE SUR LA MÊME VOITURE N'EST PAS DEUX TÂCHES
+  // DÉDOUBLONNER SUR CE QUI PORTE L'ACTION, JAMAIS SUR LE VÉHICULE
   //
-  // Un véhicule porte plusieurs visites. Deux d'entre elles peuvent produire
-  // exactement la même ligne — même voiture, même raison, même mot — et le
-  // garage lit alors deux fois le même travail. On garde la première, qui est
-  // déjà la plus urgente ou la plus ancienne par le tri ci-dessus.
+  // Une première version regroupait sur `vehicule_id + raison + texte`. Elle
+  // fusionnait deux interventions distinctes de la même voiture : deux
+  // rendez-vous à facturer devenaient une seule ligne, et la seconde facture
+  // n'était plus réclamée nulle part. Masquer une tâche est pire que la
+  // répéter.
   //
-  // Le tri vient AVANT : dédoublonner sur une liste non triée garderait une
-  // ligne au hasard.
+  // Ce qui porte l'action, c'est l'INTERVENTION ou le DOCUMENT — et chacun a
+  // un identifiant stable. Le seul vrai doublon vient de là : un même devis
+  // ou une même facture est rattaché à plusieurs rendez-vous du véhicule
+  // (`devisList.find` apparie par `vehicule_id`), et la même relance
+  // remonterait autant de fois qu'il y a de visites.
+  //
+  // Le tri vient AVANT : dédoublonner une liste non triée garderait une ligne
+  // au hasard.
   const vues = new Set();
-  return lignes.filter((l) => {
-    const cle = `${l.rdv?.vehicule_id || l.id}|${l.raisonCle}|${l.raison}`;
+  const retenues = lignes.filter((l) => {
+    const cle = cleDeLAction(l);
     if (vues.has(cle)) return false;
     vues.add(cle);
     return true;
   });
+
+  // DEUX LIGNES JUMELLES DOIVENT RESTER DISTINGUABLES
+  //
+  // Deux interventions à facturer sur la même voiture portent le même libellé.
+  // Ce sont deux tâches, elles restent toutes les deux — mais le garage doit
+  // pouvoir les différencier sans ouvrir les deux dossiers. On leur ajoute
+  // alors la date de leur visite, et à elles seules : une précision affichée
+  // partout ne distingue plus rien.
+  const parLibelle = new Map();
+  for (const l of retenues) {
+    const cle = `${l.rdv?.vehicule_id || l.id}|${l.raison}`;
+    parLibelle.set(cle, (parLibelle.get(cle) || 0) + 1);
+  }
+  return retenues.map((l) => {
+    const cle = `${l.rdv?.vehicule_id || l.id}|${l.raison}`;
+    if (parLibelle.get(cle) < 2) return l;
+    return { ...l, precision: precisionDeLigne(l) };
+  });
+}
+
+/**
+ * L'identité d'une action : ce qui la porte, pas la voiture qui la subit.
+ *
+ * Un document (devis, facture) peut être rattaché à plusieurs rendez-vous du
+ * même véhicule : c'est UNE relance, elle ne doit apparaître qu'une fois.
+ * Tout le reste appartient à une intervention précise, et deux interventions
+ * font deux actions — même véhicule, même mot.
+ */
+function cleDeLAction(l) {
+  if (l.raisonCle === "document_a_envoyer") {
+    const doc = l.facture?.id || l.devis?.id;
+    if (doc) return `doc:${doc}|${l.raisonCle}|${l.raison}`;
+  }
+  return `rdv:${l.rdv?.id || l.id}|${l.raisonCle}`;
+}
+
+/** De quoi distinguer deux lignes jumelles : la date de leur intervention. */
+function precisionDeLigne(l) {
+  const quand = l.rdv?.date_debut;
+  if (!quand) return null;
+  const d = new Date(quand);
+  if (Number.isNaN(d.getTime())) return null;
+  return `Visite du ${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}`;
 }
 
 /**
