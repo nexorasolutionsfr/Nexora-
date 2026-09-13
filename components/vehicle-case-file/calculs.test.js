@@ -520,3 +520,50 @@ test("aucun écran ne recommande de créer un devis quand il en existe un", () =
     )
   }
 })
+
+test("l'historique restitue le devis de chaque visite passée", () => {
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [
+        { id: 'r-passe', date_debut: '2026-01-10T09:00:00Z', statut: 'Terminé' },
+        { id: 'r-actif', date_debut: '2026-09-12T09:00:00Z', statut: 'Confirmé' },
+      ],
+      devis: [{ id: 'd-passe', statut: 'accepte', created_at: '2026-01-05T00:00:00Z' }],
+      ordresReparation: [{ id: 'o-passe', rendez_vous_id: 'r-passe', devis_id: 'd-passe', statut: 'termine' }],
+      factures: [{ id: 'f-passe', statut: 'payee', rendez_vous_id: 'r-passe', created_at: '2026-01-11T00:00:00Z' }],
+    },
+    MAINTENANT
+  )
+  const passee = dossier.interventionsPrecedentes.find((i) => i.rdv.id === 'r-passe')
+  assert.equal(passee.devis.id, 'd-passe', 'le devis de la visite passée ne disparaît pas')
+  assert.equal(passee.ordre.id, 'o-passe')
+  assert.equal(passee.facture.id, 'f-passe')
+})
+
+test('aucun devis ne disparaît : chacun est soit dans une visite, soit à part', () => {
+  const devis = [
+    { id: 'd1', statut: 'accepte', created_at: '2026-01-05T00:00:00Z' },
+    { id: 'd2', statut: 'refuse', created_at: '2026-02-05T00:00:00Z' },
+    { id: 'd3', statut: 'en_attente', created_at: '2026-09-11T00:00:00Z' },
+  ]
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [
+        { id: 'r-passe', date_debut: '2026-01-10T09:00:00Z', statut: 'Terminé' },
+        { id: 'r-actif', date_debut: '2026-09-12T09:00:00Z', statut: 'Confirmé' },
+      ],
+      devis,
+      ordresReparation: [{ id: 'o1', rendez_vous_id: 'r-passe', devis_id: 'd1', statut: 'termine' }],
+      factures: [],
+    },
+    MAINTENANT
+  )
+  const vus = new Set([
+    dossier.intervention.devis?.id,
+    ...dossier.interventionsPrecedentes.map((i) => i.devis?.id),
+    ...dossier.devisSansRattachement.map((d) => d.id),
+  ].filter(Boolean))
+  for (const d of devis) assert.ok(vus.has(d.id), `le devis ${d.id} a disparu de l'écran`)
+})
