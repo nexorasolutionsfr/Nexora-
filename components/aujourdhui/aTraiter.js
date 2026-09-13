@@ -19,6 +19,12 @@
 // de report — est dans `docs/architecture/aujourdhui-a-traiter.md`. Toute
 // modification ici doit s'y retrouver.
 
+import {
+  CIBLE_DEVIS,
+  CIBLE_DEVIS_SANS_INTERVENTION,
+  CIBLE_ORDRE,
+} from "../atelier/filVehicule.js";
+
 /**
  * Rang des sections du Cockpit sur l'échelle des priorités d'intervention
  * (0 = le plus contraignant, 7 = le moins pressé). Aucun seuil n'est inventé :
@@ -52,16 +58,35 @@ export function cleDeLigne(l) {
 }
 
 /**
- * Le devis dont parle une ligne d'intervention, s'il y en a un.
+ * Le devis DONT CETTE LIGNE PARLE — pas celui que sa voiture porte.
  *
- * Sert aux deux seules fusions inter-moteurs : « devis sans réponse » et
- * « réponse au devis » côté Cockpit désignent le même devis que la ligne
- * d'intervention. On garde la ligne d'intervention — elle nomme la voiture et
- * ouvre le dossier, là où le Cockpit renvoie vers la liste des devis.
+ * PARTAGER UN IDENTIFIANT N'EST PAS ÊTRE LE MÊME GESTE
+ *
+ * Première version : on prenait `l.devis?.id` de TOUTE priorité. Or `dossiers`
+ * rattache à chaque rendez-vous n'importe quel devis non refusé du véhicule.
+ * Une ligne « Travaux prévus jusqu'à 10:30, dépassés » portait donc l'id d'un
+ * devis accepté — et faisait disparaître la ligne « Devis accepté par … » du
+ * Cockpit. Deux gestes différents, une seule ligne affichée : la réponse du
+ * client était perdue.
+ *
+ * Ne comptent donc que les raisons qui parlent VRAIMENT du devis :
+ *
+ *   · `document_a_envoyer` sur un devis — le document attend d'être envoyé ;
+ *   · `a_vous_de_jouer` quand le fil pointe le devis lui-même ou l'ordre à
+ *     ouvrir depuis un devis accepté.
+ *
+ * Tout le reste — créneau dépassé, arrivée en retard, message de
+ * disponibilité, contradiction — garde sa ligne ET laisse celle du Cockpit.
  */
+const CIBLES_DEVIS = [CIBLE_DEVIS, CIBLE_DEVIS_SANS_INTERVENTION, CIBLE_ORDRE];
+
 function devisConcerne(l) {
   if (l.origine === "cockpit") return null;
-  return l.devis?.id || null;
+  const id = l.devis?.id;
+  if (!id) return null;
+  if (l.raisonCle === "document_a_envoyer") return l.facture?.id ? null : id;
+  if (l.raisonCle === "a_vous_de_jouer" && CIBLES_DEVIS.includes(l.fil?.cible)) return id;
+  return null;
 }
 
 /** Normalise une opportunité du Cockpit en ligne de la liste unique. */
@@ -111,14 +136,32 @@ export function construireATraiter({ opportunites = null, priorites = [], nommer
 
   for (const l of priorites) lignes.push(depuisIntervention(l, nommer, action));
 
-  // Les deux fusions inter-moteurs : un devis déjà porté par une intervention
-  // ne revient pas une seconde fois par le Cockpit.
-  const devisPortes = new Set(lignes.map(devisConcerne).filter(Boolean));
+  // Les deux fusions inter-moteurs : un devis dont une intervention porte DÉJÀ
+  // le geste ne revient pas une seconde fois par le Cockpit.
+  const porteusesParDevis = new Map();
+  for (const l of lignes) {
+    const id = devisConcerne(l);
+    if (id && !porteusesParDevis.has(id)) porteusesParDevis.set(id, l);
+  }
 
   const sections = opportunites?.sections || {};
   for (const nom of Object.keys(sections)) {
     for (const o of sections[nom] || []) {
-      if ((o.sourceType === "devis" || o.sourceType === "reponse_devis") && devisPortes.has(o.sourceId)) continue;
+      const porteuse = (o.sourceType === "devis" || o.sourceType === "reponse_devis")
+        ? porteusesParDevis.get(o.sourceId)
+        : null;
+      if (porteuse) {
+        // FUSION LÉGITIME : on garde la ligne d'intervention — elle nomme la
+        // voiture et ouvre le dossier — mais on n'avale pas ce qu'elle
+        // apportait. On reprend son détail, et surtout son identité de source,
+        // sans laquelle « Marquer traité » et « Reporter » disparaîtraient
+        // pour ce devis.
+        porteuse.sourceType = porteuse.sourceType || o.sourceType;
+        porteuse.sourceId = porteuse.sourceId || o.sourceId;
+        porteuse.fusionne = [...(porteuse.fusionne || []), o.key];
+        if (o.meta && !porteuse.precision) porteuse.precision = o.meta;
+        continue;
+      }
       // Le véhicule quand il existe — jamais inventé. Une demande de
       // rendez-vous n'en a pas encore : elle reste nommée par son client.
       const v = resoudreVehicule ? resoudreVehicule(o) : null;

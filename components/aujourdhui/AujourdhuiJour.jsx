@@ -74,7 +74,10 @@ function Bloc({ children, className = "" }) {
  */
 function LigneATraiter({ ligne, onAction, onTraiter, onReporter, journalDisponible }) {
   const [ouvert, setOuvert] = useState(false);
-  const suivi = ligne.origine === "cockpit" && journalDisponible;
+  // Le suivi suit la SOURCE, pas l'origine de la ligne : une ligne
+  // d'intervention qui a absorbé une opportunité en garde l'identité, donc
+  // « Marquer traité » et « Reporter » restent offerts pour ce devis.
+  const suivi = Boolean(ligne.sourceType && ligne.sourceId) && journalDisponible;
   return (
     <div className="border-t border-slate-100 first:border-t-0" style={ligne.urgent ? { boxShadow: "inset 3px 0 0 #B45309" } : undefined}>
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 py-3 px-4">
@@ -118,10 +121,13 @@ function LigneATraiter({ ligne, onAction, onTraiter, onReporter, journalDisponib
               <span className="text-slate-400">Marquer traité n'envoie rien et ne facture rien.</span>
             </>
           )}
-          {ligne.origine === "cockpit" && !journalDisponible && (
+          {ligne.fusionne?.length > 0 && suivi && (
+            <span className="text-slate-400">« Marquer traité » ne masque que la réponse du client, pas le travail sur la voiture.</span>
+          )}
+          {ligne.sourceType && !journalDisponible && (
             <span className="text-slate-400">Le suivi traité/reporté est réservé au propriétaire du garage.</span>
           )}
-          {ligne.origine === "intervention" && <span className="text-slate-400">Ouvrir la tâche ne la marque jamais comme traitée.</span>}
+          {!ligne.sourceType && <span className="text-slate-400">Ouvrir la tâche ne la marque jamais comme traitée.</span>}
         </div>
       )}
     </div>

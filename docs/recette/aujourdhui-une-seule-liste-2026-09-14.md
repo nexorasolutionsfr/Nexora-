@@ -45,6 +45,38 @@ Ce qui a été vérifié à l'écran, sur le garage de recette :
   deux lignes : ce sont deux gestes.
 - **Le compteur est la liste** : 19 annoncées, 19 affichées après dépliage.
 
+### Le défaut de fusion, trouvé en revue de code et corrigé avant fusion
+
+`devisPortes` prenait le devis de **toutes** les priorités. Or un rendez-vous se
+voit rattacher n'importe quel devis non refusé de son véhicule : une ligne
+« travaux dépassés » portait donc l'id d'un devis accepté et **supprimait** la
+ligne « Devis accepté par … ».
+
+La fusion ne s'applique plus que lorsque la raison **parle du devis**
+(`document_a_envoyer` sur un devis, ou `a_vous_de_jouer` dont le fil pointe le
+devis ou l'ordre). Vérifié à l'écran sur le garage de recette, en reproduisant
+exactement le cas — BC-303-CC, travaux du jour 08:00–10:30 dépassés **et**
+devis accepté il y a 8 h :
+
+> **Devis accepté par Marie-Alexandrine de Kervasdoué-Lestrange**
+> BC-303-CC · reçu il y a 8h · Remplacement de l'embrayage → **Voir la réponse**
+>
+> **BC-303-CC** · Volkswagen Tiguan Allspace R-Line
+> Travaux prévus jusqu'à 10:30, dépassés → **Voir dans l'Atelier**
+
+Deux lignes, deux gestes, deux destinations. Capture :
+`V2-deux-gestes-meme-devis.png`.
+
+**Une seconde ligne était perdue sans qu'on l'ait cherchée** : « Devis accepté
+par Camille Perrin » (BJ-010-JJ) était absorbée par la ligne « Attendue à 16:00,
+pas encore arrivée » de la même voiture. Elle réapparaît. Le compteur passe de
+19 à 21 : +1 pour le créneau dépassé ajouté par la reproduction, +1 pour la
+réponse client rendue.
+
+Quatre tests couvrent les cas : travaux dépassés + réponse récente ; facture à
+traiter + réponse au devis ; véritable doublon (une ligne, **et le suivi
+survit**) ; deux interventions distinctes à facturer.
+
 ### Deux défauts trouvés pendant cette recette, corrigés
 
 1. La ligne d'activité annonçait **« 0 prête »** à côté de deux voitures prêtes
@@ -108,11 +140,16 @@ journée » remplace la liste. Capture : `V2-erreur-chargement.png`.
 ## Limites restantes
 
 - **Le journal `opportunites_actions` est réservé au propriétaire du garage**
-  (`owner_user_id = auth.uid()`). Un compte `accueil` ne voit donc rien de
-  masqué : une ligne traitée par le dirigeant lui réapparaît. **C'est le
-  comportement actuel du Cockpit**, pas une régression. Le corriger demande une
-  migration de politique — hors de ce lot. En attendant, les commandes
-  n'apparaissent pas pour lui, plutôt que d'échouer en silence.
+  (`owner_user_id = auth.uid()`). **C'est le comportement actuel du Cockpit**,
+  pas une régression ; le corriger demande une migration de politique, hors de
+  ce lot. Les commandes n'apparaissent pas pour l'accueil, plutôt que d'échouer
+  en silence.
+
+  > **Ce que la capture « rôle accueil » ne prouve pas.** Elle montre que
+  > l'accueil voit **les mêmes 19 tâches au départ** — rien de plus. Le suivi,
+  > lui, n'est pas partagé : après un « Marquer traité » ou un « Reporter » du
+  > dirigeant, **l'accueil continue de voir la ligne** et peut refaire le
+  > geste. Même compteur au départ ≠ suivi commun.
 - Les dérivations en amont des anciennes zones (`demandesUrgentes`,
   `devisRecents`, `travauxTries`…) subsistent dans `NexoraDashboard.jsx` sans
   être rendues. Elles ne peuvent plus contredire l'écran, mais elles restent à
