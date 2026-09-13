@@ -156,16 +156,43 @@ export function echeanceCarte(rdv, maintenant = new Date(), groupe = null) {
   const duJour = memeJour(rdv.date_debut, maintenant);
   const heure = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit" }).format(debut);
 
+  const jour = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "short" }).format(debut);
+
+  // À RECEVOIR — la seule heure d'arrivée que le modèle connaisse.
+  // `date_debut` est bien l'heure à laquelle on attend la voiture : la
+  // signaler dépassée est exact et actionnable (appeler le client).
   if (groupe === GROUPE_A_RECEVOIR) {
     return { texte: `Attendue à ${heure}`, enRetard: debut.getTime() < maintenant.getTime() };
   }
+
+  // PRÊTES — aucune alerte de retard, jamais.
+  //
+  // Recette du 13 septembre : une voiture prête affichait « Créneau de 08:00
+  // dépassé ». C'était faux deux fois. D'abord les travaux SONT finis : il n'y
+  // a plus rien à rattraper. Ensuite `date_debut` est l'heure d'ARRIVÉE de la
+  // voiture, pas une heure de restitution promise — le modèle n'en porte
+  // aucune, et l'inventer serait promettre au garage un engagement qu'il n'a
+  // pas pris. On se contente de dater la visite quand ce n'est pas aujourd'hui.
+  if (groupe === GROUPE_PRETES) {
+    return duJour ? null : { texte: `Déposée le ${jour}`, enRetard: false };
+  }
+
+  // EN ATTENTE — bloquée par un tiers : un créneau dépassé n'est pas un retard
+  // du garage, et la carte dit déjà ce qui bloque et qui doit bouger. Répéter
+  // une alerte orange que personne ne peut lever, tous les jours, apprend à ne
+  // plus regarder les alertes oranges.
+  if (groupe === GROUPE_EN_ATTENTE) {
+    return duJour ? { texte: `Rendez-vous de ${heure}`, enRetard: false } : { texte: `Déposée le ${jour}`, enRetard: false };
+  }
+
+  // EN ATELIER — le seul cas où « dépassé » veut dire quelque chose : les
+  // travaux devaient être finis, ils ne le sont pas, et le garage peut agir.
   if (duJour) {
     const fin = rdv.date_fin ? new Date(rdv.date_fin) : null;
     const depasse = fin && !Number.isNaN(fin.getTime()) && fin.getTime() < maintenant.getTime();
     return { texte: depasse ? `Créneau de ${heure} dépassé` : `Rendez-vous de ${heure}`, enRetard: Boolean(depasse) };
   }
-  const jour = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "short" }).format(debut);
-  return { texte: `Rendez-vous du ${jour}`, enRetard: false };
+  return { texte: `Déposée le ${jour}`, enRetard: false };
 }
 
 /**
