@@ -21,7 +21,19 @@ const LIBELLE_ACTION = {
   agenda: "Voir le rendez-vous",
   factures: "Ouvrir la facture",
   ordres_reparation: "Ouvrir la fiche atelier",
+  devis_sans_intervention: "Voir les devis",
 };
+
+/** Les devis n'ont pas de numéro en base : on en dérive une référence stable,
+ *  lisible et distinctive, plutôt que d'inventer une numérotation. */
+function referenceDevis(devis) {
+  return `Réf. ${String(devis?.id || "").replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+}
+
+function montantTTC(document) {
+  const montant = Number(document?.montant_ttc);
+  return Number.isFinite(montant) ? `${montant.toFixed(2).replace(".", ",")} €` : "montant non renseigné";
+}
 
 const BADGE_TONES = {
   amber: { bg: "#FEF3E2", text: "#B45309" },
@@ -72,6 +84,9 @@ export default function VehicleCaseFileView({
 }) {
   const fermerRef = useRef(null);
   const [historiqueOuvert, setHistoriqueOuvert] = useState(false);
+  // Le fil peut renvoyer vers la liste des devis orphelins : il n'y a pas
+  // d'écran à ouvrir, il y a une section à regarder, plus bas dans ce panneau.
+  const devisSansInterventionRef = useRef(null);
 
   // LES ÉTATS D'ENVOI SE DEMANDENT, ILS NE SE DEVINENT PAS
   //
@@ -255,6 +270,9 @@ export default function VehicleCaseFileView({
                       if (dossier.prochaineAction.cible === "agenda") onOuvrirAgenda?.();
                       if (dossier.prochaineAction.cible === "factures") onOuvrirFactures?.();
                       if (dossier.prochaineAction.cible === "ordres_reparation") onOuvrirOrdresReparation?.(vehicule?.id);
+                      if (dossier.prochaineAction.cible === "devis_sans_intervention") {
+                        devisSansInterventionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }
                     }}
                     className="mt-3.5 inline-flex items-center gap-1.5 text-[13px] font-semibold rounded-xl px-3.5 h-10 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
                     style={{ backgroundColor: ACCENT }}
@@ -323,18 +341,25 @@ export default function VehicleCaseFileView({
               `construireDossierVehicule` continue de produire `chronologie` :
               elle servira aux événements de l'intervention en cours, quand les
               gestes seront réalisables ici. */}
-          {/* LES DEVIS QUE LE MODÈLE NE RATTACHE À AUCUNE VISITE
-              Un devis ne rejoint un rendez-vous que par l'ordre de réparation,
-              et la base exige qu'il soit accepté pour cela. Un devis en attente
-              de réponse n'a donc aucun lien avec une visite — et c'est pourtant
-              ce que le garage a de plus urgent. On le montre ici, sous un titre
-              qui ne prétend pas qu'il appartient à l'intervention en cours. */}
+          {/* DEVIS SANS INTERVENTION ASSOCIÉE
+              La base interdit de lier un devis non accepté à un ordre : ces
+              devis existent donc sans appartenir à une visite. Les masquer
+              conduirait le garage à en établir un deuxième — c'est pourquoi le
+              fil renvoie ici, et pourquoi chaque ligne doit se distinguer des
+              autres : référence, date, montant et statut. Sans cela, quatre
+              lignes « 13 sept. 2026 — Accepté » ne se départagent pas. */}
           {dossier.devisSansRattachement.length > 0 && (
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <div ref={devisSansInterventionRef} className="bg-white rounded-2xl border border-slate-200 overflow-hidden scroll-mt-4">
               <div className="px-4 py-3 border-b border-slate-100">
-                <div className="text-[13px] font-semibold text-slate-900">Autres devis de ce véhicule</div>
-                <div className="text-[12px] text-slate-500 mt-0.5">
-                  Pas rattachés à une visite : un devis ne l'est qu'une fois accepté.
+                <div className="text-[13px] font-semibold text-slate-900">
+                  Devis sans intervention associée
+                  <span className="ml-2 text-[12px] font-normal text-slate-500">
+                    {dossier.devisSansRattachement.length}
+                  </span>
+                </div>
+                <div className="text-[12px] text-slate-500 mt-0.5 leading-snug">
+                  Ces devis concernent ce véhicule, mais ne sont liés à aucune intervention.
+                  Vérifiez-les avant d&apos;en créer un nouveau.
                 </div>
               </div>
               <div className="divide-y divide-slate-100">
@@ -345,8 +370,14 @@ export default function VehicleCaseFileView({
                     onClick={() => onOuvrirDevis?.()}
                     className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
                   >
-                    <span className="text-[13px] text-slate-600">{formatDateHeure(d.created_at)}</span>
-                    <span className="flex items-center gap-2">
+                    <span className="min-w-0">
+                      <span className="block text-[13.5px] font-medium text-slate-900 tabular-nums">
+                        {referenceDevis(d)}
+                      </span>
+                      <span className="block text-[12px] text-slate-500">{formatDateHeure(d.created_at)}</span>
+                    </span>
+                    <span className="flex items-center gap-2.5 shrink-0">
+                      <span className="text-[13.5px] font-medium text-slate-800 tabular-nums">{montantTTC(d)}</span>
                       <Badge tone={DEVIS_STATUT_TONE[d.statut] || "slate"}>
                         {DEVIS_STATUT_LABEL[d.statut] || "Devis"}
                       </Badge>
