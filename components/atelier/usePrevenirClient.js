@@ -41,6 +41,11 @@ export function usePrevenirClient({ onToast } = {}) {
   const ouvrirPrevenir = useCallback(async (appt) => {
     if (!appt?.id) return;
     setPrevenir({ appt, apercu: null, chargement: true, erreur: null, enCours: false });
+    // L'état est relu AU MOMENT du geste, pas à l'affichage de la liste : entre
+    // les deux, l'envoi a pu être autorisé ailleurs, ou mis de côté. C'est
+    // aussi ce qui permet de dire depuis quand une notification est bloquée
+    // avant de proposer de la relancer.
+    await lireEtat(appt.id);
     const { data, error } = await supabase.rpc("apercu_message_atelier", { p_rendez_vous_id: appt.id });
     if (error || !data?.ok) {
       setPrevenir({ appt, apercu: null, chargement: false, enCours: false,
@@ -54,7 +59,7 @@ export function usePrevenirClient({ onToast } = {}) {
       return;
     }
     setPrevenir({ appt, apercu: data, chargement: false, erreur: null, enCours: false });
-  }, []);
+  }, [lireEtat]);
 
   const confirmerPrevenir = useCallback(async (destinataire) => {
     let appt = null;
