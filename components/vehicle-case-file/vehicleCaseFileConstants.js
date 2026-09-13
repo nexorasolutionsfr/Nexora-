@@ -3,21 +3,11 @@
 // étapes atelier). Aucun nouvel état métier n'est inventé ici : ce fichier
 // ne fait qu'habiller les clés produites par ./calculs.js.
 
-export const STATUT_GLOBAL_LABEL = {
-  devis_en_attente: "Devis en attente",
-  rdv_a_venir: "Rendez-vous à venir",
-  facture_en_attente: "Facture en attente",
-  a_jour: "Dossier à jour",
-  aucun_suivi: "Aucun suivi en cours",
-};
-
-export const STATUT_GLOBAL_TONE = {
-  devis_en_attente: "amber",
-  rdv_a_venir: "green",
-  facture_en_attente: "red",
-  a_jour: "slate",
-  aucun_suivi: "slate",
-};
+// Le « statut global » du dossier a été retiré le 13 septembre 2026 : il
+// fusionnait atelier, devis et facture en une seule clé, et il était calculé
+// sans l'ordre de réparation. L'état vient désormais de `atelier/filVehicule`,
+// et les statuts métier restent affichés séparément — d'où les libellés
+// ci-dessous, qui eux sont conservés.
 
 export const DEVIS_STATUT_LABEL = {
   en_attente: "En attente",

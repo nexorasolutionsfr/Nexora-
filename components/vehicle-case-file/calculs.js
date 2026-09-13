@@ -1,11 +1,33 @@
 // Module de calculs purs pour le Dossier Véhicule 360.
 // Aucun accès réseau, aucun état React ici : uniquement des dérivations
 // locales à partir des données déjà chargées par le dashboard (rendez-vous,
-// devis, factures). Les rendez-vous passés en entrée portent un `statut`
-// déjà traduit en libellé français (ex. "Confirmé") — c'est la forme réelle
-// produite par le chargeur existant de NexoraDashboard.jsx. Les devis et
-// factures conservent leur `statut` brut (`en_attente`, `accepte`, `refuse`,
-// `payee`).
+// devis, ordres de réparation, factures). Les rendez-vous passés en entrée
+// portent un `statut` déjà traduit en libellé français (ex. "Confirmé") —
+// c'est la forme réelle produite par le chargeur existant de
+// NexoraDashboard.jsx. Les devis et factures conservent leur `statut` brut
+// (`en_attente`, `accepte`, `refuse`, `payee`).
+//
+// UNE SEULE LECTURE DU FIL, ET C'EST CELLE DE L'ATELIER
+//
+// Ce module dérivait sa propre « prochaine action » et son propre « statut
+// global » à partir de trois sources : rendez-vous, devis, factures. L'ordre
+// de réparation n'y entrait pas — il n'était même pas passé au dossier. Deux
+// conséquences observées le 13 septembre 2026 :
+//
+//   — travaux terminés sur l'ordre, devis encore « en attente » : le dossier
+//     affichait « Relancer le client pour la validation du devis » alors que
+//     la voiture était réparée ;
+//   — ordre ouvert sans étape d'atelier saisie : le dossier annonçait
+//     « Rendez-vous à venir » et ignorait le travail en cours.
+//
+// `atelier/filVehicule` lit les cinq statuts, ordre compris, et sait déjà
+// signaler la contradiction « ordre terminé / voiture à venir ». Il devient
+// la source unique de l'état, de la prochaine action et de la personne qui
+// doit agir. Les statuts métier ne sont pas fusionnés pour autant : le devis,
+// la facture et l'étape d'atelier restent exposés séparément ci-dessous et
+// affichés tels quels par la vue.
+
+import { filVehicule } from "../atelier/filVehicule.js";
 
 const ATELIER_ETAPES_EN_COURS = ["depose", "diagnostic", "attente_client", "attente_piece", "intervention"];
 
@@ -87,50 +109,80 @@ export function trouverFactureEnAttente(factures = []) {
   return trierParDate(factures.filter((f) => f.statut === "en_attente"), "created_at", "desc")[0] || null;
 }
 
-export function deriverProchaineAction({ rendezVous = [], devis = [], factures = [] }, maintenant = new Date()) {
-  const devisEnAttente = trouverDevisEnAttente(devis);
-  if (devisEnAttente) {
-    return { label: "Relancer le client pour la validation du devis", cible: "devis", reference: devisEnAttente };
+/**
+ * L'intervention à laquelle se rapporte le fil : un véhicule a un historique,
+ * `filVehicule` raisonne sur une visite.
+ *
+ * ON NE DEVINE PAS LES RATTACHEMENTS
+ *
+ * La première version retombait sur « le devis le plus récent » ou « la
+ * facture la plus récente » du véhicule quand le rendez-vous retenu n'avait
+ * pas de document lié. Une facture payée l'an dernier devenait alors la
+ * facture du rendez-vous de mardi, et le dossier annonçait un dossier clos
+ * pour une intervention qui n'avait pas commencé.
+ *
+ * Désormais, chaque pièce n'est retenue que si le modèle porte la relation :
+ * l'ordre par `rendez_vous_id`, la facture par `rendez_vous_id`, le devis par
+ * `ordre.devis_id`. Sinon, elle n'appartient pas à cette intervention — elle
+ * reste visible dans l'historique, pas intégrée en silence.
+ */
+export function selectionnerInterventionCourante(
+  { rendezVous = [], devis = [], ordresReparation = [], factures = [] },
+  maintenant = new Date(),
+) {
+  const rdv =
+    determinerEtapeAtelierActuelle(rendezVous)
+    || trouverProchainRendezVous(rendezVous, maintenant)
+    || trouverDernierRendezVous(rendezVous, maintenant)
+    || null;
+
+  // Sans rendez-vous, il n'y a pas de visite à reconstituer. Un devis seul est
+  // une intervention en devenir ; lui adjoindre une facture ancienne
+  // fabriquerait une visite qui n'a jamais eu lieu.
+  if (!rdv) {
+    return {
+      rdv: null,
+      devis: trierParDate(devis, "created_at", "desc")[0] || null,
+      ordre: null,
+      facture: null,
+    };
   }
 
-  const etapeAtelier = determinerEtapeAtelierActuelle(rendezVous);
-  if (etapeAtelier) {
-    return { label: "Poursuivre le suivi à l'atelier", cible: "atelier", reference: etapeAtelier };
-  }
+  const ordre = ordresReparation.find((o) => o.rendez_vous_id === rdv.id) || null;
+  // Le devis vient de l'ordre. Sans ordre, rien ne relie un devis à ce
+  // rendez-vous : le modèle ne porte pas cette relation, on ne l'invente pas.
+  const devisRetenu = (ordre?.devis_id && devis.find((d) => d.id === ordre.devis_id)) || null;
+  const facture = factures.find((f) => f.rendez_vous_id === rdv.id) || null;
 
-  const prochainRdv = trouverProchainRendezVous(rendezVous, maintenant);
-  if (prochainRdv) {
-    return { label: "Rendez-vous à venir", cible: "agenda", reference: prochainRdv };
-  }
-
-  const factureEnAttente = trouverFactureEnAttente(factures);
-  if (factureEnAttente) {
-    return { label: "Relancer le règlement de la facture", cible: "factures", reference: factureEnAttente };
-  }
-
-  const dernierRdv = trouverDernierRendezVous(rendezVous, maintenant);
-  if (dernierRdv) {
-    return { label: "Aucune action en cours — dernière intervention terminée", cible: null, reference: dernierRdv };
-  }
-
-  return { label: "Aucune action en cours", cible: null, reference: null };
+  return { rdv, devis: devisRetenu, ordre, facture };
 }
 
-export function deriverStatutGlobal({ rendezVous = [], devis = [], factures = [] }, maintenant = new Date()) {
-  const etapeAtelier = determinerEtapeAtelierActuelle(rendezVous);
-  if (etapeAtelier) return { cle: "atelier", statutAtelier: etapeAtelier.statut_atelier };
-
-  if (trouverDevisEnAttente(devis)) return { cle: "devis_en_attente" };
-
-  if (trouverProchainRendezVous(rendezVous, maintenant)) return { cle: "rdv_a_venir" };
-
-  if (trouverFactureEnAttente(factures)) return { cle: "facture_en_attente" };
-
-  const aHistorique = rendezVous.length > 0 || devis.length > 0 || factures.length > 0;
-  if (aHistorique) return { cle: "a_jour" };
-
-  return { cle: "aucun_suivi" };
+/**
+ * Les devis que le modèle ne sait rattacher à aucune visite.
+ *
+ * LA LIMITE, ÉNONCÉE PLUTÔT QUE CONTOURNÉE
+ *
+ * Un devis ne rejoint un rendez-vous que par l'ordre de réparation — et
+ * `ordres_reparation_check_integrite` exige qu'un devis soit **accepté** pour
+ * y être rattaché. Un devis « en attente de réponse », donc, n'a par
+ * construction aucun lien avec une visite : c'est le modèle qui est ainsi,
+ * pas un oubli de chargement.
+ *
+ * Les faire disparaître serait pire que tout — un devis qui attend une réponse
+ * est ce que le garage a de plus urgent. Ils sont donc rendus à part, sous un
+ * libellé qui ne prétend pas qu'ils appartiennent à l'intervention en cours.
+ */
+export function devisSansRattachement({ devis = [], ordresReparation = [] }) {
+  const rattaches = new Set(ordresReparation.map((o) => o.devis_id).filter(Boolean));
+  return trierParDate(devis.filter((d) => !rattaches.has(d.id)), "created_at", "desc");
 }
+
+/* `cibleProchaineAction` a été supprimée le 13 septembre 2026. Elle choisissait
+   l'écran d'après la seule existence d'un document, pendant que la phrase
+   venait de `filVehicule` : le texte pouvait dire « rien à faire » quand le
+   bouton ouvrait la facture. La destination est désormais produite avec l'état,
+   la phrase et la personne qui agit — une seule décision, au même endroit,
+   couverte par les mêmes tests. */
 
 export function detecterDonneesIncompletes({ vehicule, client }) {
   const champsManquantsVehicule = [];
@@ -147,12 +199,47 @@ export function detecterDonneesIncompletes({ vehicule, client }) {
   };
 }
 
-export function construireDossierVehicule({ vehicule, client, rendezVous = [], devis = [], factures = [] }, maintenant = new Date()) {
+/**
+ * `etatEnvoiDevis` / `etatEnvoiFacture` : les clés rendues par les fonctions
+ * `etat_envoi_devis` / `etat_envoi_facture`. Elles ne se déduisent pas des
+ * tables — `notifications_devis` n'est lisible par aucun rôle applicatif, et
+ * c'est voulu. L'écran les demande pour les seuls documents de l'intervention
+ * courante : deux appels au maximum, à l'ouverture du dossier. Tant qu'elles
+ * ne sont pas connues, `filVehicule` retombe sur sa lecture prudente
+ * (« relisez le message, puis confirmez l'envoi »), qui ne prétend jamais
+ * qu'un envoi a eu lieu.
+ */
+export function construireDossierVehicule(
+  { vehicule, client, rendezVous = [], devis = [], ordresReparation = [], factures = [], etatEnvoiDevis = null, etatEnvoiFacture = null },
+  maintenant = new Date(),
+) {
+  const intervention = selectionnerInterventionCourante({ rendezVous, devis, ordresReparation, factures }, maintenant);
+  const sansRattachement = devisSansRattachement({ devis, ordresReparation });
+  const fil = filVehicule({
+    ...intervention,
+    etatEnvoiDevis,
+    etatEnvoiFacture,
+    // Le fil doit savoir qu'il existe des devis orphelins : sans cela il
+    // conseille d'en établir un de plus.
+    devisSansIntervention: sansRattachement.length,
+  });
+
   return {
     vehicule,
     client,
-    statutGlobal: deriverStatutGlobal({ rendezVous, devis, factures }, maintenant),
-    prochaineAction: deriverProchaineAction({ rendezVous, devis, factures }, maintenant),
+    // L'intervention en cours et sa lecture. `fil.etat` est une situation
+    // lue, pas un statut stocké : les statuts du devis, de la facture et de
+    // l'atelier restent exposés séparément ci-dessous.
+    intervention,
+    fil,
+    // Voir `devisSansRattachement` : le modèle ne relie pas un devis en
+    // attente à une visite. On les montre à part plutôt que de les perdre.
+    devisSansRattachement: sansRattachement,
+    prochaineAction: {
+      label: fil.prochaineAction,
+      cible: fil.cible,
+      reference: intervention.rdv || intervention.devis || intervention.facture || null,
+    },
     prochainRendezVous: trouverProchainRendezVous(rendezVous, maintenant),
     dernierRendezVous: trouverDernierRendezVous(rendezVous, maintenant),
     etapeAtelier: determinerEtapeAtelierActuelle(rendezVous),
