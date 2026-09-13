@@ -1027,6 +1027,7 @@ function AtelierView({
   atelierBusyId,
   onOuvrirDossierVehicule,
   onUpdateStatutAtelier,
+  onAllerAgenda,
   etatVue,
   onEtatVue,
 }) {
@@ -1112,6 +1113,7 @@ function AtelierView({
       ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5"
       : "grid grid-cols-1 md:grid-cols-2 gap-2.5";
 
+  const atelierEntierementVide = groupes.every((g) => g.rendezVous.length === 0);
   const basculer = (cle) => poser({ replies: { ...replies, [cle]: !replies[cle] } });
   const deplierEtAtteindre = (cle) => {
     poser({ replies: { ...replies, [cle]: false } });
@@ -1167,7 +1169,43 @@ function AtelierView({
     </div>
 
     <div className="print:hidden space-y-4">
-      {groupes.map((groupe) => (
+      {/* QUATRE CADRES VIDES NE DISENT PAS « RIEN À FAIRE »
+          Un atelier vide affichait « Aucune voiture attendue », « Aucune
+          voiture en cours de travail », « Aucune voiture bloquée », « Aucune
+          voiture prête » — quatre fois la même information, sur presque deux
+          hauteurs d'écran. Le garage qui démarre, ou qui ouvre le dimanche
+          soir, mérite une phrase. */}
+      {atelierEntierementVide ? (
+        <div className="nx-apparait bg-white border border-slate-200 rounded-2xl shadow-sm px-6 py-12 text-center">
+          <Wrench size={26} className="mx-auto text-slate-300" />
+          <div className="mt-3 text-[15px] font-semibold text-slate-900">
+            {filtreMecanicien === "tous" ? "Aucune voiture à l'atelier" : "Aucune voiture pour ce filtre"}
+          </div>
+          <div className="mt-1 text-[13px] text-slate-500 max-w-md mx-auto">
+            {filtreMecanicien === "tous"
+              ? "Les voitures apparaîtront ici dès qu'un rendez-vous sera prévu pour aujourd'hui, ou dès qu'une voiture sera notée déposée."
+              : "Les autres voitures de l'atelier sont affectées à quelqu'un d'autre, ou à personne."}
+          </div>
+          {filtreMecanicien === "tous" ? (
+            <button
+              type="button"
+              onClick={() => onAllerAgenda?.()}
+              className="mt-4 inline-flex items-center gap-2 min-h-[44px] rounded-xl px-4 text-[13px] font-semibold text-white"
+              style={{ backgroundColor: ACCENT }}
+            >
+              Ouvrir l'agenda <ArrowRight size={15} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => poser({ filtreMecanicien: "tous" })}
+              className="mt-4 inline-flex items-center gap-2 min-h-[44px] rounded-xl border border-slate-200 px-4 text-[13px] font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Afficher toutes les voitures
+            </button>
+          )}
+        </div>
+      ) : groupes.map((groupe) => (
         <div key={groupe.key} id={`file-${groupe.key}`}>
           <AtelierFile
             groupe={groupe}
@@ -7601,7 +7639,7 @@ if (updateError) {
         <div key={view} className="nx-vue p-5 md:p-8">
           {view === "aujourdhui" && <AujourdhuiView monRole={monRole} vehicules={tousLesVehicules} onOuvrirDossierVehicule={ouvrirDossierDepuisRecherche} stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
-          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={ouvrirDossierVehicule} onUpdateStatutAtelier={updateStatutAtelier} etatVue={etatAtelier} onEtatVue={setEtatAtelier} />}
+          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={ouvrirDossierVehicule} onUpdateStatutAtelier={updateStatutAtelier} onAllerAgenda={() => setView("agenda")} etatVue={etatAtelier} onEtatVue={setEtatAtelier} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
           {["devis", "factures", "historique"].includes(view) && (
             <FacturationView
