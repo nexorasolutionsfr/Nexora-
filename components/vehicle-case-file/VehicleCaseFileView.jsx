@@ -126,11 +126,23 @@ export default function VehicleCaseFileView({
     etatEnvoiDevis: etatsEnvoi.devis,
     etatEnvoiFacture: etatsEnvoi.facture,
   });
-  const etapeAtelierLabel = dossier.etapeAtelier
-    ? workshopStages.find((s) => s.key === dossier.etapeAtelier.statut_atelier)?.label || dossier.etapeAtelier.statut_atelier
+  // TOUT CE BLOC PARLE DE L'INTERVENTION COURANTE, ET D'ELLE SEULE
+  //
+  // La première version lisait `dossier.aDevis`, `dossier.factureEnAttente` et
+  // « le dernier statut de devis du véhicule » : des agrégats calculés sur
+  // toute l'histoire de la voiture. Un devis refusé en janvier s'affichait donc
+  // sous « Intervention en cours », et une facture payée l'an dernier rendait
+  // la ligne « Facture : payée » pour un rendez-vous de demain.
+  // Le passé appartient à « Interventions précédentes ».
+  const { rdv: rdvCourant, devis: devisCourant, ordre: ordreCourant, facture: factureCourante } = dossier.intervention;
+  const etapeCourante = rdvCourant?.statut_atelier && rdvCourant.statut_atelier !== "a_venir"
+    ? rdvCourant.statut_atelier
     : null;
-  const etapeAtelierCouleur = dossier.etapeAtelier
-    ? workshopStages.find((s) => s.key === dossier.etapeAtelier.statut_atelier)?.color || NAVY
+  const etapeAtelierLabel = etapeCourante
+    ? workshopStages.find((s) => s.key === etapeCourante)?.label || etapeCourante
+    : null;
+  const etapeAtelierCouleur = etapeCourante
+    ? workshopStages.find((s) => s.key === etapeCourante)?.color || NAVY
     : null;
 
   return (
@@ -267,26 +279,26 @@ export default function VehicleCaseFileView({
             <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
               <LigneEtat
                 libelle="Atelier"
-                valeur={dossier.etapeAtelier ? etapeAtelierLabel : "Aucun suivi"}
-                couleur={dossier.etapeAtelier ? etapeAtelierCouleur : "#94A3B8"}
+                valeur={etapeCourante ? etapeAtelierLabel : "Aucun suivi"}
+                couleur={etapeCourante ? etapeAtelierCouleur : "#94A3B8"}
               />
               <LigneEtat
                 libelle="Devis"
-                valeur={dossier.aDevis ? (DEVIS_STATUT_LABEL[trierDernierStatut(devis)] || "Devis") : "Aucun devis"}
-                tone={dossier.aDevis ? DEVIS_STATUT_TONE[trierDernierStatut(devis)] : null}
-                onClick={dossier.aDevis ? () => onOuvrirDevis?.() : null}
+                valeur={devisCourant ? (DEVIS_STATUT_LABEL[devisCourant.statut] || "Devis") : "Aucun devis"}
+                tone={devisCourant ? DEVIS_STATUT_TONE[devisCourant.statut] : null}
+                onClick={devisCourant ? () => onOuvrirDevis?.() : null}
               />
               <LigneEtat
                 libelle="Fiche atelier (OR)"
-                valeur={dossier.intervention.ordre ? (dossier.intervention.ordre.statut === "termine" ? "Travaux terminés" : "Ouverte") : "Aucune"}
-                tone={dossier.intervention.ordre ? (dossier.intervention.ordre.statut === "termine" ? "green" : "amber") : null}
+                valeur={ordreCourant ? (ordreCourant.statut === "termine" ? "Travaux terminés" : "Ouverte") : "Aucune"}
+                tone={ordreCourant ? (ordreCourant.statut === "termine" ? "green" : "amber") : null}
                 onClick={onOuvrirOrdresReparation ? () => onOuvrirOrdresReparation(vehicule.id) : null}
               />
               <LigneEtat
                 libelle="Facture"
-                valeur={dossier.aFacture ? (dossier.factureEnAttente ? FACTURE_STATUT_LABEL.en_attente : FACTURE_STATUT_LABEL.payee) : "Aucune facture"}
-                tone={dossier.aFacture ? (dossier.factureEnAttente ? FACTURE_STATUT_TONE.en_attente : FACTURE_STATUT_TONE.payee) : null}
-                onClick={dossier.aFacture ? () => onOuvrirFactures?.() : null}
+                valeur={factureCourante ? (FACTURE_STATUT_LABEL[factureCourante.statut] || "Facture") : "Aucune facture"}
+                tone={factureCourante ? (FACTURE_STATUT_TONE[factureCourante.statut] || "slate") : null}
+                onClick={factureCourante ? () => onOuvrirFactures?.() : null}
               />
               {inspectionsDisponibles && (
                 <LigneEtat
@@ -296,19 +308,9 @@ export default function VehicleCaseFileView({
                 />
               )}
               <LigneEtat
-                libelle={dossier.prochainRendezVous ? "Prochain rendez-vous" : "Dernier rendez-vous"}
-                valeur={
-                  dossier.prochainRendezVous
-                    ? formatDateHeure(dossier.prochainRendezVous.date_debut)
-                    : dossier.dernierRendezVous
-                      ? formatDateHeure(dossier.dernierRendezVous.date_debut)
-                      : "Aucun rendez-vous"
-                }
-                onClick={
-                  dossier.prochainRendezVous || dossier.dernierRendezVous
-                    ? () => onOuvrirRendezVous?.(dossier.prochainRendezVous || dossier.dernierRendezVous)
-                    : null
-                }
+                libelle="Rendez-vous"
+                valeur={rdvCourant ? formatDateHeure(rdvCourant.date_debut) : "Aucun rendez-vous"}
+                onClick={rdvCourant ? () => onOuvrirRendezVous?.(rdvCourant) : null}
               />
             </div>
           </div>
@@ -321,6 +323,41 @@ export default function VehicleCaseFileView({
               `construireDossierVehicule` continue de produire `chronologie` :
               elle servira aux événements de l'intervention en cours, quand les
               gestes seront réalisables ici. */}
+          {/* LES DEVIS QUE LE MODÈLE NE RATTACHE À AUCUNE VISITE
+              Un devis ne rejoint un rendez-vous que par l'ordre de réparation,
+              et la base exige qu'il soit accepté pour cela. Un devis en attente
+              de réponse n'a donc aucun lien avec une visite — et c'est pourtant
+              ce que le garage a de plus urgent. On le montre ici, sous un titre
+              qui ne prétend pas qu'il appartient à l'intervention en cours. */}
+          {dossier.devisSansRattachement.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100">
+                <div className="text-[13px] font-semibold text-slate-900">Autres devis de ce véhicule</div>
+                <div className="text-[12px] text-slate-500 mt-0.5">
+                  Pas rattachés à une visite : un devis ne l'est qu'une fois accepté.
+                </div>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {dossier.devisSansRattachement.map((d) => (
+                  <button
+                    key={d.id}
+                    type="button"
+                    onClick={() => onOuvrirDevis?.()}
+                    className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+                  >
+                    <span className="text-[13px] text-slate-600">{formatDateHeure(d.created_at)}</span>
+                    <span className="flex items-center gap-2">
+                      <Badge tone={DEVIS_STATUT_TONE[d.statut] || "slate"}>
+                        {DEVIS_STATUT_LABEL[d.statut] || "Devis"}
+                      </Badge>
+                      <ArrowRight size={13} className="text-slate-300" />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* L'HISTORIQUE SE REPLIE
               Une voiture suivie depuis deux ans a vingt visites. Dépliées, elles
               noient l'intervention du jour ; masquées, on ne sait plus qu'elles
@@ -347,12 +384,13 @@ export default function VehicleCaseFileView({
               </button>
               {historiqueOuvert && (
                 <div className="divide-y divide-slate-100 border-t border-slate-100">
-                  {dossier.interventionsPrecedentes.map(({ rdv, ordre, facture }) => (
+                  {dossier.interventionsPrecedentes.map(({ rdv, ordre, facture, devis: devisVisite }) => (
                     <div key={rdv.id} className="px-4 py-3 flex items-center gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="text-[13.5px] text-slate-800">{formatDateHeure(rdv.date_debut)}</div>
                         <div className="text-[12px] text-slate-500 truncate">
                           {[
+                            devisVisite ? `devis ${(DEVIS_STATUT_LABEL[devisVisite.statut] || "").toLowerCase()}`.trim() : null,
                             ordre ? (ordre.statut === "termine" ? "travaux terminés" : "fiche atelier ouverte") : null,
                             facture ? (facture.statut === "payee" ? "facture payée" : "facture à régler") : null,
                           ].filter(Boolean).join(" · ") || "aucun document"}
@@ -405,9 +443,5 @@ function LigneEtat({ libelle, valeur, tone = null, couleur = null, onClick = nul
   );
 }
 
-function trierDernierStatut(devis) {
-  if (!devis.length) return null;
-  return [...devis].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]?.statut;
-}
 
 
