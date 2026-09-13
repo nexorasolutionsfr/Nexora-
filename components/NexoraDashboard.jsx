@@ -8,14 +8,11 @@ import QRCode from "qrcode";
 import InspectionsSection from "./inspections/InspectionsSection";
 import OrdresReparationSection from "./ordre-reparation/OrdresReparationSection";
 import NotificationsAVerifierSection from "./notifications-devis/NotificationsAVerifierSection";
-import MorningHeader from "./garage-os/MorningHeader";
 import CentreDecisionnel from "./garage-os/CentreDecisionnel";
-import VotreJournee from "./garage-os/VotreJournee";
 import NexoraARepere from "./garage-os/NexoraARepere";
-import AccesRapides from "./garage-os/AccesRapides";
 import MiseEnRoute from "./garage-os/MiseEnRoute";
 import { SquelettesListe, SquelettteAccueil } from "./garage-os/Squelettes";
-import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier, dateLongueFR } from "./garage-os/calculs";
+import { compterVehiculesEngages, compterAlertesAtelier, dateLongueFR } from "./garage-os/calculs";
 import { estFerme, heureReservable, heuresOuvrables } from "./agenda/horaires";
 import ConnexionShell from "./connexion/ConnexionShell";
 import EnvoiDevis from "./envoi/EnvoiDevis";
@@ -29,11 +26,15 @@ import { vueDepuisDevisGarage } from "./devis-lignes/vueClient";
 import { vehiculeDepuisSaisie } from "./clients/vehicule";
 import { MESSAGE_VEHICULE_ECHEC, lectureCreationClient, messageDevisCree } from "./clients/creationClient";
 import { usePrevenirClient } from "./atelier/usePrevenirClient";
+import AujourdhuiJour from "./aujourdhui/AujourdhuiJour";
 import { estDoublonDePlaque, messageErreurVehicule } from "./clients/erreurVehicule";
 import { horairesRenseignes } from "./garage-os/miseEnRoute";
 import { CANAUX as CANAUX_ENVOI, CAPACITES, canalEffectif, mentionCanalIndisponible } from "./parametres/capacites";
 import { lignesEtatEnvois } from "./garage-os/etatDesEnvois";
-import { actionOrdreReparation, filVehicule, libelleQuiAgit } from "./atelier/filVehicule";
+import {
+  CIBLE_AGENDA, CIBLE_ATELIER, CIBLE_DEVIS, CIBLE_DEVIS_SANS_INTERVENTION, CIBLE_FACTURES, CIBLE_ORDRE,
+  actionOrdreReparation, filVehicule, libelleQuiAgit,
+} from "./atelier/filVehicule";
 import { DELAI_RENVOI_SECONDES, libelleRenvoi, messageRenvoi, secondesAvantRenvoi } from "./connexion/renvoiConfirmation";
 import { adresseSansErreurAuth, decisionFragment, erreurAuthDansFragment, messageLienEchoue } from "./connexion/lienConfirmation";
 import { offre } from "@/lib/tarifs";
@@ -909,7 +910,7 @@ function AtelierCarte({
 // Le destinataire affiché est renvoyé à la base au moment de confirmer. S'il a
 // changé entre-temps, l'autorisation est refusée plutôt que d'écrire à
 // quelqu'un d'autre — la vérification est en base, pas ici.
-function PrevenirLeClient({ appt, apercu, chargement, erreur, enCours, onAnnuler, onConfirmer }) {
+function PrevenirLeClient({ appt, apercu, chargement, erreur, enCours, onAnnuler, onConfirmer, blocage = null }) {
   return (
     <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4" onClick={onAnnuler}>
       <div className="nx-panneau bg-white rounded-2xl w-full max-w-lg text-slate-900 overflow-hidden" onClick={(e) => e.stopPropagation()}>
@@ -919,6 +920,21 @@ function PrevenirLeClient({ appt, apercu, chargement, erreur, enCours, onAnnuler
             {appt?.vehicule || "Véhicule"}{appt?.immatriculation ? ` · ${appt.immatriculation}` : ""}
           </div>
         </div>
+
+        {/* CE QU'ON REVALIDE, ET DEPUIS QUAND
+            Une notification mise de côté il y a trois semaines n'est pas une
+            notification d'aujourd'hui. Avant de proposer de la relancer, on
+            dit quand elle a été bloquée et pourquoi — sans quoi le garage
+            renverrait « venez chercher votre voiture » pour un rendez-vous
+            que le client a peut-être oublié. */}
+        {blocage && (
+          <div className="mx-5 mb-3 rounded-xl px-3.5 py-2.5" style={{ backgroundColor: "#FEF2F2" }}>
+            <div className="text-[12.5px] font-semibold" style={{ color: "#991B1B" }}>
+              Envoi bloqué{blocage.depuis ? ` depuis le ${blocage.depuis}` : ""}
+            </div>
+            <div className="text-[12px] mt-0.5" style={{ color: "#991B1B" }}>{blocage.motif}</div>
+          </div>
+        )}
 
         {chargement ? (
           <div className="px-5 pb-5 text-[13.5px] text-slate-500">Préparation du message…</div>
@@ -1769,7 +1785,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
   );
 }
 
-function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demandes, devisList = [], vehicules = [], onOuvrirDossierVehicule, setView, onAllerConfigurer, onGererAbonnement, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
+function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, ordresReparation = [], onPrevenirClient, onAgirSurPriorite, stats, propositions, demandes, devisList = [], vehicules = [], onOuvrirDossierVehicule, setView, onAllerConfigurer, onGererAbonnement, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   const [cockpitCompteurs, setCockpitCompteurs] = useState(null);
   if (loading) {
@@ -2040,19 +2056,16 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demande
     </div>
   );
 
-  // ---- Aperçu atelier du jour — un seul état à la fois, piloté par les vraies données
-  // Les étapes actives comptent sur l'ensemble des rendez-vous chargés (un
-  // véhicule entré hier et toujours engagé doit apparaître) ; à venir/prêt/
-  // restitué restent limités aux rendez-vous du jour. Voir calculerProgressionAtelier.
-  const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
-  const stagesEnCours = ["diagnostic", "intervention"];
-  const stagesPrets = ["pret", "restitue"];
-  const progressionAtelier = calculerProgressionAtelier(rendezVous, todayAppts);
-  const stageCounts = WORKSHOP_STAGES.map((stage) => ({
-    ...stage,
-    glanceColor: stagesEnCours.includes(stage.key) ? "#D97706" : stagesPrets.includes(stage.key) ? "#16A34A" : "#1E293B",
-    count: progressionAtelier[stage.key] || 0,
-  }));
+  // LE SECOND COMPTAGE DE L'ATELIER EST SUPPRIMÉ
+  //
+  // `calculerProgressionAtelier` limitait « prêt » et « restitué » aux
+  // rendez-vous DU JOUR. Une voiture déposée hier et prête ce matin n'y
+  // figurait donc pas : l'écran affichait « 0 prêt » à dix centimètres d'un
+  // résumé annonçant « Prêtes 2 ». Les deux lisaient la même base et n'en
+  // tiraient pas le même fait.
+  //
+  // Le résumé de l'Atelier dans `AujourdhuiJour` est désormais le seul, et il
+  // compte les quatre files comme l'écran Atelier les affiche.
 
   // ---- Aperçu "Ce mois-ci" (glance, le détail complet est dans Statistiques) ------
   const debutMoisCourant = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -2107,35 +2120,97 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demande
     ? (cockpitCompteurs ? cockpitCompteurs.montantConnu : null)
     : zone3TotalConnu;
 
+  // ---- La zone de travail : ce qui vient des clients, ce qui attend un oui -------
+  //
+  // Ces deux blocs vivaient en bas de page. Ils remontent SOUS les priorités,
+  // dans la colonne large, là où l'écran de bureau laissait du vide. Rien
+  // n'est recalculé : ce sont les mêmes lignes, au bon endroit.
+  //
+  // Journée calme : trois cadres vides occupaient 275 px pour dire trois fois
+  // « rien », et la phrase d'en-tête le dit déjà. Ne reste que le geste
+  // d'ajout — la seule chose de ces cartes qui n'existe nulle part ailleurs.
+  const zonesTravail = zone1Rows.length + zone2Rows.length === 0 ? (
+    <div className="flex items-center gap-4 flex-wrap px-1">
+      <button
+        onClick={() => onAjouterRappel && onAjouterRappel()}
+        className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
+        style={{ color: ACCENT }}
+      >
+        <Phone size={12} /> Un appel à rappeler
+      </button>
+    </div>
+  ) : (
+    <div className="space-y-4">
+      <CommandZone
+        icon={AlertTriangle}
+        iconBg="#FDECEC"
+        iconColor="#DC2626"
+        title="Demandes et devis à traiter"
+        subtitle="Ce qui vient des clients et attend une réponse"
+        countBg="#FDECEC"
+        countColor="#B91C1C"
+        rows={zone1Rows}
+        emptyLabel="Rien à traiter pour l'instant."
+        accentue={zone1Rows.length > 0}
+        headerAction={
+          <button
+            onClick={() => onAjouterRappel && onAjouterRappel()}
+            className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
+            style={{ color: ACCENT }}
+          >
+            <Phone size={12} /> Ajouter un appel à rappeler
+          </button>
+        }
+      />
+
+      <CommandZone
+        icon={Bot}
+        iconBg={ACCENT_SOFT}
+        iconColor={ACCENT}
+        title="Prêt à valider"
+        subtitle="Éléments en attente de votre validation"
+        countBg={ACCENT_SOFT}
+        countColor={ACCENT}
+        rows={zone2Rows}
+        emptyLabel="Rien de préparé pour l'instant."
+      />
+    </div>
+  );
+
   return (
     <div className="space-y-5">
+      {/* LA JOURNÉE, EN HAUT — disposition validée le 13 septembre 2026.
+          Remplace le grand « Bonjour », les quatre cartes de compteurs, les
+          raccourcis déjà présents dans la barre latérale — et « Votre
+          journée », qui redonnait la progression de l'atelier et les prochains
+          rendez-vous, avec un comptage DIFFÉRENT : il annonçait « 0 prêt »
+          quand le résumé d'à côté en comptait deux, parce qu'il ne regardait
+          que les rendez-vous du jour. Deux lectures du même fait, dont une
+          fausse. Une seule reste. */}
       <div className="nx-apparait">
-        <MorningHeader
+        <AujourdhuiJour
+          zonesTravail={COCKPIT_OPPORTUNITES_ACTIF ? null : zonesTravail}
+          rendezVous={rendezVous}
+          devisList={devisList}
+          ordresReparation={ordresReparation}
+          factures={factures}
+          clients={clients}
           garageData={garageData}
-          openState={openState}
-          rdvAujourdhui={todayAppts.length}
-          rdvDejaPasses={rdvDejaPassesAujourdhui}
-          vehiculesEngages={vehiculesEngages}
-          decisionsEnAttente={decisionsEnAttente}
-          montantRisque={montantRisque}
-          setView={setView}
+          chargement={loading}
+          erreurChargement={erreurChargement}
+          peutVoirLesEnvois={peutFacturer(monRole)}
+          onOuvrirDossierVehicule={onOuvrirDossierVehicule}
+          onOuvrirAgenda={() => setView("agenda")}
+          onOuvrirClients={() => setView("clients")}
+          onOuvrirImport={peutVoir(monRole, "parametres") ? () => onAllerConfigurer?.("parametres", "import") : null}
+          onOuvrirAtelier={() => setView("atelier")}
+          onPrevenirClient={onPrevenirClient}
+          onAgirSurPriorite={onAgirSurPriorite}
         />
       </div>
 
-      {/* En tête d'accueil, et seulement tant qu'il reste quelque chose à
-          faire : voir garage-os/miseEnRoute.js. Un garage installé ne voit
-          jamais ce bloc. */}
-      <MiseEnRoute
-        garageData={garageData}
-        mecaniciens={mecaniciens}
-        clients={clients}
-        rendezVous={rendezVous}
-        devis={devisList}
-        role={monRole}
-        onAller={onAllerConfigurer}
-      />
 
-      {COCKPIT_OPPORTUNITES_ACTIF ? (
+      {COCKPIT_OPPORTUNITES_ACTIF && (
         <CentreDecisionnel
           onCompteurs={setCockpitCompteurs}
           garageId={garageId}
@@ -2159,65 +2234,14 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demande
           onOuvrirInspection={onOuvrirInspection}
           onToast={onToast}
         />
-      ) : zone1Rows.length + zone2Rows.length + zone3Rows.length === 0 ? (
-        // JOURNÉE CALME. Les trois zones vides occupaient 275 px pour dire
-        // trois fois « rien », sur la meilleure place du tableau de bord. Et la
-        // phrase de l'en-tête l'annonce déjà : le répéter ici en ferait trois
-        // fois la même information, en comptant la pastille d'ouverture.
-        // Ne restent que les deux actions d'ajout, seule chose utile de ces
-        // cartes.
-        <div className="nx-apparait flex items-center gap-4 flex-wrap px-1">
-          <button
-            onClick={() => onAjouterRappel && onAjouterRappel()}
-            className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
-            style={{ color: ACCENT }}
-          >
-            <Phone size={12} /> Un appel à rappeler
-          </button>
-          <button
-            onClick={() => onOuvrirTravailDiffereModal && onOuvrirTravailDiffereModal()}
-            className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
-            style={{ color: ACCENT }}
-          >
-            <Plus size={12} /> Un travail à relancer
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-4 nx-cascade">
-          <CommandZone
-            icon={AlertTriangle}
-            iconBg="#FDECEC"
-            iconColor="#DC2626"
-            title="À traiter maintenant"
-            subtitle="Ça attend une décision de votre part"
-            countBg="#FDECEC"
-            countColor="#B91C1C"
-            rows={zone1Rows}
-            emptyLabel="Rien à traiter pour l'instant."
-            accentue={zone1Rows.length > 0}
-            headerAction={
-              <button
-                onClick={() => onAjouterRappel && onAjouterRappel()}
-                className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
-                style={{ color: ACCENT }}
-              >
-                <Phone size={12} /> Ajouter un appel à rappeler
-              </button>
-            }
-          />
+      )}
 
-          <CommandZone
-            icon={Bot}
-            iconBg={ACCENT_SOFT}
-            iconColor={ACCENT}
-            title="Prêt à valider"
-            subtitle="Éléments en attente de votre validation"
-            countBg={ACCENT_SOFT}
-            countColor={ACCENT}
-            rows={zone2Rows}
-            emptyLabel="Rien de préparé pour l'instant."
-          />
-
+      {/* ARGENT À RISQUE reste hors de la zone de travail : ce n'est pas une
+          décision du jour, c'est une veille. Une seule ligne quand il n'y a
+          rien, et le geste d'ajout dans tous les cas — il n'existe nulle part
+          ailleurs. */}
+      {!COCKPIT_OPPORTUNITES_ACTIF && (
+        <div className="nx-apparait">
           <CommandZone
             icon={CircleDollarSign}
             iconBg="#FEF3E2"
@@ -2242,65 +2266,65 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, stats, propositions, demande
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <VotreJournee
-            todayAppts={todayAppts}
-            stageCounts={stageCounts}
-            mecaniciensActifs={mecaniciensActifs}
-            alertesAtelier={alertesAtelier}
-            onSelectAppt={onSelectAppt}
-            setView={setView}
-          />
-        </div>
+      {/* LA MISE EN ROUTE DESCEND EN BAS DE PAGE
+          Elle occupait le haut de l'écran, au-dessus de ce qu'il y a à faire
+          aujourd'hui. Un garage qui travaille n'a pas besoin qu'on lui rappelle
+          sa configuration avant de lui montrer ses voitures. Elle reste — un
+          réglage manquant bloque de vraies actions — mais après. Un garage
+          installé ne la voit jamais : voir garage-os/miseEnRoute.js. */}
+      <MiseEnRoute
+        garageData={garageData}
+        mecaniciens={mecaniciens}
+        clients={clients}
+        rendezVous={rendezVous}
+        devis={devisList}
+        role={monRole}
+        onAller={onAllerConfigurer}
+      />
 
-        {/* Revue du 12 septembre 2026 : un garage sans facture lisait
-            « 0 € · 0 · — ». Trois cases vides ne renseignent pas, elles
-            occupent. Tant qu'aucune facture n'existe, on dit ce qui remplira
-            ce bloc ; il reprend sa forme chiffrée dès la première. */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-          <div className="font-semibold text-slate-900 text-[14.5px] mb-3">Ce mois-ci</div>
-          {factures.length === 0 ? (
-            <div className="text-[13px] text-slate-500 leading-snug">
-              Votre chiffre d&apos;affaires s&apos;affichera ici dès votre première facture.
-              {peutFacturer(monRole) && (
-                <button
-                  type="button"
-                  onClick={() => setView("factures")}
-                  className="block mt-2 text-[12.5px] font-semibold"
-                  style={{ color: ACCENT }}
-                >
-                  Ouvrir la facturation
-                </button>
-              )}
-            </div>
-          ) : (
-            <>
-              <div className="text-[26px] font-bold text-slate-900 tracking-tight tabular-nums">{caMoisCourant.toLocaleString("fr-FR")} €</div>
-              <div className="text-[12px] text-slate-500 mt-0.5 mb-3">Chiffre d&apos;affaires</div>
-              <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
-                <span className="text-slate-500">RDV facturés</span>
-                <span className="font-semibold text-slate-900">{rdvFactures}</span>
-              </div>
-              <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
-                <span className="text-slate-500">Panier moyen</span>
-                <span className="font-semibold text-slate-900">{panierMoyen ? `${panierMoyen} €` : "—"}</span>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+      {/* CE MOIS-CI — UN ACCÈS, PAS UN TABLEAU
+          Le détail complet vit dans Statistiques, et la facturation dans
+          Facturation. Répéter ici trois chiffres qu'on retrouve à un clic
+          allongeait la page sans rien apprendre. La ligne reste — un garage
+          veut voir son mois — mais en une ligne, et elle mène au détail. */}
+      {peutVoir(monRole, "stats") && (
+        <button
+          type="button"
+          onClick={() => setView(factures.length === 0 ? "factures" : "stats")}
+          className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 flex items-center justify-between gap-3 text-left hover:border-slate-300"
+        >
+          <span className="text-[12.5px] text-slate-500">
+            {factures.length === 0 ? (
+              <>Votre chiffre d&apos;affaires s&apos;affichera ici dès votre première facture.</>
+            ) : (
+              <>
+                <b className="text-slate-900 font-bold tabular-nums">{caMoisCourant.toLocaleString("fr-FR")} €</b> ce mois-ci
+                {" · "}{rdvFactures} facture{rdvFactures > 1 ? "s" : ""}
+                {panierMoyen ? ` · ${panierMoyen} € de panier moyen` : ""}
+              </>
+            )}
+          </span>
+          <span className="text-[12.5px] font-semibold whitespace-nowrap flex items-center gap-1" style={{ color: ACCENT }}>
+            {factures.length === 0 ? "Ouvrir la facturation" : "Voir les statistiques"} <ChevronRight size={13} />
+          </span>
+        </button>
+      )}
 
+      {/* « Nexora a repéré » ne répète pas ce qui est déjà listé au-dessus.
+          La pastille « 2 devis en attente » annonçait exactement les deux
+          lignes de « Prêt à valider », à trois centimètres : le garage lisait
+          deux fois le même travail et pouvait croire à quatre devis. Ces
+          pastilles ne gardent donc que ce qui n'a pas d'autre présence sur la
+          page — les créneaux à valider et les inspections, notamment. */}
       <NexoraARepere
         actif={COCKPIT_OPPORTUNITES_ACTIF}
         cockpitCompteurs={cockpitCompteurs}
         propositionsCount={propositionsRecentes.length + propositionsEnRetard.length}
-        devisEnAttenteCount={devisEnAttenteTous.length}
-        travauxEchusCount={travauxTries.length}
+        devisEnAttenteCount={zone2Rows.length > 0 ? 0 : devisEnAttenteTous.length}
+        travauxEchusCount={zone3Rows.length > 0 ? 0 : travauxTries.length}
         setView={setView}
       />
 
-      <AccesRapides setView={setView} inspectionsActif={INSPECTIONS_MODULE_ACTIF} demandesActif={demandes.length > 0} facturationActive={peutFacturer(monRole)} />
 
       <ParcoursExplique />
 
@@ -5613,6 +5637,33 @@ function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = nul
   const [travailDiffereModal, setTravailDiffereModal] = useState(null); // { clientId? } | null
   const [submittingTravailDiffere, setSubmittingTravailDiffere] = useState(false);
   const [inspectionCibleCockpit, setInspectionCibleCockpit] = useState(null);
+  // Le même geste « Prévenir le client » qu'à l'Atelier, monté ici pour
+  // Aujourd'hui. Deux instances du même module, jamais deux implémentations :
+  // les deux écrans ne sont jamais affichés en même temps.
+  const {
+    prevenir: prevenirAujourdhui,
+    etats: etatsPrevenirAujourdhui,
+    ouvrirPrevenir,
+    confirmerPrevenir: confirmerPrevenirAujourdhui,
+    fermerPrevenir: fermerPrevenirAujourdhui,
+  } = usePrevenirClient({ onToast: (m, t) => flashToast(m, t) });
+
+  // Le blocage à montrer dans la fenêtre, quand il y en a un.
+  const blocagePrevenirAujourdhui = (() => {
+    const e = prevenirAujourdhui?.appt?.id ? etatsPrevenirAujourdhui[prevenirAujourdhui.appt.id] : null;
+    if (!e || e.etat !== "bloque") return null;
+    const d = e.depuis ? new Date(e.depuis) : null;
+    return {
+      depuis: d && !Number.isNaN(d.getTime())
+        ? new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long" }).format(d)
+        : null,
+      motif: e.motif || "Motif non enregistré.",
+    };
+  })();
+
+  // Les chargeurs d'Aujourd'hui ont-ils échoué ? Distinct de `loading` : une
+  // journée qu'on n'a pas pu lire ne doit jamais ressembler à une journée vide.
+  const [erreurDonnees, setErreurDonnees] = useState(false);
   const [dossierVehiculeId, setDossierVehiculeId] = useState(null);
   // L'ÉTAT DE L'ATELIER VIT ICI, PAS DANS LA VUE
   //
@@ -5695,9 +5746,14 @@ function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = nul
     if (error) {
       console.error("Erreur chargement RDV :", error);
       flashToast("Impossible de charger les rendez-vous", "error");
+      // UNE ERREUR N'EST PAS UNE JOURNÉE VIDE
+      // Sans ce drapeau, l'écran affichait « Rien de prévu aujourd'hui » quand
+      // la base n'avait pas répondu : un garage plein rangeait son atelier.
+      setErreurDonnees(true);
       setLoading(false);
       return;
     }
+    setErreurDonnees(false);
 
 
   const formattedRdv = (data || []).map((rdv) => {
@@ -5792,6 +5848,7 @@ setLoading(false);
       if (error) {
         console.error("Erreur chargement clients :", error);
         flashToast("Impossible de charger les clients", "error");
+        setErreurDonnees(true);
         return;
       }
       setClients(data || []);
@@ -6960,6 +7017,81 @@ if (updateError) {
 
   const ouvrirDossierDepuisRecherche = ouvrirDossierVehicule;
 
+  // CHAQUE BOUTON D'AUJOURD'HUI MÈNE À SON VRAI PARCOURS
+  //
+  // La destination vient de `filVehicule` — même décision que dans le dossier
+  // véhicule et dans l'Atelier. Les trois cas d'envoi ont la leur, parce
+  // qu'ils ne mènent pas à un écran mais à un geste. Le véhicule et
+  // l'intervention sont conservés : on ouvre le dossier de CETTE voiture, ou
+  // l'écran filtré sur elle, jamais une liste générale.
+  const agirSurPriorite = (ligne) => {
+    const rdv = ligne?.rdv || null;
+    const vehiculeId = rdv?.vehicule_id || null;
+
+    // Quitter Aujourd'hui pour agir ailleurs ne doit pas coûter le chemin du
+    // retour : on réutilise le mécanisme posé pour le dossier véhicule, avec
+    // sa position de défilement. Même bouton « Revenir à Aujourd'hui ».
+    const allerA = (vue) => {
+      setRetourVers({
+        vue: view,
+        label: titles[view] || "l'écran précédent",
+        defilement: typeof window !== "undefined" ? (document.scrollingElement?.scrollTop ?? 0) : null,
+      });
+      setView(vue);
+    };
+
+    switch (ligne?.raisonCle) {
+      case "notification_non_envoyee":
+      case "notification_bloquee":
+      case "notification_incertaine":
+        // Le geste, pas un écran : la même fenêtre d'aperçu que l'Atelier.
+        ouvrirPrevenir(rdv);
+        return;
+      case "attendue_en_retard":
+        // Appeler le client : ses coordonnées sont dans le dossier, avec le
+        // fil de la voiture pour savoir quoi lui dire.
+        if (vehiculeId) ouvrirDossierVehicule(vehiculeId);
+        else allerA("agenda");
+        return;
+      case "contradiction":
+        // La contradiction se corrige à l'atelier, sur cette voiture.
+        allerA("atelier");
+        return;
+      default:
+        break;
+    }
+
+    switch (ligne?.fil?.cible) {
+      case CIBLE_DEVIS:
+      case CIBLE_DEVIS_SANS_INTERVENTION:
+        // Le dossier plutôt que la liste : il montre le devis de CETTE
+        // intervention, et l'écran d'origine reste derrière le panneau.
+        if (vehiculeId) ouvrirDossierVehicule(vehiculeId);
+        else allerA("devis");
+        return;
+      case CIBLE_FACTURES:
+        if (vehiculeId) ouvrirDossierVehicule(vehiculeId);
+        else allerA("factures");
+        return;
+      case CIBLE_ORDRE: {
+        const label = [rdv?.vehicule, rdv?.immatriculation].filter(Boolean).join(" · ");
+        setFocusOrdreVehicule(vehiculeId ? { id: vehiculeId, label: label || "ce véhicule" } : null);
+        allerA("ordres-reparation");
+        return;
+      }
+      case CIBLE_AGENDA:
+        // Le rendez-vous lui-même, en panneau : l'écran reste derrière.
+        if (rdv) setSelectedAppt(rdv);
+        else allerA("agenda");
+        return;
+      case CIBLE_ATELIER:
+        allerA("atelier");
+        return;
+      default:
+        if (vehiculeId) ouvrirDossierVehicule(vehiculeId);
+    }
+  };
+
   /**
    * Une facture trouvée par son numéro s'ouvre dans le dossier de sa voiture,
    * pointée. Le dossier est l'endroit où l'on comprend de quoi la facture
@@ -7750,7 +7882,7 @@ if (updateError) {
         )}
 
         <div key={view} className="nx-vue p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView monRole={monRole} vehicules={tousLesVehicules} onOuvrirDossierVehicule={ouvrirDossierDepuisRecherche} stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
+          {view === "aujourdhui" && <AujourdhuiView monRole={monRole} vehicules={tousLesVehicules} onOuvrirDossierVehicule={ouvrirDossierDepuisRecherche} stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} erreurChargement={erreurDonnees} ordresReparation={ordresReparation} onPrevenirClient={ouvrirPrevenir} onAgirSurPriorite={agirSurPriorite} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={ouvrirDossierVehicule} onUpdateStatutAtelier={updateStatutAtelier} onAllerAgenda={() => setView("agenda")} onToast={flashToast} etatVue={etatAtelier} onEtatVue={setEtatAtelier} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
@@ -7857,6 +7989,18 @@ if (updateError) {
 
       <Toast toast={toast} />
       <ApptDetailModal appt={selectedAppt} onClose={() => setSelectedAppt(null)} mecaniciens={mecaniciens} onAssignMecanicien={assignMecanicien} onUpdateStatutAtelier={updateStatutAtelier} onUpdateLienPaiement={updateLienPaiement} atelierLien={selectedAppt ? atelierLiens[selectedAppt.id] : null} atelierQr={selectedAppt ? atelierQr[selectedAppt.id] : null} atelierBusy={selectedAppt ? atelierBusyId === selectedAppt.id : false} onGenererLienAtelier={genererLienAtelier} onRevoquerLienAtelier={revoquerLienAtelier} fil={filDuRendezVous(selectedAppt)} ordre={selectedAppt ? ordresReparation.find((o) => o.rendez_vous_id === selectedAppt.id) || null : null} onOuvrirOrdreReparation={(rdvId) => { setSelectedAppt(null); setFocusOrdreRendezVousId(rdvId); setView("ordres-reparation"); }} />
+      {prevenirAujourdhui && (
+        <PrevenirLeClient
+          appt={prevenirAujourdhui.appt}
+          apercu={prevenirAujourdhui.apercu}
+          chargement={prevenirAujourdhui.chargement}
+          erreur={prevenirAujourdhui.erreur}
+          enCours={prevenirAujourdhui.enCours}
+          blocage={blocagePrevenirAujourdhui}
+          onAnnuler={fermerPrevenirAujourdhui}
+          onConfirmer={confirmerPrevenirAujourdhui}
+        />
+      )}
       {dossierVehiculeId && dossierClient && dossierVehicule && (
         <VehicleCaseFileView
           vehicule={dossierVehicule}
