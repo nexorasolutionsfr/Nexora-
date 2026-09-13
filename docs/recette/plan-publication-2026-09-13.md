@@ -61,12 +61,54 @@ attente, dans cet ordre, et aucune autre.** Rien n'a été appliqué.
 
 ### Vérification depuis le schéma de la Production
 
-La liste des migrations appliquées sur Test, **privée des six**, a exactement
-la même empreinte MD5 que celle de la Production (`ba0ff916…`). Les six ont
-donc été appliquées sur un socle identique à celui qu'elles trouveront.
+> Une comparaison de listes de migrations dit une seule chose : les fichiers
+> sont là. Pas qu'ils s'appliquent, pas que ce qu'ils promettent tient. Les
+> sept ont donc été **réellement appliquées**, puis éprouvées.
+
+`docs/recette/base-jetable-2026-09-13.sh` — à rejouer tel quel :
+
+1. **Schéma de la Production dumpé en lecture seule** (`supabase db dump
+   --linked`) : 7 789 lignes.
+2. **Base jetable** créée à partir de l'image officielle
+   `supabase/postgres:17.6.1.166`, puis chargée avec ce schéma : **48 tables,
+   111 fonctions, 79 policies, 35 triggers, zéro erreur**.
+3. **Droits ramenés à l'état que la Production déclare.** Le dump porte
+   `REVOKE ALL … FROM PUBLIC` mais pas les révocations par rôle, et l'image
+   accorde par défaut l'exécution à `anon` et `authenticated` à la création de
+   toute fonction publique. Sans cette étape, la copie paraîtrait plus ouverte
+   que la Production — et le contrôle des droits mesurerait un artefact.
+4. **Les sept migrations appliquées dans l'ordre : sept OK.**
+5. **45 contrôles fonctionnels, 45 au vert**
+   (`docs/recette/controles-base-jetable-2026-09-13.sql`).
+
+| Bloc | Ce qui est vérifié | Résultat |
+|---|---|---|
+| A. Plaques | même plaque dans deux garages ; doublon dans le même garage, ponctuation ignorée ; le refus nomme la plaque **déjà enregistrée** ; véhicules sans plaque ; disparition de l'ancienne contrainte globale | 6/6 |
+| B. « Prêt » n'envoie rien | naissance en `sans_lien` ; aucun destinataire validé ; **le traitement ne réserve rien** ; un aller-retour n'empile pas deux lignes | 4/4 |
+| C. Autorisation | l'aperçu nomme le vrai destinataire et cite la plaque ; une autre adresse est refusée ; l'armement enregistre destinataire **et** empreinte ; double clic idempotent ; `depuis` présent ; client sans adresse ; voiture pas prête ; **mécanicien refusé** | 14/14 |
+| D. Divergence | message changé / destinataire changé / voiture plus prête → trois motifs distincts, aucune des trois expédiée, **destinataire et empreinte validés non écrasés**, la ligne restée conforme part | 10/10 |
+| E. Pas de reprise | un second passage ne reprend rien ; les lignes restent de côté ; un envoi en cours n'est jamais rejoué ; redevenir prête ne réarme pas ; la revalidation à la main réarme **la même** ligne | 7/7 |
+| F. Droits | `reserver_notifications` reste fermée à `anon` et aux comptes connectés **après le remplacement par la migration 6** ; ouverte à `service_role` seul | 4/4 |
+
+Deux écarts entre la copie et la Production, à connaître, aucun ne portant sur
+le schéma `public` : le schéma `auth` est celui de l'image (le `public` n'en
+utilise que `auth.uid()` et la clé de `auth.users`), et les données ne sont pas
+copiées — les contrôles créent leur propre jeu d'essai.
 
 La migration 1 **refuse de s'appliquer** s'il existe des plaques en double une
 fois normalisées dans un même garage. Relevé en Production : **0 collision**.
+
+#### Deux pièges du schéma de Production, rencontrés en montant le jeu d'essai
+
+Ils ne changent rien à la publication, mais ils coûtent une heure à qui les
+redécouvre :
+
+- `vehicules.client_id` et `vehicules.garage_id` ont pour défaut
+  `gen_random_uuid()`. Un insert qui les omet échoue sur une clé étrangère,
+  avec un identifiant sorti de nulle part.
+- `garages_owner_user_id_uniq` impose **un garage par propriétaire**, et
+  `garage_membres_mecanicien_coherent` impose qu'un membre « mecanicien »
+  pointe une fiche mécanicien.
 
 ---
 
@@ -146,16 +188,49 @@ directement, ce que le trigger accepte toujours.
 
 ### Côté base
 
+Script écrit, commenté et **éprouvé sur la copie du schéma de Production** :
+`docs/recette/retour-arriere-2026-09-13.sql`.
+
+> #### Un retour arrière ramène à un état sûr, pas à l'état précédent
+>
+> L'état précédent, c'était : marquer une voiture prête envoyait
+> « Votre véhicule est prêt ! » au client dans les deux minutes, sans relecture
+> et sans que personne ne voie le destinataire. **Le rétablir ferait partir en
+> rafale tout ce qui aurait été marqué prêt depuis la publication.**
+>
+> `notifier_vehicule_pret` reste donc **désarmée** (`sans_lien`) dans tous les
+> cas. Ce n'est pas un oubli du script : c'est sa règle. Une version
+> antérieure de ce plan disait « rétablir `notifier_vehicule_pret` dans sa
+> version `en_attente` » — **c'était faux et dangereux**, et c'est corrigé ici.
+>
+> Ce que ce choix coûte, et qu'il faut annoncer : application revenue en
+> arrière + base désarmée = **les clients ne sont plus prévenus
+> automatiquement**. Les lignes s'accumulent en `sans_lien`, restent lisibles,
+> et repartent quand l'écran revient. Aucun message perdu, aucun message parti
+> sans relecture.
+
 | Migration | Réversible ? | Comment |
 |---|---|---|
-| 1 — plaque | **oui** | `drop index vehicules_immatriculation_unique_par_garage;` `drop trigger … ;` `alter table vehicules add constraint vehicules_immatriculation_unique unique (immatriculation);` — **ne réussit que si aucun garage n'a entre-temps enregistré une plaque déjà détenue ailleurs.** Passé ce point, le retour arrière demande de choisir quelle fiche supprimer. |
-| 2 — import | oui | `create or replace` de la définition précédente (dans l'historique git). |
-| 3, 5 — prêt + empreinte | oui | Rétablir `notifier_vehicule_pret` dans sa version « `en_attente` » et supprimer les trois fonctions. Les colonnes ajoutées peuvent rester : elles sont nullables et ignorées. |
-| 4, 6 — réservation | oui | `create or replace` de la définition précédente. |
+| 1 — plaque | **oui, sous condition** | Le script vérifie d'abord qu'aucune plaque n'est détenue par deux garages, et **refuse** sinon. Puis `drop trigger` / `drop function` / `drop index` / recréation de la contrainte globale. |
+| 2 — import | oui | Rejouer la définition d'avant, depuis l'historique : `origin/main:supabase/migrations/20260910000100_…`. À ne faire **que si** la migration 1 est annulée aussi, sinon l'import devient plus strict que la table. |
+| 3, 5 — prêt + empreinte | **partiellement, volontairement** | Colonnes et fonctions **conservées** : nullables, ignorées par l'ancien code, et elles portent ce que des garages ont réellement validé. `notifier_vehicule_pret` **n'est pas restaurée**. |
+| 4, 6 — réservation | oui | Rejouer `origin/main:supabase/migrations/20260915000200_reservation_bornee_au_garage.sql`. `create or replace` conserve les droits : la fonction reste réservée à `service_role` — vérifié sur la copie. |
 
 **Le point de non-retour est la migration 1**, et seulement à partir du moment
 où un deuxième garage enregistre une plaque déjà présente ailleurs. Avec un
-seul garage en Production, la fenêtre de réversibilité reste ouverte.
+seul garage en Production, la fenêtre de réversibilité reste ouverte — et le
+script le revérifie au moment de s'exécuter plutôt que de le supposer.
+
+#### Éprouvé, pas seulement écrit
+
+Joué sur la base jetable, après les sept migrations et les contrôles :
+
+| Ce qui a été vérifié | Résultat |
+|---|---|
+| Une plaque partagée par deux garages | le script **refuse** et nomme le nombre de cas |
+| Après traitement de la collision | les quatre étapes passent, contrainte globale recréée |
+| `notifier_vehicule_pret` après retour arrière | **toujours désarmée** (`sans_lien`) |
+| Les lignes en file | aucune ne bascule en `en_attente` du fait du retour arrière |
 
 ---
 
