@@ -52,15 +52,15 @@ import {
 } from "./acces-salaries/accesConstants";
 import ImportClients from "./import/ImportClients";
 import { ErreurFacturX, genererXml } from "@/lib/facturx/genererXml";
+import { calculerTempsPlanifieParMecanicien } from "./atelier/calculs";
 import {
-  calculerCompteurs as calculerCompteursAtelier,
-  calculerTempsPlanifieParMecanicien,
-  determinerAlertes as determinerAlertesAtelier,
-  regrouperParEtape as regrouperParEtapeAtelier,
-  selectionnerAAccueillir,
-  selectionnerPretsARestituer,
-  selectionnerRestitutionsAujourdhui,
-} from "./atelier/calculs";
+  GROUPE_EN_ATELIER,
+  GROUPE_EN_ATTENTE,
+  GROUPE_PRETES,
+  echeanceCarte,
+  raisonBlocage,
+  regrouperOperationnel,
+} from "./atelier/groupes";
 import {
   Home,
   Calendar,
@@ -89,6 +89,8 @@ import {
   CalendarClock,
   Star,
   AlertTriangle,
+  MoreHorizontal,
+  ChevronDown,
   CheckCircle2,
   BellRing,
   CircleDollarSign,
@@ -101,6 +103,7 @@ import {
   CalendarDays,
   CalendarRange,
   ArrowRight,
+  ArrowLeft,
   ReceiptText,
   Eye,
   LogOut,
@@ -708,107 +711,239 @@ function ApptDetailModal({ appt, onClose, mecaniciens = [], onAssignMecanicien, 
   );
 }
 
-// Carte rendez-vous réutilisée dans les 3 sections du tableau atelier
-// (à accueillir, dans l'atelier, prêts à restituer). N'affiche que les
-// informations déjà chargées, sans téléphone ni email — l'atelier n'a pas
-// besoin de contacter le client directement depuis cet écran.
-function AtelierCarte({ appt, etapeInfo, mecanicien, alertes, onSelectAppt, onOuvrirDossierVehicule, lienActif, lienUrl, onCreerLien, lienEnCours }) {
+// LA CARTE D'UNE VOITURE À L'ATELIER
+//
+// Ce qu'elle montre, et rien de plus : la plaque et la voiture, le travail,
+// la personne qui s'en occupe, l'étape — écrite, avec sa raison quand c'est
+// un blocage — et une indication de temps seulement quand il y en a une de
+// vraie. La version précédente y ajoutait le suivi de lien client et deux
+// gros boutons : douze lignes par voiture, et l'écran faisait six hauteurs
+// d'écran sur téléphone pour quatorze rendez-vous (mesuré : 5 208 px).
+//
+// Le corps entier ouvre le dossier véhicule. Les gestes qui écrivent restent
+// des boutons nommés, jamais un glisser-déposer : à une main, sur un écran
+// tactile, avec des gants, un glissement rate.
+function AtelierCarte({
+  appt,
+  etapeInfo,
+  mecanicien,
+  echeance,
+  blocage,
+  onOuvrirDossierVehicule,
+  onChangerEtape,
+  onOuvrirDetail,
+  etapeEnCours,
+  compacte = false,
+  montrerEtape = true,
+}) {
+  const [menuOuvert, setMenuOuvert] = useState(false);
+  const plaque = appt.immatriculation || "Sans plaque";
+  const voiture = appt.vehicule || "Véhicule non renseigné";
+  // Sans `vehicule_id`, il n'y a pas de dossier à ouvrir : on le dit au lieu
+  // d'offrir un clic qui ne ferait rien.
+  const dossierPossible = Boolean(appt.vehicule_id && onOuvrirDossierVehicule);
+
   return (
-    <div className="nx-apparait nx-pressable bg-white rounded-2xl border border-slate-200 p-3.5 flex flex-col gap-2 hover:border-slate-300">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-[13.5px] font-semibold text-slate-900 truncate">{appt.vehicule || "Véhicule"}</div>
-          <div className="text-[11.5px] text-slate-500 truncate">{appt.immatriculation || "Immatriculation non renseignée"}</div>
-        </div>
-        {etapeInfo && (
-          <span
-            className="text-[10.5px] font-semibold px-2 py-1 rounded-full whitespace-nowrap shrink-0"
-            style={{ backgroundColor: `${etapeInfo.color}1A`, color: etapeInfo.color }}
-          >
-            {etapeInfo.label}
-          </span>
-        )}
-      </div>
-      <div className="text-[12.5px] text-slate-700 truncate">{appt.client || "Client inconnu"}</div>
-      <div className="text-[12px] text-slate-500 truncate">{appt.prestation || "Prestation"}</div>
-      <div className="flex items-center justify-between gap-2 text-[12px] text-slate-500">
-        <span>{appt.debut}{appt.fin ? ` – ${appt.fin}` : ""}</span>
-        <span className="truncate max-w-[120px] text-right">{mecanicien?.nom || "Non assigné"}</span>
-      </div>
-      {alertes.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {alertes.map((alerte) => (
-            <span key={alerte} className="text-[10.5px] font-medium px-2 py-1 rounded-full bg-amber-50 text-amber-700">
-              {alerte}
+    <div className="nx-apparait bg-white rounded-xl border border-slate-200 hover:border-slate-300 transition-colors overflow-hidden">
+      <button
+        type="button"
+        onClick={() => dossierPossible && onOuvrirDossierVehicule(appt.vehicule_id)}
+        disabled={!dossierPossible}
+        title={dossierPossible ? `Ouvrir le dossier de ${plaque}` : "Ce rendez-vous n'est rattaché à aucun véhicule"}
+        className="w-full text-left px-3.5 pt-3 pb-2.5 disabled:cursor-default"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            {/* La plaque d'abord : c'est par elle qu'un garage désigne une
+                voiture, au téléphone comme sur le parking. */}
+            <div className={`font-semibold text-slate-900 tabular-nums truncate ${compacte ? "text-[13px]" : "text-[14px]"}`}>
+              {plaque}
+            </div>
+            <div className="text-[12px] text-slate-500 truncate">
+              {voiture}{appt.client ? ` · ${appt.client}` : ""}
+            </div>
+          </div>
+          {/* L'étape n'est rappelée que si la file en contient plusieurs :
+              dans « À recevoir », une pastille « À venir » répète le titre de
+              la file et le contenu du menu juste en dessous. */}
+          {etapeInfo && montrerEtape && (
+            <span
+              className="text-[10.5px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap shrink-0"
+              style={{ backgroundColor: `${etapeInfo.color}1A`, color: etapeInfo.color }}
+            >
+              {etapeInfo.label}
             </span>
-          ))}
+          )}
         </div>
-      )}
-      {/* Suivi client. C'est la contrepartie du travail de déplacement des
-          cartes : sans lui, le garage entretient un tableau et ne reçoit rien
-          en échange. Il était jusqu'ici enterré dans la fenêtre de détail,
-          donc introuvable. */}
-      <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
-        {lienActif ? (
-          <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-emerald-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
-            Suivi client actif
+
+        <div className="text-[12.5px] text-slate-700 truncate mt-1.5">{appt.prestation || "Travail non précisé"}</div>
+
+        {/* Un blocage se nomme. Une pastille orange dit qu'il se passe quelque
+            chose ; elle ne dit pas quoi ni qui doit bouger. */}
+        {blocage && (
+          <div className="flex items-start gap-1.5 mt-1.5 text-[12px] font-medium" style={{ color: "#B45309" }}>
+            <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+            <span className="min-w-0">{blocage}</span>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-2 mt-2 text-[11.5px]">
+          <span className={`truncate ${mecanicien ? "text-slate-600" : "text-amber-700 font-medium"}`}>
+            {mecanicien?.nom || "Aucun mécanicien"}
           </span>
-        ) : (
-          <span className="text-[11.5px] text-slate-400">Aucun lien de suivi</span>
-        )}
-        {lienActif && lienUrl ? (
-          <button
-            type="button"
-            onClick={() => {
-              navigator.clipboard?.writeText(lienUrl);
-            }}
-            className="text-[11.5px] font-semibold text-slate-600 underline hover:text-slate-900"
-          >
-            Copier
-          </button>
-        ) : !lienActif ? (
-          <button
-            type="button"
-            onClick={() => onCreerLien?.(appt.id)}
-            disabled={lienEnCours}
-            className="text-[11.5px] font-semibold underline disabled:opacity-50"
-            style={{ color: ACCENT }}
-          >
-            {lienEnCours ? "Création…" : "Créer le lien"}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onSelectAppt(appt)}
-            className="text-[11.5px] font-semibold text-slate-600 underline hover:text-slate-900"
-          >
-            Voir le QR
-          </button>
-        )}
-      </div>
-      <div className="flex items-center gap-2 pt-1">
-        <button
-          type="button"
-          onClick={() => onSelectAppt(appt)}
-          className="flex-1 min-h-[44px] rounded-xl border border-slate-200 text-[12.5px] font-semibold text-slate-700 hover:bg-slate-50"
+          {/* Aucune échéance inventée : s'il n'y a rien de vrai à dire sur le
+              temps, la ligne n'existe pas. Voir echeanceCarte(). */}
+          {echeance && (
+            <span className={`shrink-0 tabular-nums ${echeance.enRetard ? "text-amber-700 font-medium" : "text-slate-400"}`}>
+              {echeance.texte}
+            </span>
+          )}
+        </div>
+      </button>
+
+      <div className="flex items-center gap-1.5 px-3.5 pb-2.5 pt-0.5">
+        <label className="sr-only" htmlFor={`etape-${appt.id}`}>Étape de {plaque}</label>
+        <select
+          id={`etape-${appt.id}`}
+          value={appt.statut_atelier || "a_venir"}
+          disabled={etapeEnCours}
+          onChange={(e) => onChangerEtape?.(appt, e.target.value)}
+          className="flex-1 min-w-0 min-h-[36px] rounded-lg border border-slate-200 bg-white px-2 text-[12px] font-medium text-slate-700 disabled:opacity-50"
         >
-          Détail
-        </button>
-        <button
-          type="button"
-          onClick={() => appt.vehicule_id && onOuvrirDossierVehicule?.(appt.vehicule_id)}
-          disabled={!appt.vehicule_id}
-          className="flex-1 min-h-[44px] rounded-xl border border-slate-200 text-[12.5px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Dossier véhicule
-        </button>
+          {WORKSHOP_STAGES.map((stage) => <option key={stage.key} value={stage.key}>{stage.label}</option>)}
+        </select>
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            aria-label={`Autres actions pour ${plaque}`}
+            aria-expanded={menuOuvert}
+            onClick={() => setMenuOuvert((o) => !o)}
+            className="w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center"
+          >
+            <MoreHorizontal size={16} />
+          </button>
+          {menuOuvert && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMenuOuvert(false)} />
+              <div className="absolute right-0 bottom-full mb-1 z-50 w-56 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
+                <button
+                  type="button"
+                  onClick={() => { setMenuOuvert(false); onOuvrirDetail?.(appt); }}
+                  className="w-full text-left px-3.5 py-2.5 text-[13px] text-slate-700 hover:bg-slate-50"
+                >
+                  Détail du rendez-vous
+                </button>
+                <button
+                  type="button"
+                  disabled={!dossierPossible}
+                  onClick={() => { setMenuOuvert(false); onOuvrirDossierVehicule?.(appt.vehicule_id); }}
+                  className="w-full text-left px-3.5 py-2.5 text-[13px] text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                >
+                  Dossier véhicule
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function AtelierCompteur({ label, value, tone = "slate" }) {
+// MARQUER UNE VOITURE PRÊTE N'EST PAS UN GESTE SANS CONSÉQUENCE
+//
+// Vérifié en base le 13 septembre 2026 : le trigger `trg_notifier_vehicule_pret`
+// insère une ligne dans `notifications_atelier` dès que `statut_atelier` passe
+// à `pret`. Déplacer une carte mettait donc un message client en file sans que
+// rien à l'écran ne le dise. On ne retire pas le trigger — ce serait une
+// migration de Production hors de ce lot — mais on cesse de le laisser agir en
+// silence : le geste est nommé avant d'être fait.
+//
+// Ce que l'écran ne promet pas : que le message partira. Le workflow « Véhicule
+// prêt » est inactif à ce jour, la file se remplit sans se vider. Annoncer un
+// envoi serait faux ; taire la mise en file le serait aussi.
+function ConfirmationVehiculePret({ appt, onAnnuler, onConfirmer, enCours }) {
+  const client = appt?.client || "le client";
+  return (
+    <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4" onClick={onAnnuler}>
+      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-md text-slate-900" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-[17px] font-semibold flex items-center gap-2">
+          <AlertTriangle size={18} color="#D97706" /> Marquer la voiture prête ?
+        </h2>
+        <p className="text-[13.5px] text-slate-600 mt-3">
+          Nexora met alors un message « votre voiture est prête » en file pour {client}.
+          Rien d'autre ne part : ni devis, ni facture, ni demande de règlement.
+        </p>
+        <p className="text-[12.5px] text-slate-500 mt-2">
+          Son envoi dépend des automatisations activées chez vous. Vérifiez avant de compter dessus.
+        </p>
+        <div className="flex gap-2 mt-5">
+          <button
+            type="button"
+            onClick={onAnnuler}
+            className="flex-1 min-h-[44px] rounded-xl border border-slate-200 text-[13.5px] font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            disabled={enCours}
+            onClick={onConfirmer}
+            className="flex-1 min-h-[44px] rounded-xl text-[13.5px] font-semibold text-white disabled:opacity-60"
+            style={{ backgroundColor: "#16A34A" }}
+          >
+            {enCours ? "Enregistrement…" : "Marquer prête"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Une file de l'atelier : son titre, son compte, le détail de ses sous-statuts
+// et ses cartes. Repliable — une journée chargée tient alors sur un écran.
+function AtelierFile({ groupe, replie, onBasculer, colonnes, enfants }) {
+  return (
+    <section className="nx-apparait bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+      <button
+        type="button"
+        onClick={onBasculer}
+        aria-expanded={!replie}
+        className="w-full text-left px-4 sm:px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50"
+      >
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: groupe.accent }} />
+            <span className="font-semibold text-slate-900 text-[15px]">{groupe.label}</span>
+            <span className="text-[13px] font-semibold text-slate-400 tabular-nums">{groupe.rendezVous.length}</span>
+          </div>
+          {/* Les étapes détaillées ne disparaissent pas : elles se résument
+              ici, et restent écrites sur chaque carte. Sauf quand la file n'a
+              qu'une étape — « À recevoir » suivi de « À venir 4 » ne dit rien
+              de plus que le titre, et une ligne qui ne dit rien coûte quand
+              même une ligne. */}
+          <div className="text-[12px] text-slate-500 mt-0.5 truncate">
+            {groupe.etapes.length > 1 && groupe.sousStatuts.length > 0
+              ? groupe.sousStatuts.map((s) => `${s.label} ${s.nombre}`).join(" · ")
+              : groupe.description}
+          </div>
+        </div>
+        <ChevronDown size={18} className={`shrink-0 text-slate-400 transition-transform ${replie ? "-rotate-90" : ""}`} />
+      </button>
+      {!replie && (
+        <div className="px-4 sm:px-5 pb-4 pt-1">
+          {groupe.rendezVous.length === 0 ? (
+            <div className="text-[12.5px] text-slate-400 py-5 text-center">{groupe.vide}</div>
+          ) : (
+            <div className={colonnes}>{enfants}</div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AtelierCompteur({ label, value, tone = "slate", actif = false, onClick }) {
   const tones = {
     slate: { bg: "rgba(255,255,255,0.1)", text: "white", sub: "rgba(255,255,255,0.65)" },
     amber: { bg: "#FEF3E2", text: "#B45309", sub: "#B45309" },
@@ -831,7 +966,12 @@ function AtelierCompteur({ label, value, tone = "slate" }) {
   }, [value]);
 
   return (
-    <div className="rounded-xl p-3" style={{ backgroundColor: t.bg }}>
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-xl p-3 text-left transition-shadow"
+      style={{ backgroundColor: t.bg, boxShadow: actif ? "inset 0 0 0 2px rgba(255,255,255,0.55)" : "none" }}
+    >
       <div className="text-[11px]" style={{ color: t.sub }}>{label}</div>
       <div
         className={`text-xl font-semibold mt-1 tabular-nums origin-left${souffle ? " nx-souffle" : ""}`}
@@ -839,7 +979,7 @@ function AtelierCompteur({ label, value, tone = "slate" }) {
       >
         {value}
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -863,23 +1003,61 @@ function AtelierSection({ titre, sousTitre, count, accent, enfants, vide }) {
   );
 }
 
-function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], atelierLiens = {}, atelierQr = {}, atelierJetonsActifs = {}, onGenererEtiquettes, onGenererLienAtelier, atelierBusyId, onOuvrirDossierVehicule }) {
+// L'ATELIER, LU COMME ON Y TRAVAILLE
+//
+// Quatre files au lieu de huit étapes de même rang : à recevoir, en atelier,
+// en attente, prêtes. Les étapes détaillées ne disparaissent pas — elles se
+// résument dans l'en-tête de chaque file et restent écrites, et modifiables,
+// sur chaque carte.
+//
+// L'écran garde son état : la file repliée, le filtre par mécanicien et la
+// position de défilement sont à `NexoraDashboard`, pas ici, pour que l'ouverture
+// d'un dossier véhicule — qui se pose par-dessus cette vue — les retrouve
+// intacts à la fermeture.
+function AtelierView({
+  rendezVous,
+  onSelectAppt,
+  garageData,
+  mecaniciens = [],
+  atelierLiens = {},
+  atelierQr = {},
+  atelierJetonsActifs = {},
+  onGenererEtiquettes,
+  onGenererLienAtelier,
+  atelierBusyId,
+  onOuvrirDossierVehicule,
+  onUpdateStatutAtelier,
+  etatVue,
+  onEtatVue,
+}) {
   const maintenant = new Date();
   const todayAppts = rendezVous.filter((r) => isToday(r.date_debut));
   const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
   const mecanicienParId = (id) => mecaniciens.find((m) => m.id === id);
   const etapeParCle = (cle) => WORKSHOP_STAGES.find((s) => s.key === cle);
 
-  const aAccueillir = selectionnerAAccueillir(rendezVous, maintenant);
-  const groupesAtelier = regrouperParEtapeAtelier(rendezVous);
-  const pretsARestituer = selectionnerPretsARestituer(rendezVous);
-  const restitutionsAujourdhui = selectionnerRestitutionsAujourdhui(rendezVous, maintenant);
-  const compteurs = calculerCompteursAtelier(rendezVous, maintenant);
+  const filtreMecanicien = etatVue?.filtreMecanicien ?? "tous";
+  const replies = etatVue?.replies ?? {};
+  const poser = (bout) => onEtatVue?.({ ...(etatVue || {}), ...bout });
+
+  // Le filtre s'applique avant le regroupement : sinon les compteurs et les
+  // sous-statuts annonceraient des voitures que la file n'affiche pas.
+  const filtres = filtreMecanicien === "tous"
+    ? rendezVous
+    : rendezVous.filter((r) => (filtreMecanicien === "aucun" ? !r.mecanicien_id : r.mecanicien_id === filtreMecanicien));
+
+  const groupes = regrouperOperationnel(filtres, maintenant);
+  const groupeParCle = (cle) => groupes.find((g) => g.key === cle);
   const tempsParMecanicien = calculerTempsPlanifieParMecanicien(todayAppts, mecaniciensActifs, maintenant);
 
   const resourceAppointments = (resourceId) => todayAppts.filter((appt) => (resourceId === null ? !appt.mecanicien_id : appt.mecanicien_id === resourceId));
   const ressources = [...mecaniciensActifs.map((m) => ({ id: m.id, name: m.nom, role: "Mécanicien", color: m.couleur || "#3D6BE0" })), { id: null, name: "Non assigné", role: "", color: "#94A3B8" }];
   const [imprimant, setImprimant] = useState(false);
+  // Le changement d'étape mis en attente d'une confirmation — aujourd'hui,
+  // seul « Prêt » en demande une, parce que lui seul met un message en file.
+  const [aConfirmer, setAConfirmer] = useState(null);
+  const [etapeEnCours, setEtapeEnCours] = useState(null);
+
   const imprimerEtiquettes = async () => {
     if (!onGenererEtiquettes || imprimant) return;
     setImprimant(true);
@@ -887,23 +1065,60 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], a
     setImprimant(false);
   };
 
-  const carte = (appt) => (
+  const appliquerEtape = async (appt, etape) => {
+    if (!onUpdateStatutAtelier || etape === (appt.statut_atelier || "a_venir")) return;
+    setEtapeEnCours(appt.id);
+    try {
+      await onUpdateStatutAtelier(appt.id, etape);
+    } finally {
+      setEtapeEnCours(null);
+      setAConfirmer(null);
+    }
+  };
+
+  const changerEtape = (appt, etape) => {
+    // `trg_notifier_vehicule_pret` écrit dans la file d'envoi dès que l'étape
+    // passe à « pret ». On le dit avant, jamais après.
+    if (etape === "pret" && (appt.statut_atelier || "a_venir") !== "pret") {
+      setAConfirmer({ appt, etape });
+      return;
+    }
+    appliquerEtape(appt, etape);
+  };
+
+  const carte = (appt, groupe) => (
     <AtelierCarte
       key={appt.id}
       appt={appt}
+      compacte={groupe.key === GROUPE_EN_ATELIER}
+      montrerEtape={groupe.etapes.length > 1}
       etapeInfo={etapeParCle(appt.statut_atelier || "a_venir")}
       mecanicien={mecanicienParId(appt.mecanicien_id)}
-      alertes={determinerAlertesAtelier(appt, maintenant)}
-      onSelectAppt={onSelectAppt}
+      echeance={echeanceCarte(appt, maintenant, groupe.key)}
+      blocage={raisonBlocage(appt.statut_atelier)}
       onOuvrirDossierVehicule={onOuvrirDossierVehicule}
-      lienActif={Boolean(atelierJetonsActifs[appt.id] || atelierLiens[appt.id])}
-      lienUrl={atelierLiens[appt.id] || null}
-      onCreerLien={onGenererLienAtelier}
-      lienEnCours={atelierBusyId === appt.id}
+      onOuvrirDetail={onSelectAppt}
+      onChangerEtape={changerEtape}
+      etapeEnCours={etapeEnCours === appt.id}
     />
   );
 
-  return <div className="space-y-5 nx-cascade">
+  // Sur grand écran, « En atelier » mérite trois colonnes : c'est la file la
+  // plus fournie et celle qu'on balaie du regard. Les autres restent en deux
+  // colonnes, plus lisibles que trois cartes maigres. Sur téléphone, une
+  // colonne partout — une liste, pas un tableau réduit.
+  const colonnesDe = (cle) =>
+    cle === GROUPE_EN_ATELIER
+      ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5"
+      : "grid grid-cols-1 md:grid-cols-2 gap-2.5";
+
+  const basculer = (cle) => poser({ replies: { ...replies, [cle]: !replies[cle] } });
+  const deplierEtAtteindre = (cle) => {
+    poser({ replies: { ...replies, [cle]: false } });
+    requestAnimationFrame(() => document.getElementById(`file-${cle}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+
+  return <div className="space-y-4 nx-cascade">
     <div className="nx-apparait print:hidden rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}>
       <div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" />
       <div className="relative">
@@ -911,80 +1126,58 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], a
           <div>
             <div className="flex items-center gap-2"><Wrench size={18} color="#8FB0FF" /><span className="font-semibold">Atelier en direct</span></div>
             <div className="text-[13px] mt-1 text-blue-200 capitalize">{dateLongueFR(maintenant)}</div>
-            <button disabled={imprimant} onClick={imprimerEtiquettes} className="mt-3 inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl px-3 min-h-[44px] text-[12.5px] font-medium disabled:opacity-50"><span aria-hidden>🖨️</span> {imprimant ? "Génération des liens…" : "Imprimer les étiquettes du jour"}</button>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Le filtre est un vrai besoin d'atelier : « qu'est-ce que j'ai,
+                moi, aujourd'hui ». Il survit à l'ouverture d'un dossier. */}
+            <label className="sr-only" htmlFor="filtre-mecanicien">Filtrer par mécanicien</label>
+            <select
+              id="filtre-mecanicien"
+              value={filtreMecanicien}
+              onChange={(e) => poser({ filtreMecanicien: e.target.value })}
+              className="min-h-[40px] rounded-xl bg-white/10 border border-white/20 px-3 text-[12.5px] font-medium text-white"
+            >
+              <option value="tous" className="text-slate-900">Tous les mécaniciens</option>
+              {mecaniciensActifs.map((m) => <option key={m.id} value={m.id} className="text-slate-900">{m.nom}</option>)}
+              <option value="aucun" className="text-slate-900">Sans mécanicien affecté</option>
+            </select>
+            <button disabled={imprimant} onClick={imprimerEtiquettes} className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl px-3 min-h-[40px] text-[12.5px] font-medium disabled:opacity-50"><span aria-hidden>🖨️</span> {imprimant ? "Génération…" : "Étiquettes du jour"}</button>
           </div>
         </div>
+        {/* Chaque compteur mène à sa file : un chiffre qu'on ne peut pas
+            ouvrir est un chiffre qu'on ne peut pas vérifier. */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
-          <AtelierCompteur label="À accueillir" value={compteurs.aAccueillir} />
-          <AtelierCompteur label="Dans l'atelier" value={compteurs.dansAtelier} />
-          <AtelierCompteur label="Bloqués" value={compteurs.bloques} tone={compteurs.bloques > 0 ? "amber" : "slate"} />
-          <AtelierCompteur label="Prêts" value={compteurs.prets} tone={compteurs.prets > 0 ? "green" : "slate"} />
+          {groupes.map((g) => (
+            <AtelierCompteur
+              key={g.key}
+              label={g.label}
+              value={g.rendezVous.length}
+              tone={g.key === GROUPE_EN_ATTENTE && g.rendezVous.length > 0 ? "amber" : g.key === GROUPE_PRETES && g.rendezVous.length > 0 ? "green" : "slate"}
+              onClick={() => deplierEtAtteindre(g.key)}
+            />
+          ))}
         </div>
+        {filtreMecanicien !== "tous" && (
+          <div className="mt-3 text-[12px] text-blue-100">
+            Filtre actif : {filtreMecanicien === "aucun" ? "voitures sans mécanicien affecté" : mecanicienParId(filtreMecanicien)?.nom || "mécanicien"}.{" "}
+            <button type="button" onClick={() => poser({ filtreMecanicien: "tous" })} className="underline font-medium">Tout afficher</button>
+          </div>
+        )}
       </div>
     </div>
 
-    <div className="print:hidden space-y-5">
-      <AtelierSection
-        titre="À accueillir aujourd'hui"
-        sousTitre="Rendez-vous du jour pas encore arrivés à l'atelier."
-        count={aAccueillir.length}
-        vide="Aucun véhicule à accueillir pour l'instant."
-        enfants={<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{aAccueillir.map(carte)}</div>}
-      />
-
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100">
-          <div className="font-semibold text-slate-900 text-[15px]">Dans l'atelier</div>
-          <div className="text-[12.5px] text-slate-500 mt-0.5">Véhicules encore en cours de traitement, quelle que soit leur date d'entrée — les véhicules prêts sont dans « Prêts à restituer » ci-dessous.</div>
+    <div className="print:hidden space-y-4">
+      {groupes.map((groupe) => (
+        <div key={groupe.key} id={`file-${groupe.key}`}>
+          <AtelierFile
+            groupe={groupe}
+            replie={Boolean(replies[groupe.key])}
+            onBasculer={() => basculer(groupe.key)}
+            colonnes={colonnesDe(groupe.key)}
+            enfants={groupe.rendezVous.map((appt) => carte(appt, groupe))}
+          />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-px bg-slate-200">
-          {groupesAtelier.map((etape) => {
-            const info = etapeParCle(etape.key);
-            return (
-              <div key={etape.key} className="bg-white min-h-[150px] p-3">
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: info?.color }}>
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: info?.color }} />
-                    {etape.label}
-                  </div>
-                  <span className="text-[11px] text-slate-400">{etape.rendezVous.length}</span>
-                </div>
-                <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                  {etape.rendezVous.length === 0 ? (
-                    <div className="text-[11.5px] text-slate-300 pt-3">Aucun véhicule</div>
-                  ) : (
-                    etape.rendezVous.map(carte)
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <AtelierSection
-        titre="Prêts à restituer"
-        sousTitre="Véhicules terminés, en attente que le client vienne les chercher."
-        count={pretsARestituer.length}
-        accent="#16A34A"
-        vide="Aucun véhicule prêt pour l'instant."
-        enfants={
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{pretsARestituer.map(carte)}</div>
-            {restitutionsAujourdhui.length > 0 && (
-              <div className="border-t border-slate-100 pt-3">
-                <div className="text-[12px] font-semibold text-slate-500">
-                  Restitutions prévues aujourd'hui ({restitutionsAujourdhui.length})
-                </div>
-                <div className="text-[11.5px] text-slate-400 mb-2">
-                  Date du rendez-vous, pas une heure de restitution réellement constatée.
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{restitutionsAujourdhui.map(carte)}</div>
-              </div>
-            )}
-          </div>
-        }
-      />
+      ))}
 
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"><div className="px-5 py-4 border-b border-slate-100"><div className="font-semibold text-slate-900 text-[15px]">Planning du jour</div><div className="text-[12.5px] text-slate-500 mt-0.5">Cliquez un rendez-vous pour l’affecter à un mécanicien.</div></div>
         <div className="overflow-x-auto"><div className="min-w-[850px]"><div className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] border-b border-slate-100">{["Ressource", ...heuresGrille].map((hour) => <div key={hour} className="px-3 py-2 text-[11px] font-medium text-slate-400 border-r border-slate-100">{hour}</div>)}</div>{mecaniciensActifs.length === 0 && <div className="px-5 py-6 text-[13px] text-slate-500">Ajoutez vos mécaniciens dans Paramètres pour affecter les rendez-vous.</div>}{ressources.map((resource) => { const assigned = resourceAppointments(resource.id); return <div key={resource.id ?? "non_assigne"} className="grid grid-cols-[180px_repeat(10,minmax(65px,1fr))] min-h-[74px] border-b border-slate-100 last:border-0"><div className="px-3 py-3 border-r border-slate-100"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resource.color }} /><div><div className="text-[12.5px] font-medium text-slate-800">{resource.name}</div><div className="text-[11px] text-slate-400">{resource.role}</div></div></div></div><div className="col-span-10 relative p-1.5" style={{ minHeight: 58 }}>{assigned.map((appt) => {
@@ -1025,6 +1218,15 @@ function AtelierView({ rendezVous, onSelectAppt, garageData, mecaniciens = [], a
         </div>
       </div>
     </div>
+
+    {aConfirmer && (
+      <ConfirmationVehiculePret
+        appt={aConfirmer.appt}
+        enCours={etapeEnCours === aConfirmer.appt.id}
+        onAnnuler={() => setAConfirmer(null)}
+        onConfirmer={() => appliquerEtape(aConfirmer.appt, aConfirmer.etape)}
+      />
+    )}
 
     <style>{`
       @media print {
@@ -5273,6 +5475,30 @@ function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = nul
   const [submittingTravailDiffere, setSubmittingTravailDiffere] = useState(false);
   const [inspectionCibleCockpit, setInspectionCibleCockpit] = useState(null);
   const [dossierVehiculeId, setDossierVehiculeId] = useState(null);
+  // L'ÉTAT DE L'ATELIER VIT ICI, PAS DANS LA VUE
+  //
+  // Le dossier véhicule se pose par-dessus l'écran courant sans le démonter :
+  // mesuré le 13 septembre 2026, le filtre, les files repliées ET la position
+  // de défilement survivent déjà à une simple ouverture-fermeture. Ce qui ne
+  // survivait pas, c'est le départ vers un autre écran — le contenu est monté
+  // avec `key={view}`, donc changer de vue le remonte et perd tout.
+  //
+  // D'où deux choses ici : l'état de l'Atelier, remonté pour qu'aucun
+  // remontage ne l'efface, et la position de défilement, notée à l'ouverture
+  // du dossier pour être reposée au retour (voir `retourVers` ci-dessous).
+  // La repose à la simple fermeture ne coûte rien et tient la promesse même
+  // si le panneau bloquait un jour le défilement du document.
+  const [etatAtelier, setEtatAtelier] = useState({ filtreMecanicien: "tous", replies: {} });
+  const defilementAvantDossier = useRef(null);
+  // D'OÙ L'ON VIENT, QUAND LE DOSSIER NOUS ENVOIE AILLEURS
+  //
+  // Depuis l'Atelier, ouvrir un dossier puis cliquer « Ouvrir le devis »
+  // emmenait sur Facturation et laissait la liste, le filtre et la position
+  // derrière — il fallait revenir à la main, refiltrer, re-défiler. On garde
+  // donc l'écran de départ et on propose un retour explicite. Une seule
+  // étape mémorisée : un fil d'Ariane à rallonge serait un second système de
+  // navigation, et personne ne s'en sert.
+  const [retourVers, setRetourVers] = useState(null);
   const [focusOrdreRendezVousId, setFocusOrdreRendezVousId] = useState(null);
   const [focusOrdreDevisId, setFocusOrdreDevisId] = useState(null);
   const [focusOrdreVehicule, setFocusOrdreVehicule] = useState(null); // { id, label } | null
@@ -6568,7 +6794,50 @@ if (updateError) {
   // Ouvrir un dossier depuis la recherche ne change pas de vue : la liste et
   // son filtre restent derrière le panneau, et les retrouver ne coûte qu'une
   // fermeture. C'est la règle « on ne perd pas ce qu'on regardait ».
-  const ouvrirDossierDepuisRecherche = (vehiculeId) => setDossierVehiculeId(vehiculeId);
+  const ouvrirDossierVehicule = (vehiculeId) => {
+    if (!vehiculeId) return;
+    defilementAvantDossier.current = typeof window !== "undefined"
+      ? (document.scrollingElement?.scrollTop ?? window.scrollY ?? 0)
+      : null;
+    setDossierVehiculeId(vehiculeId);
+  };
+
+  const fermerDossierVehicule = () => {
+    setDossierVehiculeId(null);
+    const position = defilementAvantDossier.current;
+    defilementAvantDossier.current = null;
+    if (position == null || typeof window === "undefined") return;
+    // Après le repaint : avant, le document n'a pas encore retrouvé sa hauteur
+    // et le navigateur écrase la position qu'on vient de poser.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => window.scrollTo({ top: position, behavior: "instant" }));
+    });
+  };
+
+  const ouvrirDossierDepuisRecherche = ouvrirDossierVehicule;
+
+  /** Le dossier renvoie vers un autre écran : on note d'où l'on part. */
+  const quitterDossierVers = (nouvelleVue) => {
+    setRetourVers({
+      vue: view,
+      label: titles[view] || "l'écran précédent",
+      defilement: defilementAvantDossier.current,
+    });
+    defilementAvantDossier.current = null;
+    setDossierVehiculeId(null);
+    if (nouvelleVue) setView(nouvelleVue);
+  };
+
+  const revenirEnArriere = () => {
+    if (!retourVers) return;
+    const { vue, defilement } = retourVers;
+    setRetourVers(null);
+    setView(vue);
+    if (defilement == null || typeof window === "undefined") return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => window.scrollTo({ top: defilement, behavior: "instant" }));
+    });
+  };
 
   const handleMarquerFacturePayee = async (id) => {
     const { data, error } = await supabase.rpc("marquer_facture_payee", { p_facture_id: id });
@@ -7294,10 +7563,25 @@ if (updateError) {
           </div>
         )}
 
+        {/* Le chemin du retour, quand le dossier véhicule a fait changer
+            d'écran. Il ne s'affiche que là où il sert, et disparaît dès qu'on
+            l'emprunte ou qu'on repart ailleurs de soi-même. */}
+        {retourVers && retourVers.vue !== view && (
+          <div className="px-5 md:px-8 pt-4">
+            <button
+              type="button"
+              onClick={revenirEnArriere}
+              className="inline-flex items-center gap-2 min-h-[40px] rounded-xl border border-slate-200 bg-white px-3.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <ArrowLeft size={15} /> Revenir à {retourVers.label}
+            </button>
+          </div>
+        )}
+
         <div key={view} className="nx-vue p-5 md:p-8">
           {view === "aujourdhui" && <AujourdhuiView monRole={monRole} vehicules={tousLesVehicules} onOuvrirDossierVehicule={ouvrirDossierDepuisRecherche} stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
-          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={setDossierVehiculeId} />}
+          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={ouvrirDossierVehicule} onUpdateStatutAtelier={updateStatutAtelier} etatVue={etatAtelier} onEtatVue={setEtatAtelier} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
           {["devis", "factures", "historique"].includes(view) && (
             <FacturationView
@@ -7367,7 +7651,7 @@ if (updateError) {
               onCreerVehicule={handleCreerVehicule}
               onOuvrirTravailDiffereModal={(clientId) => setTravailDiffereModal({ clientId })}
               onToast={flashToast}
-              onOuvrirDossierVehicule={(vehiculeId) => setDossierVehiculeId(vehiculeId)}
+              onOuvrirDossierVehicule={ouvrirDossierVehicule}
               ouvrirCreation={creationDemandee === "client"}
               onCreationOuverte={() => setCreationDemandee(null)}
             />
@@ -7412,13 +7696,13 @@ if (updateError) {
           factures={factures.filter((f) => f.vehicule_id === dossierVehiculeId)}
           workshopStages={WORKSHOP_STAGES}
           inspectionsDisponibles={INSPECTIONS_MODULE_ACTIF}
-          onClose={() => setDossierVehiculeId(null)}
-          onOuvrirAtelier={() => { setDossierVehiculeId(null); setView("atelier"); }}
-          onOuvrirDevis={() => { setDossierVehiculeId(null); setView("devis"); }}
-          onOuvrirFactures={() => { setDossierVehiculeId(null); setView("factures"); }}
-          onOuvrirAgenda={() => { setDossierVehiculeId(null); setView("agenda"); }}
-          onOuvrirInspections={() => { setDossierVehiculeId(null); setView("inspections"); }}
-          onOuvrirRendezVous={(rdv) => { if (rdv) { setDossierVehiculeId(null); setSelectedAppt(rdv); } }}
+          onClose={fermerDossierVehicule}
+          onOuvrirAtelier={() => quitterDossierVers("atelier")}
+          onOuvrirDevis={() => quitterDossierVers("devis")}
+          onOuvrirFactures={() => quitterDossierVers("factures")}
+          onOuvrirAgenda={() => quitterDossierVers("agenda")}
+          onOuvrirInspections={() => quitterDossierVers("inspections")}
+          onOuvrirRendezVous={(rdv) => { if (rdv) { quitterDossierVers(null); setSelectedAppt(rdv); } }}
           onOuvrirOrdresReparation={(vehiculeId) => {
             const id = vehiculeId || dossierVehiculeId;
             const label = [
@@ -7426,8 +7710,7 @@ if (updateError) {
               dossierVehicule?.immatriculation,
             ].filter(Boolean).join(" · ");
             setFocusOrdreVehicule(id ? { id, label: label || "ce véhicule" } : null);
-            setDossierVehiculeId(null);
-            setView("ordres-reparation");
+            quitterDossierVers("ordres-reparation");
           }}
         />
       )}

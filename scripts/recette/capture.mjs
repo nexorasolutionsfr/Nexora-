@@ -1,0 +1,155 @@
+// Captures d'écran de recette, enregistrées sur disque — Supabase TEST seul.
+//
+// POURQUOI CE FICHIER
+//
+// Une capture prise à la main ne se compare pas : ni la taille, ni le compte
+// connecté, ni le moment ne sont les mêmes deux fois. Un « avant / après »
+// n'a de valeur que si les deux images sortent du même dispositif. Celui-ci
+// pilote le Chrome déjà installé par le protocole DevTools — aucune
+// dépendance à installer, aucun service tiers, aucun paquet nouveau.
+//
+// GARDE-FOUS
+//   1. refus si l'URL Supabase du worktree ne vise pas le projet Test ;
+//   2. refus de toute adresse hors `…@nexora-recette.invalid` ;
+//   3. profil Chrome jetable, créé dans un dossier temporaire et supprimé :
+//      la session de recette ne touche jamais le navigateur de Baptiste.
+//
+// Usage :
+//   node scripts/recette/capture.mjs <email> <chemin-relatif> <fichier.png> [largeur] [hauteur]
+//   node scripts/recette/capture.mjs <email> /dashboard atelier-avant.png 1280 900
+//
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+
+const RACINE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const require = createRequire(RACINE + "/package.json");
+const { createClient } = require("@supabase/supabase-js");
+
+const env = Object.fromEntries(
+  readFileSync(RACINE + "/.env.local", "utf8")
+    .split("\n")
+    .filter((l) => l.includes("=") && !l.trim().startsWith("#"))
+    .map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()])
+);
+
+const PROJET_TEST = "slawilafseganlbghgwx";
+const url = env.NEXT_PUBLIC_SUPABASE_URL || "";
+if (!url.includes(PROJET_TEST)) {
+  console.error(`REFUS : ce worktree ne vise pas le projet Test (${PROJET_TEST}).`);
+  process.exit(2);
+}
+
+const [email, chemin, fichier, largeurArg, hauteurArg] = process.argv.slice(2);
+if (!/^recette\.[a-z0-9.\-]+@nexora-recette\.invalid$/.test(email || "")) {
+  console.error("REFUS : adresse hors du domaine synthétique nexora-recette.invalid");
+  process.exit(2);
+}
+const largeur = Number(largeurArg || 1280);
+const hauteur = Number(hauteurArg || 900);
+const PORT_APP = process.env.PORT_APP || "3113";
+const DOSSIER = process.env.DOSSIER_CAPTURES || resolve(RACINE, "docs/recette/captures");
+const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+
+// --- La session de recette, ouverte par lien à usage unique ----------------
+const db = createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+const { data: lien, error } = await db.auth.admin.generateLink({ type: "magiclink", email });
+if (error) { console.error("ÉCHEC lien :", error.message); process.exit(1); }
+const anon = createClient(url, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+const { data: auth, error: err2 } = await anon.auth.verifyOtp({ email, token: lien.properties.email_otp, type: "email" });
+if (err2) { console.error("ÉCHEC session :", err2.message); process.exit(1); }
+const cleSession = `sb-${url.match(/https:\/\/([a-z0-9]+)\./)[1]}-auth-token`;
+
+// --- Chrome, en profil jetable --------------------------------------------
+const profil = mkdtempSync(resolve(tmpdir(), "nexora-capture-"));
+const chrome = spawn(CHROME, [
+  "--headless=new",
+  "--remote-debugging-port=0",
+  `--user-data-dir=${profil}`,
+  `--window-size=${largeur},${hauteur}`,
+  "--no-first-run",
+  "--no-default-browser-check",
+  "--hide-scrollbars",
+  "about:blank",
+], { stdio: ["ignore", "ignore", "pipe"] });
+
+const portDevtools = await new Promise((ok, ko) => {
+  let tampon = "";
+  const minuteur = setTimeout(() => ko(new Error("Chrome n'a pas annoncé son port")), 20000);
+  chrome.stderr.on("data", (bloc) => {
+    tampon += bloc.toString();
+    const trouve = tampon.match(/ws:\/\/127\.0\.0\.1:(\d+)\//);
+    if (trouve) { clearTimeout(minuteur); ok(trouve[1]); }
+  });
+});
+
+async function cibles() {
+  const r = await fetch(`http://127.0.0.1:${portDevtools}/json/list`);
+  return r.json();
+}
+const page = (await cibles()).find((c) => c.type === "page");
+const ws = new WebSocket(page.webSocketDebuggerUrl);
+await new Promise((ok) => { ws.onopen = ok; });
+
+let numero = 0;
+const attentes = new Map();
+ws.onmessage = (ev) => {
+  const message = JSON.parse(ev.data);
+  if (message.id && attentes.has(message.id)) {
+    const { ok, ko } = attentes.get(message.id);
+    attentes.delete(message.id);
+    message.error ? ko(new Error(message.error.message)) : ok(message.result);
+  }
+};
+function cdp(methode, params = {}) {
+  const id = ++numero;
+  ws.send(JSON.stringify({ id, method: methode, params }));
+  return new Promise((ok, ko) => attentes.set(id, { ok, ko }));
+}
+
+const evaluer = async (expression) => (await cdp("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })).result?.value;
+const patienter = (ms) => new Promise((ok) => setTimeout(ok, ms));
+
+try {
+  await cdp("Page.enable");
+  await cdp("Runtime.enable");
+  await cdp("Emulation.setDeviceMetricsOverride", { width: largeur, height: hauteur, deviceScaleFactor: 2, mobile: largeur < 768 });
+
+  // On pose la session sur la bonne origine : il faut y être avant d'écrire.
+  await cdp("Page.navigate", { url: `http://localhost:${PORT_APP}/` });
+  await patienter(2500);
+  await evaluer(`localStorage.setItem(${JSON.stringify(cleSession)}, ${JSON.stringify(JSON.stringify(auth.session))})`);
+
+  await cdp("Page.navigate", { url: `http://localhost:${PORT_APP}${chemin}` });
+  await patienter(Number(process.env.ATTENTE_MS || 9000));
+
+  // Les gestes demandés avant la prise de vue, s'il y en a : une expression
+  // JavaScript par ligne dans GESTES, jouée dans l'ordre. Sert à capturer un
+  // écran qui n'existe qu'après un clic (un panneau ouvert, un filtre posé).
+  for (const geste of (process.env.GESTES || "").split("\n").filter(Boolean)) {
+    const retour = await evaluer(geste);
+    console.log(`  geste → ${JSON.stringify(retour)}`);
+    await patienter(Number(process.env.ATTENTE_GESTE_MS || 1400));
+  }
+
+  const { data } = await cdp("Page.captureScreenshot", {
+    format: "png",
+    captureBeyondViewport: process.env.PLEINE_PAGE === "1",
+  });
+  mkdirSync(DOSSIER, { recursive: true });
+  const sortie = resolve(DOSSIER, fichier);
+  writeFileSync(sortie, Buffer.from(data, "base64"));
+  console.log(sortie);
+} finally {
+  ws.close();
+  // Attendre la sortie effective de Chrome : il écrit encore dans son profil
+  // au moment du `kill`, et supprimer le dossier trop tôt échoue en ENOTEMPTY
+  // — après que la capture a réussi, ce qui donnait un faux échec.
+  const sorti = new Promise((ok) => chrome.once("exit", ok));
+  chrome.kill();
+  await Promise.race([sorti, new Promise((ok) => setTimeout(ok, 3000))]);
+  rmSync(profil, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+}
