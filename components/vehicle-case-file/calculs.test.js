@@ -602,10 +602,12 @@ test('sans rendez-vous, dernier devis accepté : un seul devis affiché, action 
   // Il n'y a ni rendez-vous ni ordre : ce n'est pas une intervention.
   assert.equal(dossier.aUneIntervention, false)
 
-  // Le bouton ne promet pas d'ouvrir une fiche atelier inexistante.
+  // Le bouton ne promet ni un document absent, ni un écran où rien n'est
+  // possible : sans rendez-vous, l'ordre de réparation ne peut pas exister
+  // (`rendez_vous_id` est NOT NULL), donc le geste est de le planifier.
   assert.equal(dossier.fil.etat, 'Devis accepté')
-  assert.equal(dossier.fil.cible, 'ordres_reparation')
-  assert.equal(dossier.fil.libelleAction, 'Aller aux fiches atelier')
+  assert.equal(dossier.fil.cible, 'agenda')
+  assert.equal(dossier.fil.libelleAction, 'Planifier le rendez-vous')
 })
 
 test('sans rendez-vous, dernier devis refusé : on dit le refus, sans doublon', () => {
@@ -678,4 +680,66 @@ test("aucune action impossible n'est proposée : pas de libellé sans destinatio
   )
   assert.equal(sansAction.fil.cible, null)
   assert.equal(sansAction.fil.libelleAction, null)
+})
+
+test("devis accepté sans rendez-vous : on planifie, on n'envoie pas vers une fiche impossible", () => {
+  // Parcours vérifié à l'écran le 13 septembre 2026 : sans rendez-vous, la
+  // modale « Nouvel ordre de réparation » ne propose que les rendez-vous
+  // d'autres véhicules et son bouton de création reste désactivé.
+  // `ordres_reparation.rendez_vous_id` est NOT NULL : l'ordre est impossible.
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [], ordresReparation: [], factures: [],
+      devis: [{ id: 'd-accepte', statut: 'accepte', montant_ttc: 300, created_at: '2026-09-11T00:00:00Z' }],
+    },
+    MAINTENANT
+  )
+  assert.equal(dossier.fil.etat, 'Devis accepté')
+  assert.equal(
+    dossier.fil.prochaineAction,
+    'Planifiez le rendez-vous : les travaux se rattachent toujours à un rendez-vous.'
+  )
+  assert.equal(dossier.fil.cible, 'agenda')
+  assert.equal(dossier.fil.libelleAction, 'Planifier le rendez-vous')
+  // Surtout : on n'envoie plus vers les fiches atelier.
+  assert.notEqual(dossier.fil.cible, 'ordres_reparation')
+})
+
+test('devis accepté avec rendez-vous : créer la fiche atelier redevient le geste juste', () => {
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [{ id: 'r1', date_debut: '2026-09-12T09:00:00Z', statut: 'Confirmé' }],
+      ordresReparation: [], factures: [],
+      devis: [{ id: 'd-accepte', statut: 'accepte', created_at: '2026-09-11T00:00:00Z' }],
+    },
+    MAINTENANT
+  )
+  // Le devis n'est pas rattaché (pas d'ordre), donc le fil parle du devis
+  // orphelin ; l'essentiel est qu'aucune action n'envoie vers une fiche
+  // impossible à créer.
+  assert.notEqual(dossier.fil.libelleAction, 'Aller aux fiches atelier')
+})
+
+test("le libellé du rendez-vous dit s'il faut le voir ou le planifier", () => {
+  const sansRdv = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [], ordresReparation: [], factures: [],
+      devis: [{ id: 'd', statut: 'accepte', created_at: '2026-09-11T00:00:00Z' }],
+    },
+    MAINTENANT
+  )
+  assert.equal(sansRdv.fil.libelleAction, 'Planifier le rendez-vous')
+
+  const avecRdv = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [{ id: 'r1', date_debut: '2026-09-12T09:00:00Z', statut: 'Confirmé' }],
+      devis: [], ordresReparation: [], factures: [],
+    },
+    MAINTENANT
+  )
+  assert.equal(avecRdv.fil.libelleAction, 'Voir le rendez-vous')
 })
