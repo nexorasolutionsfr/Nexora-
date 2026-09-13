@@ -214,7 +214,15 @@ export function construireDossierVehicule(
   maintenant = new Date(),
 ) {
   const intervention = selectionnerInterventionCourante({ rendezVous, devis, ordresReparation, factures }, maintenant);
-  const fil = filVehicule({ ...intervention, etatEnvoiDevis, etatEnvoiFacture });
+  const sansRattachement = devisSansRattachement({ devis, ordresReparation });
+  const fil = filVehicule({
+    ...intervention,
+    etatEnvoiDevis,
+    etatEnvoiFacture,
+    // Le fil doit savoir qu'il existe des devis orphelins : sans cela il
+    // conseille d'en établir un de plus.
+    devisSansIntervention: sansRattachement.length,
+  });
 
   return {
     vehicule,
@@ -226,7 +234,7 @@ export function construireDossierVehicule(
     fil,
     // Voir `devisSansRattachement` : le modèle ne relie pas un devis en
     // attente à une visite. On les montre à part plutôt que de les perdre.
-    devisSansRattachement: devisSansRattachement({ devis, ordresReparation }),
+    devisSansRattachement: sansRattachement,
     prochaineAction: {
       label: fil.prochaineAction,
       cible: fil.cible,

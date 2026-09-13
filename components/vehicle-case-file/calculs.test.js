@@ -432,3 +432,91 @@ test('un devis rattaché à un ordre ne figure pas dans les non-rattachés', () 
   assert.equal(dossier.intervention.devis.id, 'd-lie')
   assert.deepEqual(dossier.devisSansRattachement.map((d) => d.id), ['d-libre'])
 })
+
+// ---------------------------------------------------------------------------
+// Cas 4 de la recette : ne jamais conseiller d'établir un devis quand il en
+// existe déjà un que le modèle n'a pas su rattacher.
+// ---------------------------------------------------------------------------
+
+const RDV_SEUL = { id: 'r1', date_debut: '2026-09-12T09:00:00Z', statut: 'Confirmé' }
+
+test("un devis non rattaché : on demande de le vérifier, pas d'en créer un autre", () => {
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [RDV_SEUL],
+      devis: [{ id: 'd1', statut: 'en_attente', montant_ttc: 240, created_at: '2026-09-11T00:00:00Z' }],
+      ordresReparation: [], factures: [],
+    },
+    MAINTENANT
+  )
+  assert.equal(
+    dossier.fil.prochaineAction,
+    "Un devis existe déjà pour ce véhicule. Vérifiez s'il concerne ce rendez-vous avant d'en créer un autre."
+  )
+  assert.equal(dossier.fil.quiAgit, 'garage')
+  // Un seul devis : on l'ouvre directement.
+  assert.equal(dossier.fil.cible, 'devis')
+  assert.equal(dossier.devisSansRattachement.length, 1)
+  // Le devis n'est toujours pas rattaché à l'intervention.
+  assert.equal(dossier.intervention.devis, null)
+})
+
+test('plusieurs devis non rattachés : on renvoie vers leur liste', () => {
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [RDV_SEUL],
+      devis: [
+        { id: 'd1', statut: 'en_attente', montant_ttc: 240, created_at: '2026-09-11T00:00:00Z' },
+        { id: 'd2', statut: 'refuse', montant_ttc: 90, created_at: '2026-09-05T00:00:00Z' },
+      ],
+      ordresReparation: [], factures: [],
+    },
+    MAINTENANT
+  )
+  assert.match(dossier.fil.prochaineAction, /Un devis existe déjà/)
+  assert.equal(dossier.fil.cible, 'devis_sans_intervention')
+  assert.equal(dossier.devisSansRattachement.length, 2)
+})
+
+test("aucun devis : le conseil d'en établir un reste légitime", () => {
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [RDV_SEUL], devis: [], ordresReparation: [], factures: [],
+    },
+    MAINTENANT
+  )
+  assert.match(dossier.fil.prochaineAction, /Établissez le devis/)
+  assert.equal(dossier.fil.cible, 'agenda')
+  assert.equal(dossier.devisSansRattachement.length, 0)
+})
+
+test("aucun écran ne recommande de créer un devis quand il en existe un", () => {
+  // Garde-fou général : quelle que soit la situation, dès qu'un devis existe
+  // pour ce véhicule, aucune phrase du fil ne doit inviter à en établir un.
+  const situations = [
+    { nom: 'devis en attente', devis: [{ id: 'd', statut: 'en_attente', created_at: '2026-09-01T00:00:00Z' }], ordres: [] },
+    { nom: 'devis refusé', devis: [{ id: 'd', statut: 'refuse', created_at: '2026-09-01T00:00:00Z' }], ordres: [] },
+    { nom: 'devis accepté non rattaché', devis: [{ id: 'd', statut: 'accepte', created_at: '2026-09-01T00:00:00Z' }], ordres: [] },
+    {
+      nom: 'devis accepté rattaché à un ordre',
+      devis: [{ id: 'd', statut: 'accepte', created_at: '2026-09-01T00:00:00Z' }],
+      ordres: [{ id: 'o', rendez_vous_id: 'r1', devis_id: 'd', statut: 'confirme' }],
+    },
+  ]
+  for (const s of situations) {
+    const dossier = construireDossierVehicule(
+      {
+        vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+        rendezVous: [RDV_SEUL], devis: s.devis, ordresReparation: s.ordres, factures: [],
+      },
+      MAINTENANT
+    )
+    assert.ok(
+      !/Établissez le devis/.test(dossier.fil.prochaineAction),
+      `« ${s.nom} » : l'écran conseille encore d'établir un devis — ${dossier.fil.prochaineAction}`
+    )
+  }
+})

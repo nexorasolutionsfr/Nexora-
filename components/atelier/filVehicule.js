@@ -32,6 +32,9 @@ export const CIBLE_DEVIS = "devis";
 export const CIBLE_FACTURES = "factures";
 export const CIBLE_AGENDA = "agenda";
 export const CIBLE_ORDRE = "ordres_reparation";
+// Pointe vers la section « Devis sans intervention associée » du dossier :
+// il n'y a pas d'écran à ouvrir, il y a une liste à vérifier sur place.
+export const CIBLE_DEVIS_SANS_INTERVENTION = "devis_sans_intervention";
 
 export const AGIT_GARAGE = "garage";
 export const AGIT_CLIENT = "client";
@@ -65,6 +68,12 @@ export function filVehicule({
   facture = null,
   etatEnvoiDevis = null,
   etatEnvoiFacture = null,
+  // Combien de devis de ce véhicule ne sont rattachés à aucune intervention.
+  // La base interdit de lier un devis non accepté à un ordre : ces devis
+  // existent donc sans appartenir à une visite. Les ignorer conduisait le fil
+  // à conseiller d'en établir un alors qu'il y en avait déjà — c'est ainsi
+  // qu'on crée des doublons.
+  devisSansIntervention = 0,
 } = {}) {
   const etape = etapeAtelier(rdv);
   const ordreStatut = ordre?.statut || null;
@@ -138,6 +147,17 @@ export function filVehicule({
   }
 
   if (rdv) {
+    // Ne jamais conseiller d'établir un devis quand il en existe déjà un que
+    // le modèle n'a pas su rattacher : on demande de vérifier, pas de créer.
+    if (devisSansIntervention > 0) {
+      return fil(
+        "Rendez-vous prévu",
+        "Un devis existe déjà pour ce véhicule. Vérifiez s'il concerne ce rendez-vous avant d'en créer un autre.",
+        AGIT_GARAGE,
+        devisSansIntervention === 1 ? CIBLE_DEVIS : CIBLE_DEVIS_SANS_INTERVENTION,
+        { contradiction, ordreStatut, etape },
+      );
+    }
     return fil("Rendez-vous prévu", "Établissez le devis, ou notez l'arrivée de la voiture à l'atelier.", AGIT_GARAGE, CIBLE_AGENDA, { contradiction, ordreStatut, etape });
   }
 
