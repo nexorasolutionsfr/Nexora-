@@ -736,6 +736,9 @@ function AtelierCarte({
   etapeEnCours,
   compacte = false,
   montrerEtape = true,
+  prevenirVisible = false,
+  etatEnvoi = null,
+  onPrevenirClient,
 }) {
   const [menuOuvert, setMenuOuvert] = useState(false);
   const plaque = appt.immatriculation || "Sans plaque";
@@ -751,14 +754,21 @@ function AtelierCarte({
         onClick={() => dossierPossible && onOuvrirDossierVehicule(appt.vehicule_id)}
         disabled={!dossierPossible}
         title={dossierPossible ? `Ouvrir le dossier de ${plaque}` : "Ce rendez-vous n'est rattaché à aucun véhicule"}
-        className="w-full text-left px-3.5 pt-3 pb-2.5 disabled:cursor-default"
+        className="w-full text-left px-3.5 pt-3 pb-2.5 disabled:cursor-default focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset"
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             {/* La plaque d'abord : c'est par elle qu'un garage désigne une
-                voiture, au téléphone comme sur le parking. */}
-            <div className={`font-semibold text-slate-900 tabular-nums truncate ${compacte ? "text-[13px]" : "text-[14px]"}`}>
-              {plaque}
+                voiture, au téléphone comme sur le parking.
+                Elle s'affiche comme un lien — couleur et flèche — parce qu'une
+                carte entièrement cliquable sans aucun signe ne se devine pas :
+                au doigt on ne survole pas, et rien n'indiquait où appuyer. */}
+            <div
+              className={`font-semibold tabular-nums truncate flex items-center gap-1 ${compacte ? "text-[13px]" : "text-[14px]"}`}
+              style={{ color: dossierPossible ? ACCENT : "#0F172A" }}
+            >
+              <span className="truncate">{plaque}</span>
+              {dossierPossible && <ChevronRight size={14} className="shrink-0 -ml-0.5 opacity-70" aria-hidden />}
             </div>
             <div className="text-[12px] text-slate-500 truncate">
               {voiture}{appt.client ? ` · ${appt.client}` : ""}
@@ -802,6 +812,35 @@ function AtelierCarte({
         </div>
       </button>
 
+      {/* PRÉVENIR LE CLIENT EST UN GESTE À PART
+          Marquer la voiture prête enregistre l'état des travaux ; écrire au
+          client est une autre décision, prise à un autre moment. La ligne
+          n'apparaît donc que sur les voitures prêtes, et jamais comme un effet
+          du changement d'étape. Ce qu'elle affiche est l'état réel de l'envoi,
+          demandé à `etat_envoi_atelier` — pas une supposition. */}
+      {prevenirVisible && (
+        <div className="px-3.5 pb-2 pt-0.5">
+          {etatEnvoi?.etat === "envoye" ? (
+            <div className="flex items-center gap-1.5 text-[11.5px] font-medium text-emerald-700">
+              <CheckCircle2 size={13} className="shrink-0" /> Client prévenu
+            </div>
+          ) : etatEnvoi?.etat === "en_attente_envoi" ? (
+            <div className="text-[11.5px] text-slate-500">Message autorisé, départ en attente de traitement.</div>
+          ) : etatEnvoi?.etat === "envoi_en_cours" ? (
+            <div className="text-[11.5px] text-amber-700">Envoi à vérifier — ne pas réécrire à l'aveugle.</div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onPrevenirClient?.(appt)}
+              className="w-full min-h-[40px] rounded-lg text-[12.5px] font-semibold text-white flex items-center justify-center gap-1.5"
+              style={{ backgroundColor: ACCENT }}
+            >
+              <Send size={13} /> Prévenir le client
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center gap-1.5 px-3.5 pb-2.5 pt-0.5">
         <label className="sr-only" htmlFor={`etape-${appt.id}`}>Étape de {plaque}</label>
         <select
@@ -809,7 +848,10 @@ function AtelierCarte({
           value={appt.statut_atelier || "a_venir"}
           disabled={etapeEnCours}
           onChange={(e) => onChangerEtape?.(appt, e.target.value)}
-          className="flex-1 min-w-0 min-h-[36px] rounded-lg border border-slate-200 bg-white px-2 text-[12px] font-medium text-slate-700 disabled:opacity-50"
+          // 44 px : c'est la cible qu'on vise au doigt, gants compris. Mesuré
+          // à 375 px le 13 septembre, ce sélecteur et le bouton « ⋯ » étaient
+          // les deux seuls contrôles de l'écran sous 40 px.
+          className="flex-1 min-w-0 min-h-[44px] rounded-lg border border-slate-200 bg-white px-2 text-[12px] font-medium text-slate-700 disabled:opacity-50"
         >
           {WORKSHOP_STAGES.map((stage) => <option key={stage.key} value={stage.key}>{stage.label}</option>)}
         </select>
@@ -819,7 +861,7 @@ function AtelierCarte({
             aria-label={`Autres actions pour ${plaque}`}
             aria-expanded={menuOuvert}
             onClick={() => setMenuOuvert((o) => !o)}
-            className="w-9 h-9 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center"
+            className="w-11 h-11 shrink-0 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center"
           >
             <MoreHorizontal size={16} />
           </button>
@@ -851,34 +893,59 @@ function AtelierCarte({
   );
 }
 
-// MARQUER UNE VOITURE PRÊTE N'EST PAS UN GESTE SANS CONSÉQUENCE
+// PRÉVENIR LE CLIENT : ON MONTRE CE QU'ON ENVOIE, À QUI, AVANT DE L'ENVOYER
 //
-// Vérifié en base le 13 septembre 2026 : le trigger `trg_notifier_vehicule_pret`
-// insère une ligne dans `notifications_atelier` dès que `statut_atelier` passe
-// à `pret`. Déplacer une carte mettait donc un message client en file sans que
-// rien à l'écran ne le dise. On ne retire pas le trigger — ce serait une
-// migration de Production hors de ce lot — mais on cesse de le laisser agir en
-// silence : le geste est nommé avant d'être fait.
+// L'état des travaux et le message au client sont deux décisions distinctes.
+// La première se note en changeant l'étape ; la seconde se prend ici, et
+// seulement ici — `autoriser_envoi_atelier` est le seul chemin vers un envoi,
+// et la base le tient depuis tous les chemins, y compris le lien public par
+// jeton et l'écran du mécanicien.
 //
-// Ce que l'écran ne promet pas : que le message partira. Le workflow « Véhicule
-// prêt » est inactif à ce jour, la file se remplit sans se vider. Annoncer un
-// envoi serait faux ; taire la mise en file le serait aussi.
-function ConfirmationVehiculePret({ appt, onAnnuler, onConfirmer, enCours }) {
-  const client = appt?.client || "le client";
+// L'aperçu vient de `apercu_message_atelier`, qui reproduit à l'identique le
+// texte construit par le traitement. Un aperçu approximatif serait pire que
+// pas d'aperçu du tout : le garage validerait autre chose que ce qu'il a lu.
+//
+// Le destinataire affiché est renvoyé à la base au moment de confirmer. S'il a
+// changé entre-temps, l'autorisation est refusée plutôt que d'écrire à
+// quelqu'un d'autre — la vérification est en base, pas ici.
+function PrevenirLeClient({ appt, apercu, chargement, erreur, enCours, onAnnuler, onConfirmer }) {
   return (
     <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4" onClick={onAnnuler}>
-      <div className="nx-panneau bg-white rounded-2xl p-6 w-full max-w-md text-slate-900" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-[17px] font-semibold flex items-center gap-2">
-          <AlertTriangle size={18} color="#D97706" /> Marquer la voiture prête ?
-        </h2>
-        <p className="text-[13.5px] text-slate-600 mt-3">
-          Nexora met alors un message « votre voiture est prête » en file pour {client}.
-          Rien d'autre ne part : ni devis, ni facture, ni demande de règlement.
-        </p>
-        <p className="text-[12.5px] text-slate-500 mt-2">
-          Son envoi dépend des automatisations activées chez vous. Vérifiez avant de compter dessus.
-        </p>
-        <div className="flex gap-2 mt-5">
+      <div className="nx-panneau bg-white rounded-2xl w-full max-w-lg text-slate-900 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 pt-5 pb-3">
+          <h2 className="text-[17px] font-semibold">Prévenir le client que sa voiture est prête ?</h2>
+          <div className="text-[13px] text-slate-500 mt-1">
+            {appt?.vehicule || "Véhicule"}{appt?.immatriculation ? ` · ${appt.immatriculation}` : ""}
+          </div>
+        </div>
+
+        {chargement ? (
+          <div className="px-5 pb-5 text-[13.5px] text-slate-500">Préparation du message…</div>
+        ) : erreur ? (
+          <div className="px-5 pb-5">
+            <div className="rounded-xl bg-red-50 px-3.5 py-3 text-[13px] text-red-800">{erreur}</div>
+          </div>
+        ) : (
+          <>
+            <div className="px-5 pb-2">
+              <div className="text-[11.5px] font-semibold uppercase tracking-wide text-slate-400">Destinataire</div>
+              <div className="text-[13.5px] text-slate-900 mt-0.5 break-all">{apercu?.destinataire}</div>
+            </div>
+            <div className="px-5 pb-4">
+              <div className="text-[11.5px] font-semibold uppercase tracking-wide text-slate-400">Message</div>
+              <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+                <div className="text-[13px] font-semibold text-slate-900">{apercu?.sujet}</div>
+                {/* `whitespace-pre-line` : le texte est celui du traitement,
+                    retours à la ligne compris. On ne le reformate pas. */}
+                <div className="text-[12.5px] text-slate-700 mt-1.5 whitespace-pre-line max-h-[220px] overflow-y-auto">
+                  {apercu?.texte}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        <div className="flex gap-2 px-5 pb-5">
           <button
             type="button"
             onClick={onAnnuler}
@@ -888,19 +955,18 @@ function ConfirmationVehiculePret({ appt, onAnnuler, onConfirmer, enCours }) {
           </button>
           <button
             type="button"
-            disabled={enCours}
-            onClick={onConfirmer}
-            className="flex-1 min-h-[44px] rounded-xl text-[13.5px] font-semibold text-white disabled:opacity-60"
-            style={{ backgroundColor: "#16A34A" }}
+            disabled={enCours || chargement || Boolean(erreur) || !apercu?.destinataire}
+            onClick={() => onConfirmer(apercu?.destinataire)}
+            className="flex-1 min-h-[44px] rounded-xl text-[13.5px] font-semibold text-white disabled:opacity-50"
+            style={{ backgroundColor: ACCENT }}
           >
-            {enCours ? "Enregistrement…" : "Marquer prête"}
+            {enCours ? "Envoi autorisé…" : "Envoyer le message"}
           </button>
         </div>
       </div>
     </div>
   );
 }
-
 // Une file de l'atelier : son titre, son compte, le détail de ses sous-statuts
 // et ses cartes. Repliable — une journée chargée tient alors sur un écran.
 function AtelierFile({ groupe, replie, onBasculer, colonnes, enfants }) {
@@ -944,11 +1010,17 @@ function AtelierFile({ groupe, replie, onBasculer, colonnes, enfants }) {
   );
 }
 
-function AtelierCompteur({ label, value, tone = "slate", actif = false, onClick }) {
+// Un compteur : un chiffre, un mot, et il mène à sa file.
+//
+// Il vivait sur fond marine, en grande carte. Sur fond clair il n'a plus besoin
+// d'une surface : quatre chiffres tiennent sur une ligne au lieu d'un pavé, et
+// ce sont les deux seuls qui comptent — bloquées, prêtes — qui portent encore
+// une couleur.
+function AtelierCompteur({ label, value, tone = "slate", onClick }) {
   const tones = {
-    slate: { bg: "rgba(255,255,255,0.1)", text: "white", sub: "rgba(255,255,255,0.65)" },
-    amber: { bg: "#FEF3E2", text: "#B45309", sub: "#B45309" },
-    green: { bg: "#E7F6EC", text: "#15803D", sub: "#15803D" },
+    slate: { bg: "transparent", bord: "#E2E8F0", text: "#0F172A", sub: "#64748B" },
+    amber: { bg: "#FEF3E2", bord: "#FCD9A8", text: "#B45309", sub: "#B45309" },
+    green: { bg: "#E7F6EC", bord: "#BBE5C7", text: "#15803D", sub: "#15803D" },
   };
   const t = tones[tone] || tones.slate;
 
@@ -970,16 +1042,16 @@ function AtelierCompteur({ label, value, tone = "slate", actif = false, onClick 
     <button
       type="button"
       onClick={onClick}
-      className="rounded-xl p-3 text-left transition-shadow"
-      style={{ backgroundColor: t.bg, boxShadow: actif ? "inset 0 0 0 2px rgba(255,255,255,0.55)" : "none" }}
+      className="shrink-0 rounded-lg border px-2.5 min-h-[40px] flex items-baseline gap-1.5 hover:bg-slate-50"
+      style={{ backgroundColor: t.bg, borderColor: t.bord }}
     >
-      <div className="text-[11px]" style={{ color: t.sub }}>{label}</div>
-      <div
-        className={`text-xl font-semibold mt-1 tabular-nums origin-left${souffle ? " nx-souffle" : ""}`}
+      <span
+        className={`text-[17px] font-semibold tabular-nums origin-left${souffle ? " nx-souffle" : ""}`}
         style={{ color: t.text }}
       >
         {value}
-      </div>
+      </span>
+      <span className="text-[12px] whitespace-nowrap" style={{ color: t.sub }}>{label}</span>
     </button>
   );
 }
@@ -1029,6 +1101,7 @@ function AtelierView({
   onOuvrirDossierVehicule,
   onUpdateStatutAtelier,
   onAllerAgenda,
+  onToast,
   etatVue,
   onEtatVue,
 }) {
@@ -1055,10 +1128,82 @@ function AtelierView({
   const resourceAppointments = (resourceId) => todayAppts.filter((appt) => (resourceId === null ? !appt.mecanicien_id : appt.mecanicien_id === resourceId));
   const ressources = [...mecaniciensActifs.map((m) => ({ id: m.id, name: m.nom, role: "Mécanicien", color: m.couleur || "#3D6BE0" })), { id: null, name: "Non assigné", role: "", color: "#94A3B8" }];
   const [imprimant, setImprimant] = useState(false);
-  // Le changement d'étape mis en attente d'une confirmation — aujourd'hui,
-  // seul « Prêt » en demande une, parce que lui seul met un message en file.
-  const [aConfirmer, setAConfirmer] = useState(null);
   const [etapeEnCours, setEtapeEnCours] = useState(null);
+
+  // PRÉVENIR LE CLIENT — l'état réel des envois, demandé, jamais supposé
+  //
+  // `notifications_atelier` n'est lisible par aucun rôle applicatif : seule
+  // `etat_envoi_atelier` y donne accès. On l'interroge pour les voitures
+  // prêtes, et pour elles seules — c'est le seul endroit où la question se
+  // pose. Tant qu'elle n'a pas répondu, la carte propose le geste : au pire on
+  // clique, et la base refuse un envoi déjà autorisé.
+  const [etatsEnvoiAtelier, setEtatsEnvoiAtelier] = useState({});
+  const [prevenir, setPrevenir] = useState(null); // { appt, apercu, chargement, erreur, enCours }
+  const pretsIds = (groupeParCle(GROUPE_PRETES)?.rendezVous || []).map((r) => r.id).join(",");
+
+  useEffect(() => {
+    const ids = pretsIds ? pretsIds.split(",") : [];
+    if (ids.length === 0) { setEtatsEnvoiAtelier({}); return; }
+    let annule = false;
+    (async () => {
+      const paires = await Promise.all(ids.map(async (id) => {
+        const { data, error } = await supabase.rpc("etat_envoi_atelier", { p_rendez_vous_id: id });
+        return [id, error || !data?.ok ? null : data];
+      }));
+      if (!annule) setEtatsEnvoiAtelier(Object.fromEntries(paires));
+    })();
+    return () => { annule = true; };
+  }, [pretsIds]);
+
+  const rafraichirEtatEnvoi = async (rdvId) => {
+    const { data, error } = await supabase.rpc("etat_envoi_atelier", { p_rendez_vous_id: rdvId });
+    if (!error && data?.ok) setEtatsEnvoiAtelier((p) => ({ ...p, [rdvId]: data }));
+  };
+
+  const ouvrirPrevenir = async (appt) => {
+    setPrevenir({ appt, apercu: null, chargement: true, erreur: null, enCours: false });
+    const { data, error } = await supabase.rpc("apercu_message_atelier", { p_rendez_vous_id: appt.id });
+    if (error || !data?.ok) {
+      setPrevenir({ appt, apercu: null, chargement: false, enCours: false,
+        erreur: "Impossible de préparer le message. Réessayez dans un instant." });
+      return;
+    }
+    if (!data.destinataire) {
+      // Pas d'adresse : on ne propose pas un envoi qui ne peut pas partir.
+      setPrevenir({ appt, apercu: data, chargement: false, enCours: false,
+        erreur: "Ce client n'a pas d'adresse e-mail enregistrée. Ajoutez-la dans sa fiche, ou prévenez-le autrement." });
+      return;
+    }
+    setPrevenir({ appt, apercu: data, chargement: false, erreur: null, enCours: false });
+  };
+
+  const confirmerPrevenir = async (destinataire) => {
+    const appt = prevenir?.appt;
+    if (!appt) return;
+    setPrevenir((p) => ({ ...p, enCours: true }));
+    const { data, error } = await supabase.rpc("autoriser_envoi_atelier", {
+      p_rendez_vous_id: appt.id,
+      p_destinataire: destinataire,
+    });
+    if (error) {
+      setPrevenir((p) => ({ ...p, enCours: false, erreur: "Envoi refusé. Vérifiez vos droits, puis réessayez." }));
+      return;
+    }
+    if (data?.ok === false) {
+      const motifs = {
+        destinataire_absent: "Ce client n'a pas d'adresse e-mail enregistrée.",
+        destinataire_different: "L'adresse du client a changé depuis l'aperçu. Rouvrez le message pour la relire.",
+        vehicule_pas_pret: "Cette voiture n'est plus notée prête. Aucun message n'a été envoyé.",
+        deja_envoye: "Le client a déjà été prévenu pour cette voiture.",
+      };
+      setPrevenir((p) => ({ ...p, enCours: false, erreur: motifs[data.raison] || "Envoi refusé." }));
+      await rafraichirEtatEnvoi(appt.id);
+      return;
+    }
+    setPrevenir(null);
+    await rafraichirEtatEnvoi(appt.id);
+    onToast?.(data?.deja_autorise ? "Message déjà autorisé" : "Message autorisé");
+  };
 
   const imprimerEtiquettes = async () => {
     if (!onGenererEtiquettes || imprimant) return;
@@ -1067,25 +1212,21 @@ function AtelierView({
     setImprimant(false);
   };
 
-  const appliquerEtape = async (appt, etape) => {
+  // CHANGER L'ÉTAPE N'ENVOIE PLUS RIEN, ET N'A DONC PLUS À S'EXCUSER
+  //
+  // La confirmation posée ici au lot précédent nommait un effet de bord qu'on
+  // a depuis supprimé : la migration 20260918000300 fait naître la
+  // notification « véhicule prêt » DÉSARMÉE. Marquer une voiture prête
+  // n'enregistre plus que l'état des travaux — il n'y a plus rien à confirmer.
+  // Prévenir le client est devenu un geste séparé, plus bas.
+  const changerEtape = async (appt, etape) => {
     if (!onUpdateStatutAtelier || etape === (appt.statut_atelier || "a_venir")) return;
     setEtapeEnCours(appt.id);
     try {
       await onUpdateStatutAtelier(appt.id, etape);
     } finally {
       setEtapeEnCours(null);
-      setAConfirmer(null);
     }
-  };
-
-  const changerEtape = (appt, etape) => {
-    // `trg_notifier_vehicule_pret` écrit dans la file d'envoi dès que l'étape
-    // passe à « pret ». On le dit avant, jamais après.
-    if (etape === "pret" && (appt.statut_atelier || "a_venir") !== "pret") {
-      setAConfirmer({ appt, etape });
-      return;
-    }
-    appliquerEtape(appt, etape);
   };
 
   const carte = (appt, groupe) => (
@@ -1102,6 +1243,9 @@ function AtelierView({
       onOuvrirDetail={onSelectAppt}
       onChangerEtape={changerEtape}
       etapeEnCours={etapeEnCours === appt.id}
+      prevenirVisible={groupe.key === GROUPE_PRETES}
+      etatEnvoi={etatsEnvoiAtelier[appt.id] || null}
+      onPrevenirClient={ouvrirPrevenir}
     />
   );
 
@@ -1122,34 +1266,15 @@ function AtelierView({
   };
 
   return <div className="space-y-4 nx-cascade">
-    <div className="nx-apparait print:hidden rounded-2xl overflow-hidden p-5 text-white relative" style={{ backgroundColor: NAVY }}>
-      <div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-blue-500/20" />
-      <div className="relative">
-        <div className="flex items-start justify-between flex-wrap gap-4">
-          <div>
-            <div className="flex items-center gap-2"><Wrench size={18} color="#8FB0FF" /><span className="font-semibold">Atelier en direct</span></div>
-            <div className="text-[13px] mt-1 text-blue-200 capitalize">{dateLongueFR(maintenant)}</div>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Le filtre est un vrai besoin d'atelier : « qu'est-ce que j'ai,
-                moi, aujourd'hui ». Il survit à l'ouverture d'un dossier. */}
-            <label className="sr-only" htmlFor="filtre-mecanicien">Filtrer par mécanicien</label>
-            <select
-              id="filtre-mecanicien"
-              value={filtreMecanicien}
-              onChange={(e) => poser({ filtreMecanicien: e.target.value })}
-              className="min-h-[40px] rounded-xl bg-white/10 border border-white/20 px-3 text-[12.5px] font-medium text-white"
-            >
-              <option value="tous" className="text-slate-900">Tous les mécaniciens</option>
-              {mecaniciensActifs.map((m) => <option key={m.id} value={m.id} className="text-slate-900">{m.nom}</option>)}
-              <option value="aucun" className="text-slate-900">Sans mécanicien affecté</option>
-            </select>
-            <button disabled={imprimant} onClick={imprimerEtiquettes} className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl px-3 min-h-[40px] text-[12.5px] font-medium disabled:opacity-50"><span aria-hidden>🖨️</span> {imprimant ? "Génération…" : "Étiquettes du jour"}</button>
-          </div>
-        </div>
-        {/* Chaque compteur mène à sa file : un chiffre qu'on ne peut pas
-            ouvrir est un chiffre qu'on ne peut pas vérifier. */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+    {/* UN BANDEAU, PAS UNE AFFICHE
+        Le bloc marine faisait 280 px de haut et répétait « Atelier en direct »,
+        déjà écrit dans l'en-tête de page juste au-dessus. Sur téléphone il
+        occupait un tiers du premier écran pour ne rien apprendre. Il devient
+        une barre d'outils : les quatre compteurs cliquables, le filtre, les
+        étiquettes. Même information, même accès, un quart de la hauteur. */}
+    <div className="nx-apparait print:hidden rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto">
           {groupes.map((g) => (
             <AtelierCompteur
               key={g.key}
@@ -1160,13 +1285,37 @@ function AtelierView({
             />
           ))}
         </div>
-        {filtreMecanicien !== "tous" && (
-          <div className="mt-3 text-[12px] text-blue-100">
-            Filtre actif : {filtreMecanicien === "aucun" ? "voitures sans mécanicien affecté" : mecanicienParId(filtreMecanicien)?.nom || "mécanicien"}.{" "}
-            <button type="button" onClick={() => poser({ filtreMecanicien: "tous" })} className="underline font-medium">Tout afficher</button>
-          </div>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Le filtre est un vrai besoin d'atelier : « qu'est-ce que j'ai,
+              moi, aujourd'hui ». Il survit à l'ouverture d'un dossier. */}
+          <label className="sr-only" htmlFor="filtre-mecanicien">Filtrer par mécanicien</label>
+          <select
+            id="filtre-mecanicien"
+            value={filtreMecanicien}
+            onChange={(e) => poser({ filtreMecanicien: e.target.value })}
+            className="min-h-[40px] max-w-[190px] rounded-lg border border-slate-200 bg-white px-2.5 text-[12.5px] font-medium text-slate-700"
+            style={filtreMecanicien !== "tous" ? { borderColor: ACCENT, color: ACCENT } : undefined}
+          >
+            <option value="tous">Tous les mécaniciens</option>
+            {mecaniciensActifs.map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}
+            <option value="aucun">Sans mécanicien affecté</option>
+          </select>
+          <button
+            disabled={imprimant}
+            onClick={imprimerEtiquettes}
+            title="Imprimer les étiquettes du jour"
+            className="min-h-[40px] px-2.5 rounded-lg border border-slate-200 text-[12.5px] font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 whitespace-nowrap"
+          >
+            <span aria-hidden>🖨️</span><span className="hidden lg:inline ml-1.5">{imprimant ? "Génération…" : "Étiquettes"}</span>
+          </button>
+        </div>
       </div>
+      {filtreMecanicien !== "tous" && (
+        <div className="mt-2 text-[12px] text-slate-500">
+          Filtre actif : {filtreMecanicien === "aucun" ? "voitures sans mécanicien affecté" : mecanicienParId(filtreMecanicien)?.nom || "mécanicien"}.{" "}
+          <button type="button" onClick={() => poser({ filtreMecanicien: "tous" })} className="underline font-medium" style={{ color: ACCENT }}>Tout afficher</button>
+        </div>
+      )}
     </div>
 
     <div className="print:hidden space-y-4">
@@ -1258,12 +1407,15 @@ function AtelierView({
       </div>
     </div>
 
-    {aConfirmer && (
-      <ConfirmationVehiculePret
-        appt={aConfirmer.appt}
-        enCours={etapeEnCours === aConfirmer.appt.id}
-        onAnnuler={() => setAConfirmer(null)}
-        onConfirmer={() => appliquerEtape(aConfirmer.appt, aConfirmer.etape)}
+    {prevenir && (
+      <PrevenirLeClient
+        appt={prevenir.appt}
+        apercu={prevenir.apercu}
+        chargement={prevenir.chargement}
+        erreur={prevenir.erreur}
+        enCours={prevenir.enCours}
+        onAnnuler={() => setPrevenir(null)}
+        onConfirmer={confirmerPrevenir}
       />
     )}
 
@@ -7551,7 +7703,7 @@ if (updateError) {
       <main className="flex-1 min-w-0">
         <div className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-y-3 px-5 md:px-8 py-4 sm:py-5 border-b border-slate-200 bg-white">
           <div className="flex items-center gap-3">
-            <button onClick={() => setMobileMenuOpen(true)} className="md:hidden -ml-1 p-1.5 rounded-lg text-slate-500 hover:bg-slate-100">
+            <button onClick={() => setMobileMenuOpen(true)} aria-label="Ouvrir le menu" className="md:hidden -ml-1.5 w-11 h-11 shrink-0 rounded-lg text-slate-500 hover:bg-slate-100 flex items-center justify-center">
               <Menu size={22} />
             </button>
             <div className="min-w-0">
@@ -7652,7 +7804,7 @@ if (updateError) {
         <div key={view} className="nx-vue p-5 md:p-8">
           {view === "aujourdhui" && <AujourdhuiView monRole={monRole} vehicules={tousLesVehicules} onOuvrirDossierVehicule={ouvrirDossierDepuisRecherche} stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
-          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={ouvrirDossierVehicule} onUpdateStatutAtelier={updateStatutAtelier} onAllerAgenda={() => setView("agenda")} etatVue={etatAtelier} onEtatVue={setEtatAtelier} />}
+          {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={ouvrirDossierVehicule} onUpdateStatutAtelier={updateStatutAtelier} onAllerAgenda={() => setView("agenda")} onToast={flashToast} etatVue={etatAtelier} onEtatVue={setEtatAtelier} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}
           {["devis", "factures", "historique"].includes(view) && (
             <FacturationView
