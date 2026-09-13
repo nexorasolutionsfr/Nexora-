@@ -23,7 +23,7 @@ import { supabase } from "@/lib/supabase";
 import { filVehicule } from "../atelier/filVehicule";
 import { GROUPES_ATELIER, regrouperOperationnel } from "../atelier/groupes";
 import {
-  arriveesDuJour, classerPriorites, compterLeGarage, decouperPriorites, lireEtatEnvoi, pretesARendre,
+  arriveesDuJour, classerPriorites, compterLeGarage, compterPriorites, decouperPriorites, lireEtatEnvoi, pretesARendre,
 } from "./priorites";
 
 const ACCENT = "#3D6BE0";
@@ -187,6 +187,7 @@ export default function AujourdhuiJour({
   onOuvrirParametres,
   onPrevenirClient,
   onAgirSurPriorite,
+  zonesTravail = null,
 }) {
   const maintenant = new Date();
 
@@ -242,6 +243,7 @@ export default function AujourdhuiJour({
   const lignes = useMemo(() => classerPriorites(dossiersAvecEnvoi, maintenant), [dossiersAvecEnvoi]);
   const [toutes, setToutes] = useState(false);
   const { visibles, total, masquees } = decouperPriorites(lignes, toutes ? lignes.length : LIMITE_PRIORITES);
+  const { actions, vehicules: vehiculesConcernes } = compterPriorites(lignes);
   const arrivees = useMemo(() => arriveesDuJour(dossiersAvecEnvoi, maintenant), [dossiersAvecEnvoi]);
   const pretes = useMemo(() => pretesARendre(dossiersAvecEnvoi), [dossiersAvecEnvoi]);
   const groupes = useMemo(() => regrouperOperationnel(dossiers.map((d) => d.rdv), maintenant), [dossiers]);
@@ -298,8 +300,14 @@ export default function AujourdhuiJour({
           presentes > 0 ? `${presentes} voiture${presentes > 1 ? "s" : ""} au garage` : null,
           attendues > 0 ? `${attendues} attendue${attendues > 1 ? "s" : ""}` : null,
         ].filter(Boolean).join(", ") + ". " + (
-          total === 0 ? "Rien n'attend de décision de votre part."
-            : `${total} demande${total > 1 ? "nt" : ""} une décision de votre part.`
+          // « 11 demandent une décision » se lisait comme onze VOITURES. Il y
+          // en avait neuf : deux portaient deux gestes chacune. On nomme donc
+          // ce qu'on compte — des actions — et on dit sur combien de voitures
+          // elles portent quand les deux chiffres diffèrent.
+          actions === 0 ? "Rien n'attend de décision de votre part."
+            : actions === vehiculesConcernes
+              ? `${actions} action${actions > 1 ? "s" : ""} vous attend${actions > 1 ? "ent" : ""}.`
+              : `${actions} actions vous attendent, sur ${vehiculesConcernes} voitures.`
         );
 
   if (nouveauGarage) {
@@ -378,6 +386,14 @@ export default function AujourdhuiJour({
               </div>
             )}
           </Section>
+
+          {/* CE QUI VIENT DES CLIENTS ET CE QUI ATTEND VALIDATION, ICI
+              Ces deux blocs vivaient tout en bas, sous un résumé d'atelier qui
+              disait autre chose que celui d'en haut. Leur place est dans la
+              zone de travail : sous les priorités, là où l'écran large laissait
+              du vide. Ils ne sont pas recalculés — c'est le même contenu, au
+              bon endroit. */}
+          {zonesTravail ? <div className="mt-5">{zonesTravail}</div> : null}
         </div>
 
         <div className="min-w-0">

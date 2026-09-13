@@ -9,11 +9,10 @@ import InspectionsSection from "./inspections/InspectionsSection";
 import OrdresReparationSection from "./ordre-reparation/OrdresReparationSection";
 import NotificationsAVerifierSection from "./notifications-devis/NotificationsAVerifierSection";
 import CentreDecisionnel from "./garage-os/CentreDecisionnel";
-import VotreJournee from "./garage-os/VotreJournee";
 import NexoraARepere from "./garage-os/NexoraARepere";
 import MiseEnRoute from "./garage-os/MiseEnRoute";
 import { SquelettesListe, SquelettteAccueil } from "./garage-os/Squelettes";
-import { compterVehiculesEngages, compterAlertesAtelier, calculerProgressionAtelier, dateLongueFR } from "./garage-os/calculs";
+import { compterVehiculesEngages, compterAlertesAtelier, dateLongueFR } from "./garage-os/calculs";
 import { estFerme, heureReservable, heuresOuvrables } from "./agenda/horaires";
 import ConnexionShell from "./connexion/ConnexionShell";
 import EnvoiDevis from "./envoi/EnvoiDevis";
@@ -2057,19 +2056,16 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, or
     </div>
   );
 
-  // ---- Aperçu atelier du jour — un seul état à la fois, piloté par les vraies données
-  // Les étapes actives comptent sur l'ensemble des rendez-vous chargés (un
-  // véhicule entré hier et toujours engagé doit apparaître) ; à venir/prêt/
-  // restitué restent limités aux rendez-vous du jour. Voir calculerProgressionAtelier.
-  const mecaniciensActifs = mecaniciens.filter((m) => m.actif !== false);
-  const stagesEnCours = ["diagnostic", "intervention"];
-  const stagesPrets = ["pret", "restitue"];
-  const progressionAtelier = calculerProgressionAtelier(rendezVous, todayAppts);
-  const stageCounts = WORKSHOP_STAGES.map((stage) => ({
-    ...stage,
-    glanceColor: stagesEnCours.includes(stage.key) ? "#D97706" : stagesPrets.includes(stage.key) ? "#16A34A" : "#1E293B",
-    count: progressionAtelier[stage.key] || 0,
-  }));
+  // LE SECOND COMPTAGE DE L'ATELIER EST SUPPRIMÉ
+  //
+  // `calculerProgressionAtelier` limitait « prêt » et « restitué » aux
+  // rendez-vous DU JOUR. Une voiture déposée hier et prête ce matin n'y
+  // figurait donc pas : l'écran affichait « 0 prêt » à dix centimètres d'un
+  // résumé annonçant « Prêtes 2 ». Les deux lisaient la même base et n'en
+  // tiraient pas le même fait.
+  //
+  // Le résumé de l'Atelier dans `AujourdhuiJour` est désormais le seul, et il
+  // compte les quatre files comme l'écran Atelier les affiche.
 
   // ---- Aperçu "Ce mois-ci" (glance, le détail complet est dans Statistiques) ------
   const debutMoisCourant = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -2124,16 +2120,76 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, or
     ? (cockpitCompteurs ? cockpitCompteurs.montantConnu : null)
     : zone3TotalConnu;
 
+  // ---- La zone de travail : ce qui vient des clients, ce qui attend un oui -------
+  //
+  // Ces deux blocs vivaient en bas de page. Ils remontent SOUS les priorités,
+  // dans la colonne large, là où l'écran de bureau laissait du vide. Rien
+  // n'est recalculé : ce sont les mêmes lignes, au bon endroit.
+  //
+  // Journée calme : trois cadres vides occupaient 275 px pour dire trois fois
+  // « rien », et la phrase d'en-tête le dit déjà. Ne reste que le geste
+  // d'ajout — la seule chose de ces cartes qui n'existe nulle part ailleurs.
+  const zonesTravail = zone1Rows.length + zone2Rows.length === 0 ? (
+    <div className="flex items-center gap-4 flex-wrap px-1">
+      <button
+        onClick={() => onAjouterRappel && onAjouterRappel()}
+        className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
+        style={{ color: ACCENT }}
+      >
+        <Phone size={12} /> Un appel à rappeler
+      </button>
+    </div>
+  ) : (
+    <div className="space-y-4">
+      <CommandZone
+        icon={AlertTriangle}
+        iconBg="#FDECEC"
+        iconColor="#DC2626"
+        title="Demandes et devis à traiter"
+        subtitle="Ce qui vient des clients et attend une réponse"
+        countBg="#FDECEC"
+        countColor="#B91C1C"
+        rows={zone1Rows}
+        emptyLabel="Rien à traiter pour l'instant."
+        accentue={zone1Rows.length > 0}
+        headerAction={
+          <button
+            onClick={() => onAjouterRappel && onAjouterRappel()}
+            className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
+            style={{ color: ACCENT }}
+          >
+            <Phone size={12} /> Ajouter un appel à rappeler
+          </button>
+        }
+      />
+
+      <CommandZone
+        icon={Bot}
+        iconBg={ACCENT_SOFT}
+        iconColor={ACCENT}
+        title="Prêt à valider"
+        subtitle="Éléments en attente de votre validation"
+        countBg={ACCENT_SOFT}
+        countColor={ACCENT}
+        rows={zone2Rows}
+        emptyLabel="Rien de préparé pour l'instant."
+      />
+    </div>
+  );
+
   return (
     <div className="space-y-5">
       {/* LA JOURNÉE, EN HAUT — disposition validée le 13 septembre 2026.
-          Remplace le grand « Bonjour », les quatre cartes de compteurs et les
-          raccourcis déjà présents dans la barre latérale. Ce qui suit — les
-          demandes et devis à traiter, le prêt à valider, l'argent à risque —
-          reste : aucun de ces trois n'a d'autre écran où vivre, et le
-          vérifier a été le premier travail de cette intégration. */}
+          Remplace le grand « Bonjour », les quatre cartes de compteurs, les
+          raccourcis déjà présents dans la barre latérale — et « Votre
+          journée », qui redonnait la progression de l'atelier et les prochains
+          rendez-vous, avec un comptage DIFFÉRENT : il annonçait « 0 prêt »
+          quand le résumé d'à côté en comptait deux, parce qu'il ne regardait
+          que les rendez-vous du jour. Deux lectures du même fait, dont une
+          fausse. Une seule reste. */}
       <div className="nx-apparait">
         <AujourdhuiJour
+          zonesTravail={COCKPIT_OPPORTUNITES_ACTIF ? null : zonesTravail}
           rendezVous={rendezVous}
           devisList={devisList}
           ordresReparation={ordresReparation}
@@ -2154,7 +2210,7 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, or
       </div>
 
 
-      {COCKPIT_OPPORTUNITES_ACTIF ? (
+      {COCKPIT_OPPORTUNITES_ACTIF && (
         <CentreDecisionnel
           onCompteurs={setCockpitCompteurs}
           garageId={garageId}
@@ -2178,65 +2234,14 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, or
           onOuvrirInspection={onOuvrirInspection}
           onToast={onToast}
         />
-      ) : zone1Rows.length + zone2Rows.length + zone3Rows.length === 0 ? (
-        // JOURNÉE CALME. Les trois zones vides occupaient 275 px pour dire
-        // trois fois « rien », sur la meilleure place du tableau de bord. Et la
-        // phrase de l'en-tête l'annonce déjà : le répéter ici en ferait trois
-        // fois la même information, en comptant la pastille d'ouverture.
-        // Ne restent que les deux actions d'ajout, seule chose utile de ces
-        // cartes.
-        <div className="nx-apparait flex items-center gap-4 flex-wrap px-1">
-          <button
-            onClick={() => onAjouterRappel && onAjouterRappel()}
-            className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
-            style={{ color: ACCENT }}
-          >
-            <Phone size={12} /> Un appel à rappeler
-          </button>
-          <button
-            onClick={() => onOuvrirTravailDiffereModal && onOuvrirTravailDiffereModal()}
-            className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
-            style={{ color: ACCENT }}
-          >
-            <Plus size={12} /> Un travail à relancer
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-4 nx-cascade">
-          <CommandZone
-            icon={AlertTriangle}
-            iconBg="#FDECEC"
-            iconColor="#DC2626"
-            title="Demandes et devis à traiter"
-            subtitle="Ce qui vient des clients et attend une réponse"
-            countBg="#FDECEC"
-            countColor="#B91C1C"
-            rows={zone1Rows}
-            emptyLabel="Rien à traiter pour l'instant."
-            accentue={zone1Rows.length > 0}
-            headerAction={
-              <button
-                onClick={() => onAjouterRappel && onAjouterRappel()}
-                className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
-                style={{ color: ACCENT }}
-              >
-                <Phone size={12} /> Ajouter un appel à rappeler
-              </button>
-            }
-          />
+      )}
 
-          <CommandZone
-            icon={Bot}
-            iconBg={ACCENT_SOFT}
-            iconColor={ACCENT}
-            title="Prêt à valider"
-            subtitle="Éléments en attente de votre validation"
-            countBg={ACCENT_SOFT}
-            countColor={ACCENT}
-            rows={zone2Rows}
-            emptyLabel="Rien de préparé pour l'instant."
-          />
-
+      {/* ARGENT À RISQUE reste hors de la zone de travail : ce n'est pas une
+          décision du jour, c'est une veille. Une seule ligne quand il n'y a
+          rien, et le geste d'ajout dans tous les cas — il n'existe nulle part
+          ailleurs. */}
+      {!COCKPIT_OPPORTUNITES_ACTIF && (
+        <div className="nx-apparait">
           <CommandZone
             icon={CircleDollarSign}
             iconBg="#FEF3E2"
@@ -2277,61 +2282,46 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, or
         onAller={onAllerConfigurer}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <VotreJournee
-            todayAppts={todayAppts}
-            stageCounts={stageCounts}
-            mecaniciensActifs={mecaniciensActifs}
-            alertesAtelier={alertesAtelier}
-            onSelectAppt={onSelectAppt}
-            setView={setView}
-          />
-        </div>
+      {/* CE MOIS-CI — UN ACCÈS, PAS UN TABLEAU
+          Le détail complet vit dans Statistiques, et la facturation dans
+          Facturation. Répéter ici trois chiffres qu'on retrouve à un clic
+          allongeait la page sans rien apprendre. La ligne reste — un garage
+          veut voir son mois — mais en une ligne, et elle mène au détail. */}
+      {peutVoir(monRole, "stats") && (
+        <button
+          type="button"
+          onClick={() => setView(factures.length === 0 ? "factures" : "stats")}
+          className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 flex items-center justify-between gap-3 text-left hover:border-slate-300"
+        >
+          <span className="text-[12.5px] text-slate-500">
+            {factures.length === 0 ? (
+              <>Votre chiffre d&apos;affaires s&apos;affichera ici dès votre première facture.</>
+            ) : (
+              <>
+                <b className="text-slate-900 font-bold tabular-nums">{caMoisCourant.toLocaleString("fr-FR")} €</b> ce mois-ci
+                {" · "}{rdvFactures} facture{rdvFactures > 1 ? "s" : ""}
+                {panierMoyen ? ` · ${panierMoyen} € de panier moyen` : ""}
+              </>
+            )}
+          </span>
+          <span className="text-[12.5px] font-semibold whitespace-nowrap flex items-center gap-1" style={{ color: ACCENT }}>
+            {factures.length === 0 ? "Ouvrir la facturation" : "Voir les statistiques"} <ChevronRight size={13} />
+          </span>
+        </button>
+      )}
 
-        {/* Revue du 12 septembre 2026 : un garage sans facture lisait
-            « 0 € · 0 · — ». Trois cases vides ne renseignent pas, elles
-            occupent. Tant qu'aucune facture n'existe, on dit ce qui remplira
-            ce bloc ; il reprend sa forme chiffrée dès la première. */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-          <div className="font-semibold text-slate-900 text-[14.5px] mb-3">Ce mois-ci</div>
-          {factures.length === 0 ? (
-            <div className="text-[13px] text-slate-500 leading-snug">
-              Votre chiffre d&apos;affaires s&apos;affichera ici dès votre première facture.
-              {peutFacturer(monRole) && (
-                <button
-                  type="button"
-                  onClick={() => setView("factures")}
-                  className="block mt-2 text-[12.5px] font-semibold"
-                  style={{ color: ACCENT }}
-                >
-                  Ouvrir la facturation
-                </button>
-              )}
-            </div>
-          ) : (
-            <>
-              <div className="text-[26px] font-bold text-slate-900 tracking-tight tabular-nums">{caMoisCourant.toLocaleString("fr-FR")} €</div>
-              <div className="text-[12px] text-slate-500 mt-0.5 mb-3">Chiffre d&apos;affaires</div>
-              <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
-                <span className="text-slate-500">RDV facturés</span>
-                <span className="font-semibold text-slate-900">{rdvFactures}</span>
-              </div>
-              <div className="flex items-center justify-between text-[13px] py-2 border-t border-slate-100">
-                <span className="text-slate-500">Panier moyen</span>
-                <span className="font-semibold text-slate-900">{panierMoyen ? `${panierMoyen} €` : "—"}</span>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
+      {/* « Nexora a repéré » ne répète pas ce qui est déjà listé au-dessus.
+          La pastille « 2 devis en attente » annonçait exactement les deux
+          lignes de « Prêt à valider », à trois centimètres : le garage lisait
+          deux fois le même travail et pouvait croire à quatre devis. Ces
+          pastilles ne gardent donc que ce qui n'a pas d'autre présence sur la
+          page — les créneaux à valider et les inspections, notamment. */}
       <NexoraARepere
         actif={COCKPIT_OPPORTUNITES_ACTIF}
         cockpitCompteurs={cockpitCompteurs}
         propositionsCount={propositionsRecentes.length + propositionsEnRetard.length}
-        devisEnAttenteCount={devisEnAttenteTous.length}
-        travauxEchusCount={travauxTries.length}
+        devisEnAttenteCount={zone2Rows.length > 0 ? 0 : devisEnAttenteTous.length}
+        travauxEchusCount={zone3Rows.length > 0 ? 0 : travauxTries.length}
         setView={setView}
       />
 

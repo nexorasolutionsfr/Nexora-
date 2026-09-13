@@ -24,6 +24,13 @@ import { AGIT_GARAGE, CIBLE_ATELIER } from "../atelier/filVehicule.js";
  * derrière la limite d'affichage : une contradiction qu'on ne voit pas se
  * propage, et un client qui attend sans le savoir attend pour rien.
  */
+/**
+ * Au-delà de ce délai, une visite déjà restituée quitte Aujourd'hui : ce qui
+ * lui manque (une facture, le plus souvent) se rattrape depuis Facturation,
+ * pas depuis l'écran du matin.
+ */
+export const JOURS_VISITE_CLOSE = 7;
+
 export const RAISONS = [
   { cle: "contradiction", rang: 0, urgent: true },
   { cle: "notification_bloquee", rang: 1, urgent: true },
@@ -133,6 +140,23 @@ export function raisonDePriorite({ fil, rdv, etatEnvoiDevis = null, etatEnvoiFac
   // Le reste ne concerne que ce qui attend un geste DU GARAGE.
   if (fil.quiAgit !== AGIT_GARAGE) return null;
 
+  // UNE VISITE RENDUE IL Y A SIX MOIS N'EST PAS UNE DÉCISION D'AUJOURD'HUI
+  //
+  // Trouvé en revue le 13 septembre : une Clio comptait TROIS lignes, dont
+  // deux mot pour mot identiques — « Générez la facture depuis l'écran
+  // Facturation. » Elles venaient de visites restituées il y a 45 et 180
+  // jours. C'est du rattrapage de facturation, et son écran existe : le fil
+  // le dit lui-même dans sa phrase.
+  //
+  // Même doctrine que pour l'arrivée : « une voiture d'avant-hier restée à
+  // venir relève du ménage, pas de l'urgence ». On garde une semaine, pour
+  // qu'une voiture rendue vendredi soit encore là le lundi.
+  if (etape === "restitue" && rdv?.date_debut) {
+    const rendu = new Date(rdv.date_debut);
+    const joursDepuis = (maintenant.getTime() - rendu.getTime()) / 86400000;
+    if (!Number.isNaN(joursDepuis) && joursDepuis > JOURS_VISITE_CLOSE) return null;
+  }
+
   // Les travaux devaient être finis. Le garage peut agir : prévenir, ou finir.
   if (["depose", "diagnostic", "intervention"].includes(etape) && rdv?.date_fin && memeJour(rdv.date_debut, maintenant)) {
     const fin = new Date(rdv.date_fin);
@@ -189,7 +213,37 @@ export function classerPriorites(dossiers = [], maintenant = new Date()) {
     const tb = b.rdv?.date_debut ? new Date(b.rdv.date_debut).getTime() : Infinity;
     return ta - tb;
   });
-  return lignes;
+
+  // LA MÊME PHRASE SUR LA MÊME VOITURE N'EST PAS DEUX TÂCHES
+  //
+  // Un véhicule porte plusieurs visites. Deux d'entre elles peuvent produire
+  // exactement la même ligne — même voiture, même raison, même mot — et le
+  // garage lit alors deux fois le même travail. On garde la première, qui est
+  // déjà la plus urgente ou la plus ancienne par le tri ci-dessus.
+  //
+  // Le tri vient AVANT : dédoublonner sur une liste non triée garderait une
+  // ligne au hasard.
+  const vues = new Set();
+  return lignes.filter((l) => {
+    const cle = `${l.rdv?.vehicule_id || l.id}|${l.raisonCle}|${l.raison}`;
+    if (vues.has(cle)) return false;
+    vues.add(cle);
+    return true;
+  });
+}
+
+/**
+ * Ce que compte le résumé : des ACTIONS, et les voitures qu'elles concernent.
+ *
+ * « 11 demandent une décision de votre part » se lisait comme onze voitures.
+ * Il y en avait neuf : deux d'entre elles portaient deux gestes distincts.
+ * Un chiffre qu'on comprend de travers est pire qu'un chiffre absent — le
+ * garagiste compte ses places et son temps avec.
+ */
+export function compterPriorites(lignes = []) {
+  const vehicules = new Set();
+  for (const l of lignes) vehicules.add(l.rdv?.vehicule_id || l.id);
+  return { actions: lignes.length, vehicules: vehicules.size };
 }
 
 /**

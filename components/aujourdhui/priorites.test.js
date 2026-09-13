@@ -8,6 +8,7 @@ import {
   lireEtatEnvoi,
   arriveesDuJour,
   classerPriorites,
+  compterPriorites,
   decouperPriorites,
   pretesARendre,
   raisonDePriorite,
@@ -338,4 +339,48 @@ test("un créneau dépassé nomme la FIN des travaux, pas l'heure d'arrivée", (
   assert.doesNotMatch(r.texte, /07:00/);
   const arrivee = raisonDePriorite(dossier({ etape: "a_venir", debut: aujourdhui(8) }), MAINTENANT);
   assert.match(arrivee.texte, /Attendue à 08:00/);
+});
+
+// --- Ce que la revue du 13 septembre a trouvé sur la page entière ----------
+
+test("la même phrase sur la même voiture ne fait pas deux tâches", () => {
+  // Relevé en revue : une Clio portait TROIS lignes, dont deux mot pour mot
+  // identiques, parce qu'elle avait plusieurs visites. Le garage lisait deux
+  // fois le même travail.
+  const vieille = new Date("2026-09-05T09:00:00+02:00").toISOString();
+  const commun = { etape: "restitue", debut: vieille, fin: vieille, ordre: { statut: "termine" } };
+  const lignes = classerPriorites([
+    { ...dossier({ ...commun, id: "v1" }), rdv: { id: "v1", vehicule_id: "AUTO", statut_atelier: "restitue", date_debut: vieille, date_fin: vieille } },
+    { ...dossier({ ...commun, id: "v2" }), rdv: { id: "v2", vehicule_id: "AUTO", statut_atelier: "restitue", date_debut: vieille, date_fin: vieille } },
+  ], MAINTENANT);
+  const textes = lignes.map((l) => l.raison);
+  assert.equal(new Set(textes).size, textes.length, `lignes répétées : ${JSON.stringify(textes)}`);
+});
+
+test("une visite rendue il y a longtemps quitte Aujourd'hui", () => {
+  // Six mois après, une facture manquante est du rattrapage : son écran est
+  // Facturation, et le fil le dit lui-même.
+  const vieux = new Date("2026-03-01T09:00:00+02:00").toISOString();
+  const d = dossier({ etape: "restitue", debut: vieux, fin: vieux, ordre: { statut: "termine" } });
+  assert.equal(raisonDePriorite(d, MAINTENANT), null);
+});
+
+test("une voiture rendue cette semaine reste visible", () => {
+  // Rendue vendredi, on est dimanche : le garage doit encore la voir.
+  const vendredi = new Date("2026-09-11T09:00:00+02:00").toISOString();
+  const d = dossier({ etape: "restitue", debut: vendredi, fin: vendredi, ordre: { statut: "termine" } });
+  const r = raisonDePriorite(d, MAINTENANT);
+  assert.ok(r, "une visite de cette semaine ne doit pas disparaître");
+});
+
+test("le résumé compte des actions, et sait sur combien de voitures", () => {
+  // « 11 demandent une décision » se lisait comme onze voitures. Il y en
+  // avait neuf.
+  const lignes = [
+    { id: "a", rdv: { vehicule_id: "V1" } },
+    { id: "b", rdv: { vehicule_id: "V1" } },
+    { id: "c", rdv: { vehicule_id: "V2" } },
+  ];
+  assert.deepEqual(compterPriorites(lignes), { actions: 3, vehicules: 2 });
+  assert.deepEqual(compterPriorites([]), { actions: 0, vehicules: 0 });
 });

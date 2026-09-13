@@ -195,7 +195,7 @@ de lecture.
 
 Vérifié en coupant réellement la requête (`BLOQUER_URL` de
 `scripts/recette/capture.mjs`) :
-`docs/recette/captures/APRES3-aujourdhui-erreur-chargement.png`.
+`docs/recette/captures/APRES4-aujourdhui-erreur-chargement.png`.
 
 ## Les destinations, vérifiées une par une
 
@@ -204,7 +204,29 @@ arrivée et revenir à la liste, ouvrir l'aperçu de « Prévenir le client »,
 revalider un envoi bloqué (motif et date affichés avant), chercher une facture
 par son numéro, « Voir dans l'Atelier » et le retour.
 
-Captures : `docs/recette/captures/APRES3-aujourdhui-*.png`.
+Captures : `docs/recette/captures/APRES4-aujourdhui-*.png`.
+
+## Une seule lecture de chaque fait
+
+La page portait deux comptages de l'atelier. Celui de « Votre journée »
+limitait « prêt » et « restitué » aux rendez-vous du jour, et annonçait donc
+**0 prêt** quand le résumé d'à côté en comptait **2**. Le bloc est supprimé :
+le résumé Atelier d'Aujourd'hui est le seul, et il compte les quatre files
+comme l'écran Atelier les affiche.
+
+Même règle pour le reste de la page :
+
+| Ce qui est affiché | Où il vit, et une seule fois |
+|---|---|
+| progression de l'atelier, prochains rendez-vous | résumé **Atelier** et **Arrivées attendues**, en haut |
+| demandes, devis à traiter, prêt à valider | **sous les priorités**, dans la colonne de travail |
+| devis en attente | « Prêt à valider » — la pastille « Nexora a repéré » s'efface quand le bloc les liste |
+| chiffre d'affaires du mois | **une ligne** qui mène à Statistiques |
+| visite restituée depuis plus de 7 jours | **Facturation**, « RDV terminés à facturer » — sans limite de date |
+| travaux différés, appels à rappeler | « Argent à risque » et les deux gestes d'ajout, qui n'existent nulle part ailleurs |
+
+Et le résumé compte des **actions**, pas des voitures : « 9 actions vous
+attendent », avec « sur N voitures » dès que les deux chiffres diffèrent.
 
 ## Les rôles
 

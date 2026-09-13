@@ -29,10 +29,10 @@ seul jeu de faits.
 
 | | Avant (`origin/main`) | Après |
 |---|---|---|
-| journée habituelle, bureau | `AVANT3-aujourdhui-habituelle-bureau.png` | `APRES3-aujourdhui-habituelle-bureau.png` |
-| journée habituelle, téléphone | `AVANT3-aujourdhui-habituelle-mobile.png` | `APRES3-aujourdhui-habituelle-mobile.png` |
-| journée vide | `AVANT3-aujourdhui-vide-bureau.png` | `APRES3-aujourdhui-vide-bureau.png` |
-| nouveau garage | `AVANT3-aujourdhui-nouveau-bureau.png` | `APRES3-aujourdhui-nouveau-bureau.png` |
+| journée habituelle, bureau | `AVANT4-aujourdhui-habituelle-bureau.png` | `APRES4-aujourdhui-habituelle-bureau.png` |
+| journée habituelle, téléphone | `AVANT4-aujourdhui-habituelle-mobile.png` | `APRES4-aujourdhui-habituelle-mobile.png` |
+| journée vide | — (l'écran d'avant ne distinguait pas les deux vides) | `APRES4-aujourdhui-vide-bureau.png` |
+| nouveau garage | — (idem) | `APRES4-aujourdhui-nouveau-bureau.png` |
 
 Ce que l'avant montrait en premier : un bandeau « Bonjour, <nom du garage> », la
 date, quatre compteurs, puis « Mettez votre garage en route ». La première
@@ -49,12 +49,12 @@ garagiste qui compte ses places s'en serait aperçu avant nous.
 
 | Situation | Bureau (1280×900) | Téléphone (375×812) |
 |---|---|---|
-| habituelle | `APRES3-aujourdhui-habituelle-bureau.png` | `APRES3-aujourdhui-habituelle-mobile.png` |
-| chargée | `APRES3-aujourdhui-chargee-bureau.png` | `APRES3-aujourdhui-chargee-mobile.png` |
-| vide | `APRES3-aujourdhui-vide-bureau.png` | `APRES3-aujourdhui-vide-mobile.png` |
-| nouveau garage | `APRES3-aujourdhui-nouveau-bureau.png` | `APRES3-aujourdhui-nouveau-mobile.png` |
+| habituelle | `APRES4-aujourdhui-habituelle-bureau.png` | `APRES4-aujourdhui-habituelle-mobile.png` |
+| chargée | `APRES4-aujourdhui-chargee-bureau.png` | `APRES4-aujourdhui-chargee-mobile.png` |
+| vide | `APRES4-aujourdhui-vide-bureau.png` | `APRES4-aujourdhui-vide-mobile.png` |
+| nouveau garage | `APRES4-aujourdhui-nouveau-bureau.png` | `APRES4-aujourdhui-nouveau-mobile.png` |
 
-Plus la page entière : `APRES3-aujourdhui-habituelle-pleine-page.png`.
+Toutes ces captures sont des **pages entières**, pas des écrans : c'est la page complète qui devait redevenir cohérente.
 
 Ce qui s'y vérifie :
 
@@ -75,6 +75,37 @@ Ce qui s'y vérifie :
 - **Le comptage ne ment pas** : « 7 voitures au garage, 4 attendues » — les
   attendues ne sont pas comptées comme présentes.
 
+## La consolidation du 13 septembre (soir)
+
+La revue de la page entière a trouvé ce que les captures d'écran cadrées ne
+montraient pas : **le nouvel Aujourd'hui était empilé au-dessus d'une grande
+partie de l'ancien**, et les deux ne disaient pas la même chose.
+
+| Constat | Correction |
+|---|---|
+| « Votre journée » affichait **0 PRÊT** pendant que le résumé Atelier, dix centimètres plus haut, comptait **Prêtes 2**. `calculerProgressionAtelier` limitait « prêt » et « restitué » aux rendez-vous DU JOUR : une voiture déposée hier et prête ce matin n'y figurait pas. | Le bloc est **supprimé**. Sa progression d'atelier, ses prochains rendez-vous et son alerte « en attente client ou pièce » sont tous dans le résumé Atelier et les arrivées. Un seul comptage reste. |
+| « Demandes et devis à traiter » et « Prêt à valider » vivaient tout en bas, après trois autres cadres. | Ils remontent **sous les priorités, dans la colonne large** — là où l'écran de bureau laissait du vide. Mêmes lignes, mêmes actions. |
+| « Nexora a repéré · **2 devis en attente** » annonçait exactement les deux lignes de « Prêt à valider », trois cadres plus bas. On pouvait croire à quatre devis. | Les pastilles ne gardent que ce qui n'a **pas d'autre présence** sur la page. |
+| « Ce mois-ci » répétait trois chiffres qu'on retrouve dans Statistiques. | Réduit à **une ligne** qui mène au détail. Rien n'est perdu. |
+| **La Clio BB-202-BB comptait trois lignes**, dont deux mot pour mot identiques : « Générez la facture depuis l'écran Facturation. » Elles venaient de visites restituées il y a 45 et 180 jours. | Deux gardes dans `priorites.js` : une visite **restituée depuis plus de 7 jours** quitte Aujourd'hui, et la **même phrase sur la même voiture** ne fait plus deux tâches. |
+| « **11 demandent une décision de votre part** » se lisait comme onze voitures. | La phrase dit maintenant **« 9 actions vous attendent »**, et précise « sur N voitures » quand les deux chiffres diffèrent. |
+
+### Aucune action perdue — vérifié, pas supposé
+
+Les deux lignes retirées des priorités sont **présentes dans Facturation**,
+onglet Factures, bloc « RDV terminés à facturer », chacune avec son bouton
+« Générer la facture » :
+
+> Étienne Vasseur — Renault Clio IV · BB-202-BB · **Révision complète**
+> Étienne Vasseur — Renault Clio IV · BB-202-BB · **Vidange**
+
+Capture : `APRES4-facturation-visites-a-facturer.png`. Ce bloc n'a aucune
+limite de date : il liste **tout** rendez-vous restitué sans facture.
+
+Les demandes, les appels à rappeler et les validations gardent leur bloc et
+leurs boutons ; « Argent à risque » et « Ajouter un travail à relancer »
+restent, en une ligne, parce qu'ils n'existent nulle part ailleurs.
+
 ### Une différence entre deux captures, qui est une preuve et non un défaut
 
 Sur la journée habituelle, la 4ᵉ priorité change entre la capture bureau
@@ -86,11 +117,11 @@ lit — c'est exactement la correction demandée sur les alertes de retard.
 
 | Geste | Ce qui se passe | Capture |
 |---|---|---|
-| Clic sur une arrivée | le **dossier du véhicule** s'ouvre dans le même contexte, avec le client, l'intervention en cours et le rendez-vous | `APRES3-aujourdhui-dossier-depuis-arrivee.png` |
-| Fermer le dossier | retour à la liste, à sa place | `APRES3-aujourdhui-retour-liste.png` |
-| **Prévenir le client** | l'aperçu réel : destinataire `nadia.lemoine@nexora-recette.invalid`, message exact, **Annuler / Envoyer le message**. Annulé — **rien n'est parti** | `APRES3-aujourdhui-apercu-prevenir.png` |
-| **Revalider l'envoi** | « Envoi bloqué depuis le 23 août — le message a changé depuis la validation : nouvelle validation nécessaire », **avant** toute revalidation | `APRES3-aujourdhui-revalider-motif.png` |
-| Recherche `F-2026-0001` | la facture, avec sa voiture, son client et son état (Payée · 84,00 €) | `APRES3-aujourdhui-recherche-facture.png` |
+| Clic sur une arrivée | le **dossier du véhicule** s'ouvre dans le même contexte, avec le client, l'intervention en cours et le rendez-vous | `APRES4-aujourdhui-dossier-depuis-arrivee.png` |
+| Fermer le dossier | retour à la liste, à sa place | `APRES4-aujourdhui-retour-liste.png` |
+| **Prévenir le client** | l'aperçu réel : destinataire `nadia.lemoine@nexora-recette.invalid`, message exact, **Annuler / Envoyer le message**. Annulé — **rien n'est parti** | `APRES4-aujourdhui-apercu-prevenir.png` |
+| **Revalider l'envoi** | « Envoi bloqué depuis le 23 août — le message a changé depuis la validation : nouvelle validation nécessaire », **avant** toute revalidation | `APRES4-aujourdhui-revalider-motif.png` |
+| Recherche `F-2026-0001` | la facture, avec sa voiture, son client et son état (Payée · 84,00 €) | `APRES4-aujourdhui-recherche-facture.png` |
 
 ### Les trois anciennes voitures prêtes n'ont pas été nettoyées
 
@@ -109,15 +140,15 @@ Requête `rendez_vous` réellement coupée au niveau du réseau :
 > persiste, ne vous fiez pas à cet écran pour savoir ce qu'il y a à faire.
 
 avec un bouton **Recharger**. Capture :
-`APRES3-aujourdhui-erreur-chargement.png`.
+`APRES4-aujourdhui-erreur-chargement.png`.
 
 ## Les rôles
 
 | Rôle | Capture | Résultat |
 |---|---|---|
-| dirigeant | `APRES3-aujourdhui-habituelle-bureau.png` | écran complet |
-| accueil | `APRES3-aujourdhui-role-accueil.png` | même écran ; Statistiques et Paramètres absents de son menu |
-| mécanicien | `APRES3-aujourdhui-role-mecanicien.png` | **n'atteint pas Aujourd'hui** — « Mon atelier », sans prix ni contact client |
+| dirigeant | `APRES4-aujourdhui-habituelle-bureau.png` | écran complet |
+| accueil | `APRES4-aujourdhui-role-accueil.png` | même écran ; Statistiques et Paramètres absents de son menu |
+| mécanicien | `APRES4-aujourdhui-role-mecanicien.png` | **n'atteint pas Aujourd'hui** — « Mon atelier », sans prix ni contact client |
 
 ## Ce qui a été supprimé avec l'intégration
 
