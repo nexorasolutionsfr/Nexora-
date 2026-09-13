@@ -28,6 +28,7 @@ import DevisVueClient from "./devis-lignes/DevisVueClient";
 import { vueDepuisDevisGarage } from "./devis-lignes/vueClient";
 import { vehiculeDepuisSaisie } from "./clients/vehicule";
 import { MESSAGE_VEHICULE_ECHEC, lectureCreationClient, messageDevisCree } from "./clients/creationClient";
+import { estDoublonDePlaque, messageErreurVehicule } from "./clients/erreurVehicule";
 import { horairesRenseignes } from "./garage-os/miseEnRoute";
 import { CANAUX as CANAUX_ENVOI, CAPACITES, canalEffectif, mentionCanalIndisponible } from "./parametres/capacites";
 import { lignesEtatEnvois } from "./garage-os/etatDesEnvois";
@@ -7101,6 +7102,7 @@ if (updateError) {
     // client : il est enregistré, et l'écran appelant s'arrête là plutôt que
     // de continuer sans voiture (revue du 2026-09-12).
     let client = data;
+    let causeVehicule = null;
     if (vehicule) {
       const { data: v, error: erreurVehicule } = await supabase
         .from("vehicules")
@@ -7109,6 +7111,7 @@ if (updateError) {
         .single();
       if (erreurVehicule) {
         console.error("Erreur création véhicule :", erreurVehicule);
+        causeVehicule = erreurVehicule;
       } else {
         client = { ...data, vehicules: [...(Array.isArray(data.vehicules) ? data.vehicules : []), v] };
       }
@@ -7116,7 +7119,15 @@ if (updateError) {
     setClients((prev) => [...prev, client]);
     const lu = lectureCreationClient(client, vehicule);
     if (lu.vehiculeEnEchec) {
-      flashToast(MESSAGE_VEHICULE_ECHEC, "error");
+      // Le client EST enregistré : c'est la moitié utile du geste, et la
+      // phrase générique le dit déjà. Quand la cause est un doublon de plaque,
+      // on l'ajoute — c'est la seule que le garagiste peut corriger lui-même.
+      flashToast(
+        estDoublonDePlaque(causeVehicule)
+          ? `Client enregistré. ${String(causeVehicule.message).trim()}`
+          : MESSAGE_VEHICULE_ECHEC,
+        "error",
+      );
     } else {
       flashToast(lu.vehiculeId ? "Client et véhicule enregistrés" : "Client enregistré");
     }
@@ -7135,7 +7146,9 @@ if (updateError) {
       .single();
     if (error) {
       console.error("Erreur création véhicule :", error);
-      flashToast("Impossible de créer le véhicule", "error");
+      // La base sait dire « ce garage a déjà cette plaque, ouvrez sa fiche » :
+      // on la laisse parler plutôt que de recouvrir sa réponse d'un générique.
+      flashToast(messageErreurVehicule(error), "error");
       return null;
     }
     setClients((prev) => prev.map((c) => (c.id === client_id
