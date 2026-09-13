@@ -14,16 +14,6 @@ import {
   FACTURE_STATUT_TONE,
 } from "./vehicleCaseFileConstants";
 
-// « Ouvrir » ne dit pas quoi. Chaque destination a son libellé.
-const LIBELLE_ACTION = {
-  atelier: "Ouvrir la fiche atelier",
-  devis: "Ouvrir le devis",
-  agenda: "Voir le rendez-vous",
-  factures: "Ouvrir la facture",
-  ordres_reparation: "Ouvrir la fiche atelier",
-  devis_sans_intervention: "Voir les devis",
-};
-
 /** Les devis n'ont pas de numéro en base : on en dérive une référence stable,
  *  lisible et distinctive, plutôt que d'inventer une numérotation. */
 function referenceDevis(devis) {
@@ -277,7 +267,7 @@ export default function VehicleCaseFileView({
                     className="mt-3.5 inline-flex items-center gap-1.5 text-[13px] font-semibold rounded-xl px-3.5 h-10 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
                     style={{ backgroundColor: ACCENT }}
                   >
-                    {LIBELLE_ACTION[dossier.prochaineAction.cible] || "Ouvrir"} <ArrowRight size={14} />
+                    {dossier.fil.libelleAction || "Ouvrir"} <ArrowRight size={14} />
                   </button>
                 )}
               </div>
@@ -291,8 +281,11 @@ export default function VehicleCaseFileView({
               « où en est le devis, la facture, l'atelier » — et les états
               restent distincts, jamais fondus en un seul. */}
           <div>
+            {/* Sans rendez-vous ni fiche atelier, il n'y a pas d'intervention :
+                il y a un document isolé. On ne l'appelle pas autrement qu'il
+                n'est. */}
             <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
-              Intervention en cours
+              {dossier.aUneIntervention ? "Intervention en cours" : "Situation actuelle"}
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
               <LigneEtat
