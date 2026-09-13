@@ -20,7 +20,7 @@ const ilYA = (jours, heure) => {
 /** L'instant de référence des trois scénarios : 10 h 30, un jour ouvré. */
 export const MAINTENANT_PROTO = new Date(h(10, 30));
 
-function v({ id, plaque, vehicule, client, prestation, etape, debut, duree = 120, mecanicien = null, devis = null, ordre = null, facture = null, etatEnvoiDevis = null, etatEnvoiFacture = null, clientPrevenu = null }) {
+function v({ id, plaque, vehicule, client, prestation, etape, debut, duree = 120, mecanicien = null, devis = null, ordre = null, facture = null, etatEnvoiDevis = null, etatEnvoiFacture = null, etatNotification = null }) {
   const fin = new Date(new Date(debut).getTime() + duree * 60000).toISOString();
   return {
     id,
@@ -35,17 +35,37 @@ function v({ id, plaque, vehicule, client, prestation, etape, debut, duree = 120
     facture,
     etatEnvoiDevis,
     etatEnvoiFacture,
-    clientPrevenu,
+    etatNotification,
   };
 }
 
-// --- 1. Garage vide --------------------------------------------------------
-export const JOURNEE_VIDE = {
-  cle: "vide",
-  titre: "Garage vide",
-  description: "Premier jour, ou dimanche soir.",
-  garage: { nom: "Garage Renard", configurationComplete: false, horairesRenseignes: false },
+// --- 1. NOUVEAU garage : aucune donnée, jamais ------------------------------
+//
+// Ce n'est pas la même chose qu'une journée creuse. Ici le garage n'a ni
+// client, ni véhicule, ni historique : il faut l'aider à démarrer.
+export const NOUVEAU_GARAGE = {
+  cle: "nouveau",
+  titre: "Nouveau garage",
+  description: "Aucune donnée : ni client, ni véhicule, ni historique.",
+  garage: { nom: "Garage Renard", configurationComplete: false, horairesRenseignes: false, aDesClients: false },
   dossiers: [],
+};
+
+// --- 1 bis. Garage ACTIF, journée vide --------------------------------------
+//
+// Le garage tourne — clients, véhicules, historique — mais rien n'est prévu
+// aujourd'hui. Lui parler de « votre première voiture » serait absurde.
+export const JOURNEE_VIDE = {
+  cle: "journee-vide",
+  titre: "Journée vide",
+  description: "Garage actif, rien de prévu aujourd'hui.",
+  garage: { nom: "Garage Renard", configurationComplete: true, horairesRenseignes: true, aDesClients: true },
+  dossiers: [
+    // Des visites passées, closes : le garage a une histoire, mais rien
+    // aujourd'hui. Aucune ne remonte, aucune n'est comptée comme présente.
+    v({ id: "jv1", plaque: "AB-114-CD", vehicule: "Peugeot 208", client: "Camille Perrin", prestation: "Révision complète", etape: "restitue", debut: ilYA(4, 9), facture: { statut: "payee" } }),
+    v({ id: "jv2", plaque: "CE-220-FG", vehicule: "Renault Clio IV", client: "Étienne Vasseur", prestation: "Vidange", etape: "restitue", debut: ilYA(9, 14), duree: 45, facture: { statut: "payee" } }),
+  ],
 };
 
 // --- 2. Journée habituelle, douze véhicules --------------------------------
@@ -53,13 +73,13 @@ export const JOURNEE_HABITUELLE = {
   cle: "habituelle",
   titre: "Journée habituelle",
   description: "Douze voitures, trois décisions.",
-  garage: { nom: "Garage Renard", configurationComplete: true, horairesRenseignes: true },
+  garage: { nom: "Garage Renard", configurationComplete: true, horairesRenseignes: true, aDesClients: true },
   dossiers: [
     v({ id: "h1", plaque: "AB-114-CD", vehicule: "Peugeot 208", client: "Camille Perrin", prestation: "Révision complète", etape: "a_venir", debut: h(8), mecanicien: "Karim B." }),
     v({ id: "h2", plaque: "CE-220-FG", vehicule: "Renault Clio IV", client: "Étienne Vasseur", prestation: "Plaquettes de frein avant", etape: "depose", debut: h(9), mecanicien: "Karim B." }),
     v({ id: "h3", plaque: "DH-331-JK", vehicule: "Citroën C3", client: "Sonia Bahri", prestation: "Diagnostic électronique", etape: "diagnostic", debut: h(8, 30), duree: 60, mecanicien: "Sofia M." }),
-    v({ id: "h4", plaque: "FL-442-MN", vehicule: "Toyota Yaris", client: "Paul Ferrand", prestation: "Vidange", etape: "pret", debut: h(8), duree: 45, mecanicien: "Karim B.", clientPrevenu: false }),
-    v({ id: "h5", plaque: "GP-553-QR", vehicule: "Ford Focus", client: "Nadia Lemoine", prestation: "Amortisseurs", etape: "pret", debut: ilYA(1, 15), mecanicien: "Sofia M.", clientPrevenu: true }),
+    v({ id: "h4", plaque: "FL-442-MN", vehicule: "Toyota Yaris", client: "Paul Ferrand", prestation: "Vidange", etape: "pret", debut: h(8), duree: 45, mecanicien: "Karim B.", etatNotification: "aucune" }),
+    v({ id: "h5", plaque: "GP-553-QR", vehicule: "Ford Focus", client: "Nadia Lemoine", prestation: "Amortisseurs", etape: "pret", debut: ilYA(1, 15), mecanicien: "Sofia M.", etatNotification: "envoye" }),
     v({ id: "h6", plaque: "HS-664-TV", vehicule: "Volkswagen Golf", client: "Hélène Ngô", prestation: "Courroie de distribution", etape: "intervention", debut: h(8), duree: 240, mecanicien: "Karim B." }),
     v({ id: "h7", plaque: "JW-775-XY", vehicule: "Dacia Sandero", client: "Yanis Cherif", prestation: "Vidange", etape: "a_venir", debut: h(14), duree: 45 }),
     v({ id: "h8", plaque: "KZ-886-AB", vehicule: "Opel Corsa", client: "Olivier Sanchez", prestation: "Freins arrière", etape: "attente_piece", debut: ilYA(1, 9), mecanicien: "Sofia M." }),
@@ -76,13 +96,13 @@ export const JOURNEE_CHARGEE = {
   cle: "chargee",
   titre: "Journée chargée",
   description: "Blocages, retards, noms longs.",
-  garage: { nom: "Garage Renard", configurationComplete: false, horairesRenseignes: true },
+  garage: { nom: "Garage Renard", configurationComplete: false, horairesRenseignes: true, aDesClients: true },
   dossiers: [
     // Une contradiction : l'ordre est terminé, la voiture notée « à venir ».
     v({ id: "c1", plaque: "QR-431-ST", vehicule: "Mercedes Classe A", client: "Marie-Alexandrine de Kervasdoué-Lestrange", prestation: "Remplacement de l'embrayage sur boîte automatique à double embrayage", etape: "a_venir", debut: h(8), mecanicien: "Jean-Baptiste de La Rochefoucauld-Montmorency", ordre: { statut: "termine" } }),
-    v({ id: "c2", plaque: "TU-542-VW", vehicule: "Peugeot 3008", client: "Grégoire Vandenbossche-Delaunay", prestation: "Distribution + pompe à eau", etape: "pret", debut: h(7, 30), mecanicien: "Karim B.", clientPrevenu: false }),
-    v({ id: "c3", plaque: "XY-653-ZA", vehicule: "Renault Kangoo", client: "Établissements Lefebvre & Fils", prestation: "Révision complète", etape: "pret", debut: ilYA(2, 9), mecanicien: "Sofia M.", clientPrevenu: false }),
-    v({ id: "c4", plaque: "BC-764-DE", vehicule: "Audi A3 Sportback", client: "Anne-Sophie Bonnefoy", prestation: "Plaquettes et disques avant", etape: "pret", debut: ilYA(1, 14), mecanicien: "Karim B.", clientPrevenu: false }),
+    v({ id: "c2", plaque: "TU-542-VW", vehicule: "Peugeot 3008", client: "Grégoire Vandenbossche-Delaunay", prestation: "Distribution + pompe à eau", etape: "pret", debut: h(7, 30), mecanicien: "Karim B.", etatNotification: "aucune" }),
+    v({ id: "c3", plaque: "XY-653-ZA", vehicule: "Renault Kangoo", client: "Établissements Lefebvre & Fils", prestation: "Révision complète", etape: "pret", debut: ilYA(2, 9), mecanicien: "Sofia M.", etatNotification: "bloque" }),
+    v({ id: "c4", plaque: "BC-764-DE", vehicule: "Audi A3 Sportback", client: "Anne-Sophie Bonnefoy", prestation: "Plaquettes et disques avant", etape: "pret", debut: ilYA(1, 14), mecanicien: "Karim B.", etatNotification: null }),
     v({ id: "c5", plaque: "FG-875-HI", vehicule: "Volkswagen Tiguan Allspace R-Line", client: "Christophe Mérieux-Charpentier", prestation: "Diagnostic électronique approfondi", etape: "intervention", debut: h(7), duree: 120, mecanicien: "Jean-Baptiste de La Rochefoucauld-Montmorency" }),
     v({ id: "c6", plaque: "JK-986-LM", vehicule: "Citroën Berlingo", client: "Maçonnerie Duval SARL", prestation: "Embrayage", etape: "intervention", debut: h(8), duree: 90, mecanicien: "Karim B." }),
     v({ id: "c7", plaque: "NO-197-PQ", vehicule: "Ford Transit", client: "Boulangerie Saint-Michel", prestation: "Freins avant et arrière", etape: "attente_piece", debut: ilYA(3, 8), mecanicien: "Sofia M." }),
@@ -97,4 +117,4 @@ export const JOURNEE_CHARGEE = {
   ],
 };
 
-export const SCENARIOS = [JOURNEE_VIDE, JOURNEE_HABITUELLE, JOURNEE_CHARGEE];
+export const SCENARIOS = [NOUVEAU_GARAGE, JOURNEE_VIDE, JOURNEE_HABITUELLE, JOURNEE_CHARGEE];

@@ -5,15 +5,23 @@ puis à intégrer — ou pas.
 
 ## L'ouvrir
 
+Depuis le dossier du worktree
+`~/Documents/Codex/2026-08-27/files-mentioned-by-the-user-tu/nexora-atelier-continuite` :
+
 ```bash
-npx pnpm@10.34.5 dev --port 3113
+npx --yes pnpm@10.34.5 dev --port 3113
 ```
 
 Puis : **http://localhost:3113/prototype/aujourdhui**
 
-Trois scénarios en haut de page : **Garage vide**, **Journée habituelle**
-(12 voitures), **Journée chargée** (14 voitures, blocages, noms longs).
-Aucune connexion n'est nécessaire, aucune base n'est lue.
+Si la page reste blanche après un changement de branche, vider le cache de
+développement : `rm -rf .next` puis relancer. C'est ce qui a provoqué le
+« connexion refusée » de la revue — un cache Turbopack resté sur une version
+précédente du tableau de bord.
+
+**Quatre scénarios**, dans la barre violette : **Nouveau garage**,
+**Journée vide**, **Journée habituelle** (12 voitures), **Journée chargée**
+(14 voitures, blocages, noms longs). Aucune connexion, aucune base.
 
 La route renvoie **404 en production** (`process.env.NODE_ENV === "production"`
 → `notFound()`) : elle ne peut pas apparaître sur le site servi aux garages,
@@ -33,13 +41,43 @@ celles du vrai code.
 
 ## La structure
 
+Le prototype est montré **dans le cadre du tableau de bord** — barre latérale
+et recherche. Un écran jugé hors de son cadre se juge mal : la largeur
+disponible et la place de la recherche en dépendent.
+
+La **barre violette** en haut et les **notes de conception** repliées en bas
+sont des **outils de revue**. Elles sont signalées comme telles et
+n'appartiennent pas à l'interface destinée au garage.
+
 | Zone | Contenu |
 |---|---|
 | En-tête | « Aujourd'hui », la date, la recherche globale existante |
-| Situation | Une phrase, deux chiffres : au garage / demandent une décision |
-| **À faire maintenant** | Véhicule, situation, **raison de la priorité**, une action nommée |
-| Arrivées et voitures prêtes | Les heures réellement connues, et l'absence d'heure dite |
-| Atelier | Quatre chiffres, quatre files, une ligne |
+| Situation | Une phrase : **présentes au garage**, **attendues**, décisions en attente |
+| **Colonne principale** | **À faire maintenant** : véhicule, **raison de la priorité**, une action nommée |
+| **Colonne secondaire** (320–360 px) | Arrivées attendues · Voitures prêtes · Argent à risque · Atelier |
+
+Sur téléphone : **une seule colonne, les priorités en premier**.
+
+## Les textes ne disent que ce qui est vérifiable
+
+| Avant | Après | Pourquoi |
+|---|---|---|
+| « Prête, et le client ne le sait pas encore » | « Notification de disponibilité non envoyée » | Nexora sait ce qu'il a envoyé. Il ne sait pas ce que le client sait. |
+| « client prévenu » | « Notification envoyée » | C'est la seule preuve disponible : un message est parti, pas qu'il a été lu. |
+| « L'atelier et l'ordre de réparation se contredisent » | « L'ordre de réparation est terminé, mais la voiture est encore notée "à venir" à l'atelier. Mettez l'atelier à jour. » | La contradiction exacte et le geste. La formule générique obligeait à ouvrir le dossier pour savoir laquelle des deux corriger. |
+| « 13 voitures au garage » | « 9 voitures au garage, 4 attendues » | « Au garage » comptait les voitures pas encore arrivées. |
+| « Créneau de 07:00 dépassé » | « Travaux prévus jusqu'à 09:00, dépassés » | Une heure d'arrivée dépassée ne prouve rien sur l'avancement des travaux. |
+
+### Les six états d'une notification
+
+`aucune`/`a_valider` → **non envoyée** · `en_attente_envoi` → **en attente** ·
+`envoi_en_cours` → **à vérifier** · `envoye` → **envoyée** · `bloque` →
+**bloquée**.
+
+Et le sixième, qui n'en est pas un : **inconnu**. Quand `etat_envoi_atelier`
+n'a pas répondu, l'écran écrit « inconnu » — **jamais « non envoyée »**.
+Conclure qu'un client n'a pas été prévenu sans l'avoir vérifié serait une
+affirmation gratuite sur une personne. Un test fige cette règle.
 
 ## L'ordre des priorités, et pourquoi il est explicable
 
@@ -83,28 +121,46 @@ l'Atelier le même jour (« Créneau de 08:00 dépassé » sur une voiture prêt
 **Décision produit ouverte** : faut-il une heure de restitution convenue ? Elle
 demanderait une colonne, donc une migration.
 
-## Ce qui a été retiré, et où ça vit maintenant
+## Ce qui a été retiré — et où ça vit vraiment
 
-| Retiré | Où le retrouver |
+**Vérifié dans le code, pas supposé.** Une intention de déplacement ne suffit
+pas : chaque ligne ci-dessous a été contrôlée.
+
+| Retiré | Où le retrouver | Vérification |
+|---|---|---|
+| « Bonjour {garage} » | nulle part | le garagiste sait qui il est |
+| Les quatre grandes cartes de compteurs | le résumé **Atelier**, colonne de droite | les quatre files y sont, cliquables |
+| Les raccourcis (Agenda, Clients…) | la **barre latérale** | les neuf entrées de `navGroups` y sont, toutes cliquables |
+| Les explications permanentes sur les envois | **l'écran d'envoi** | `EnvoiDocument` affiche `etat.titre` et `etat.detail` au moment d'envoyer |
+| Les indicateurs financiers | **Statistiques** | `StatistiquesView` calcule CA du mois, évolution, panier moyen, CA par prestation |
+| La carte « Mettez votre garage en route » | une ligne discrète en bas | nomme ce qu'elle débloque |
+
+### L'exception : « Argent à risque » ne bouge pas
+
+Je l'avais annoncé « → Statistiques ». **C'était faux.** Vérification faite :
+cette zone est bâtie sur `travaux_differes` et les clients fidèles dormants, et
+**aucun autre écran ne les montre** — `onOuvrirTravailDiffereModal` n'est passé
+qu'à l'écran Aujourd'hui.
+
+La retirer ne la déplacerait pas : elle la **supprimerait**. Elle reste donc,
+réduite à une ligne — le montant sans le pavé.
+
+**Décision à prendre** : lui faire un écran, ou la garder ici.
+
+## Deux vides, deux écrans
+
+Un garage qui démarre et un garage qui n'a rien aujourd'hui ne se ressemblent
+pas. Les confondre, c'est parler de « votre première voiture » à un garage qui
+en répare depuis trois ans.
+
+| Situation | Ce que dit l'écran |
 |---|---|
-| « Bonjour {garage} » | nulle part — le garagiste sait qui il est |
-| Les quatre grandes cartes de compteurs | le résumé Atelier, une ligne |
-| Les raccourcis (Agenda, Clients, Facturation…) | la barre latérale, où ils sont déjà |
-| Les explications permanentes sur les envois | l'écran d'envoi, au moment où l'on envoie |
-| Le montant « à risque », indicateurs financiers | Statistiques |
-| La carte « Mettez votre garage en route » | une ligne discrète en bas |
+| **Nouveau garage** (aucun client, aucun véhicule) | « Votre garage est prêt. Il n'y a encore aucun client ni véhicule enregistré. » → **Ajouter un client** ou **Importer mon fichier** — les deux chemins qui existent déjà |
+| **Garage actif, journée vide** | « Rien de prévu aujourd'hui. » → **Ouvrir l'agenda**. Jamais « première voiture » |
 
-Le prototype affiche ce tableau en bas de page, pour la revue. Il disparaîtra à
-l'intégration.
-
-## Garage vide, et configuration incomplète
-
-- **Garage vide** : une seule entrée utile — « Prendre un rendez-vous ». Pas
-  de compteurs à zéro, pas de carte de progression, pas de raccourcis.
-- **Garage actif, configuration incomplète** : une ligne grise en bas de page.
-- **Un réglage qui bloque une action précise** est signalé là où il bloque, et
-  nomme ce qu'il débloque : « Vos horaires ne sont pas renseignés : l'agenda
-  proposera des créneaux les jours de fermeture. »
+**Un réglage qui bloque une action précise** est signalé là où il bloque, et
+nomme ce qu'il débloque : « Vos horaires ne sont pas renseignés : l'agenda
+proposera des créneaux les jours de fermeture. »
 
 ## Style
 
@@ -122,6 +178,17 @@ Nexora reste l'accent, et il ne sert qu'aux actions.
 - Il n'est pas branché au tableau de bord : l'écran Aujourd'hui actuel est
   inchangé.
 
+## Les destinations, vérifiées une par une
+
+Cliquées dans le navigateur : les quatre actions de priorité (**Mettre
+l'atelier à jour**, **Revalider l'envoi**, **Prévenir le client**, **Appeler le
+client**), les neuf entrées de la barre latérale, la recherche, les quatre
+files de l'Atelier, et « Argent à risque ». Toutes annoncent une destination
+nommée, avec le véhicule et son état.
+
+**Toutes sont simulées** : le prototype ouvre une fenêtre qui dit où mène
+l'action, il ne l'exécute pas. Aucune n'écrit, aucune n'envoie.
+
 ## Ce qu'il reste à trancher avant intégration
 
 1. La limite de 4 priorités : le bon chiffre ?
@@ -131,3 +198,4 @@ Nexora reste l'accent, et il ne sert qu'aux actions.
 3. Faut-il une heure de restitution convenue (colonne + migration) ?
 4. Que devient l'écran Aujourd'hui actuel : remplacé, ou les deux cohabitent
    un temps ?
+5. « Argent à risque » : un écran à lui, ou il reste sur Aujourd'hui ?

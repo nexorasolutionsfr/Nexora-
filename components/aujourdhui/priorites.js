@@ -26,12 +26,39 @@ import { AGIT_GARAGE, CIBLE_ATELIER } from "../atelier/filVehicule.js";
  */
 export const RAISONS = [
   { cle: "contradiction", rang: 0, urgent: true },
-  { cle: "prete_client_pas_prevenu", rang: 1, urgent: true },
-  { cle: "attendue_en_retard", rang: 2, urgent: false },
-  { cle: "creneau_depasse", rang: 3, urgent: false },
-  { cle: "document_a_envoyer", rang: 4, urgent: false },
-  { cle: "a_vous_de_jouer", rang: 5, urgent: false },
+  { cle: "notification_bloquee", rang: 1, urgent: true },
+  { cle: "notification_non_envoyee", rang: 2, urgent: true },
+  { cle: "notification_incertaine", rang: 3, urgent: false },
+  { cle: "attendue_en_retard", rang: 4, urgent: false },
+  { cle: "creneau_depasse", rang: 5, urgent: false },
+  { cle: "document_a_envoyer", rang: 6, urgent: false },
+  { cle: "a_vous_de_jouer", rang: 7, urgent: false },
 ];
+
+/**
+ * L'ÉTAT D'UN ENVOI SE DEMANDE, IL NE SE DÉDUIT PAS
+ *
+ * Les clés sont celles que rend `etat_envoi_atelier`. `null` n'en est pas une :
+ * c'est l'absence de réponse — la fonction n'a pas encore répondu, ou a
+ * échoué. Cet état-là est **inconnu**, et un inconnu n'est pas un « non
+ * envoyé » : conclure « le client n'a pas été prévenu » sans l'avoir vérifié,
+ * c'est exactement l'erreur que ce produit passe son temps à corriger.
+ */
+export const ENVOI = {
+  aucune: { libelle: "Notification de disponibilité non envoyée", court: "non envoyée", ton: "attention" },
+  a_valider: { libelle: "Notification de disponibilité non envoyée", court: "non envoyée", ton: "attention" },
+  en_attente_envoi: { libelle: "Notification autorisée, départ en attente", court: "en attente", ton: "neutre" },
+  envoi_en_cours: { libelle: "Envoi de la notification à vérifier", court: "à vérifier", ton: "attention" },
+  envoye: { libelle: "Notification envoyée", court: "envoyée", ton: "succes" },
+  bloque: { libelle: "Notification bloquée : à revalider", court: "bloquée", ton: "erreur" },
+};
+
+/** Ce qu'on affiche d'un état d'envoi, y compris quand on ne le connaît pas. */
+export function lireEtatEnvoi(etat) {
+  if (etat && ENVOI[etat]) return { ...ENVOI[etat], connu: true, cle: etat };
+  // Ni « envoyée », ni « non envoyée » : on ne sait pas, et on le dit.
+  return { libelle: "État de la notification inconnu", court: "inconnu", ton: "neutre", connu: false, cle: null };
+}
 
 const PAR_CLE = Object.fromEntries(RAISONS.map((r) => [r.cle, r]));
 
@@ -56,22 +83,41 @@ const memeJour = (valeur, maintenant) => {
  * clos. Une ligne sans raison n'a rien à faire dans « À faire maintenant » :
  * c'est ce qui transformait la liste en inventaire.
  */
-export function raisonDePriorite({ fil, rdv, etatEnvoiDevis = null, etatEnvoiFacture = null, clientPrevenu = null }, maintenant = new Date()) {
+export function raisonDePriorite({ fil, rdv, etatEnvoiDevis = null, etatEnvoiFacture = null, etatNotification = null }, maintenant = new Date()) {
   if (!fil) return null;
 
   // Une incohérence passe avant tout : tant qu'elle est là, aucune décision
   // prise à partir de cet écran n'est fiable.
+  //
+  // La phrase vient de `fil.avertissement`, qui NOMME la contradiction et le
+  // geste : « L'ordre de réparation est terminé, mais la voiture est encore
+  // notée "à venir" à l'atelier. Mettez l'atelier à jour. » Une formule
+  // générique — « l'atelier et l'ordre se contredisent » — obligeait à ouvrir
+  // le dossier pour savoir laquelle des deux corriger.
   if (fil.contradiction) {
-    return { cle: "contradiction", texte: "L'atelier et l'ordre de réparation se contredisent" };
+    return { cle: "contradiction", texte: fil.avertissement || "Contradiction entre l'atelier et l'ordre de réparation" };
   }
 
   const etape = rdv?.statut_atelier || "a_venir";
 
-  // La voiture est prête et le client ne le sait pas : il attend pour rien, et
-  // la place reste occupée. `clientPrevenu` vient de `etat_envoi_atelier` —
-  // on ne le devine pas. `null` = on ne sait pas encore, on ne conclut rien.
-  if (etape === "pret" && clientPrevenu === false) {
-    return { cle: "prete_client_pas_prevenu", texte: "Prête, et le client ne le sait pas encore" };
+  // LA VOITURE EST PRÊTE : QUE SAIT-ON DE LA NOTIFICATION ?
+  //
+  // `etatNotification` vient de `etat_envoi_atelier`. On ne le devine jamais :
+  // `null` veut dire « pas de réponse », donc **inconnu**, et un inconnu ne
+  // remonte pas comme un « non envoyé ». Afficher « le client ne le sait pas »
+  // sans l'avoir vérifié serait une affirmation gratuite sur une personne.
+  if (etape === "pret") {
+    if (etatNotification === "bloque") {
+      return { cle: "notification_bloquee", texte: "Notification bloquée : à revalider" };
+    }
+    if (etatNotification === "aucune" || etatNotification === "a_valider") {
+      return { cle: "notification_non_envoyee", texte: "Notification de disponibilité non envoyée" };
+    }
+    if (etatNotification === "envoi_en_cours") {
+      return { cle: "notification_incertaine", texte: "Envoi de la notification à vérifier" };
+    }
+    // `envoye`, `en_attente_envoi` : rien à faire. `null` : on ne sait pas,
+    // et on ne fabrique pas une tâche à partir d'une ignorance.
   }
 
   // Attendue, l'heure est passée : c'est le moment d'appeler, pas dans deux
@@ -91,7 +137,10 @@ export function raisonDePriorite({ fil, rdv, etatEnvoiDevis = null, etatEnvoiFac
   if (["depose", "diagnostic", "intervention"].includes(etape) && rdv?.date_fin && memeJour(rdv.date_debut, maintenant)) {
     const fin = new Date(rdv.date_fin);
     if (!Number.isNaN(fin.getTime()) && fin.getTime() < maintenant.getTime()) {
-      return { cle: "creneau_depasse", texte: `Créneau de ${heure(rdv.date_debut)} dépassé` };
+      // On nomme la FIN du créneau, pas son début. « Créneau de 07:00
+      // dépassé » se lisait comme un retard d'arrivée alors qu'il s'agit des
+      // travaux : une heure d'arrivée dépassée ne prouve rien sur l'atelier.
+      return { cle: "creneau_depasse", texte: `Travaux prévus jusqu'à ${heure(rdv.date_fin)}, dépassés` };
     }
   }
 
@@ -158,6 +207,29 @@ export function decouperPriorites(lignes = [], limite = 4) {
   const place = Math.max(0, limite - urgentes.length);
   const visibles = [...urgentes, ...reste.slice(0, place)];
   return { visibles, total: lignes.length, masquees: Math.max(0, lignes.length - visibles.length) };
+}
+
+/**
+ * Ce qu'il y a au garage, et ce qui est seulement attendu.
+ *
+ * « 13 voitures au garage » comptait les quatre files, dont « À recevoir » —
+ * des voitures qui ne sont pas encore là. Le chiffre annonçait donc un garage
+ * plus plein qu'il ne l'est, et un garagiste qui compte ses places s'en serait
+ * aperçu avant nous.
+ *
+ * Présentes = déposées, en cours, bloquées, prêtes. Attendues = le rendez-vous
+ * du jour dont la voiture n'est pas arrivée. Deux chiffres, deux faits.
+ */
+export function compterLeGarage(dossiers = [], maintenant = new Date()) {
+  const ETAPES_PRESENTES = ["depose", "diagnostic", "attente_client", "attente_piece", "intervention", "pret"];
+  let presentes = 0;
+  let attendues = 0;
+  for (const d of dossiers) {
+    const etape = d.rdv?.statut_atelier || "a_venir";
+    if (ETAPES_PRESENTES.includes(etape)) presentes += 1;
+    else if (etape === "a_venir" && memeJour(d.rdv?.date_debut, maintenant)) attendues += 1;
+  }
+  return { presentes, attendues };
 }
 
 /**

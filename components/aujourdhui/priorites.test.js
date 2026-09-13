@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  ENVOI,
   RAISONS,
+  compterLeGarage,
+  lireEtatEnvoi,
   arriveesDuJour,
   classerPriorites,
   decouperPriorites,
@@ -16,14 +19,14 @@ const aujourdhui = (h, m = 0) => new Date(`2026-09-13T${String(h).padStart(2, "0
 const avantHier = (h) => new Date(`2026-09-11T${String(h).padStart(2, "0")}:00:00+02:00`).toISOString();
 
 /** Un dossier tel que l'écran le compose : le fil, et ce qui l'a produit. */
-function dossier({ etape = "a_venir", debut = aujourdhui(9), fin = aujourdhui(11), devis = null, ordre = null, facture = null, etatEnvoiDevis = null, etatEnvoiFacture = null, clientPrevenu = null, id = "d1" } = {}) {
+function dossier({ etape = "a_venir", debut = aujourdhui(9), fin = aujourdhui(11), devis = null, ordre = null, facture = null, etatEnvoiDevis = null, etatEnvoiFacture = null, etatNotification = null, id = "d1" } = {}) {
   const rdv = { id, statut_atelier: etape, date_debut: debut, date_fin: fin };
   return {
     id,
     rdv,
     etatEnvoiDevis,
     etatEnvoiFacture,
-    clientPrevenu,
+    etatNotification,
     fil: filVehicule({ rdv, devis, ordre, facture, etatEnvoiDevis, etatEnvoiFacture }),
   };
 }
@@ -51,25 +54,31 @@ test("une contradiction passe avant tout le reste", () => {
   const d = dossier({ etape: "a_venir", ordre: { statut: "termine" } });
   const r = raisonDePriorite(d, MAINTENANT);
   assert.equal(r.cle, "contradiction");
-  assert.match(r.texte, /se contredisent/);
+  // La contradiction EXACTE, et le geste : « ordre terminé / voiture encore à
+  // venir / mettez l'atelier à jour ». Une formule générique obligeait à
+  // ouvrir le dossier pour savoir laquelle des deux corriger.
+  assert.match(r.texte, /ordre de réparation est terminé/);
+  assert.match(r.texte, /encore notée « à venir »/);
+  assert.match(r.texte, /Mettez l'atelier à jour/);
+  assert.equal(r.texte, d.fil.avertissement);
 });
 
 test("une voiture prête dont le client n'est pas prévenu remonte, et c'est urgent", () => {
-  const d = dossier({ etape: "pret", clientPrevenu: false });
+  const d = dossier({ etape: "pret", etatNotification: "aucune" });
   const r = raisonDePriorite(d, MAINTENANT);
-  assert.equal(r.cle, "prete_client_pas_prevenu");
+  assert.equal(r.cle, "notification_non_envoyee");
   assert.equal(RAISONS.find((x) => x.cle === r.cle).urgent, true);
 });
 
 test("une voiture prête dont le client EST prévenu ne remonte plus", () => {
-  assert.equal(raisonDePriorite(dossier({ etape: "pret", clientPrevenu: true }), MAINTENANT), null);
+  assert.equal(raisonDePriorite(dossier({ etape: "pret", etatNotification: "envoye" }), MAINTENANT), null);
 });
 
 test("tant qu'on ignore si le client est prévenu, on ne conclut pas qu'il ne l'est pas", () => {
   // `null` = la réponse de `etat_envoi_atelier` n'est pas encore là. Afficher
   // « le client ne le sait pas » serait une affirmation non vérifiée.
-  const r = raisonDePriorite(dossier({ etape: "pret", clientPrevenu: null }), MAINTENANT);
-  assert.notEqual(r?.cle, "prete_client_pas_prevenu");
+  const r = raisonDePriorite(dossier({ etape: "pret", etatNotification: null }), MAINTENANT);
+  assert.notEqual(r?.cle, "notification_non_envoyee");
 });
 
 test("une voiture attendue dont l'heure est passée remonte avec son heure", () => {
@@ -117,7 +126,7 @@ test("à défaut, la raison est la phrase du fil — jamais une phrase inventée
 test("l'ordre suit la raison, puis l'heure du rendez-vous", () => {
   const lignes = classerPriorites([
     dossier({ id: "tard", etape: "a_venir", debut: aujourdhui(16) }),
-    dossier({ id: "prete", etape: "pret", clientPrevenu: false }),
+    dossier({ id: "prete", etape: "pret", etatNotification: "aucune" }),
     dossier({ id: "retard", etape: "a_venir", debut: aujourdhui(8) }),
     dossier({ id: "contradiction", etape: "a_venir", ordre: { statut: "termine" } }),
   ], MAINTENANT);
@@ -134,7 +143,7 @@ test("à raison égale, la voiture attendue le plus tôt passe devant", () => {
 });
 
 test("chaque ligne porte sa raison, en clair", () => {
-  for (const l of classerPriorites([dossier({ etape: "pret", clientPrevenu: false })], MAINTENANT)) {
+  for (const l of classerPriorites([dossier({ etape: "pret", etatNotification: "aucune" })], MAINTENANT)) {
     assert.ok(l.raison && l.raison.length > 5, "raison vide");
   }
 });
@@ -144,7 +153,7 @@ test("chaque ligne porte sa raison, en clair", () => {
 test("aucune urgence ne disparaît derrière la limite", () => {
   // Six voitures prêtes dont personne n'est prévenu, limite à quatre : les six
   // restent visibles. Une urgence cachée est une urgence découverte trop tard.
-  const urgentes = Array.from({ length: 6 }, (_, i) => dossier({ id: `u${i}`, etape: "pret", clientPrevenu: false }));
+  const urgentes = Array.from({ length: 6 }, (_, i) => dossier({ id: `u${i}`, etape: "pret", etatNotification: "aucune" }));
   const { visibles, total, masquees } = decouperPriorites(classerPriorites(urgentes, MAINTENANT), 4);
   assert.equal(visibles.length, 6);
   assert.equal(total, 6);
@@ -153,7 +162,7 @@ test("aucune urgence ne disparaît derrière la limite", () => {
 
 test("le reste est replié, et le compte total reste annoncé", () => {
   const lignes = classerPriorites([
-    dossier({ id: "u", etape: "pret", clientPrevenu: false }),
+    dossier({ id: "u", etape: "pret", etatNotification: "aucune" }),
     ...Array.from({ length: 8 }, (_, i) => dossier({ id: `n${i}`, etape: "a_venir", debut: aujourdhui(12 + (i % 6)) })),
   ], MAINTENANT);
   const { visibles, total, masquees } = decouperPriorites(lignes, 4);
@@ -243,4 +252,90 @@ test("une décision qui attend un geste remonte, elle", () => {
   const r = raisonDePriorite(d, MAINTENANT);
   assert.equal(r.cle, "a_vous_de_jouer");
   assert.equal(r.texte, d.fil.prochaineAction);
+});
+
+
+// --- L'état d'un envoi se demande, il ne se déduit pas ----------------------
+
+test("les cinq états d'envoi sont distingués, et nommés", () => {
+  assert.equal(lireEtatEnvoi("aucune").libelle, "Notification de disponibilité non envoyée");
+  assert.equal(lireEtatEnvoi("a_valider").libelle, "Notification de disponibilité non envoyée");
+  assert.equal(lireEtatEnvoi("en_attente_envoi").libelle, "Notification autorisée, départ en attente");
+  assert.equal(lireEtatEnvoi("envoi_en_cours").libelle, "Envoi de la notification à vérifier");
+  assert.equal(lireEtatEnvoi("envoye").libelle, "Notification envoyée");
+  assert.equal(lireEtatEnvoi("bloque").libelle, "Notification bloquée : à revalider");
+  for (const cle of Object.keys(ENVOI)) assert.equal(lireEtatEnvoi(cle).connu, true, cle);
+});
+
+test("un état indisponible reste INCONNU, jamais « non envoyé »", () => {
+  for (const valeur of [null, undefined, "", "autre_chose"]) {
+    const e = lireEtatEnvoi(valeur);
+    assert.equal(e.connu, false, String(valeur));
+    assert.equal(e.libelle, "État de la notification inconnu");
+    assert.doesNotMatch(e.libelle, /non envoyée|envoyée/i, String(valeur));
+  }
+});
+
+test("« notification envoyée » est la seule preuve revendiquée — jamais « client prévenu »", () => {
+  // Ce que Nexora sait, c'est qu'un message est parti. Pas qu'il a été lu, ni
+  // que le client est au courant.
+  for (const cle of Object.keys(ENVOI)) {
+    assert.doesNotMatch(ENVOI[cle].libelle, /prévenu|au courant|sait/i, cle);
+  }
+});
+
+test("chaque état d'envoi mène à la bonne priorité, ou à aucune", () => {
+  const cas = {
+    aucune: "notification_non_envoyee",
+    a_valider: "notification_non_envoyee",
+    bloque: "notification_bloquee",
+    envoi_en_cours: "notification_incertaine",
+    envoye: null,
+    en_attente_envoi: null,
+  };
+  for (const [etat, attendu] of Object.entries(cas)) {
+    const r = raisonDePriorite(dossier({ etape: "pret", etatNotification: etat }), MAINTENANT);
+    assert.equal(r?.cle ?? null, attendu, etat);
+  }
+  // Et l'inconnu ne fabrique aucune tâche.
+  assert.equal(raisonDePriorite(dossier({ etape: "pret", etatNotification: null }), MAINTENANT), null);
+});
+
+test("une notification bloquée passe avant une notification jamais envoyée", () => {
+  const lignes = classerPriorites([
+    dossier({ id: "jamais", etape: "pret", etatNotification: "aucune" }),
+    dossier({ id: "bloquee", etape: "pret", etatNotification: "bloque" }),
+  ], MAINTENANT);
+  assert.deepEqual(lignes.map((l) => l.id), ["bloquee", "jamais"]);
+  assert.ok(lignes.every((l) => l.urgent));
+});
+
+// --- Ce qui est au garage, et ce qui est attendu ---------------------------
+
+test("on ne compte comme présentes que les voitures réellement là", () => {
+  const c = compterLeGarage([
+    dossier({ id: "a", etape: "a_venir", debut: aujourdhui(16) }),
+    dossier({ id: "b", etape: "a_venir", debut: aujourdhui(8) }),
+    dossier({ id: "c", etape: "depose" }),
+    dossier({ id: "d", etape: "attente_piece" }),
+    dossier({ id: "e", etape: "pret" }),
+    dossier({ id: "f", etape: "restitue" }),
+  ], MAINTENANT);
+  // Deux attendues, trois présentes. La restituée n'est plus là.
+  assert.deepEqual(c, { presentes: 3, attendues: 2 });
+});
+
+test("un rendez-vous d'un autre jour resté « à venir » n'est pas attendu aujourd'hui", () => {
+  const c = compterLeGarage([dossier({ etape: "a_venir", debut: avantHier(8), fin: avantHier(9) })], MAINTENANT);
+  assert.deepEqual(c, { presentes: 0, attendues: 0 });
+});
+
+test("un créneau dépassé nomme la FIN des travaux, pas l'heure d'arrivée", () => {
+  // Une heure d'arrivée dépassée ne prouve rien sur l'avancement des travaux :
+  // les deux phrases ne doivent pas se ressembler.
+  const r = raisonDePriorite(dossier({ etape: "intervention", debut: aujourdhui(7), fin: aujourdhui(9) }), MAINTENANT);
+  assert.match(r.texte, /Travaux prévus jusqu'à 09:00, dépassés/);
+  assert.doesNotMatch(r.texte, /07:00/);
+  const arrivee = raisonDePriorite(dossier({ etape: "a_venir", debut: aujourdhui(8) }), MAINTENANT);
+  assert.match(arrivee.texte, /Attendue à 08:00/);
 });
