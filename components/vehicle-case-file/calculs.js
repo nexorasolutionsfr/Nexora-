@@ -172,8 +172,13 @@ export function selectionnerInterventionCourante(
  * est ce que le garage a de plus urgent. Ils sont donc rendus à part, sous un
  * libellé qui ne prétend pas qu'ils appartiennent à l'intervention en cours.
  */
-export function devisSansRattachement({ devis = [], ordresReparation = [] }) {
+export function devisSansRattachement({ devis = [], ordresReparation = [] }, devisCourantId = null) {
   const rattaches = new Set(ordresReparation.map((o) => o.devis_id).filter(Boolean));
+  // Le devis qui sert déjà de document principal n'est pas « sans
+  // intervention » : il est sous les yeux, en haut du dossier. L'afficher une
+  // seconde fois plus bas donnait deux devis là où il n'y en a qu'un.
+  // Observé en Production le 13 septembre 2026 sur AB-123-CD et EF-456-GH.
+  if (devisCourantId) rattaches.add(devisCourantId);
   return trierParDate(devis.filter((d) => !rattaches.has(d.id)), "created_at", "desc");
 }
 
@@ -246,7 +251,7 @@ export function construireDossierVehicule(
   maintenant = new Date(),
 ) {
   const intervention = selectionnerInterventionCourante({ rendezVous, devis, ordresReparation, factures }, maintenant);
-  const sansRattachement = devisSansRattachement({ devis, ordresReparation });
+  const sansRattachement = devisSansRattachement({ devis, ordresReparation }, intervention.devis?.id || null);
   const fil = filVehicule({
     ...intervention,
     etatEnvoiDevis,
@@ -264,6 +269,9 @@ export function construireDossierVehicule(
     // l'atelier restent exposés séparément ci-dessous.
     intervention,
     fil,
+    // Sans rendez-vous ni ordre, il n'y a pas d'intervention : il y a un
+    // document isolé. Le bloc doit alors changer de nom plutôt que de mentir.
+    aUneIntervention: Boolean(intervention.rdv || intervention.ordre),
     // Voir `devisSansRattachement` : le modèle ne relie pas un devis en
     // attente à une visite. On les montre à part plutôt que de les perdre.
     devisSansRattachement: sansRattachement,

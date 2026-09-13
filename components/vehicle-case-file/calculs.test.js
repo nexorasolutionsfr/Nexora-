@@ -567,3 +567,115 @@ test('aucun devis ne disparaît : chacun est soit dans une visite, soit à part'
   ].filter(Boolean))
   for (const d of devis) assert.ok(vus.has(d.id), `le devis ${d.id} a disparu de l'écran`)
 })
+
+// ---------------------------------------------------------------------------
+// Constats de Production du 13 septembre 2026 (AB-123-CD et EF-456-GH) :
+// véhicules sans rendez-vous ni ordre, avec plusieurs devis. Le devis retenu
+// comme document principal réapparaissait dans « Devis sans intervention
+// associée », le bloc s'appelait « Intervention en cours » alors qu'il n'y
+// avait pas d'intervention, et le bouton promettait d'ouvrir une fiche
+// atelier qui n'existait pas.
+// ---------------------------------------------------------------------------
+
+test('sans rendez-vous, dernier devis accepté : un seul devis affiché, action possible', () => {
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [], ordresReparation: [], factures: [],
+      devis: [
+        { id: 'd-recent', statut: 'accepte', montant_ttc: 300, created_at: '2026-09-11T00:00:00Z' },
+        { id: 'd-vieux-1', statut: 'refuse', montant_ttc: 120, created_at: '2026-08-27T00:00:00Z' },
+        { id: 'd-vieux-2', statut: 'accepte', montant_ttc: 90, created_at: '2026-08-24T00:00:00Z' },
+      ],
+    },
+    MAINTENANT
+  )
+
+  // Le devis principal est le plus récent, et il n'est plus répété plus bas.
+  assert.equal(dossier.intervention.devis.id, 'd-recent')
+  assert.ok(
+    !dossier.devisSansRattachement.some((d) => d.id === 'd-recent'),
+    'le devis principal ne doit pas réapparaître dans les devis sans intervention'
+  )
+  assert.deepEqual(dossier.devisSansRattachement.map((d) => d.id), ['d-vieux-1', 'd-vieux-2'])
+
+  // Il n'y a ni rendez-vous ni ordre : ce n'est pas une intervention.
+  assert.equal(dossier.aUneIntervention, false)
+
+  // Le bouton ne promet pas d'ouvrir une fiche atelier inexistante.
+  assert.equal(dossier.fil.etat, 'Devis accepté')
+  assert.equal(dossier.fil.cible, 'ordres_reparation')
+  assert.equal(dossier.fil.libelleAction, 'Aller aux fiches atelier')
+})
+
+test('sans rendez-vous, dernier devis refusé : on dit le refus, sans doublon', () => {
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [], ordresReparation: [], factures: [],
+      devis: [
+        { id: 'd-refuse', statut: 'refuse', montant_ttc: 240, created_at: '2026-08-24T00:00:00Z' },
+        { id: 'd-accepte', statut: 'accepte', montant_ttc: 180, created_at: '2026-08-22T00:00:00Z' },
+      ],
+    },
+    MAINTENANT
+  )
+
+  assert.equal(dossier.intervention.devis.id, 'd-refuse')
+  assert.equal(dossier.fil.etat, 'Devis refusé')
+  // Un refus enregistré n'est pas un silence.
+  assert.equal(dossier.fil.prochaineAction, 'Le client a refusé ce devis.')
+  assert.ok(!/n'a pas donné suite/.test(dossier.fil.prochaineAction))
+  assert.equal(dossier.fil.quiAgit, 'personne')
+  // Rien à faire : aucune destination, donc aucun libellé de bouton.
+  assert.equal(dossier.fil.cible, null)
+  assert.equal(dossier.fil.libelleAction, null)
+
+  assert.deepEqual(dossier.devisSansRattachement.map((d) => d.id), ['d-accepte'])
+  assert.equal(dossier.aUneIntervention, false)
+})
+
+test('aucun devis du dossier n’est affiché deux fois, quelle que soit la situation', () => {
+  const situations = [
+    { nom: 'sans rdv, plusieurs devis', rendezVous: [], ordres: [] },
+    { nom: 'avec rdv sans ordre', rendezVous: [{ id: 'r1', date_debut: '2026-09-12T09:00:00Z', statut: 'Confirmé' }], ordres: [] },
+    {
+      nom: 'avec rdv et ordre',
+      rendezVous: [{ id: 'r1', date_debut: '2026-09-12T09:00:00Z', statut: 'Confirmé' }],
+      ordres: [{ id: 'o1', rendez_vous_id: 'r1', devis_id: 'd1', statut: 'confirme' }],
+    },
+  ]
+  const devis = [
+    { id: 'd1', statut: 'accepte', created_at: '2026-09-11T00:00:00Z' },
+    { id: 'd2', statut: 'refuse', created_at: '2026-09-05T00:00:00Z' },
+  ]
+  for (const s of situations) {
+    const dossier = construireDossierVehicule(
+      { vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE, rendezVous: s.rendezVous, devis, ordresReparation: s.ordres, factures: [] },
+      MAINTENANT
+    )
+    const affiches = [
+      dossier.intervention.devis?.id,
+      ...dossier.interventionsPrecedentes.map((i) => i.devis?.id),
+      ...dossier.devisSansRattachement.map((d) => d.id),
+    ].filter(Boolean)
+    assert.equal(
+      affiches.length, new Set(affiches).size,
+      `« ${s.nom} » : un devis est affiché deux fois (${affiches.join(', ')})`
+    )
+  }
+})
+
+test("aucune action impossible n'est proposée : pas de libellé sans destination", () => {
+  const sansAction = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [{ id: 'r1', date_debut: '2026-09-01T09:00:00Z', statut: 'Terminé' }],
+      devis: [], ordresReparation: [],
+      factures: [{ id: 'f1', statut: 'payee', rendez_vous_id: 'r1', created_at: '2026-09-02T00:00:00Z' }],
+    },
+    MAINTENANT
+  )
+  assert.equal(sansAction.fil.cible, null)
+  assert.equal(sansAction.fil.libelleAction, null)
+})

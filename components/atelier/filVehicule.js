@@ -132,7 +132,9 @@ export function filVehicule({
       return fil("Devis accepté", "Créez l'ordre de réparation pour lancer les travaux.", AGIT_GARAGE, CIBLE_ORDRE, { contradiction, ordreStatut, etape });
     }
     if (devis.statut === "refuse") {
-      return fil("Devis refusé", "Rien à faire : le client n'a pas donné suite.", AGIT_PERSONNE, null, { contradiction, ordreStatut, etape });
+      // « N'a pas donné suite » décrit un silence. Un refus enregistré n'est
+      // pas un silence : le client a répondu, et il a dit non.
+      return fil("Devis refusé", "Le client a refusé ce devis.", AGIT_PERSONNE, null, { contradiction, ordreStatut, etape });
     }
     if (etatEnvoiDevis === "envoye") {
       return fil("Devis envoyé", "Le client doit répondre. Vous pouvez enregistrer sa réponse s'il vous l'a donnée autrement.", AGIT_CLIENT, CIBLE_DEVIS, { contradiction, ordreStatut, etape });
@@ -164,6 +166,30 @@ export function filVehicule({
   return fil("Dossier ouvert", "Créez un rendez-vous pour cette voiture.", AGIT_GARAGE, CIBLE_AGENDA, { contradiction, ordreStatut, etape });
 }
 
+const LIBELLES_CIBLE = {
+  [CIBLE_ATELIER]: "Ouvrir la fiche atelier",
+  [CIBLE_DEVIS]: "Ouvrir le devis",
+  [CIBLE_AGENDA]: "Voir le rendez-vous",
+  [CIBLE_FACTURES]: "Ouvrir la facture",
+  [CIBLE_DEVIS_SANS_INTERVENTION]: "Voir les devis",
+};
+
+/**
+ * Ce que le bouton fait vraiment.
+ *
+ * `onOuvrirOrdresReparation` ne « donne pas accès » à une fiche : il ferme le
+ * dossier et emmène à l'écran des fiches atelier, filtré sur ce véhicule.
+ * Quand aucune fiche n'existe, écrire « Ouvrir la fiche atelier » promet un
+ * document qui n'est pas là. Observé en Production le 13 septembre 2026 sur un
+ * véhicule au devis accepté et sans ordre.
+ */
+function libelleCible(cible, ordreStatut) {
+  if (cible === CIBLE_ORDRE) {
+    return ordreStatut ? "Ouvrir la fiche atelier" : "Aller aux fiches atelier";
+  }
+  return LIBELLES_CIBLE[cible] || null;
+}
+
 function fil(etat, prochaineAction, quiAgit, cible, { contradiction, ordreStatut, etape }) {
   return {
     etat,
@@ -171,6 +197,8 @@ function fil(etat, prochaineAction, quiAgit, cible, { contradiction, ordreStatut
     quiAgit,
     // La destination du bouton, décidée en même temps que la phrase.
     cible,
+    // Et son libellé : il dépend de ce qui existe, donc il se décide ici.
+    libelleAction: libelleCible(cible, ordreStatut),
     ordreStatut,
     etapeAtelier: etape,
     contradiction,
