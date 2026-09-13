@@ -4259,7 +4259,7 @@ const TRAVAIL_DIFFERE_STATUT_LABEL = {
   refus_definitif: "Refus définitif",
 };
 
-function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], travauxDifferes = [], onCreerDevis, onCreerClient, onCreerVehicule, onCreerRdv, onOuvrirTravailDiffereModal, onToast, onOuvrirDossierVehicule, ouvrirCreation = false, onCreationOuverte }) {
+function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], travauxDifferes = [], onCreerDevis, onCreerClient, onCreerVehicule, onCreerRdv, onOuvrirTravailDiffereModal, onToast, onOuvrirDossierVehicule, ouvrirCreation = false, onCreationOuverte, onImporterFichier = null }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [devisModalOpen, setDevisModalOpen] = useState(false);
@@ -4337,7 +4337,20 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
         <button type="button" onClick={() => setNouveauClientOuvert(true)} className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-white px-4 py-2 rounded-xl" style={{ backgroundColor: ACCENT }}>
           <Plus size={15} /> Ajouter un client
         </button>
-        <div className="text-[12px] text-slate-400 mt-3">Vous avez déjà un fichier clients ? Il se reprend dans Paramètres › Reprise de données.</div>
+        {/* La reprise d'un fichier existe depuis Paramètres › Reprise de
+            données, mais l'état vide se contentait de l'écrire : au garage de
+            trouver l'onglet. Elle devient un bouton, et reste secondaire —
+            l'action qui prouve l'outil est d'ajouter un client, pas d'importer.
+            Le bouton n'est proposé qu'à qui peut ouvrir les Paramètres :
+            l'accueil voit cet écran sans y avoir droit, et une option qui mène
+            à un refus ne vaut pas mieux que pas d'option. */}
+        {onImporterFichier && (
+          <div className="mt-3">
+            <button type="button" onClick={onImporterFichier} className="text-[12.5px] font-medium text-slate-600 underline underline-offset-2 hover:text-slate-900">
+              Vous avez déjà un fichier clients ? Importer un fichier
+            </button>
+          </div>
+        )}
         {modaleNouveauClient}
       </div>
     );
@@ -7257,6 +7270,7 @@ if (updateError) {
           {view === "clients" && (
             <ClientsView
               onCreerRdv={handleCreerRdvManuel}
+              onImporterFichier={peutVoir(monRole, "parametres") ? () => allerConfigurer("parametres", "import") : null}
               clients={clients}
               rendezVous={rendezVous}
               prestations={prestations}
