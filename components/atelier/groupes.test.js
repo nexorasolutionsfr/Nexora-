@@ -186,9 +186,54 @@ test("une voiture attendue dont l'heure est passée est signalée", () => {
   assert.equal(e.enRetard, true);
 });
 
+// --- Le retard ne se dit que là où il veut dire quelque chose ----------------
+//
+// Recette du 13 septembre 2026 : une voiture PRÊTE affichait « Créneau de
+// 08:00 dépassé ». Faux deux fois — les travaux sont finis, et `date_debut`
+// est l'heure d'arrivée de la voiture, pas une restitution promise. Le modèle
+// ne porte aucune heure de restitution : on n'en invente pas.
+
+test("une voiture prête n'affiche jamais de retard", () => {
+  const duJour = echeanceCarte(rdv("pret", { date_debut: aujourdhui(7), date_fin: aujourdhui(9) }), MAINTENANT, GROUPE_PRETES);
+  // Rien à dire : la voiture est déposée aujourd'hui et les travaux sont finis.
+  assert.equal(duJour, null);
+
+  const anterieure = echeanceCarte(rdv("pret", { date_debut: avantHier(8), date_fin: avantHier(16) }), MAINTENANT, GROUPE_PRETES);
+  assert.equal(anterieure.enRetard, false);
+  assert.match(anterieure.texte, /^Déposée le /);
+  assert.doesNotMatch(anterieure.texte, /dépassé|retard/i);
+});
+
+test("une voiture bloquée ne porte pas le retard d'un tiers", () => {
+  // La carte dit déjà « attente de la pièce » et qui doit bouger. Une alerte
+  // orange que personne ne peut lever apprend à ne plus les regarder.
+  const e = echeanceCarte(rdv("attente_piece", { date_debut: aujourdhui(7), date_fin: aujourdhui(9) }), MAINTENANT, GROUPE_EN_ATTENTE);
+  assert.equal(e.enRetard, false);
+  assert.doesNotMatch(e.texte, /dépassé/i);
+});
+
+test("seule une voiture en cours de travail peut être en retard", () => {
+  const enCours = echeanceCarte(rdv("intervention", { date_debut: aujourdhui(7), date_fin: aujourdhui(9) }), MAINTENANT, GROUPE_EN_ATELIER);
+  assert.equal(enCours.enRetard, true);
+  const attendue = echeanceCarte(rdv("a_venir", { date_debut: aujourdhui(8) }), MAINTENANT, GROUPE_A_RECEVOIR);
+  assert.equal(attendue.enRetard, true);
+  // Et nulle part ailleurs.
+  for (const [etape, g] of [["pret", GROUPE_PRETES], ["attente_client", GROUPE_EN_ATTENTE], ["attente_piece", GROUPE_EN_ATTENTE]]) {
+    const e = echeanceCarte(rdv(etape, { date_debut: aujourdhui(7), date_fin: aujourdhui(9) }), MAINTENANT, g);
+    assert.equal(e?.enRetard ?? false, false, etape);
+  }
+});
+
+test("« attendue » et « déposée » ne se confondent pas", () => {
+  // Arrivée prévue d'un côté, date de dépôt de l'autre : deux faits
+  // différents, deux formulations différentes.
+  assert.match(echeanceCarte(rdv("a_venir", { date_debut: aujourdhui(8) }), MAINTENANT, GROUPE_A_RECEVOIR).texte, /^Attendue à /);
+  assert.match(echeanceCarte(rdv("intervention", { date_debut: avantHier(8) }), MAINTENANT, GROUPE_EN_ATELIER).texte, /^Déposée le /);
+});
+
 test("une voiture entrée un autre jour ne se voit pas prêter une échéance du jour", () => {
   const e = echeanceCarte(rdv("intervention", { date_debut: avantHier(8), date_fin: avantHier(16) }), MAINTENANT, GROUPE_EN_ATELIER);
-  assert.match(e.texte, /^Rendez-vous du /);
+  assert.match(e.texte, /^Déposée le /);
   // C'est le point : hier 16 h est passé, mais ce n'est pas un retard — aucune
   // échéance de restitution n'existe dans le modèle. Le signaler tous les jours
   // ferait une alerte allumée en permanence, donc invisible.

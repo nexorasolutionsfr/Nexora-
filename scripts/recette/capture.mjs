@@ -18,6 +18,12 @@
 //   node scripts/recette/capture.mjs <email> <chemin-relatif> <fichier.png> [largeur] [hauteur]
 //   node scripts/recette/capture.mjs <email> /dashboard atelier-avant.png 1280 900
 //
+// Variables utiles :
+//   GESTES        une expression JavaScript par ligne, jouées avant la prise de vue
+//   PLEINE_PAGE=1 capture toute la page, pas seulement l'écran
+//   BLOQUER_URL   motifs d'URL à couper AVANT le chargement, séparés par des
+//                 virgules — pour obtenir un vrai état d'erreur de chargement
+//
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
@@ -122,6 +128,14 @@ try {
   await cdp("Page.navigate", { url: `http://localhost:${PORT_APP}/` });
   await patienter(2500);
   await evaluer(`localStorage.setItem(${JSON.stringify(cleSession)}, ${JSON.stringify(JSON.stringify(auth.session))})`);
+
+  // Couper une requête précise avant de charger l'écran : c'est le seul moyen
+  // d'obtenir un vrai état d'erreur de chargement, et de vérifier qu'il ne
+  // ressemble pas à une journée vide. Motifs séparés par des virgules.
+  if (process.env.BLOQUER_URL) {
+    await cdp("Network.enable");
+    await cdp("Network.setBlockedURLs", { urls: process.env.BLOQUER_URL.split(",").map((x) => x.trim()) });
+  }
 
   await cdp("Page.navigate", { url: `http://localhost:${PORT_APP}${chemin}` });
   await patienter(Number(process.env.ATTENTE_MS || 9000));

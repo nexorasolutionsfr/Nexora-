@@ -69,11 +69,18 @@ test("un ordre déjà ouvert ne se « prépare » plus : il s'ouvre", () => {
   assert.equal(actionOrdreReparation(null), "Créer l'ordre de réparation");
 });
 
-test("la voiture à l'atelier renvoie vers la fiche atelier", () => {
-  for (const etape of ["depose", "diagnostic", "attente_client", "attente_piece", "intervention"]) {
+// Corrigé le 13 septembre 2026 : ce test affirmait que les cinq étapes
+// engagées donnent la même phrase. C'était précisément le défaut — « attente
+// client » et « attente pièce » ne sont pas des travaux en cours, et les
+// confondre faisait dire au dossier « à vous de jouer » sur une voiture que
+// l'atelier annonçait en attente du client. Les deux attentes ont désormais
+// leurs propres tests, plus bas.
+test("une voiture dont les travaux avancent renvoie vers l'écran Atelier", () => {
+  for (const etape of ["depose", "diagnostic", "intervention"]) {
     const f = filVehicule({ rdv: { statut_atelier: etape }, ordre: { statut: "confirme" } });
     assert.equal(f.etat, "Voiture à l'atelier", etape);
-    assert.match(f.prochaineAction, /fiche atelier/);
+    assert.equal(f.cible, "atelier", etape);
+    assert.match(f.prochaineAction, /écran Atelier/);
   }
 });
 
@@ -145,3 +152,50 @@ test("chaque état a toujours un état, une action et un auteur", () => {
     assert.ok(f.etat && f.prochaineAction && f.quiAgit, JSON.stringify(c));
   }
 });
+
+// --- Qui doit bouger quand l'atelier attend --------------------------------
+//
+// Défaut trouvé en recette le 13 septembre 2026 : la carte de l'atelier disait
+// « Attente de la réponse du client », le dossier du même véhicule disait
+// « À vous de jouer ». Ces tests figent la correspondance.
+
+test("une voiture en attente client renvoie la balle au client", () => {
+  const f = filVehicule({ rdv: { statut_atelier: "attente_client" } })
+  assert.equal(f.quiAgit, "client")
+  assert.match(f.etat, /attente de la réponse du client/i)
+  assert.match(f.prochaineAction, /notez sa réponse/i)
+})
+
+test("une voiture en attente de pièce reste au garage, et ce n'est pas « rien à faire »", () => {
+  const f = filVehicule({ rdv: { statut_atelier: "attente_piece" } })
+  assert.equal(f.quiAgit, "garage")
+  assert.match(f.etat, /attente d'une pièce/i)
+  assert.match(f.prochaineAction, /dès sa réception/i)
+})
+
+test("les deux attentes ne se confondent pas avec un travail en cours", () => {
+  const enCours = ["depose", "diagnostic", "intervention"].map((e) => filVehicule({ rdv: { statut_atelier: e } }))
+  for (const f of enCours) {
+    assert.equal(f.etat, "Voiture à l'atelier")
+    assert.equal(f.quiAgit, "garage")
+  }
+  const attentes = ["attente_client", "attente_piece"].map((e) => filVehicule({ rdv: { statut_atelier: e } }))
+  for (const f of attentes) assert.notEqual(f.etat, "Voiture à l'atelier")
+})
+
+test("le bouton de l'atelier ne promet plus un document qui n'existe pas", () => {
+  // « Fiche atelier » désigne la vue d'un ordre de réparation — le vocabulaire
+  // est fixé en tête du module. `CIBLE_ATELIER` mène à la liste de l'atelier :
+  // il ne doit donc jamais employer ce mot.
+  for (const etape of ["depose", "diagnostic", "intervention", "attente_client", "attente_piece"]) {
+    const f = filVehicule({ rdv: { statut_atelier: etape } })
+    assert.equal(f.cible, "atelier")
+    assert.doesNotMatch(f.libelleAction, /fiche atelier/i, `« ${etape} » promet une fiche atelier`)
+  }
+})
+
+test("un ordre de réparation ouvert continue d'annoncer sa fiche, lui", () => {
+  // La correction ci-dessus ne doit pas retirer le mot là où il est juste.
+  const f = filVehicule({ rdv: { statut_atelier: "a_venir" }, ordre: { statut: "confirme" } })
+  assert.equal(f.libelleAction, "Ouvrir la fiche atelier")
+})
