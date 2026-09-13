@@ -5489,6 +5489,10 @@ function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = nul
   // La repose à la simple fermeture ne coûte rien et tient la promesse même
   // si le panneau bloquait un jour le défilement du document.
   const [etatAtelier, setEtatAtelier] = useState({ filtreMecanicien: "tous", replies: {} });
+  // Le document que le dossier doit mettre en évidence à l'ouverture, quand
+  // on y arrive par sa référence et non par la voiture. `null` le reste du
+  // temps : un dossier ouvert normalement ne pointe rien en particulier.
+  const [documentCible, setDocumentCible] = useState(null);
   const defilementAvantDossier = useRef(null);
   // D'OÙ L'ON VIENT, QUAND LE DOSSIER NOUS ENVOIE AILLEURS
   //
@@ -6804,6 +6808,7 @@ if (updateError) {
 
   const fermerDossierVehicule = () => {
     setDossierVehiculeId(null);
+    setDocumentCible(null);
     const position = defilementAvantDossier.current;
     defilementAvantDossier.current = null;
     if (position == null || typeof window === "undefined") return;
@@ -6816,6 +6821,18 @@ if (updateError) {
 
   const ouvrirDossierDepuisRecherche = ouvrirDossierVehicule;
 
+  /**
+   * Une facture trouvée par son numéro s'ouvre dans le dossier de sa voiture,
+   * pointée. Le dossier est l'endroit où l'on comprend de quoi la facture
+   * parle : quelle visite, quels travaux, quel devis l'a précédée. Une liste
+   * de factures détachée du véhicule ne répond à aucune de ces questions.
+   */
+  const ouvrirDossierSurFacture = (vehiculeId, factureId) => {
+    if (!vehiculeId) return;
+    setDocumentCible(factureId ? { type: "facture", id: factureId } : null);
+    ouvrirDossierVehicule(vehiculeId);
+  };
+
   /** Le dossier renvoie vers un autre écran : on note d'où l'on part. */
   const quitterDossierVers = (nouvelleVue) => {
     setRetourVers({
@@ -6825,6 +6842,7 @@ if (updateError) {
     });
     defilementAvantDossier.current = null;
     setDossierVehiculeId(null);
+    setDocumentCible(null);
     if (nouvelleVue) setView(nouvelleVue);
   };
 
@@ -7502,8 +7520,10 @@ if (updateError) {
               <RechercheVehicule
                 vehicules={tousLesVehicules}
                 clients={clients}
+                factures={peutFacturer(monRole) ? factures : []}
                 filPourVehicule={filDuVehicule}
                 onOuvrirVehicule={ouvrirDossierDepuisRecherche}
+                onOuvrirFacture={ouvrirDossierSurFacture}
               />
             </div>
           )}
@@ -7696,6 +7716,7 @@ if (updateError) {
           factures={factures.filter((f) => f.vehicule_id === dossierVehiculeId)}
           workshopStages={WORKSHOP_STAGES}
           inspectionsDisponibles={INSPECTIONS_MODULE_ACTIF}
+          documentCible={documentCible}
           onClose={fermerDossierVehicule}
           onOuvrirAtelier={() => quitterDossierVers("atelier")}
           onOuvrirDevis={() => quitterDossierVers("devis")}

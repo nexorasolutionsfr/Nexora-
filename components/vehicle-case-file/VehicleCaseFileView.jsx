@@ -71,9 +71,14 @@ export default function VehicleCaseFileView({
   onOuvrirRendezVous,
   onOuvrirOrdresReparation,
   inspectionsDisponibles = false,
+  // Le document par lequel on est arrivé, quand on a cherché sa référence
+  // plutôt que la voiture. `{ type: "facture", id }` ou `null`.
+  documentCible = null,
 }) {
   const fermerRef = useRef(null);
   const [historiqueOuvert, setHistoriqueOuvert] = useState(false);
+  const ligneViseeRef = useRef(null);
+  const factureViseeId = documentCible?.type === "facture" ? documentCible.id : null;
   // Le fil peut renvoyer vers la liste des devis orphelins : il n'y a pas
   // d'écran à ouvrir, il y a une section à regarder, plus bas dans ce panneau.
   const devisSansInterventionRef = useRef(null);
@@ -140,6 +145,24 @@ export default function VehicleCaseFileView({
   // la ligne « Facture : payée » pour un rendez-vous de demain.
   // Le passé appartient à « Interventions précédentes ».
   const { rdv: rdvCourant, devis: devisCourant, ordre: ordreCourant, facture: factureCourante } = dossier.intervention;
+
+  // ARRIVER PAR LA RÉFÉRENCE D'UN DOCUMENT
+  //
+  // Si la facture cherchée est celle de l'intervention en cours, elle est
+  // déjà sous les yeux : rien à faire. Si elle appartient à une visite
+  // passée, elle dort dans l'historique replié — ouvrir le dossier sans le
+  // déplier laisserait le garagiste devant un écran qui ne montre pas ce
+  // qu'il vient de chercher. On déplie et on amène la ligne à l'écran.
+  const factureViseeEstPassee = Boolean(factureViseeId) && factureCourante?.id !== factureViseeId;
+  useEffect(() => {
+    if (!factureViseeEstPassee) return;
+    setHistoriqueOuvert(true);
+    const t = setTimeout(() => {
+      ligneViseeRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 120);
+    return () => clearTimeout(t);
+  }, [factureViseeEstPassee, factureViseeId]);
+
   const etapeCourante = rdvCourant?.statut_atelier && rdvCourant.statut_atelier !== "a_venir"
     ? rdvCourant.statut_atelier
     : null;
@@ -408,25 +431,40 @@ export default function VehicleCaseFileView({
               </button>
               {historiqueOuvert && (
                 <div className="divide-y divide-slate-100 border-t border-slate-100">
-                  {dossier.interventionsPrecedentes.map(({ rdv, ordre, facture, devis: devisVisite }) => (
-                    <div key={rdv.id} className="px-4 py-3 flex items-center gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[13.5px] text-slate-800">{formatDateHeure(rdv.date_debut)}</div>
-                        <div className="text-[12px] text-slate-500 truncate">
-                          {[
-                            devisVisite ? `devis ${(DEVIS_STATUT_LABEL[devisVisite.statut] || "").toLowerCase()}`.trim() : null,
-                            ordre ? (ordre.statut === "termine" ? "travaux terminés" : "fiche atelier ouverte") : null,
-                            facture ? (facture.statut === "payee" ? "facture payée" : "facture à régler") : null,
-                          ].filter(Boolean).join(" · ") || "aucun document"}
+                  {dossier.interventionsPrecedentes.map(({ rdv, ordre, facture, devis: devisVisite }) => {
+                    const visee = Boolean(factureViseeId && facture?.id === factureViseeId);
+                    return (
+                      <div
+                        key={rdv.id}
+                        ref={visee ? ligneViseeRef : null}
+                        className="px-4 py-3 flex items-center gap-3"
+                        style={visee ? { backgroundColor: ACCENT_SOFT, boxShadow: `inset 3px 0 0 ${ACCENT}` } : undefined}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[13.5px] text-slate-800">
+                            {formatDateHeure(rdv.date_debut)}
+                            {visee && facture?.numero && (
+                              <span className="ml-2 text-[12px] font-semibold" style={{ color: ACCENT }}>
+                                {facture.numero}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[12px] text-slate-500 truncate">
+                            {[
+                              devisVisite ? `devis ${(DEVIS_STATUT_LABEL[devisVisite.statut] || "").toLowerCase()}`.trim() : null,
+                              ordre ? (ordre.statut === "termine" ? "travaux terminés" : "fiche atelier ouverte") : null,
+                              facture ? (facture.statut === "payee" ? "facture payée" : "facture à régler") : null,
+                            ].filter(Boolean).join(" · ") || "aucun document"}
+                          </div>
                         </div>
+                        {facture?.montant_ttc != null && (
+                          <span className="text-[13px] font-medium text-slate-700 tabular-nums shrink-0">
+                            {Number(facture.montant_ttc).toFixed(2).replace(".", ",")} €
+                          </span>
+                        )}
                       </div>
-                      {facture?.montant_ttc != null && (
-                        <span className="text-[13px] font-medium text-slate-700 tabular-nums shrink-0">
-                          {Number(facture.montant_ttc).toFixed(2).replace(".", ",")} €
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

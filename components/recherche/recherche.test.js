@@ -12,6 +12,9 @@ import {
   normaliserTexte,
   rechercherVehicules,
 } from './recherche.js'
+// L'espace de noms entier, pour pouvoir affirmer l'ABSENCE d'une fonction
+// (recherche de devis, d'ordre de réparation) autant que la présence.
+import * as recherche from './recherche.js'
 
 const CLIENTS = [
   { id: 'c1', nom: 'Élodie Ngô', telephone: '+33 6 45 67 89 01' },
@@ -120,4 +123,79 @@ test("un début de plaque ne va pas chercher ses chiffres dans les téléphones"
 test('une plaque entière ne ramène jamais de correspondance téléphone', () => {
   const r = rechercherVehicules({ terme: 'AB-123-CD', ...jeu })
   assert.ok(r.every((x) => x.champ !== 'telephone'))
+})
+
+// --- Chercher une facture par son numéro -----------------------------------
+//
+// `factures.numero` est la seule vraie référence commerciale du modèle : elle
+// est imprimée sur le document que le client a en main. Les tests ci-dessous
+// tiennent aussi la limite inverse — on ne fabrique pas de numéro de devis.
+
+const factureDe = (numero, extra = {}) => ({
+  id: `f-${numero}`,
+  numero,
+  garage_id: 'garage-1',
+  client_id: 'cli-1',
+  vehicule_id: 'veh-1',
+  montant_ttc: 216,
+  statut: 'en_attente',
+  ...extra,
+})
+
+const CONTEXTE = {
+  factures: [factureDe('F-2026-0003'), factureDe('F-2026-0013'), factureDe('F-2025-0003')],
+  clients: [{ id: 'cli-1', nom: 'Olivier Sanchez' }],
+  vehicules: [{ id: 'veh-1', marque: 'BMW', modele: 'Série 1', immatriculation: 'BI-909-II' }],
+}
+
+test('un numéro de facture complet trouve sa facture', () => {
+  const r = recherche.rechercherFactures({ terme: 'F-2026-0003', ...CONTEXTE })
+  assert.equal(r.length, 1)
+  assert.equal(r[0].document.numero, 'F-2026-0003')
+  assert.equal(r[0].type, 'facture')
+})
+
+test('la saisie du numéro tolère les séparateurs, la casse et les espaces', () => {
+  for (const terme of ['f20260003', 'f 2026 0003', 'F/2026/0003', '  F-2026-0003  ']) {
+    const r = recherche.rechercherFactures({ terme, ...CONTEXTE })
+    assert.equal(r[0]?.document.numero, 'F-2026-0003', `échec sur « ${terme} »`)
+  }
+})
+
+test('une correspondance exacte passe devant une correspondance partielle', () => {
+  // « F-2026-0003 » est contenu dans rien d'autre, mais « 0003 » l'est dans
+  // deux numéros : l'exact doit rester en tête.
+  const r = recherche.rechercherFactures({ terme: '0003', ...CONTEXTE })
+  assert.deepEqual(r.map((x) => x.document.numero), ['F-2026-0003', 'F-2025-0003'])
+})
+
+test('la ligne de résultat sait de quelle voiture et de quel client il s’agit', () => {
+  const r = recherche.rechercherFactures({ terme: 'F-2026-0003', ...CONTEXTE })
+  assert.equal(r[0].vehicule.immatriculation, 'BI-909-II')
+  assert.equal(r[0].client.nom, 'Olivier Sanchez')
+})
+
+test('deux caractères ne déclenchent aucune recherche de facture', () => {
+  assert.deepEqual(recherche.rechercherFactures({ terme: 'F2', ...CONTEXTE }), [])
+  assert.deepEqual(recherche.rechercherFactures({ terme: '', ...CONTEXTE }), [])
+})
+
+test('une facture sans numéro ne remonte jamais', () => {
+  const sansNumero = [factureDe(null), factureDe('')]
+  assert.deepEqual(recherche.rechercherFactures({ terme: '0003', ...CONTEXTE, factures: sansNumero }), [])
+})
+
+test('seules les factures fournies sont cherchées : aucune fuite entre garages', () => {
+  // Le tableau reçu est déjà celui du garage courant (chargé avec
+  // `.eq("garage_id", garageId)` et filtré par RLS). La fonction n'a aucun
+  // autre moyen d'atteindre une facture : ce test fige cette propriété.
+  const r = recherche.rechercherFactures({ terme: '0003', ...CONTEXTE, factures: [] })
+  assert.deepEqual(r, [])
+})
+
+test('aucune référence de devis ni d’ordre de réparation n’est fabriquée', () => {
+  // Le modèle n'en porte pas. Si un jour une fonction de recherche de devis
+  // apparaît, ce test doit être revu en connaissance de cause — pas contourné.
+  assert.equal(typeof recherche.rechercherDevis, 'undefined')
+  assert.equal(typeof recherche.rechercherOrdres, 'undefined')
 })
