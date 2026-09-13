@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   construireChronologie,
-  cibleProchaineAction,
   construireDossierVehicule,
   selectionnerInterventionCourante,
   detecterDonneesIncompletes,
@@ -153,7 +152,9 @@ test('sans rendez-vous, sans devis, sans ordre : le dossier le dit sans rien inv
   )
 
   assert.equal(dossier.fil.etat, 'Dossier ouvert')
-  assert.equal(dossier.prochaineAction.cible, null)
+  // Il y a bien un geste — créer un rendez-vous — donc une destination.
+  // C'est le fil qui la donne, plus un calcul parallèle.
+  assert.equal(dossier.prochaineAction.cible, 'agenda')
   assert.equal(dossier.intervention.rdv, null)
   assert.equal(dossier.intervention.ordre, null)
 })
@@ -227,11 +228,207 @@ test("selectionnerInterventionCourante rattache l'ordre par son rendez-vous, et 
   assert.equal(intervention.devis.id, 'dev-lie')
 })
 
-test('cibleProchaineAction envoie là où le travail se poursuit', () => {
-  assert.equal(cibleProchaineAction({ rdv: null, devis: null, ordre: null, facture: { id: 'f' } }), 'factures')
-  assert.equal(cibleProchaineAction({ rdv: null, devis: null, ordre: { id: 'o' }, facture: null }), 'ordres_reparation')
-  assert.equal(cibleProchaineAction({ rdv: { id: 'r', statut_atelier: 'intervention' }, devis: null, ordre: null, facture: null }), 'atelier')
-  assert.equal(cibleProchaineAction({ rdv: null, devis: { id: 'd' }, ordre: null, facture: null }), 'devis')
-  assert.equal(cibleProchaineAction({ rdv: { id: 'r' }, devis: null, ordre: null, facture: null }), 'agenda')
-  assert.equal(cibleProchaineAction({ rdv: null, devis: null, ordre: null, facture: null }), null)
+
+// ---------------------------------------------------------------------------
+// Revue du 13 septembre 2026 — les cas qui échouaient avant ce lot.
+// ---------------------------------------------------------------------------
+
+test("la destination vient du fil, pas d'un second calcul", () => {
+  // Dossier clos : aucune destination, donc aucun bouton dominant.
+  const clos = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [{ id: 'r1', date_debut: '2026-09-01T09:00:00Z', statut: 'Terminé' }],
+      devis: [], ordresReparation: [],
+      factures: [{ id: 'f1', statut: 'payee', rendez_vous_id: 'r1', created_at: '2026-09-02T00:00:00Z' }],
+    },
+    MAINTENANT
+  )
+  assert.equal(clos.fil.quiAgit, 'personne')
+  assert.equal(clos.fil.cible, null)
+  assert.equal(clos.prochaineAction.cible, null)
+
+  // Ordre ouvert : la phrase parle de l'ordre, le bouton y mène.
+  const ouvert = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [{ id: 'r1', date_debut: '2026-09-12T09:00:00Z', statut: 'Confirmé' }],
+      devis: [{ id: 'd1', statut: 'accepte', created_at: '2026-09-01T00:00:00Z' }],
+      ordresReparation: [{ id: 'o1', rendez_vous_id: 'r1', devis_id: 'd1', statut: 'confirme' }],
+      factures: [],
+    },
+    MAINTENANT
+  )
+  assert.equal(ouvert.fil.etat, 'Ordre de réparation ouvert')
+  assert.equal(ouvert.prochaineAction.cible, 'ordres_reparation')
+})
+
+test("une facture déjà envoyée n'est jamais présentée comme à envoyer", () => {
+  const base = {
+    vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+    rendezVous: [{ id: 'r1', date_debut: '2026-09-10T09:00:00Z', statut: 'Terminé' }],
+    devis: [], ordresReparation: [],
+    factures: [{ id: 'f1', statut: 'en_attente', rendez_vous_id: 'r1', created_at: '2026-09-11T00:00:00Z' }],
+  }
+
+  const sansEtat = construireDossierVehicule(base, MAINTENANT)
+  assert.match(sansEtat.fil.prochaineAction, /confirmez son envoi/)
+
+  const envoyee = construireDossierVehicule({ ...base, etatEnvoiFacture: 'envoye' }, MAINTENANT)
+  assert.equal(envoyee.fil.etat, 'Facture envoyée')
+  assert.equal(envoyee.fil.quiAgit, 'client')
+  assert.ok(!/confirmez son envoi/.test(envoyee.fil.prochaineAction))
+
+  const programme = construireDossierVehicule({ ...base, etatEnvoiFacture: 'en_attente_envoi' }, MAINTENANT)
+  assert.equal(programme.fil.etat, "Facture en attente d'envoi")
+  assert.equal(programme.fil.cible, null)
+
+  const incertain = construireDossierVehicule({ ...base, etatEnvoiFacture: 'envoi_en_cours' }, MAINTENANT)
+  assert.match(incertain.fil.etat, /à vérifier/)
+  assert.equal(incertain.fil.quiAgit, 'garage')
+})
+
+test("un devis envoyé attend le client, il ne se renvoie pas", () => {
+  const base = {
+    vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+    rendezVous: [{ id: 'r1', date_debut: '2026-09-12T09:00:00Z', statut: 'Confirmé' }],
+    devis: [{ id: 'd1', statut: 'en_attente', created_at: '2026-09-01T00:00:00Z' }],
+    ordresReparation: [{ id: 'o1', rendez_vous_id: 'r1', devis_id: 'd1', statut: 'brouillon' }],
+    factures: [],
+  }
+  const envoye = construireDossierVehicule({ ...base, etatEnvoiDevis: 'envoye' }, MAINTENANT)
+  // L'ordre existe : le fil parle d'abord de l'ordre. L'important est qu'aucun
+  // état n'annonce un envoi à faire alors qu'il a eu lieu.
+  assert.ok(!/confirmez son envoi/.test(envoye.fil.prochaineAction))
+})
+
+test("une ancienne facture ne devient pas la facture du nouveau rendez-vous", () => {
+  // Cas 1 de la revue : visite terminée et facturée l'an dernier, nouvelle
+  // visite prévue demain. L'ancienne version rattachait la facture payée au
+  // nouveau rendez-vous et annonçait « dossier clos ».
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [
+        { id: 'ancien', date_debut: '2025-10-01T09:00:00Z', statut: 'Terminé' },
+        { id: 'nouveau', date_debut: '2026-09-12T09:00:00Z', statut: 'Confirmé' },
+      ],
+      devis: [],
+      ordresReparation: [],
+      factures: [{ id: 'f-ancienne', statut: 'payee', rendez_vous_id: 'ancien', created_at: '2025-10-02T00:00:00Z' }],
+    },
+    MAINTENANT
+  )
+  assert.equal(dossier.intervention.rdv.id, 'nouveau')
+  assert.equal(dossier.intervention.facture, null)
+  assert.equal(dossier.fil.etat, 'Rendez-vous prévu')
+  assert.ok(!/clos/.test(dossier.fil.prochaineAction))
+})
+
+test("un ancien devis refusé ne colle pas au nouveau rendez-vous", () => {
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [{ id: 'nouveau', date_debut: '2026-09-12T09:00:00Z', statut: 'Confirmé' }],
+      devis: [{ id: 'd-refuse', statut: 'refuse', created_at: '2025-01-01T00:00:00Z' }],
+      ordresReparation: [],
+      factures: [],
+    },
+    MAINTENANT
+  )
+  assert.equal(dossier.intervention.devis, null)
+  assert.equal(dossier.fil.etat, 'Rendez-vous prévu')
+})
+
+test('plusieurs rendez-vous et plusieurs ordres : chacun reste avec le sien', () => {
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [
+        { id: 'r-vieux', date_debut: '2026-01-05T09:00:00Z', statut: 'Terminé' },
+        { id: 'r-actif', date_debut: '2026-09-11T09:00:00Z', statut: 'Confirmé', statut_atelier: 'intervention' },
+      ],
+      devis: [
+        { id: 'd-vieux', statut: 'accepte', created_at: '2026-01-01T00:00:00Z' },
+        { id: 'd-actif', statut: 'accepte', created_at: '2026-09-10T00:00:00Z' },
+      ],
+      ordresReparation: [
+        { id: 'o-vieux', rendez_vous_id: 'r-vieux', devis_id: 'd-vieux', statut: 'termine' },
+        { id: 'o-actif', rendez_vous_id: 'r-actif', devis_id: 'd-actif', statut: 'confirme' },
+      ],
+      factures: [{ id: 'f-vieille', statut: 'payee', rendez_vous_id: 'r-vieux', created_at: '2026-01-06T00:00:00Z' }],
+    },
+    MAINTENANT
+  )
+  assert.equal(dossier.intervention.rdv.id, 'r-actif')
+  assert.equal(dossier.intervention.ordre.id, 'o-actif')
+  assert.equal(dossier.intervention.devis.id, 'd-actif')
+  assert.equal(dossier.intervention.facture, null, "la facture de la visite précédente n'appartient pas à celle-ci")
+})
+
+test("un devis sans ordre n'est pas rattaché de force au rendez-vous", () => {
+  // Le modèle ne porte pas la relation devis → rendez-vous. On ne l'invente
+  // pas ; le devis reste visible ailleurs.
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [{ id: 'r1', date_debut: '2026-09-12T09:00:00Z', statut: 'Confirmé' }],
+      devis: [{ id: 'd1', statut: 'en_attente', created_at: '2026-09-11T00:00:00Z' }],
+      ordresReparation: [],
+      factures: [],
+    },
+    MAINTENANT
+  )
+  assert.equal(dossier.intervention.devis, null)
+})
+
+test('sans aucun rendez-vous, un devis seul reste montrable', () => {
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [], ordresReparation: [], factures: [],
+      devis: [{ id: 'd1', statut: 'en_attente', created_at: '2026-09-11T00:00:00Z' }],
+    },
+    MAINTENANT
+  )
+  assert.equal(dossier.intervention.devis.id, 'd1')
+  assert.equal(dossier.intervention.facture, null)
+  assert.equal(dossier.fil.etat, 'Devis établi')
+})
+
+test("un devis en attente reste visible même si le modèle ne le rattache pas", () => {
+  // `ordres_reparation_check_integrite` exige un devis accepté pour le
+  // rattacher à un ordre : un devis en attente n'a donc aucun lien avec une
+  // visite. Il ne doit pas disparaître pour autant.
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [{ id: 'r1', date_debut: '2026-09-12T09:00:00Z', statut: 'Confirmé' }],
+      devis: [{ id: 'd-attente', statut: 'en_attente', created_at: '2026-09-11T00:00:00Z' }],
+      ordresReparation: [],
+      factures: [],
+    },
+    MAINTENANT
+  )
+  assert.equal(dossier.intervention.devis, null, "pas rattaché de force à la visite")
+  assert.equal(dossier.devisSansRattachement.length, 1)
+  assert.equal(dossier.devisSansRattachement[0].id, 'd-attente')
+})
+
+test('un devis rattaché à un ordre ne figure pas dans les non-rattachés', () => {
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [{ id: 'r1', date_debut: '2026-09-12T09:00:00Z', statut: 'Confirmé' }],
+      devis: [
+        { id: 'd-lie', statut: 'accepte', created_at: '2026-09-01T00:00:00Z' },
+        { id: 'd-libre', statut: 'refuse', created_at: '2026-08-01T00:00:00Z' },
+      ],
+      ordresReparation: [{ id: 'o1', rendez_vous_id: 'r1', devis_id: 'd-lie', statut: 'confirme' }],
+      factures: [],
+    },
+    MAINTENANT
+  )
+  assert.equal(dossier.intervention.devis.id, 'd-lie')
+  assert.deepEqual(dossier.devisSansRattachement.map((d) => d.id), ['d-libre'])
 })

@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, Car, Phone, Mail, Wrench, ReceiptText, CalendarClock, ClipboardList, ClipboardCheck, ArrowRight, AlertTriangle } from "lucide-react";
 import { ACCENT, ACCENT_SOFT, NAVY } from "../garage-os/tokens";
-import { construireDossierVehicule } from "./calculs";
+import { construireDossierVehicule, selectionnerInterventionCourante } from "./calculs";
+import { supabase } from "@/lib/supabase";
+import { DOCUMENTS } from "../envoi/etatsEnvoi";
 import { libelleQuiAgit } from "../atelier/filVehicule";
 import {
   DEVIS_STATUT_LABEL,
@@ -68,6 +70,43 @@ export default function VehicleCaseFileView({
 }) {
   const fermerRef = useRef(null);
 
+  // LES ÉTATS D'ENVOI SE DEMANDENT, ILS NE SE DEVINENT PAS
+  //
+  // `notifications_devis` n'est lisible par aucun rôle applicatif — c'est un
+  // choix de sécurité du projet, pas un oubli. Seules les fonctions
+  // `etat_envoi_devis` / `etat_envoi_facture` y donnent accès. On les appelle
+  // donc pour les deux documents de l'intervention courante, et pour eux
+  // seuls : deux requêtes au maximum, à l'ouverture du dossier.
+  //
+  // Tant qu'elles n'ont pas répondu, `filVehicule` retombe sur sa lecture
+  // prudente — « relisez le message, puis confirmez l'envoi » — qui ne
+  // prétend jamais qu'un envoi a eu lieu. Une erreur laisse le dossier
+  // utilisable : il dira seulement moins.
+  const [etatsEnvoi, setEtatsEnvoi] = useState({ devis: null, facture: null });
+  const interventionBrute = selectionnerInterventionCourante({ rendezVous, devis, ordresReparation, factures });
+  const devisCourantId = interventionBrute.devis?.id || null;
+  const factureCouranteId = interventionBrute.facture?.id || null;
+
+  useEffect(() => {
+    let annule = false;
+    async function lire(cle, id) {
+      if (!id) return null;
+      const { rpcEtat, idParam } = DOCUMENTS[cle];
+      const { data, error } = await supabase.rpc(rpcEtat, { [idParam]: id });
+      if (error || !data?.ok) return null;
+      return data.etat || null;
+    }
+    (async () => {
+      const [etatDevis, etatFacture] = await Promise.all([
+        lire("devis", devisCourantId),
+        lire("facture", factureCouranteId),
+      ]);
+      if (!annule) setEtatsEnvoi({ devis: etatDevis, facture: etatFacture });
+    })();
+    return () => { annule = true; };
+  }, [devisCourantId, factureCouranteId]);
+
+
   useEffect(() => {
     fermerRef.current?.focus();
     function handleKeyDown(event) {
@@ -79,7 +118,11 @@ export default function VehicleCaseFileView({
 
   if (!vehicule) return null;
 
-  const dossier = construireDossierVehicule({ vehicule, client, rendezVous, devis, ordresReparation, factures });
+  const dossier = construireDossierVehicule({
+    vehicule, client, rendezVous, devis, ordresReparation, factures,
+    etatEnvoiDevis: etatsEnvoi.devis,
+    etatEnvoiFacture: etatsEnvoi.facture,
+  });
   const etapeAtelierLabel = dossier.etapeAtelier
     ? workshopStages.find((s) => s.key === dossier.etapeAtelier.statut_atelier)?.label || dossier.etapeAtelier.statut_atelier
     : null;

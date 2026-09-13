@@ -19,6 +19,20 @@
 //   — « fiche atelier » : la vue opérationnelle qui en découle.
 // Les deux mots ne désignent pas le même objet et ne sont pas interchangeables.
 
+/**
+ * Où le geste se poursuit. `null` = aucun écran à ouvrir : le dossier est clos
+ * ou la balle n'est pas dans le camp du garage.
+ *
+ * Ces clés sont produites ICI, avec l'état et la phrase, parce qu'une
+ * destination choisie ailleurs redevient un second calcul : le texte pouvait
+ * dire « rien à faire » pendant que le bouton ouvrait la facture.
+ */
+export const CIBLE_ATELIER = "atelier";
+export const CIBLE_DEVIS = "devis";
+export const CIBLE_FACTURES = "factures";
+export const CIBLE_AGENDA = "agenda";
+export const CIBLE_ORDRE = "ordres_reparation";
+
 export const AGIT_GARAGE = "garage";
 export const AGIT_CLIENT = "client";
 export const AGIT_PERSONNE = "personne";
@@ -64,76 +78,79 @@ export function filVehicule({
   // Facture : la fin du fil.
   if (facture) {
     if (facture.statut === "payee") {
-      return fil("Facture payée", "Rien à faire : ce dossier est clos.", AGIT_PERSONNE, { contradiction, ordreStatut, etape });
+      return fil("Facture payée", "Rien à faire : ce dossier est clos.", AGIT_PERSONNE, null, { contradiction, ordreStatut, etape });
     }
     if (etatEnvoiFacture === "envoye") {
-      return fil("Facture envoyée", "Le client doit la régler. Marquez-la payée quand vous aurez reçu le paiement.", AGIT_CLIENT, { contradiction, ordreStatut, etape });
+      return fil("Facture envoyée", "Le client doit la régler. Marquez-la payée quand vous aurez reçu le paiement.", AGIT_CLIENT, CIBLE_FACTURES, { contradiction, ordreStatut, etape });
     }
     if (etatEnvoiFacture === "en_attente_envoi") {
-      return fil("Facture en attente d'envoi", "L'envoi est programmé. Rien d'autre à faire pour l'instant.", AGIT_PERSONNE, { contradiction, ordreStatut, etape });
+      return fil("Facture en attente d'envoi", "L'envoi est programmé. Rien d'autre à faire pour l'instant.", AGIT_PERSONNE, null, { contradiction, ordreStatut, etape });
     }
     if (etatEnvoiFacture === "envoi_en_cours") {
-      return fil("Facture : envoi à vérifier", "Vérifiez avec le client ce qu'il a reçu avant de lui écrire à nouveau.", AGIT_GARAGE, { contradiction, ordreStatut, etape });
+      return fil("Facture : envoi à vérifier", "Vérifiez avec le client ce qu'il a reçu avant de lui écrire à nouveau.", AGIT_GARAGE, CIBLE_FACTURES, { contradiction, ordreStatut, etape });
     }
-    return fil("Facture établie", "Relisez le message, puis confirmez son envoi au client.", AGIT_GARAGE, { contradiction, ordreStatut, etape });
+    return fil("Facture établie", "Relisez le message, puis confirmez son envoi au client.", AGIT_GARAGE, CIBLE_FACTURES, { contradiction, ordreStatut, etape });
   }
 
   // Travaux terminés : il reste à restituer, puis à facturer.
   if (etape === "restitue") {
-    return fil("Voiture restituée", "Générez la facture depuis l'écran Facturation.", AGIT_GARAGE, { contradiction, ordreStatut, etape });
+    return fil("Voiture restituée", "Générez la facture depuis l'écran Facturation.", AGIT_GARAGE, CIBLE_FACTURES, { contradiction, ordreStatut, etape });
   }
   if (etape === "pret" || ordreTermine) {
     return fil(
       ordreTermine && etape !== "pret" ? "Travaux terminés sur l'ordre de réparation" : "Voiture prête",
       "Notez la restitution quand le client aura repris sa voiture.",
       AGIT_CLIENT,
+      CIBLE_ORDRE,
       { contradiction, ordreStatut, etape }
     );
   }
 
   // Atelier engagé : la fiche atelier suit les travaux.
   if (ETAPES_ATELIER_ENGAGEES.has(etape)) {
-    return fil("Voiture à l'atelier", "Suivez l'avancement depuis la fiche atelier.", AGIT_GARAGE, { contradiction, ordreStatut, etape });
+    return fil("Voiture à l'atelier", "Suivez l'avancement depuis la fiche atelier.", AGIT_GARAGE, CIBLE_ATELIER, { contradiction, ordreStatut, etape });
   }
 
   // L'ordre existe et n'est pas terminé : on ne propose plus d'en « préparer »
   // un, on ouvre celui qui existe.
   if (ordreActif) {
-    return fil("Ordre de réparation ouvert", "Ouvrez-le pour suivre les travaux.", AGIT_GARAGE, { contradiction, ordreStatut, etape });
+    return fil("Ordre de réparation ouvert", "Ouvrez-le pour suivre les travaux.", AGIT_GARAGE, CIBLE_ORDRE, { contradiction, ordreStatut, etape });
   }
 
   // Le devis mène l'histoire tant qu'il n'y a pas d'ordre.
   if (devis) {
     if (devis.statut === "accepte") {
-      return fil("Devis accepté", "Créez l'ordre de réparation pour lancer les travaux.", AGIT_GARAGE, { contradiction, ordreStatut, etape });
+      return fil("Devis accepté", "Créez l'ordre de réparation pour lancer les travaux.", AGIT_GARAGE, CIBLE_ORDRE, { contradiction, ordreStatut, etape });
     }
     if (devis.statut === "refuse") {
-      return fil("Devis refusé", "Rien à faire : le client n'a pas donné suite.", AGIT_PERSONNE, { contradiction, ordreStatut, etape });
+      return fil("Devis refusé", "Rien à faire : le client n'a pas donné suite.", AGIT_PERSONNE, null, { contradiction, ordreStatut, etape });
     }
     if (etatEnvoiDevis === "envoye") {
-      return fil("Devis envoyé", "Le client doit répondre. Vous pouvez enregistrer sa réponse s'il vous l'a donnée autrement.", AGIT_CLIENT, { contradiction, ordreStatut, etape });
+      return fil("Devis envoyé", "Le client doit répondre. Vous pouvez enregistrer sa réponse s'il vous l'a donnée autrement.", AGIT_CLIENT, CIBLE_DEVIS, { contradiction, ordreStatut, etape });
     }
     if (etatEnvoiDevis === "en_attente_envoi") {
-      return fil("Devis en attente d'envoi", "L'envoi est programmé. Rien d'autre à faire pour l'instant.", AGIT_PERSONNE, { contradiction, ordreStatut, etape });
+      return fil("Devis en attente d'envoi", "L'envoi est programmé. Rien d'autre à faire pour l'instant.", AGIT_PERSONNE, null, { contradiction, ordreStatut, etape });
     }
     if (etatEnvoiDevis === "envoi_en_cours") {
-      return fil("Devis : envoi à vérifier", "Vérifiez avec le client ce qu'il a reçu avant de lui écrire à nouveau.", AGIT_GARAGE, { contradiction, ordreStatut, etape });
+      return fil("Devis : envoi à vérifier", "Vérifiez avec le client ce qu'il a reçu avant de lui écrire à nouveau.", AGIT_GARAGE, CIBLE_DEVIS, { contradiction, ordreStatut, etape });
     }
-    return fil("Devis établi", "Relisez le message, puis confirmez son envoi au client.", AGIT_GARAGE, { contradiction, ordreStatut, etape });
+    return fil("Devis établi", "Relisez le message, puis confirmez son envoi au client.", AGIT_GARAGE, CIBLE_DEVIS, { contradiction, ordreStatut, etape });
   }
 
   if (rdv) {
-    return fil("Rendez-vous prévu", "Établissez le devis, ou notez l'arrivée de la voiture à l'atelier.", AGIT_GARAGE, { contradiction, ordreStatut, etape });
+    return fil("Rendez-vous prévu", "Établissez le devis, ou notez l'arrivée de la voiture à l'atelier.", AGIT_GARAGE, CIBLE_AGENDA, { contradiction, ordreStatut, etape });
   }
 
-  return fil("Dossier ouvert", "Créez un rendez-vous pour cette voiture.", AGIT_GARAGE, { contradiction, ordreStatut, etape });
+  return fil("Dossier ouvert", "Créez un rendez-vous pour cette voiture.", AGIT_GARAGE, CIBLE_AGENDA, { contradiction, ordreStatut, etape });
 }
 
-function fil(etat, prochaineAction, quiAgit, { contradiction, ordreStatut, etape }) {
+function fil(etat, prochaineAction, quiAgit, cible, { contradiction, ordreStatut, etape }) {
   return {
     etat,
     prochaineAction,
     quiAgit,
+    // La destination du bouton, décidée en même temps que la phrase.
+    cible,
     ordreStatut,
     etapeAtelier: etape,
     contradiction,
