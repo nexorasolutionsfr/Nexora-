@@ -1,57 +1,52 @@
-# Point de reprise — cap produit du 14 septembre 2026 (nuit)
+# Point de reprise — cap produit du 14 septembre 2026
 
-Mis à jour à la fin de la mission. Sert à continuer dans une autre session.
+Mis à jour le 14 sept. au soir, lots 0–3 terminés. Sert à continuer dans une
+autre session.
 
 ## État
 
-- Branche d'intégration : `integ/constat-devis-suivi`, worktree
-  `…/nexora-constat-devis`, depuis `origin/main` = `15eead5` (PR #100).
-  Commits : `d8d16b9` (lots 0+1), `e3806b7` (lot 2 + largeur mobile),
-  `b7f40ed` (lot 3 + portail + plan n8n), puis le commit final (écritures
-  directes fermées, base jetable, recette durcie, docs). **Rien de poussé,
-  aucune PR ouverte, rien de fusionné.**
-- `.env.local` vise **Test** ; `node_modules` copié ; serveur de dev par
-  `~/Downloads/.claude/launch.json` (config `nexora-constat-devis`, port 3000).
-- Migrations **appliquées sur Test** : `20260919000100` → `000500`.
-  **Rien en Production.** Base jetable depuis le schéma de Production :
-  5 migrations OK, **53/53** (`docs/recette/base-jetable-2026-09-14.sh`).
-- n8n : **rien importé ni activé**. Exports générés dans `n8n/relances-travaux/`.
+- Branche `integ/constat-devis-suivi`, poussée ; **PR #101 ouverte, non
+  fusionnée** (https://github.com/nexorasolutionsfr/Nexora-/pull/101).
+  Tête du travail : `defbf3f` (sur `30e233d`, lui-même sur `15eead5`).
+- Migrations **appliquées sur Test** : `20260919000100` → `000900`.
+  **Rien en Production.** Base jetable (schéma Production, dump frais) :
+  9 migrations, **78/78**, 0 erreur.
+- n8n : variante Test importée et exécutée **dans une instance isolée**
+  (`nexora-n8n-recette`, arrêtée ensuite) ; instance vive intacte.
+  Production : export généré, **non importé**.
 
 ## Preuves
 
 | Quoi | Résultat |
 |---|---|
-| Unitaires | 491 / 491 |
-| `constat-devis-serveur.mjs` | 31 / 31 |
-| `modeles-travaux-serveur.mjs` | 25 / 25 |
-| `relances-travaux-serveur.mjs` | 32 / 32 |
-| Base jetable (schéma Production) | 53 / 53 |
-| Écran | parcours dirigeant (constat → devis → chiffrage → pièce rattachée → modèle) ; parcours accueil (relance relue et autorisée) ; captures 430/375 |
+| `next build` (tête) | OK |
+| Unitaires | 496 / 496 |
+| `constats-mecanicien-serveur.mjs` | 35 / 35 |
+| `preuves-devis-serveur.mjs` | 20 / 20 |
+| `modeles-travaux-serveur.mjs` | 27 / 27 |
+| `relances-travaux-serveur.mjs` | 34 / 34 |
+| n8n Test, transport simulé | 3 passages — `n8n-relances-execution-2026-09-14.md` |
+| Clavier natif 375 px | mécanicien, devis public + visionneuse, « Préparer le devis », fenêtre de relance |
 
-Détail : `docs/recette/constat-devis-2026-09-14.md`.
+## Essayer (Test)
 
-## Jeu de recette (Test)
+Serveur local `http://localhost:3000` (config `nexora-constat-devis`).
+Accès : `node scripts/recette/acces-test.mjs lien <email> 3000`, comptes
+`recette.constat[.accueil|.meca].2026091416h26@nexora-recette.invalid`,
+garage `31578a46-deba-4dd6-9487-7f2d876ec00f`.
 
-Garage « PROTO Constat 2026-09-14-16h26 » `31578a46-deba-4dd6-9487-7f2d876ec00f`,
-comptes `recette.constat[.accueil|.meca|.revoque].2026091416h26@nexora-recette.invalid`.
-Accès : `node scripts/recette/acces-test.mjs lien <email> 3000`.
+## Limites connues
 
-État laissé : devis `6FB658` complété et chiffré (4 lignes) ; modèle
-« Plaquettes avant » (3 lignes, dont 1 sans prix) ; travail différé « Pneus
-arrière à remplacer » avec une relance `bloque` (réservée par erreur par le
-script, aucun transport — voir la recette, écart n° 2).
+- **Réception réelle non testée** ; classement SMTP de la variante Production
+  non exécuté.
+- Relance `fb259234…` laissée `bloque` comme trace de l'incident
+  (`incident-relance-2026-09-14.md`) : ne pas la « réparer ».
 
 ## Prochaine action (pour Baptiste)
 
-1. Relire `docs/recette/proposition-publication-2026-09-14.md`.
-2. Avant tout feu vert : `next build`, clavier réel sur les trois nouvelles
-   fenêtres, base jetable sur un dump frais, import du workflow Test dans une
-   instance n8n **de recette**.
-3. Ouvrir les trois PR empilées (lot 1, lot 2, lot 3 avec `000500`).
+Relire `proposition-publication-2026-09-14.md` et la PR #101. Rien n'est
+publié sans feu vert.
 
 ## Non commencé
 
-Lot 4 (import CSV : mémoire des colonnes, identifiant externe, conflits,
-export neutralisé) — `docs/architecture/coexistence-logiciels-existants.md`.
-Preuve photo sur le devis public. Saisie du constat par le mécanicien.
-Avis Google, IMAP par garage.
+Lot 4 (import CSV). Avis Google, IMAP par garage.
