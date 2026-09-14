@@ -29,7 +29,27 @@ const { data: vBC } = await admin.from("vehicules").select("id, client_id").eq("
 const { data: rdvs } = await admin.from("rendez_vous").select("id, vehicule_id, client_id, statut_atelier, date_debut").eq("garage_id", garageId);
 const rdvJour = rdvs.find((r) => r.vehicule_id === vBA.id && r.statut_atelier === "diagnostic");
 const rdvAncien = rdvs.find((r) => r.vehicule_id === vBA.id && r.statut_atelier === "restitue");
-const rdvLong = rdvs.find((r) => r.vehicule_id === vBC.id);
+// La section 7 termine la fiche du rendez-vous « long ». Une fiche terminée ne
+// se rouvre pas pour rejouer la recette : on prend le premier rendez-vous de
+// BC-303-CC dont la fiche n'est pas terminée, sinon on en crée un nouveau (sa
+// propre fiche lui sera rattachée, jamais celle d'une autre visite).
+async function rdvLongDisponible() {
+  for (const r of rdvs.filter((x) => x.vehicule_id === vBC.id)) {
+    // Lu sous la session du dirigeant : la clé de service n'a aucun droit sur ordres_reparation.
+    const { data: o, error: eO } = await dirigeant.from("ordres_reparation").select("statut").eq("rendez_vous_id", r.id).maybeSingle();
+    if (eO) { console.error("fiche existante :", eO.message); process.exit(1); }
+    if (!o || o.statut !== "termine") return r;
+  }
+  const debut = new Date(Date.now() + 2 * 3600e3);
+  const { data, error } = await dirigeant.from("rendez_vous").insert({
+    garage_id: garageId, client_id: vBC.client_id, vehicule_id: vBC.id,
+    date_debut: debut.toISOString(), date_fin: new Date(debut.getTime() + 3600e3).toISOString(),
+    statut: "confirme", source: "manuel",
+  }).select("id, vehicule_id, client_id").single();
+  if (error) { console.error("rendez-vous de recette :", error.message); process.exit(1); }
+  return data;
+}
+const rdvLong = await rdvLongDisponible();
 
 // --- Les fiches : créées une fois par le dirigeant, sous sa session ---------
 async function fiche(rdv, mecanicienId) {

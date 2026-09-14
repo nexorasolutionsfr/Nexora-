@@ -1,10 +1,15 @@
-// Construit les deux variantes du workflow « Relances de travaux différés » :
-//   - test.json       : Supabase TEST, garage de recette seulement, transport
-//                       SIMULÉ (un nœud Code qui n'envoie rien et le dit) ;
-//   - production.json : Supabase Production, SMTP Brevo, INACTIF.
+// Construit les variantes du workflow « Relances de travaux différés » :
+//   - test.json          : Supabase TEST, garage de recette seulement, transport
+//                          SIMULÉ (un nœud Code qui n'envoie rien et le dit) ;
+//   - production.json    : Supabase Production, SMTP Brevo, INACTIF ;
+//   - recette-smtp.json  : la VRAIE chaîne de production (mêmes nœuds d'envoi et
+//                          de classement), sur Supabase TEST, bornée à UN garage
+//                          de recette, avec un identifiant SMTP qui vise le
+//                          serveur contrôlé scripts/recette/smtp-controle.mjs.
+//                          Construite seulement si RECETTE_SMTP_GARAGE est fourni.
 //
-// Un seul fichier source : les deux variantes ne divergent que sur l'URL, les
-// identifiants, les garages, le déclencheur manuel (Test) et le transport.
+// Un seul fichier source : les variantes ne divergent que sur l'URL, les
+// identifiants, les garages, le déclencheur manuel (recette) et le transport.
 // Aucune clé ici : les identifiants sont référencés par leur id n8n.
 //
 // À chaque passage :
@@ -13,31 +18,46 @@
 //   3. transport                    → issue CONNUE : `terminer_relance_travail`
 //                                     issue INCERTAINE : on ne clôt rien
 //
+// L'EXPÉDITEUR
+// Le même que le socle des envois (n8n/socle-envois/nouveau-devis.json, nœud
+// « Construire le message ») : l'adresse Nexora vérifiée chez Brevo, le nom du
+// garage en nom affiché, l'adresse du garage en Reply-To. Brevo réécrit
+// l'adresse d'enveloppe mais laisse passer le nom et le Reply-To (prouvé le
+// 8 septembre 2026 sur un message réellement reçu). Sans adresse de garage
+// valide, pas de Reply-To : on n'en invente pas.
+//
 // L'ISSUE INCERTAINE NE SE REPREND PAS
 // Un délai dépassé ou une connexion coupée APRÈS que le fournisseur a pu
 // accepter le message ne dit pas si le client l'a reçu. La ligne reste
 // `envoi_en_cours` ; `reserver_relances_travaux` ne la reprend jamais ; l'écran
-// dit « Envoi à vérifier ». Seul un échec CERTAIN avant l'envoi repasse
-// `a_reprendre` (borné à 3 tentatives côté base).
+// dit « Envoi à vérifier ». Le classement est dans classerEchec.js (testé).
 //
 // Le message vient de la base (sujet, texte, destinataire) : n8n n'en compose
 // aucun. Contrat : docs/architecture/plan-n8n-2026-09-14.md.
 //
 // Usage : node n8n/relances-travaux/construire.mjs
-import { writeFileSync } from "node:fs";
+//         RECETTE_SMTP_GARAGE=<uuid> node n8n/relances-travaux/construire.mjs
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ICI = dirname(fileURLToPath(import.meta.url));
+const EXPEDITEUR_ADRESSE = "nexorasolutions.france@gmail.com";
+const CLASSER_ECHEC = readFileSync(resolve(ICI, "classerEchec.js"), "utf8")
+  .split("\n").filter((l) => !l.startsWith("if (typeof module")).join("\n");
+
+const TEST_URL = "https://slawilafseganlbghgwx.supabase.co";
+const RPC_RECETTE = { id: "BmVzKJSWPhAJ5V3Z", name: "RPC Supabase RECETTE (Test)" };
 
 const VARIANTES = {
   test: {
     id: "relancestravauxtest0000001",
     nom: "Relances travaux différés (TEST — transport simulé)",
-    supabaseUrl: "https://slawilafseganlbghgwx.supabase.co",
-    rpcCred: { id: "BmVzKJSWPhAJ5V3Z", name: "RPC Supabase RECETTE (Test)" },
+    supabaseUrl: TEST_URL,
+    rpcCred: RPC_RECETTE,
     garages: ["31578a46-deba-4dd6-9487-7f2d876ec00f"],
     cron: "*/15 * * * *",
+    manuel: true,
     transport: "simule",
   },
   production: {
@@ -48,9 +68,24 @@ const VARIANTES = {
     smtpCred: { id: "6opiCKNWBLDnvYKJ", name: "SMTP Brevo — envois métier" },
     garages: null,
     cron: "*/15 * * * *",
+    manuel: false,
     transport: "smtp",
   },
 };
+if (process.env.RECETTE_SMTP_GARAGE) {
+  if (!/^[0-9a-f-]{36}$/.test(process.env.RECETTE_SMTP_GARAGE)) throw new Error("RECETTE_SMTP_GARAGE : uuid attendu");
+  VARIANTES["recette-smtp"] = {
+    id: "relancestravauxsmtp0000001",
+    nom: "Relances travaux différés (RECETTE — vraie variante, SMTP contrôlé)",
+    supabaseUrl: TEST_URL,
+    rpcCred: RPC_RECETTE,
+    smtpCred: { id: "SmtpRecetteCtrl01", name: "SMTP recette contrôlé (aucun relais)" },
+    garages: [process.env.RECETTE_SMTP_GARAGE],
+    cron: "*/15 * * * *",
+    manuel: true,
+    transport: "smtp",
+  };
+}
 
 function rpc(nom, v, fonction, corps, pos) {
   return {
@@ -90,7 +125,7 @@ function construire(cle) {
     code("Garder les lignes réservées", "return $input.all().filter((i) => i.json && i.json.id);", [600, 300]),
     { parameters: { options: {} }, name: "Une relance à la fois", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [720, 300] },
   ];
-  if (cle === "test") {
+  if (v.manuel) {
     nodes.push({ parameters: {}, name: "Lancer à la main (recette)", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, position: [0, 480] });
   }
   if (v.transport === "simule") {
@@ -109,14 +144,23 @@ function construire(cle) {
       "return [{ json: { id: r.id, resultat: 'envoye', motif: 'transport simulé (recette) : aucun message réel n\\'est parti' } }];",
     ].join("\n"), [960, 300]));
   } else {
+    nodes.push(code("Composer l'expéditeur", [
+      "// Même identité que le socle des envois : adresse Nexora vérifiée chez Brevo,",
+      "// nom du garage affiché, adresse du garage en Reply-To (jamais inventée).",
+      `const ADRESSE = ${JSON.stringify(EXPEDITEUR_ADRESSE)};`,
+      "const r = $json;",
+      "const nom = String(r.expediteur_nom || '').replace(/[\"\\\\<>\\r\\n]/g, ' ').replace(/\\s+/g, ' ').trim() || 'Votre garage';",
+      "const repondreA = /^[^\\s@<>\"]+@[^\\s@<>\"]+\\.[^\\s@<>\"]+$/.test(String(r.repondre_a || '')) ? String(r.repondre_a) : '';",
+      "return [{ json: { ...r, expediteur: `\"${nom}\" <${ADRESSE}>`, repondreA } }];",
+    ].join("\n"), [840, 300]));
     nodes.push({
       parameters: {
-        fromEmail: "={{ $json.repondre_a }}",
+        fromEmail: "={{ $json.expediteur }}",
         toEmail: "={{ $json.destinataire }}",
         subject: "={{ $json.sujet }}",
         emailFormat: "text",
         text: "={{ $json.texte }}",
-        options: { appendAttribution: false, replyTo: "={{ $json.repondre_a }}" },
+        options: { appendAttribution: false, replyTo: "={{ $json.repondreA }}" },
       },
       name: "Envoyer la relance (email)",
       type: "n8n-nodes-base.emailSend",
@@ -127,14 +171,11 @@ function construire(cle) {
     });
     nodes.push(code("Accepté par le fournisseur", "const r = $('Une relance à la fois').item.json;\nreturn [{ json: { id: r.id, resultat: 'envoye', motif: null } }];", [1200, 200]));
     nodes.push(code("Classer l'échec", [
-      "// Un échec n'est CERTAIN que si le fournisseur a refusé avant d'accepter le",
-      "// message. Tout le reste (délai, connexion coupée, erreur inconnue) est",
-      "// INCERTAIN : le message a pu partir, on ne le rejoue pas.",
+      CLASSER_ECHEC,
       "const r = $('Une relance à la fois').item.json;",
-      "const m = String(($json.error && ($json.error.message || $json.error)) || $json.message || '');",
-      "if (/\\b5\\d\\d\\b/.test(m)) return [{ json: { id: r.id, resultat: 'bloque', motif: 'refus définitif du fournisseur : ' + m.slice(0, 200) } }];",
-      "if (/ECONNREFUSED|ENOTFOUND|EAUTH|Invalid login|\\b4\\d\\d\\b/i.test(m)) return [{ json: { id: r.id, resultat: 'a_reprendre', motif: 'échec certain avant envoi : ' + m.slice(0, 200) } }];",
-      "return [{ json: { id: r.id, resultat: 'incertain', motif: 'issue inconnue : ' + m.slice(0, 200) } }];",
+      "const brut = $json.error && typeof $json.error === 'object' ? $json.error : { message: $json.error || $json.message || '' };",
+      "const c = classerEchec({ message: brut.message || $json.message || '', description: brut.description, code: brut.code || $json.code, responseCode: brut.responseCode ?? $json.responseCode, command: brut.command || $json.command });",
+      "return [{ json: { id: r.id, resultat: c.resultat, motif: c.motif, erreur_brute: JSON.stringify($json).slice(0, 600) } }];",
     ].join("\n"), [1200, 400]));
   }
   nodes.push({
@@ -165,12 +206,13 @@ function construire(cle) {
     "Clore la relance": { main: [[{ node: "Une relance à la fois", type: "main", index: 0 }]] },
     "Issue incertaine : rien n'est clos": { main: [[{ node: "Une relance à la fois", type: "main", index: 0 }]] },
   };
-  if (cle === "test") connections["Lancer à la main (recette)"] = { main: [[{ node: "Préparer les relances", type: "main", index: 0 }]] };
+  if (v.manuel) connections["Lancer à la main (recette)"] = { main: [[{ node: "Préparer les relances", type: "main", index: 0 }]] };
   if (v.transport === "simule") {
     connections["Une relance à la fois"] = { main: [[], [{ node: "Transport simulé (recette)", type: "main", index: 0 }]] };
     connections["Transport simulé (recette)"] = { main: [[{ node: "Issue connue ?", type: "main", index: 0 }]] };
   } else {
-    connections["Une relance à la fois"] = { main: [[], [{ node: "Envoyer la relance (email)", type: "main", index: 0 }]] };
+    connections["Une relance à la fois"] = { main: [[], [{ node: "Composer l'expéditeur", type: "main", index: 0 }]] };
+    connections["Composer l'expéditeur"] = { main: [[{ node: "Envoyer la relance (email)", type: "main", index: 0 }]] };
     connections["Envoyer la relance (email)"] = { main: [[{ node: "Accepté par le fournisseur", type: "main", index: 0 }], [{ node: "Classer l'échec", type: "main", index: 0 }]] };
     connections["Accepté par le fournisseur"] = { main: [[{ node: "Issue connue ?", type: "main", index: 0 }]] };
     connections["Classer l'échec"] = { main: [[{ node: "Issue connue ?", type: "main", index: 0 }]] };

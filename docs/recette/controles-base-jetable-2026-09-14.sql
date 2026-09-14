@@ -260,6 +260,46 @@ values ('00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000
 select case when jsonb_array_length(public.lire_devis_par_jeton('jeton-jetable')->'lignes'->0->'preuve'->'photos') = 1
        then 'OK ' else 'KO ' end || 'photo ajoutée après acceptation : le devis public n''en montre qu''une (figée)';
 
+-- 3f. Fiabilisation (001000) : l'empreinte suit ce que le client lit ; l'opposition bloque les relances
+insert into public.devis (id, garage_id, client_id, vehicule_id, montant_ht, montant_ttc, statut)
+values ('00000000-0000-4000-8000-0000000000d3', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-0000000000e1', 0, 0, 'en_attente');
+insert into public.devis_lignes (id, devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva, inspection_point_id, note_constat)
+values ('00000000-0000-4000-8000-0000000000d4', '00000000-0000-4000-8000-0000000000d3', '00000000-0000-4000-8000-0000000000a1', 'main_oeuvre', 'Plaquettes', 1, 90, 20, '00000000-0000-4000-8000-0000000000b2', 'Usées');
+create temp table empreintes (etape text, valeur text);
+insert into empreintes select 'depart', public.empreinte_devis('00000000-0000-4000-8000-0000000000d3');
+update public.devis_lignes set libelle = 'Disques et plaquettes' where id = '00000000-0000-4000-8000-0000000000d4';
+insert into empreintes select 'libelle', public.empreinte_devis('00000000-0000-4000-8000-0000000000d3');
+update public.devis_lignes set note_constat = 'Usées, disque rayé' where id = '00000000-0000-4000-8000-0000000000d4';
+insert into empreintes select 'constat', public.empreinte_devis('00000000-0000-4000-8000-0000000000d3');
+insert into public.inspections_photos (inspection_id, garage_id, point_id, storage_path)
+values ('00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000b2',
+        '00000000-0000-4000-8000-0000000000a1/00000000-0000-4000-8000-0000000000b1/00000000-0000-4000-8000-0000000000b6.png');
+insert into empreintes select 'photo', public.empreinte_devis('00000000-0000-4000-8000-0000000000d3');
+insert into empreintes select 'relecture', public.empreinte_devis('00000000-0000-4000-8000-0000000000d3');
+select case when count(distinct valeur) filter (where etape in ('depart', 'libelle', 'constat', 'photo')) = 4
+             and (select valeur from empreintes where etape = 'photo') = (select valeur from empreintes where etape = 'relecture')
+       then 'OK ' else 'KO ' end || 'empreinte_devis change avec le libellé, le constat et les photos, et reste stable sans changement'
+  from empreintes;
+select case when not has_function_privilege('anon', 'public.client_oppose_relances(uuid, uuid)', 'execute')
+             and not has_function_privilege('authenticated', 'public.client_oppose_relances(uuid, uuid)', 'execute')
+       then 'OK ' else 'KO ' end || 'client_oppose_relances fermée aux rôles applicatifs';
+insert into public.travaux_differes (id, garage_id, client_id, vehicule_id, intervention, niveau, statut, date_relance, source)
+values ('00000000-0000-4000-8000-0000000000f4', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-0000000000e1', 'Opposé', 'normal', 'a_relancer', current_date - 1, 'manuel');
+select public.preparer_relances_travaux(array['00000000-0000-4000-8000-0000000000a1']::uuid[], current_date, array['00000000-0000-4000-8000-0000000000f4']::uuid[]) is not null as _;
+update public.relances_travaux set statut = 'en_attente', destinataire_valide = 'client@nexora-recette.invalid'
+ where travail_differe_id = '00000000-0000-4000-8000-0000000000f4';
+update public.relances_travaux set empreinte_document = public.empreinte_relance_travail(id)
+ where travail_differe_id = '00000000-0000-4000-8000-0000000000f4';
+-- Le journal force `enregistre_par = auth.uid()` : l'opposition s'enregistre sous l'identité du propriétaire.
+set local request.jwt.claim.sub = '00000000-0000-4000-8000-00000000c0de';
+insert into public.revenue_recovery_permissions (garage_id, client_id, canal, statut, origine, enregistre_par)
+values ('00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000c1', 'email', 'oppose', 'contrôle base jetable', '00000000-0000-4000-8000-00000000c0de');
+select case when count(*) = 0 then 'OK ' else 'KO ' end || 'opposition après autorisation : la réservation ne prend rien'
+  from public.reserver_relances_travaux(10, array['00000000-0000-4000-8000-0000000000a1']::uuid[],
+       array(select id from public.relances_travaux where travail_differe_id = '00000000-0000-4000-8000-0000000000f4'));
+select case when statut = 'bloque' and derniere_erreur like '%opposé%' then 'OK ' else 'KO ' end || 'opposition après autorisation : relance mise de côté avec son motif'
+  from public.relances_travaux where travail_differe_id = '00000000-0000-4000-8000-0000000000f4';
+
 rollback;
 
 select case when count(*) = 0 then 'OK ' else 'KO ' end || 'jeu synthétique retiré (rollback)'

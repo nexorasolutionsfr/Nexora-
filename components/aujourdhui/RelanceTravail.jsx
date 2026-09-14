@@ -64,6 +64,7 @@ export function libelleRefusRelance(raison) {
     case "destinataire_different": return "L'adresse du client a changé depuis l'affichage. Rouvrez la relance pour vérifier.";
     case "travail_clos": return "Ce travail est clos : il n'y a plus rien à relancer.";
     case "travail_reporte": return "Ce travail a été reporté : une nouvelle relance sera préparée à la nouvelle date.";
+    case "client_oppose": return "Ce client s'est opposé aux relances par e-mail : rien ne lui sera envoyé.";
     case "statut": return "Cette relance n'est plus modifiable dans son état actuel.";
     case "texte_vide": return "Le sujet et le texte sont obligatoires.";
     default: return "L'action n'a pas abouti. Réessayez.";

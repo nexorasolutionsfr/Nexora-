@@ -1,5 +1,5 @@
 {
-  "name": "Relances travaux différés (socle) — INACTIF",
+  "name": "Relances travaux différés (RECETTE — vraie variante, SMTP contrôlé)",
   "nodes": [
     {
       "parameters": {
@@ -23,7 +23,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/preparer_relances_travaux",
+        "url": "https://slawilafseganlbghgwx.supabase.co/rest/v1/rpc/preparer_relances_travaux",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpCustomAuth",
         "sendHeaders": true,
@@ -37,7 +37,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"p_garages\": null}",
+        "jsonBody": "{\"p_garages\": [\"fb53c8ce-f7c5-476c-8c37-ce65b9f1bda0\"]}",
         "options": {}
       },
       "name": "Préparer les relances",
@@ -49,8 +49,8 @@
       ],
       "credentials": {
         "httpCustomAuth": {
-          "id": "fk85N6k6Aea2u0fb",
-          "name": "RPC Supabase Production"
+          "id": "BmVzKJSWPhAJ5V3Z",
+          "name": "RPC Supabase RECETTE (Test)"
         }
       },
       "alwaysOutputData": true
@@ -58,7 +58,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/reserver_relances_travaux",
+        "url": "https://slawilafseganlbghgwx.supabase.co/rest/v1/rpc/reserver_relances_travaux",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpCustomAuth",
         "sendHeaders": true,
@@ -72,7 +72,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"p_limite\": 10, \"p_garages\": null}",
+        "jsonBody": "{\"p_limite\": 10, \"p_garages\": [\"fb53c8ce-f7c5-476c-8c37-ce65b9f1bda0\"]}",
         "options": {}
       },
       "name": "Réserver les relances autorisées",
@@ -84,8 +84,8 @@
       ],
       "credentials": {
         "httpCustomAuth": {
-          "id": "fk85N6k6Aea2u0fb",
-          "name": "RPC Supabase Production"
+          "id": "BmVzKJSWPhAJ5V3Z",
+          "name": "RPC Supabase RECETTE (Test)"
         }
       },
       "alwaysOutputData": true
@@ -112,6 +112,16 @@
       "position": [
         720,
         300
+      ]
+    },
+    {
+      "parameters": {},
+      "name": "Lancer à la main (recette)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        480
       ]
     },
     {
@@ -147,8 +157,8 @@
       ],
       "credentials": {
         "smtp": {
-          "id": "6opiCKNWBLDnvYKJ",
-          "name": "SMTP Brevo — envois métier"
+          "id": "SmtpRecetteCtrl01",
+          "name": "SMTP recette contrôlé (aucun relais)"
         }
       },
       "onError": "continueErrorOutput"
@@ -211,7 +221,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/terminer_relance_travail",
+        "url": "https://slawilafseganlbghgwx.supabase.co/rest/v1/rpc/terminer_relance_travail",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpCustomAuth",
         "sendHeaders": true,
@@ -237,8 +247,8 @@
       ],
       "credentials": {
         "httpCustomAuth": {
-          "id": "fk85N6k6Aea2u0fb",
-          "name": "RPC Supabase Production"
+          "id": "BmVzKJSWPhAJ5V3Z",
+          "name": "RPC Supabase RECETTE (Test)"
         }
       },
       "alwaysOutputData": true
@@ -339,6 +349,17 @@
         ]
       ]
     },
+    "Lancer à la main (recette)": {
+      "main": [
+        [
+          {
+            "node": "Préparer les relances",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Une relance à la fois": {
       "main": [
         [],
@@ -410,7 +431,7 @@
     "saveDataErrorExecution": "all",
     "saveDataSuccessExecution": "all"
   },
-  "id": "relancestravauxprod0000001",
+  "id": "relancestravauxsmtp0000001",
   "meta": {
     "instanceId": ""
   },
