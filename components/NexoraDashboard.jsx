@@ -1869,7 +1869,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
   );
 }
 
-function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, ordresReparation = [], onPrevenirClient, onAgirSurPriorite, stats, propositions, demandes, devisList = [], vehicules = [], onOuvrirDossierVehicule, setView, onAllerConfigurer, onGererAbonnement, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
+function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, ordresReparation = [], onPrevenirClient, onAgirSurPriorite, stats, propositions, demandes, devisList = [], vehicules = [], onOuvrirDossierVehicule, setView, onAllerConfigurer, onGererAbonnement, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection, onCompteAujourdhui }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   const [cockpitCompteurs, setCockpitCompteurs] = useState(null);
 
@@ -1893,6 +1893,7 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, or
     opportunites, chargement: chargementOpportunites, erreur: erreurOpportunites,
     traiter: traiterOpportunite, reporter: reporterOpportunite, reactiver: reactiverOpportunite,
     journalDisponible,
+    inspections: inspectionsOpportunites,
   } = useOpportunites({
     garageId,
     proprietaireUserId: garageData?.owner_user_id || null,
@@ -2054,6 +2055,10 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, or
           onOuvrirTravailDiffereModal={onOuvrirTravailDiffereModal}
           onOuvrirAide={() => setAideOuverte(true)}
           travauxDifferes={travauxDifferes}
+          demandes={demandes}
+          propositions={propositions}
+          inspections={inspectionsOpportunites}
+          onCompte={onCompteAujourdhui}
         />
       </div>
 
@@ -3652,7 +3657,7 @@ const statutLabel = (s) => {
   return s;
 };
   if (demandes.length === 0) {
-    return <EmptyState icon={Inbox} title="Aucune demande pour le moment" subtitle="Les demandes de rendez-vous en ligne arrivent ici quand leur réception est activée pour votre garage. Un appel se note depuis l'accueil, avec « Un appel à rappeler »." />;
+    return <EmptyState icon={Inbox} title="Aucune demande pour le moment" subtitle="Les demandes de rendez-vous en ligne arrivent ici quand leur réception est activée pour votre garage. Un appel se note depuis l'accueil, avec « Ajouter un rappel »." />;
   }
   return (
     <div className="space-y-3">
@@ -5176,6 +5181,7 @@ function ProposerRdvModal({ demande, prestations, onClose, onSubmit, submitting,
 function NexoraDashboardInner({ garageId, acces = null, joursEssaiRestants = null, monRole = ROLE_DIRIGEANT }) {
   const navGroupesVisibles = useMemo(() => navGroupesPourRole(monRole), [monRole]);
   const [view, setView] = useState("aujourdhui");
+  const [compteAujourdhui, setCompteAujourdhui] = useState(null);
   // Onglet des Paramètres à ouvrir quand on y arrive depuis un raccourci.
   // Réinitialisé à « garage » dès qu'on navigue ailleurs, sinon un retour
   // dans Paramètres rouvrirait la reprise de données sans raison.
@@ -7333,7 +7339,12 @@ if (updateError) {
     .filter((g) => g.items.length > 0);
 
   const navBadgeCounts = {
-    aujourdhui: demandes.filter((d) => d.statut === "nouveau").length + propositions.length + devisList.filter((d) => d.statut === "en_attente").length,
+    // Le badge compte les MÊMES actions que la liste « À traiter », avant sa
+    // limite d'affichage. Il additionnait demandes, créneaux et devis en
+    // attente — un calcul à part, qui affichait « 1 » à côté de « 2 actions à
+    // traiter ». La valeur vient de l'écran Aujourd'hui ; tant qu'elle n'est
+    // pas connue, pas de badge plutôt qu'un chiffre faux.
+    aujourdhui: compteAujourdhui || 0,
     demandes: demandes.filter((d) => d.statut === "nouveau" || d.statut === "infos_manquantes").length,
     "notifications-a-verifier": notifsAVerifierCount,
   };
@@ -7576,7 +7587,7 @@ if (updateError) {
         )}
 
         <div key={view} className="nx-vue p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView monRole={monRole} vehicules={tousLesVehicules} onOuvrirDossierVehicule={ouvrirDossierDepuisRecherche} stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} erreurChargement={erreurDonnees} ordresReparation={ordresReparation} onPrevenirClient={ouvrirPrevenir} onAgirSurPriorite={agirSurPriorite} />}
+          {view === "aujourdhui" && <AujourdhuiView monRole={monRole} vehicules={tousLesVehicules} onOuvrirDossierVehicule={ouvrirDossierDepuisRecherche} stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} erreurChargement={erreurDonnees} ordresReparation={ordresReparation} onPrevenirClient={ouvrirPrevenir} onAgirSurPriorite={agirSurPriorite} onCompteAujourdhui={setCompteAujourdhui} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={ouvrirDossierVehicule} onUpdateStatutAtelier={updateStatutAtelier} onAllerAgenda={() => setView("agenda")} onToast={flashToast} etatVue={etatAtelier} onEtatVue={setEtatAtelier} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}

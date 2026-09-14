@@ -89,22 +89,61 @@ function devisConcerne(l) {
   return null;
 }
 
-/** Normalise une opportunité du Cockpit en ligne de la liste unique. */
-function depuisCockpit(o) {
-  return {
+const segments = (t) => String(t || "").split(" · ").map((x) => x.trim()).filter(Boolean);
+
+/** « Inspection en attente — Étienne » → « Inspection en attente » quand le client est déjà affiché. */
+function sansClient(titre, client) {
+  if (!titre || !client) return titre;
+  for (const sep of [" — ", " par "]) {
+    const suffixe = `${sep}${client}`;
+    if (titre.endsWith(suffixe)) return titre.slice(0, -suffixe.length);
+  }
+  return titre;
+}
+
+/**
+ * Normalise une opportunité du Cockpit en ligne de la liste unique.
+ *
+ * UNE SEULE HIÉRARCHIE QUAND LE VÉHICULE EST CONNU
+ *
+ * Revue Production du 14 septembre : la tâche de la Peugeot se lisait « plaque,
+ * modèle · client, problème », l'inspection du Kangoo « Inspection en attente —
+ * client ». Deux grammaires pour une même liste. Quand la source porte un
+ * `vehicule_id`, la ligne prend la forme d'une intervention : plaque (ou
+ * modèle), puis modèle · client, puis le geste et son ancienneté.
+ *
+ * `v` vient du résolveur de l'écran :
+ *   · `{ id, plaque, modele, client }` — véhicule identifié ;
+ *   · `{ id: null }`                   — la source n'a PAS de véhicule (un
+ *                                         rappel, une demande sans voiture) ;
+ *   · `null`                           — on ne sait pas. Le compteur de
+ *                                         voitures n'est alors pas fiable.
+ * Rien n'est jamais déduit d'un nom ou d'une plaque affichée.
+ */
+function depuisCockpit(o, v = null) {
+  const base = {
     ...o,
     // `deriveOpportunites` nomme son identité `key` ; la liste unique parle de
     // `cle`. Sans cette ligne, toutes les opportunités partageaient la même
-    // clé « undefined » et le dédoublonnage n'en gardait qu'une — une demande
-    // et une inspection devenaient une seule tâche. Trouvé par le test.
+    // clé « undefined » et le dédoublonnage n'en gardait qu'une.
     cle: o.key,
     origine: "cockpit",
     rang: RANG_SECTION[o.section] ?? RANG_SECTION.a_planifier,
     urgent: Boolean(o.urgent),
-    titre: o.titre,
-    probleme: o.meta || null,
     actionLibelle: o.action,
+    vehiculeId: v?.id || null,
+    vehiculeConnu: v !== null && v !== undefined,
   };
+  if (v?.id && (v.plaque || v.modele)) {
+    const affiches = new Set([v.plaque, v.modele, v.client].filter(Boolean));
+    return {
+      ...base,
+      titre: v.plaque || v.modele,
+      sujet: [v.plaque ? v.modele : null, v.client].filter(Boolean).join(" · ") || null,
+      probleme: [sansClient(o.titre, v.client), ...segments(o.meta).filter((x) => !affiches.has(x))].filter(Boolean).join(" · "),
+    };
+  }
+  return { ...base, titre: o.titre, probleme: o.meta || null };
 }
 
 /** Normalise une priorité d'intervention en ligne de la liste unique. */
@@ -120,6 +159,8 @@ function depuisIntervention(l, nommer, action) {
     sujet: sous,
     probleme: l.raison,
     actionLibelle: action(l),
+    vehiculeId: l.rdv?.vehicule_id || null,
+    vehiculeConnu: true,
   };
 }
 
@@ -159,18 +200,16 @@ export function construireATraiter({ opportunites = null, priorites = [], nommer
         porteuse.sourceType = porteuse.sourceType || o.sourceType;
         porteuse.sourceId = porteuse.sourceId || o.sourceId;
         porteuse.fusionne = [...(porteuse.fusionne || []), o.key];
-        if (o.meta && !porteuse.precision) porteuse.precision = o.meta;
+        if (o.meta && !porteuse.precision) {
+          const affiches = new Set([porteuse.immatriculation, (porteuse.vehicule || "").trim(), porteuse.client].filter(Boolean));
+          porteuse.precision = segments(o.meta).filter((x) => !affiches.has(x)).join(" · ") || null;
+        }
         continue;
       }
       // Le véhicule quand il existe — jamais inventé. Une demande de
       // rendez-vous n'en a pas encore : elle reste nommée par son client.
       const v = resoudreVehicule ? resoudreVehicule(o) : null;
-      lignes.push(depuisCockpit({
-        ...o,
-        section: o.section || nom,
-        vehiculeId: v?.id || null,
-        meta: v?.libelle ? [v.libelle, o.meta].filter(Boolean).join(" · ") : o.meta,
-      }));
+      lignes.push(depuisCockpit({ ...o, section: o.section || nom }, v));
     }
   }
 
@@ -224,16 +263,22 @@ function precisionDeVisite(l) {
  * voitures : « 11 actions » ne veut pas dire onze voitures.
  */
 export function compterATraiter(lignes = []) {
+  // Dédoublonné par IDENTIFIANT véhicule, jamais par plaque ou nom affiché.
+  // Toutes les sources comptent : une inspection ou un devis sur une autre
+  // voiture qu'une intervention est une voiture de plus.
   const vehicules = new Set();
   for (const l of lignes) {
-    const v = l.rdv?.vehicule_id;
+    const v = l.vehiculeId ?? l.rdv?.vehicule_id;
     if (v) vehicules.add(v);
   }
   return {
     actions: lignes.length,
     urgentes: lignes.filter((l) => l.urgent).length,
     vehicules: vehicules.size,
-    sansVehicule: lignes.filter((l) => !l.rdv?.vehicule_id).length,
+    sansVehicule: lignes.filter((l) => !(l.vehiculeId ?? l.rdv?.vehicule_id)).length,
+    // Faux dès qu'une ligne a une source dont on ne sait pas si elle porte un
+    // véhicule : l'écran annonce alors « N actions » sans nombre de voitures.
+    fiable: lignes.every((l) => l.vehiculeConnu !== false),
   };
 }
 
