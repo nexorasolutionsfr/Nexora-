@@ -25,6 +25,7 @@ import { AlertTriangle, ArrowRight, Calendar, ChevronDown, ChevronRight, Clock, 
 
 import { supabase } from "@/lib/supabase";
 import { filVehicule } from "../atelier/filVehicule";
+import { devisDeLaVisite } from "../vehicle-case-file/calculs";
 import { classerPriorites, compterLeGarage } from "./priorites";
 import { compterATraiter, construireATraiter, decouper } from "./aTraiter";
 
@@ -185,9 +186,16 @@ export default function AujourdhuiJour({
 }) {
   const maintenant = new Date();
 
+  // LE DEVIS D'UNE VISITE NE SE DEVINE PAS
+  // La première version prenait « le premier devis non refusé du véhicule » :
+  // faux dès la deuxième visite, et une relance de devis se collait à un
+  // rendez-vous qui n'avait rien à voir. Depuis le 2026-09-19, seules deux
+  // relations explicites comptent — l'ordre (`ordre.devis_id`) et la
+  // préparation (`devis.rendez_vous_id`) — et `devisDeLaVisite` ne choisit
+  // rien quand plusieurs devis sont préparés pour la même visite.
   const dossiers = useMemo(() => rendezVous.map((r) => {
-    const devis = devisList.find((d) => d.vehicule_id === r.vehicule_id && d.statut !== "refuse") || null;
     const ordre = ordresReparation.find((o) => o.rendez_vous_id === r.id) || null;
+    const { devis } = devisDeLaVisite({ rdv: r, ordre, devis: devisList });
     const facture = factures.find((f) => f.rendez_vous_id === r.id) || null;
     return {
       id: r.id, rdv: r, vehicule: r.vehicule, immatriculation: r.immatriculation, client: r.client,

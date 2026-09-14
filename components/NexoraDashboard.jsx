@@ -1,7 +1,7 @@
 
 "use client"; import { supabase } from "@/lib/supabase";
 import DevisLignesEditor from "./devis-lignes/DevisLignesEditor";
-import { calculerLigne, calculerTotaux, devisALignes, formatEuro, preremplirDepuisPrestation } from "./devis-lignes/calculs";
+import { calculerLigne, calculerTotaux, devisALignes, devisChiffrageIncomplet, formatEuro, preremplirDepuisPrestation } from "./devis-lignes/calculs";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import QRCode from "qrcode";
@@ -38,7 +38,7 @@ import { DELAI_RENVOI_SECONDES, libelleRenvoi, messageRenvoi, secondesAvantRenvo
 import { adresseSansErreurAuth, decisionFragment, erreurAuthDansFragment, messageLienEchoue } from "./connexion/lienConfirmation";
 import { offre } from "@/lib/tarifs";
 import VehicleCaseFileView from "./vehicle-case-file/VehicleCaseFileView";
-import { construireDossierVehicule } from "./vehicle-case-file/calculs";
+import { construireDossierVehicule, devisDeLaVisite } from "./vehicle-case-file/calculs";
 import RechercheVehicule from "./recherche/RechercheVehicule";
 import { libelleVehicule } from "./recherche/recherche";
 import OnboardingGarage from "./onboarding/OnboardingGarage";
@@ -3193,6 +3193,10 @@ function DevisApercuModal({ d, garageData, onClose }) {
 function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, busy, onGenererLien, onRevoquerLien, prestations = [], onLignesChange, onToast, nouveau = false }) {
   const [editing, setEditing] = useState(false);
   const aDesLignes = devisALignes(d);
+  // Des lignes « Prix à renseigner » : le devis n'est pas un devis tant
+  // qu'elles sont là. La base refuse le partage, l'envoi et la réponse ; ici
+  // on le dit avant que le garage ne clique dans le vide.
+  const chiffrageIncomplet = devisChiffrageIncomplet(d.devis_lignes);
   const [montant, setMontant] = useState(d.montant_ht ?? 0);
   const [showMessage, setShowMessage] = useState(false);
   const [apercuOuvert, setApercuOuvert] = useState(false);
@@ -3220,8 +3224,8 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
             <div className="font-semibold text-slate-900 text-[15px]">{d.client}</div>
-            <Badge tone="amber">Devis en attente</Badge>
-            {attenteJours >= 1 && <Badge tone="red">{depuisLabel(d.created_at)}</Badge>}
+            {chiffrageIncomplet ? <Badge tone="amber">À chiffrer</Badge> : <Badge tone="amber">Devis en attente</Badge>}
+            {attenteJours >= 1 && !chiffrageIncomplet && <Badge tone="red">{depuisLabel(d.created_at)}</Badge>}
           </div>
           <a href={`tel:${(d.telephone || "").replace(/\s/g, "")}`} className="text-[13px] text-blue-600 hover:underline mt-1 inline-block">{formatPhone(d.telephone)}</a>
         </div>
@@ -3287,7 +3291,18 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
         )}
       </div>
 
+      {/* Chiffrage incomplet : ni envoi, ni lien, ni réponse. Un seul message,
+          à la place des trois blocs qui échoueraient l'un après l'autre. */}
+      {chiffrageIncomplet && (
+        <div className="mt-4 pt-3 border-t border-slate-100">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-800">
+            Chiffrez les lignes « Prix à renseigner » ci-dessus. Tant qu'il en reste, ce devis ne peut ni être envoyé, ni être partagé, ni recevoir de réponse.
+          </div>
+        </div>
+      )}
+
       {/* 1. Écrire au client : son propre bloc, avec l'état réel de la file. */}
+      {!chiffrageIncomplet && (
       <div className="mt-4 pt-3 border-t border-slate-100">
         <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
           <div className="text-[12.5px] font-semibold text-slate-700">Envoyer au client</div>
@@ -3295,11 +3310,12 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
             <Eye size={14} /> {GESTES_DEVIS.apercu}
           </button>
         </div>
-        <EnvoiDevis devisId={d.id} cle={`${d.montant_ttc}|${d.statut}`} onToast={onToast} />
+        <EnvoiDevis devisId={d.id} cle={`${d.montant_ttc}|${d.statut}|${(d.devis_lignes || []).length}`} onToast={onToast} />
       </div>
+      )}
 
       {/* 2. Un lien à transmettre soi-même : n'envoie rien. */}
-      {onGenererLien && (
+      {onGenererLien && !chiffrageIncomplet && (
         <div className="mt-3 pt-3 border-t border-slate-100">
           {lien ? (
             <>
@@ -3337,6 +3353,7 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
 
       {/* 3. Une réponse reçue autrement : c'est le client qui décide, le
           garage ne fait que la noter. */}
+      {!chiffrageIncomplet && (
       <div className="mt-3 pt-3 border-t border-slate-100">
         <div className="text-[12.5px] text-slate-500 mb-2">{GESTES_DEVIS.reponseAutre}</div>
         <div className="flex flex-wrap gap-2">
@@ -3348,6 +3365,7 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
           </button>
         </div>
       </div>
+      )}
 
       {apercuOuvert && <DevisApercuModal d={d} garageData={garageData} onClose={() => setApercuOuvert(false)} />}
     </div>
@@ -5868,7 +5886,7 @@ setPropositions(formattedPropositions);
           clients ( nom, telephone, email ),
           vehicules ( marque, modele, annee, immatriculation ),
           prestations ( nom, categorie ),
-          devis_lignes ( id, devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva, position, prestation_id, montant_ht, montant_tva, created_at, updated_at )
+          devis_lignes ( id, devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva, position, prestation_id, montant_ht, montant_tva, created_at, updated_at, inspection_point_id, reprise_id, note_constat, prix_a_renseigner )
         `)
         .eq("garage_id", garageId)
         .order("created_at", { ascending: false });
@@ -6475,13 +6493,45 @@ if (updateError) {
     flashToast("Montant du devis mis à jour");
   };
 
-  const SELECT_DEVIS = `*, clients (nom, telephone, email), vehicules (marque, modele, annee, immatriculation), prestations (nom, categorie), devis_lignes ( id, devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva, position, prestation_id, montant_ht, montant_tva, created_at, updated_at )`;
+  const SELECT_DEVIS = `*, clients (nom, telephone, email), vehicules (marque, modele, annee, immatriculation), prestations (nom, categorie), devis_lignes ( id, devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva, position, prestation_id, montant_ht, montant_tva, created_at, updated_at, inspection_point_id, reprise_id, note_constat, prix_a_renseigner )`;
+
+  const formaterDevis = (devisBrut) => ({
+    ...devisBrut,
+    client: devisBrut.clients?.nom || "Client inconnu",
+    telephone: devisBrut.clients?.telephone || "",
+    vehicule: `${devisBrut.vehicules?.marque || ""} ${devisBrut.vehicules?.modele || ""}`.trim(),
+    immatriculation: devisBrut.vehicules?.immatriculation || "",
+    prestation: devisBrut.prestations?.nom || "Prestation",
+    categorie: devisBrut.prestations?.categorie || "diagnostic",
+    date: new Date(devisBrut.created_at).toLocaleDateString("fr-FR", { timeZone: APP_TIME_ZONE }),
+    devis_lignes: devisBrut.devis_lignes || [],
+  });
+
+  // Relire UN devis depuis la base et le remettre dans la liste — après une
+  // préparation depuis un constat, qui écrit côté serveur (lignes, totaux,
+  // rattachement à la visite) sans passer par l'éditeur.
+  const rechargerDevis = async (devisId) => {
+    if (!devisId) return null;
+    const { data, error } = await supabase.from("devis").select(SELECT_DEVIS).eq("id", devisId).single();
+    if (error || !data) {
+      console.error("Relecture du devis impossible :", error);
+      return null;
+    }
+    const formatted = formaterDevis(data);
+    setDevisList((prev) => (prev.some((d) => d.id === formatted.id)
+      ? prev.map((d) => (d.id === formatted.id ? formatted : d))
+      : [formatted, ...prev]));
+    return formatted;
+  };
 
   // Un devis naît à 0 € : ses totaux viennent de ses lignes, que le garage
   // saisit juste après. Si l'intervention choisie a un prix au catalogue, elle
   // devient la première ligne — c'est une information déjà connue. Rien n'est
   // envoyé au client : l'envoi a son propre geste (migration 20260915000100).
-  const handleCreerDevis = async ({ client_id, vehicule_id, prestation = null }) => {
+  // `rendez_vous_id` (2026-09-19) dit pour quelle visite le devis est préparé ;
+  // la base vérifie que le rendez-vous est bien celui de ce client et de
+  // cette voiture.
+  const handleCreerDevis = async ({ client_id, vehicule_id, prestation = null, rendez_vous_id = null }) => {
     if (!client_id) {
       flashToast("Sélectionnez un client", "error");
       return;
@@ -6496,6 +6546,7 @@ if (updateError) {
         montant_ht: 0,
         montant_ttc: 0,
         statut: "en_attente",
+        rendez_vous_id: rendez_vous_id || null,
       })
       .select(SELECT_DEVIS)
       .single();
@@ -6522,17 +6573,7 @@ if (updateError) {
       }
     }
 
-    const formatted = {
-      ...devisCree,
-      client: devisCree.clients?.nom || "Client inconnu",
-      telephone: devisCree.clients?.telephone || "",
-      vehicule: `${devisCree.vehicules?.marque || ""} ${devisCree.vehicules?.modele || ""}`.trim(),
-      immatriculation: devisCree.vehicules?.immatriculation || "",
-      prestation: devisCree.prestations?.nom || "Prestation",
-      categorie: devisCree.prestations?.categorie || "diagnostic",
-      date: new Date(devisCree.created_at).toLocaleDateString("fr-FR", { timeZone: APP_TIME_ZONE }),
-      devis_lignes: devisCree.devis_lignes || [],
-    };
+    const formatted = formaterDevis(devisCree);
     setDevisList((prev) => [formatted, ...prev.filter((d) => d.id !== formatted.id)]);
     const message = messageDevisCree({ ligneEchouee });
     flashToast(message.texte, message.ton === "error" ? "error" : "success");
@@ -6647,18 +6688,18 @@ if (updateError) {
   // en cours n'est pas touché — il est signalé, pas rejoué.
   // Le fil d'une voiture : on rassemble les quatre statuts qui vivaient sur
   // quatre écrans, et `filVehicule` en tire l'état, le geste suivant et son
-  // auteur. Le devis est rattaché par client + véhicule — `devis` n'a pas de
-  // lien direct vers le rendez-vous — et l'ordre par son rendez-vous.
+  // auteur. Le devis vient d'une relation EXPLICITE — l'ordre, ou la visite
+  // pour laquelle il a été préparé (`devis.rendez_vous_id`, 2026-09-19). Plus
+  // de « devis le plus récent du client » : sur une voiture revenue trois
+  // fois, cette devinette collait un vieux devis au rendez-vous du jour.
   const filDuRendezVous = (appt) => {
     if (!appt) return null;
     const ordre = ordresReparation.find((o) => o.rendez_vous_id === appt.id) || null;
     const facture = factures.find((f) => f.rendez_vous_id === appt.id) || null;
-    const devis = (ordre?.devis_id && devisList.find((d) => d.id === ordre.devis_id))
-      || devisList
-        .filter((d) => d.client_id === appt.client_id && (!appt.vehicule_id || d.vehicule_id === appt.vehicule_id))
-        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
-      || null;
-    return filVehicule({ rdv: appt, devis, ordre, facture });
+    const { devis, devisCandidats } = devisDeLaVisite({ rdv: appt, ordre, devis: devisList });
+    // Plusieurs devis préparés pour cette visite : le fil le sait, et demande
+    // de vérifier au lieu de conseiller d'en créer un autre.
+    return filVehicule({ rdv: appt, devis, ordre, facture, devisSansIntervention: devisCandidats.length });
   };
 
   // Les véhicules du garage, à plat. Le chargeur les imbrique dans leur
@@ -7717,9 +7758,17 @@ if (updateError) {
           workshopStages={WORKSHOP_STAGES}
           inspectionsDisponibles={INSPECTIONS_MODULE_ACTIF}
           documentCible={documentCible}
+          garageId={garageId}
+          peutChiffrer={peutFacturer(monRole)}
+          onDevisPrepare={rechargerDevis}
+          onToast={flashToast}
           onClose={fermerDossierVehicule}
           onOuvrirAtelier={() => quitterDossierVers("atelier")}
-          onOuvrirDevis={() => quitterDossierVers("devis")}
+          // Avec un identifiant, l'écran Devis s'ouvre sur CE devis — celui
+          // qui vient d'être préparé, ou celui que le garage a choisi parmi
+          // plusieurs. `setDevisOuvertId` d'abord : l'effet qui l'efface ne
+          // joue que quand on quitte la vue Devis.
+          onOuvrirDevis={(devisId = null) => { if (devisId) setDevisOuvertId(devisId); quitterDossierVers("devis"); }}
           onOuvrirFactures={() => quitterDossierVers("factures")}
           onOuvrirAgenda={() => quitterDossierVers("agenda")}
           onOuvrirInspections={() => quitterDossierVers("inspections")}

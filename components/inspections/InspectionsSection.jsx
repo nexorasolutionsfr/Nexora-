@@ -270,12 +270,30 @@ function InspectionDetail({ garageId, garageNom, inspectionId, onClose, onToast,
   if (!data) return null;
   const { inspection, points, photos, historique } = data;
 
+  // UNE SAUVEGARDE ANNONCÉE DOIT AVOIR EU LIEU
+  //
+  // Reproduit le 14 septembre 2026 sur Test : un UPDATE refusé par la
+  // politique d'accès (adhésion révoquée, rôle sans droit) revient en 204 SANS
+  // erreur et SANS ligne — PostgREST ne distingue pas « rien à faire » de
+  // « pas le droit ». L'écran gardait alors la valeur saisie, et l'utilisateur
+  // croyait avoir enregistré. Un contrôle verrouillé, lui, lève une erreur,
+  // mais l'écran gardait aussi la valeur. Deux cas, une règle : on demande
+  // les lignes touchées (`select`), et si aucune ne revient, on REVIENT à
+  // l'état précédent et on le dit. Le contrôle verrouillé reste verrouillé.
+  const messageRefus = (error) => {
+    if (error?.message?.includes("verrouillée")) return "Ce contrôle est verrouillé : rouvrez-le pour le modifier.";
+    if (!error) return "Modification refusée : vous n'avez plus accès à ce contrôle. Rechargez la page.";
+    return "Impossible d'enregistrer cette modification";
+  };
+
   const updateInspectionFields = async (fields) => {
+    const avant = data.inspection;
     setData((prev) => ({ ...prev, inspection: { ...prev.inspection, ...fields } }));
-    const { error } = await supabase.from("inspections").update(fields).eq("id", inspectionId).eq("garage_id", garageId);
-    if (error) {
-      console.error("Erreur mise à jour inspection :", error);
-      onToast("Impossible d'enregistrer cette modification", "error");
+    const { data: rows, error } = await supabase.from("inspections").update(fields).eq("id", inspectionId).eq("garage_id", garageId).select("id");
+    if (error || !rows || rows.length === 0) {
+      console.error("Erreur mise à jour inspection :", error || "aucune ligne modifiée");
+      setData((prev) => ({ ...prev, inspection: { ...prev.inspection, ...Object.fromEntries(Object.keys(fields).map((k) => [k, avant[k]])) } }));
+      onToast(messageRefus(error), "error");
     }
   };
 
@@ -304,18 +322,21 @@ function InspectionDetail({ garageId, garageNom, inspectionId, onClose, onToast,
     const cibles = points.filter((p) => p.categorie === categorie && p.etat !== "ok");
     if (cibles.length === 0) return;
     const ids = cibles.map((p) => p.id);
+    const avant = points;
     setData((prev) => ({
       ...prev,
       points: prev.points.map((p) => (ids.includes(p.id) ? { ...p, etat: "ok", soumis_client: false } : p)),
     }));
-    const { error } = await supabase
+    const { data: rows, error } = await supabase
       .from("inspections_points")
       .update({ etat: "ok", soumis_client: false })
       .in("id", ids)
-      .eq("garage_id", garageId);
-    if (error) {
-      console.error("Erreur remise à OK :", error);
-      onToast("Impossible de tout remettre à OK", "error");
+      .eq("garage_id", garageId)
+      .select("id");
+    if (error || !rows || rows.length !== ids.length) {
+      console.error("Erreur remise à OK :", error || `${rows?.length ?? 0} ligne(s) sur ${ids.length}`);
+      setData((prev) => ({ ...prev, points: avant }));
+      onToast(error ? messageRefus(error) : "Remise à OK refusée : vous n'avez plus accès à ce contrôle. Rechargez la page.", "error");
     }
   };
 
@@ -334,19 +355,21 @@ function InspectionDetail({ garageId, garageNom, inspectionId, onClose, onToast,
   };
 
   const updatePoint = async (pointId, changes) => {
+    const avant = points.find((p) => p.id === pointId);
     setData((prev) => ({ ...prev, points: prev.points.map((p) => (p.id === pointId ? { ...p, ...changes } : p)) }));
-    const { error } = await supabase.from("inspections_points").update(changes).eq("id", pointId).eq("garage_id", garageId);
-    if (error) {
-      console.error("Erreur mise à jour point :", error);
-      onToast("Impossible de mettre à jour ce point", "error");
+    const { data: rows, error } = await supabase.from("inspections_points").update(changes).eq("id", pointId).eq("garage_id", garageId).select("id");
+    if (error || !rows || rows.length === 0) {
+      console.error("Erreur mise à jour point :", error || "aucune ligne modifiée");
+      if (avant) setData((prev) => ({ ...prev, points: prev.points.map((p) => (p.id === pointId ? avant : p)) }));
+      onToast(messageRefus(error), "error");
     }
   };
 
   const deletePoint = async (pointId) => {
-    const { error } = await supabase.from("inspections_points").delete().eq("id", pointId).eq("garage_id", garageId);
-    if (error) {
-      console.error("Erreur suppression point :", error);
-      onToast("Impossible de retirer ce point", "error");
+    const { data: rows, error } = await supabase.from("inspections_points").delete().eq("id", pointId).eq("garage_id", garageId).select("id");
+    if (error || !rows || rows.length === 0) {
+      console.error("Erreur suppression point :", error || "aucune ligne supprimée");
+      onToast(messageRefus(error), "error");
       return;
     }
     setData((prev) => ({ ...prev, points: prev.points.filter((p) => p.id !== pointId) }));

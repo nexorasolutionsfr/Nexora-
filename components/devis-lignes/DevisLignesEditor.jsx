@@ -10,13 +10,23 @@
 // même règle d'arrondi (calculs.js) pour un retour immédiat, jamais pour se
 // substituer aux colonnes générées.
 //
+// Depuis le 2026-09-19, une ligne peut venir d'un CONSTAT du contrôle
+// véhicule (docs/architecture/constat-vers-devis-v1.md). Elle porte alors :
+//   - `inspection_point_id` : le constat d'origine, dont on montre la note et
+//     les photos — signées au moment de la consultation, avec les droits du
+//     garage, jamais stockées ;
+//   - `prix_a_renseigner` : l'état « pas encore chiffré ». Le 0 qui
+//     l'accompagne n'est pas un prix, et l'écran ne l'affiche jamais comme tel.
+//
 // Le client Supabase est injectable (prop `client`) pour permettre un rendu
 // hors réseau (harnais local, tests) — par défaut, le client applicatif.
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Lock, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Camera, ClipboardList, Lock, Pencil, Plus, Trash2 } from "lucide-react";
 import { supabase as supabaseClient } from "@/lib/supabase";
 import { ACCENT, ACCENT_SOFT } from "../garage-os/tokens";
+import { GARAGE_PHOTO_SIGNED_URL_TTL_SECONDES, PHOTOS_BUCKET } from "../inspections/inspectionsConstants";
+import PhotoEnGrand from "../inspections/PhotoEnGrand";
 import { STATUT_DEVIS_LABEL, TAUX_TVA_COURANTS, TAUX_TVA_DEFAUT, TYPE_LIGNE_LABEL } from "./devisLignesConstants";
 import {
   calculerLigne,
@@ -31,20 +41,48 @@ import {
   validerLigneDevisForm,
 } from "./calculs";
 
-const COLONNES_LIGNE = "id, devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva, position, prestation_id, montant_ht, montant_tva, created_at, updated_at";
+const COLONNES_LIGNE = "id, devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva, position, prestation_id, montant_ht, montant_tva, created_at, updated_at, inspection_point_id, reprise_id, note_constat, prix_a_renseigner";
 
 const champInput = "mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-2 text-[13px] outline-none focus:border-blue-500 bg-white min-h-[40px]";
 
-function LigneDevisForm({ initial, prestations = [], onSave, onCancel, submitting }) {
+export function BadgePrixARenseigner({ compact = false, libelle = "Prix à renseigner" }) {
+  return (
+    <span className={`inline-flex items-center rounded-full font-semibold whitespace-nowrap ${compact ? "text-[11px] px-2 py-0.5" : "text-[11.5px] px-2.5 py-1"}`} style={{ backgroundColor: "#FEF3E2", color: "#B45309" }}>
+      {libelle}
+    </span>
+  );
+}
+
+/**
+ * Les constats déjà présents sur le devis, pour qu'une pièce ajoutée à la
+ * main puisse se rattacher au même constat que la main-d'œuvre. Un constat =
+ * une entrée, même s'il porte déjà deux lignes.
+ */
+function constatsDesLignes(lignes) {
+  const vus = new Map();
+  for (const l of lignes) {
+    if (l.inspection_point_id && !vus.has(l.inspection_point_id)) {
+      vus.set(l.inspection_point_id, { id: l.inspection_point_id, libelle: l.libelle, note: l.note_constat || null });
+    }
+  }
+  return Array.from(vus.values());
+}
+
+function LigneDevisForm({ initial, prestations = [], constats = [], onSave, onCancel, submitting }) {
+  const aRenseigner = Boolean(initial?.prix_a_renseigner);
   const [type, setType] = useState(initial?.type || "main_oeuvre");
   const [libelle, setLibelle] = useState(initial?.libelle || "");
   const [quantite, setQuantite] = useState(initial?.quantite ?? 1);
-  const [prixUnitaireHt, setPrixUnitaireHt] = useState(initial?.prix_unitaire_ht ?? "");
+  // Une ligne « Prix à renseigner » arrive avec le champ VIDE, pas avec 0 :
+  // ce 0 n'est pas un prix, et le montrer ferait croire qu'il l'est.
+  const [prixUnitaireHt, setPrixUnitaireHt] = useState(aRenseigner ? "" : (initial?.prix_unitaire_ht ?? ""));
   const [tauxTva, setTauxTva] = useState(initial?.taux_tva ?? TAUX_TVA_DEFAUT);
   const [prestationId, setPrestationId] = useState(initial?.prestation_id || "");
+  const [constatId, setConstatId] = useState(initial?.inspection_point_id || "");
   const [erreurs, setErreurs] = useState({});
 
   const apercu = calculerLigne({ quantite, prix_unitaire_ht: prixUnitaireHt, taux_tva: tauxTva });
+  const prixVide = prixUnitaireHt === "" || prixUnitaireHt == null;
 
   const choisirPrestation = (id) => {
     setPrestationId(id);
@@ -57,7 +95,14 @@ function LigneDevisForm({ initial, prestations = [], onSave, onCancel, submittin
   };
 
   const submit = () => {
-    const champs = { type, libelle, quantite, prix_unitaire_ht: prixUnitaireHt, taux_tva: tauxTva, prestation_id: prestationId || null };
+    const champs = {
+      type, libelle, quantite, prix_unitaire_ht: prixUnitaireHt, taux_tva: tauxTva,
+      prestation_id: prestationId || null,
+      prix_a_renseigner: aRenseigner,
+      // Une ligne nouvelle peut se rattacher à un constat déjà sur le devis ;
+      // une ligne existante garde le sien.
+      inspection_point_id: initial ? initial.inspection_point_id || null : (constatId || null),
+    };
     const { valide, erreurs: nouvellesErreurs } = validerLigneDevisForm(champs);
     setErreurs(nouvellesErreurs);
     if (!valide) return;
@@ -76,6 +121,18 @@ function LigneDevisForm({ initial, prestations = [], onSave, onCancel, submittin
             ))}
           </select>
           <div className="text-[11px] text-slate-400 mt-0.5">Le libellé et le prix sont copiés ici, puis figés sur la ligne : la prestation n'est plus relue ensuite.</div>
+        </div>
+      )}
+      {!initial && constats.length > 0 && (
+        <div>
+          <label className="text-[11.5px] font-medium text-slate-500">Constat concerné (facultatif)</label>
+          <select value={constatId} onChange={(e) => setConstatId(e.target.value)} className={champInput}>
+            <option value="">— Aucun —</option>
+            {constats.map((c) => (
+              <option key={c.id} value={c.id}>{c.libelle}</option>
+            ))}
+          </select>
+          <div className="text-[11px] text-slate-400 mt-0.5">Pour qu'une pièce reste rattachée au même constat que sa main-d'œuvre.</div>
         </div>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -101,8 +158,13 @@ function LigneDevisForm({ initial, prestations = [], onSave, onCancel, submittin
         </div>
         <div>
           <label className="text-[11.5px] font-medium text-slate-500">Prix unitaire HT</label>
-          <input type="number" inputMode="decimal" min="0" step="0.01" value={prixUnitaireHt} onChange={(e) => setPrixUnitaireHt(e.target.value)} placeholder="0,00" className={champInput} />
+          <input type="number" inputMode="decimal" min="0" step="0.01" value={prixUnitaireHt} onChange={(e) => setPrixUnitaireHt(e.target.value)} placeholder={aRenseigner ? "À renseigner" : "0,00"} className={champInput} />
           {erreurs.prix_unitaire_ht && <div className="text-[11px] text-red-600 mt-0.5">{erreurs.prix_unitaire_ht}</div>}
+          {aRenseigner && !erreurs.prix_unitaire_ht && (
+            <div className="text-[11px] text-amber-700 mt-0.5">
+              {prixVide ? "Laissez vide pour garder « Prix à renseigner ». Tapez 0 pour un prix nul confirmé." : "Ce prix remplacera « Prix à renseigner »."}
+            </div>
+          )}
         </div>
         <div>
           <label className="text-[11.5px] font-medium text-slate-500">TVA (%)</label>
@@ -115,7 +177,11 @@ function LigneDevisForm({ initial, prestations = [], onSave, onCancel, submittin
       </div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1">
         <div className="text-[12.5px] text-slate-600">
-          Cette ligne : <span className="font-semibold text-slate-900">{formatEuro(apercu.montant_ht)} HT</span> · TVA {formatEuro(apercu.montant_tva)} · <span className="font-semibold text-slate-900">{formatEuro(apercu.montant_ttc)} TTC</span>
+          {aRenseigner && prixVide ? (
+            <span>Cette ligne : <BadgePrixARenseigner compact /></span>
+          ) : (
+            <>Cette ligne : <span className="font-semibold text-slate-900">{formatEuro(apercu.montant_ht)} HT</span> · TVA {formatEuro(apercu.montant_tva)} · <span className="font-semibold text-slate-900">{formatEuro(apercu.montant_ttc)} TTC</span></>
+          )}
         </div>
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onCancel} className="min-h-[40px] px-3.5 rounded-lg text-[13px] font-medium text-slate-500">Annuler</button>
@@ -128,8 +194,37 @@ function LigneDevisForm({ initial, prestations = [], onSave, onCancel, submittin
   );
 }
 
-function LigneDevisRow({ ligne, index, total, modifiable, prestations, onUpdate, onDelete, onMove, submitting }) {
+/** Le constat d'où vient la ligne : sa note, ses photos. Rien d'autre. */
+function ProvenanceConstat({ ligne, photos = [], onOuvrirPhoto }) {
+  if (!ligne.inspection_point_id) return null;
+  return (
+    <div className="mt-1.5 flex items-start gap-2 flex-wrap">
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full shrink-0" style={{ backgroundColor: ACCENT_SOFT, color: ACCENT }}>
+        <ClipboardList size={11} /> Constat
+      </span>
+      {ligne.note_constat && <span className="text-[12px] text-slate-500 min-w-0 break-words">{ligne.note_constat}</span>}
+      {photos.length > 0 && (
+        <span className="flex items-center gap-1">
+          {photos.map((url, i) => (
+            <button
+              key={url}
+              type="button"
+              onClick={() => onOuvrirPhoto(photos, i, ligne.libelle, ligne.note_constat)}
+              aria-label={`Voir la photo du constat en grand — ${ligne.libelle}${photos.length > 1 ? ` (${i + 1} sur ${photos.length})` : ""}`}
+              className="w-9 h-9 rounded-md overflow-hidden border border-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              <img src={url} alt="" className="w-full h-full object-cover" />
+            </button>
+          ))}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function LigneDevisRow({ ligne, index, total, modifiable, prestations, photosConstat, onOuvrirPhoto, onUpdate, onDelete, onMove, submitting }) {
   const [editing, setEditing] = useState(false);
+  const aRenseigner = ligne.prix_a_renseigner === true;
   const montants = ligne.montant_ht != null && ligne.montant_tva != null
     ? { montant_ht: Number(ligne.montant_ht), montant_tva: Number(ligne.montant_tva), montant_ttc: Number(ligne.montant_ht) + Number(ligne.montant_tva) }
     : calculerLigne(ligne);
@@ -146,32 +241,80 @@ function LigneDevisRow({ ligne, index, total, modifiable, prestations, onUpdate,
     );
   }
 
+  const grille = modifiable
+    ? "md:grid md:grid-cols-[minmax(0,1fr)_56px_92px_56px_100px_168px] md:items-center md:gap-2.5"
+    : "md:grid md:grid-cols-[minmax(0,1fr)_56px_92px_56px_100px] md:items-center md:gap-2.5";
+
   return (
-    <div className={`border border-slate-200 rounded-xl p-3 ${modifiable ? "md:grid md:grid-cols-[minmax(0,1fr)_56px_92px_56px_100px_168px] md:items-center md:gap-2.5" : "md:grid md:grid-cols-[minmax(0,1fr)_56px_92px_56px_100px] md:items-center md:gap-2.5"}`}>
+    <div className={`border rounded-xl p-3 ${aRenseigner ? "border-amber-200 bg-amber-50/40" : "border-slate-200"} ${grille}`}>
       <div className="min-w-0">
         <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{TYPE_LIGNE_LABEL[ligne.type] || ligne.type}</div>
         <div className="text-[13.5px] font-medium text-slate-900 break-words">{ligne.libelle}</div>
         <div className="md:hidden text-[12.5px] text-slate-500 mt-1">
-          {Number(ligne.quantite)} × {formatEuro(ligne.prix_unitaire_ht)} HT · TVA {Number(ligne.taux_tva)} %
+          {aRenseigner ? <BadgePrixARenseigner compact /> : <>{Number(ligne.quantite)} × {formatEuro(ligne.prix_unitaire_ht)} HT · TVA {Number(ligne.taux_tva)} %</>}
         </div>
+        <ProvenanceConstat ligne={ligne} photos={photosConstat} onOuvrirPhoto={onOuvrirPhoto} />
       </div>
       <div className="hidden md:block text-[13px] text-slate-700 text-right tabular-nums">{Number(ligne.quantite)}</div>
-      <div className="hidden md:block text-[13px] text-slate-700 text-right tabular-nums whitespace-nowrap">{formatEuro(ligne.prix_unitaire_ht)}</div>
+      <div className="hidden md:block text-[13px] text-slate-700 text-right tabular-nums whitespace-nowrap">{aRenseigner ? "—" : formatEuro(ligne.prix_unitaire_ht)}</div>
       <div className="hidden md:block text-[13px] text-slate-700 text-right tabular-nums whitespace-nowrap">{Number(ligne.taux_tva)} %</div>
       <div className="flex items-baseline justify-between md:block md:text-right mt-1.5 md:mt-0">
         <span className="md:hidden text-[12px] text-slate-500">Total ligne</span>
-        <span className="text-[13.5px] font-semibold text-slate-900 tabular-nums whitespace-nowrap">{formatEuro(montants.montant_ht)} <span className="text-[11px] font-medium text-slate-400">HT</span></span>
+        {aRenseigner ? (
+          // La colonne fait 100 px : le libellé court, le long est sur mobile.
+          <span className="hidden md:inline"><BadgePrixARenseigner compact libelle="À chiffrer" /></span>
+        ) : (
+          <span className="text-[13.5px] font-semibold text-slate-900 tabular-nums whitespace-nowrap">{formatEuro(montants.montant_ht)} <span className="text-[11px] font-medium text-slate-400">HT</span></span>
+        )}
+        {aRenseigner && <span className="md:hidden text-[12px] text-amber-700">à chiffrer</span>}
       </div>
       {modifiable && (
         <div className="flex items-center justify-end gap-0.5 mt-2 md:mt-0">
           <button type="button" aria-label="Monter la ligne" title="Monter" disabled={submitting || index === 0} onClick={() => onMove(index, "haut")} className="min-h-[40px] min-w-[40px] rounded-lg text-slate-500 hover:bg-slate-50 disabled:opacity-30 flex items-center justify-center"><ArrowUp size={15} /></button>
           <button type="button" aria-label="Descendre la ligne" title="Descendre" disabled={submitting || index === total - 1} onClick={() => onMove(index, "bas")} className="min-h-[40px] min-w-[40px] rounded-lg text-slate-500 hover:bg-slate-50 disabled:opacity-30 flex items-center justify-center"><ArrowDown size={15} /></button>
-          <button type="button" aria-label="Modifier la ligne" title="Modifier" onClick={() => setEditing(true)} disabled={submitting} className="min-h-[40px] min-w-[40px] rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-50 flex items-center justify-center"><Pencil size={15} /></button>
+          <button type="button" aria-label={aRenseigner ? "Chiffrer la ligne" : "Modifier la ligne"} title={aRenseigner ? "Chiffrer" : "Modifier"} onClick={() => setEditing(true)} disabled={submitting} className={`min-h-[40px] rounded-lg hover:bg-slate-50 disabled:opacity-50 flex items-center justify-center gap-1 ${aRenseigner ? "px-2.5 text-[12.5px] font-semibold" : "min-w-[40px] text-slate-600"}`} style={aRenseigner ? { color: ACCENT } : undefined}><Pencil size={15} />{aRenseigner && "Chiffrer"}</button>
           <button type="button" aria-label="Supprimer la ligne" title="Supprimer" onClick={() => onDelete(ligne.id)} disabled={submitting} className="min-h-[40px] min-w-[40px] rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50 flex items-center justify-center"><Trash2 size={15} /></button>
         </div>
       )}
     </div>
   );
+}
+
+/**
+ * Les photos des constats repris, signées à la consultation.
+ *
+ * Le bucket est privé ; l'URL signée est éphémère et n'est jamais stockée :
+ * on la refait à chaque ouverture, avec la session du garage. Une photo
+ * absente n'est pas une erreur du devis — on affiche la ligne sans elle.
+ */
+function usePhotosDesConstats(client, lignes) {
+  const pointIds = useMemo(
+    () => Array.from(new Set(lignes.map((l) => l.inspection_point_id).filter(Boolean))).sort().join(","),
+    [lignes],
+  );
+  const [photos, setPhotos] = useState({});
+  useEffect(() => {
+    if (!pointIds) { setPhotos({}); return; }
+    let annule = false;
+    (async () => {
+      const ids = pointIds.split(",");
+      const { data: rows, error } = await client.from("inspections_photos").select("id, point_id, storage_path").in("point_id", ids).order("created_at");
+      if (error || !rows?.length) { if (!annule) setPhotos({}); return; }
+      const { data: signed, error: signError } = await client.storage.from(PHOTOS_BUCKET).createSignedUrls(rows.map((r) => r.storage_path), GARAGE_PHOTO_SIGNED_URL_TTL_SECONDES);
+      if (signError || annule) return;
+      const parChemin = {};
+      (signed || []).forEach((s) => { if (s.signedUrl && !s.error) parChemin[s.path] = s.signedUrl; });
+      const parPoint = {};
+      for (const r of rows) {
+        const url = parChemin[r.storage_path];
+        if (!url) continue;
+        (parPoint[r.point_id] ||= []).push(url);
+      }
+      setPhotos(parPoint);
+    })();
+    return () => { annule = true; };
+  }, [client, pointIds]);
+  return photos;
 }
 
 /**
@@ -193,12 +336,15 @@ export default function DevisLignesEditor({ devis, lignes: lignesProp, prestatio
   const [ajoutOuvert, setAjoutOuvert] = useState(Boolean(ajoutInitial && modifiable));
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState(null);
+  const [photoOuverte, setPhotoOuverte] = useState(null);
+  const photosConstats = usePhotosDesConstats(client, lignes);
 
   useEffect(() => {
     setLignes(trierLignes(lignesProp ?? devis?.devis_lignes ?? []));
   }, [lignesProp, devis?.devis_lignes]);
 
   const totaux = useMemo(() => calculerTotaux(lignes), [lignes]);
+  const constats = useMemo(() => constatsDesLignes(lignes), [lignes]);
   const toast = (message, type) => (onToast ? onToast(message, type) : null);
 
   // Relecture depuis la base : les lignes ET les totaux du devis, puis
@@ -243,7 +389,7 @@ export default function DevisLignesEditor({ devis, lignes: lignesProp, prestatio
   };
 
   const modifier = (ligneId, champs) =>
-    executer(() => client.from("devis_lignes").update(champs).eq("id", ligneId).eq("garage_id", garageId), "Ligne modifiée");
+    executer(() => client.from("devis_lignes").update(champs).eq("id", ligneId).eq("garage_id", garageId), champs.prix_a_renseigner ? "Ligne modifiée" : "Ligne chiffrée");
 
   const supprimer = async (ligneId) => {
     if (typeof window !== "undefined" && !window.confirm("Retirer cette ligne du devis ?")) return false;
@@ -262,7 +408,12 @@ export default function DevisLignesEditor({ devis, lignes: lignesProp, prestatio
     });
   };
 
+  const ouvrirPhoto = (urls, index, titre, commentaire) => setPhotoOuverte({ urls, index, titre, commentaire });
+
   const statutLabel = STATUT_DEVIS_LABEL[devis?.statut] || (devis?.statut ? devis.statut : "statut inconnu");
+  const grilleEntete = modifiable
+    ? "md:grid md:grid-cols-[minmax(0,1fr)_56px_92px_56px_100px_168px] md:items-center md:gap-2.5"
+    : "md:grid md:grid-cols-[minmax(0,1fr)_56px_92px_56px_100px] md:items-center md:gap-2.5";
 
   return (
     <div className="mt-3">
@@ -277,8 +428,18 @@ export default function DevisLignesEditor({ devis, lignes: lignesProp, prestatio
         )}
       </div>
 
+      {totaux.incomplet && (
+        <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-800 flex items-start gap-2">
+          <Camera size={14} className="shrink-0 mt-0.5 opacity-0" aria-hidden="true" />
+          <span>
+            {totaux.lignes_a_chiffrer === 1 ? "1 ligne attend son prix." : `${totaux.lignes_a_chiffrer} lignes attendent leur prix.`}{" "}
+            Tant qu'il en reste, le devis ne peut ni être partagé ni être envoyé.
+          </span>
+        </div>
+      )}
+
       {lignes.length > 0 && (
-        <div className={`hidden px-3 mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 ${modifiable ? "md:grid md:grid-cols-[minmax(0,1fr)_56px_92px_56px_100px_168px] md:items-center md:gap-2.5" : "md:grid md:grid-cols-[minmax(0,1fr)_56px_92px_56px_100px] md:items-center md:gap-2.5"}`}>
+        <div className={`hidden px-3 mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 ${grilleEntete}`}>
           <div>Désignation</div><div className="text-right">Qté</div><div className="text-right">PU HT</div><div className="text-right">TVA</div><div className="text-right">Total HT</div>{modifiable && <div />}
         </div>
       )}
@@ -292,6 +453,8 @@ export default function DevisLignesEditor({ devis, lignes: lignesProp, prestatio
             total={lignes.length}
             modifiable={modifiable}
             prestations={prestations}
+            photosConstat={photosConstats[ligne.inspection_point_id] || []}
+            onOuvrirPhoto={ouvrirPhoto}
             onUpdate={modifier}
             onDelete={supprimer}
             onMove={deplacer}
@@ -313,7 +476,7 @@ export default function DevisLignesEditor({ devis, lignes: lignesProp, prestatio
         )}
 
         {ajoutOuvert && (
-          <LigneDevisForm prestations={prestations} submitting={busy} onCancel={() => setAjoutOuvert(false)} onSave={ajouter} />
+          <LigneDevisForm prestations={prestations} constats={constats} submitting={busy} onCancel={() => setAjoutOuvert(false)} onSave={ajouter} />
         )}
       </div>
 
@@ -328,12 +491,22 @@ export default function DevisLignesEditor({ devis, lignes: lignesProp, prestatio
 
         {lignes.length > 0 && (
           <div className="grid grid-cols-3 gap-3 sm:flex sm:items-baseline sm:gap-5 text-right">
-            <div><div className="text-[11px] uppercase tracking-wide text-slate-400">Total HT</div><div className="text-[13.5px] font-semibold text-slate-900 tabular-nums">{formatEuro(totaux.total_ht)}</div></div>
+            <div><div className="text-[11px] uppercase tracking-wide text-slate-400">{totaux.incomplet ? "HT partiel" : "Total HT"}</div><div className="text-[13.5px] font-semibold text-slate-900 tabular-nums">{formatEuro(totaux.total_ht)}</div></div>
             <div><div className="text-[11px] uppercase tracking-wide text-slate-400">TVA</div><div className="text-[13.5px] font-semibold text-slate-900 tabular-nums">{formatEuro(totaux.total_tva)}</div></div>
-            <div><div className="text-[11px] uppercase tracking-wide text-slate-400">Total TTC</div><div className="text-[15px] font-bold text-slate-900 tabular-nums">{formatEuro(totaux.total_ttc)}</div></div>
+            <div><div className="text-[11px] uppercase tracking-wide text-slate-400">{totaux.incomplet ? "TTC partiel" : "Total TTC"}</div><div className="text-[15px] font-bold text-slate-900 tabular-nums">{formatEuro(totaux.total_ttc)}</div></div>
           </div>
         )}
       </div>
+
+      {photoOuverte && (
+        <PhotoEnGrand
+          photos={photoOuverte.urls}
+          indexInitial={photoOuverte.index}
+          titre={photoOuverte.titre}
+          commentaire={photoOuverte.commentaire}
+          onFermer={() => setPhotoOuverte(null)}
+        />
+      )}
     </div>
   );
 }

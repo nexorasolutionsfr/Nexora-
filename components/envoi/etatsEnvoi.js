@@ -198,6 +198,10 @@ export function messageRefusValidation(raison, cle = "devis") {
       return "L'adresse du client a changé depuis l'affichage. Rouvrez l'aperçu pour vérifier, puis validez.";
     case "aucune_notification_en_attente":
       return `${doc.article} n'a pas d'envoi en attente. ${doc.pronom} a peut-être déjà été envoyé${doc.accord}.`;
+    case "chiffrage_incomplet":
+      // Une ligne reprise d'un constat attend encore son prix : rien ne part
+      // tant qu'un 0 € qui n'est pas un prix figure sur le document.
+      return `${doc.article} a des lignes « Prix à renseigner ». Chiffrez-les avant d'envoyer.`;
     default:
       return "La validation n'a pas abouti. Réessayez dans un instant.";
   }

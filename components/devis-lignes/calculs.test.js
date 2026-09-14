@@ -63,17 +63,26 @@ test('calculerTotaux : taux mixtes, somme des lignes arrondies (mêmes chiffres 
     { quantite: 1.5, prix_unitaire_ht: 80, taux_tva: 20 },     // 120 / 24
     { quantite: 3, prix_unitaire_ht: 12.35, taux_tva: 10 },    // 37.05 / 3.71
   ]
-  assert.deepEqual(calculerTotaux(lignes), { total_ht: 157.05, total_tva: 27.71, total_ttc: 184.76, nb_lignes: 2 })
+  assert.deepEqual(calculerTotaux(lignes), { total_ht: 157.05, total_tva: 27.71, total_ttc: 184.76, nb_lignes: 2, lignes_a_chiffrer: 0, incomplet: false })
+})
+
+test('calculerTotaux : une ligne « Prix à renseigner » pèse 0 et rend le total PARTIEL', () => {
+  const lignes = [
+    { quantite: 1, prix_unitaire_ht: 100, taux_tva: 20 },
+    { quantite: 1, prix_unitaire_ht: 0, taux_tva: 20, prix_a_renseigner: true },
+  ]
+  assert.deepEqual(calculerTotaux(lignes), { total_ht: 100, total_tva: 20, total_ttc: 120, nb_lignes: 2, lignes_a_chiffrer: 1, incomplet: true })
 })
 
 test('calculerTotaux : les colonnes générées de la base font foi quand elles sont présentes', () => {
   const lignes = [{ quantite: 1, prix_unitaire_ht: 999, taux_tva: 20, montant_ht: 10, montant_tva: 2 }]
-  assert.deepEqual(calculerTotaux(lignes), { total_ht: 10, total_tva: 2, total_ttc: 12, nb_lignes: 1 })
+  assert.deepEqual(calculerTotaux(lignes), { total_ht: 10, total_tva: 2, total_ttc: 12, nb_lignes: 1, lignes_a_chiffrer: 0, incomplet: false })
 })
 
 test('calculerTotaux : devis vide → 0, jamais null ni NaN', () => {
-  assert.deepEqual(calculerTotaux([]), { total_ht: 0, total_tva: 0, total_ttc: 0, nb_lignes: 0 })
-  assert.deepEqual(calculerTotaux(undefined), { total_ht: 0, total_tva: 0, total_ttc: 0, nb_lignes: 0 })
+  const vide = { total_ht: 0, total_tva: 0, total_ttc: 0, nb_lignes: 0, lignes_a_chiffrer: 0, incomplet: false }
+  assert.deepEqual(calculerTotaux([]), vide)
+  assert.deepEqual(calculerTotaux(undefined), vide)
 })
 
 test('calculerTotaux : accumulation sans dérive flottante sur beaucoup de lignes', () => {
@@ -128,8 +137,25 @@ test('validerLigneDevisForm : le prix HT est obligatoire sur un devis (contraire
 test('normaliserLigneDevis : types numériques et libellé nettoyé', () => {
   assert.deepEqual(
     normaliserLigneDevis({ type: 'piece', libelle: '  Filtre ', quantite: '2', prix_unitaire_ht: '12.345', taux_tva: '20', prestation_id: '' }),
-    { type: 'piece', libelle: 'Filtre', quantite: 2, prix_unitaire_ht: 12.35, taux_tva: 20, prestation_id: null },
+    { type: 'piece', libelle: 'Filtre', quantite: 2, prix_unitaire_ht: 12.35, taux_tva: 20, prestation_id: null, prix_a_renseigner: false },
   )
+})
+
+test('normaliserLigneDevis : prix laissé vide sur une ligne « à renseigner » → l état reste, prix 0 de contrainte', () => {
+  const r = normaliserLigneDevis({ type: 'main_oeuvre', libelle: 'Plaquettes', quantite: 1, prix_unitaire_ht: '', taux_tva: 20, prix_a_renseigner: true })
+  assert.equal(r.prix_a_renseigner, true)
+  assert.equal(r.prix_unitaire_ht, 0)
+  // Un prix tapé — même 0 — est un prix : l état tombe.
+  const chiffree = normaliserLigneDevis({ type: 'main_oeuvre', libelle: 'Plaquettes', quantite: 1, prix_unitaire_ht: '0', taux_tva: 20, prix_a_renseigner: true })
+  assert.equal(chiffree.prix_a_renseigner, false)
+  assert.equal(chiffree.prix_unitaire_ht, 0)
+})
+
+test('validerLigneDevisForm : le prix vide n est toléré que sur une ligne « à renseigner »', () => {
+  const base = { type: 'main_oeuvre', libelle: 'X', quantite: 1, taux_tva: 20 }
+  assert.equal(validerLigneDevisForm({ ...base, prix_unitaire_ht: '' }).valide, false)
+  assert.equal(validerLigneDevisForm({ ...base, prix_unitaire_ht: '', prix_a_renseigner: true }).valide, true)
+  assert.equal(validerLigneDevisForm({ ...base, prix_unitaire_ht: '-1', prix_a_renseigner: true }).valide, false)
 })
 
 // --- Ordre et réordonnancement --------------------------------------------
