@@ -8,9 +8,8 @@ import QRCode from "qrcode";
 import InspectionsSection from "./inspections/InspectionsSection";
 import OrdresReparationSection from "./ordre-reparation/OrdresReparationSection";
 import NotificationsAVerifierSection from "./notifications-devis/NotificationsAVerifierSection";
-import CentreDecisionnel from "./garage-os/CentreDecisionnel";
-import NexoraARepere from "./garage-os/NexoraARepere";
 import MiseEnRoute from "./garage-os/MiseEnRoute";
+import { useOpportunites } from "./cockpit/useOpportunites";
 import { SquelettesListe, SquelettteAccueil } from "./garage-os/Squelettes";
 import { compterVehiculesEngages, compterAlertesAtelier, dateLongueFR } from "./garage-os/calculs";
 import { estFerme, heureReservable, heuresOuvrables } from "./agenda/horaires";
@@ -130,7 +129,12 @@ const INSPECTIONS_MODULE_ACTIF = true;
 // l'activation en production soit un changement Vercel explicite et
 // réversible, distinct d'un déploiement de code. L'ancien affichage en
 // 3 zones reste intact et actif tant que la variable n'est pas à "true".
-const COCKPIT_OPPORTUNITES_ACTIF = process.env.NEXT_PUBLIC_COCKPIT_OPPORTUNITES_ACTIF === "true";
+// NEXT_PUBLIC_COCKPIT_OPPORTUNITES_ACTIF ne sélectionne plus rien.
+// Il choisissait entre DEUX accueils — le Cockpit ou les trois zones — qui
+// priorisaient les mêmes données chacun à sa façon. En Production il valait
+// « true », et les deux s'affichaient l'un sous l'autre. Il n'y a plus qu'une
+// liste : le moteur du Cockpit l'alimente, l'écran séparé a disparu.
+// La variable peut rester dans l'environnement sans effet.
 // =====================================================================================
 // DESIGN TOKENS
 // =====================================================================================
@@ -1588,33 +1592,113 @@ function ParcoursEtape({ icon: Icon, label }) {
   );
 }
 
-function ParcoursExplique() {
+
+/**
+ * Reporter une tâche — masquer, jamais résoudre.
+ *
+ * Le motif est obligatoire : un report sans raison est un oubli déguisé. La
+ * ligne revient d'elle-même à la date choisie, et reste lisible entre-temps
+ * dans « Suivi et reports ».
+ */
+function ReporterTache({ ligne, onAnnuler, onConfirmer }) {
+  const demain = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+  const [date, setDate] = useState(demain);
+  const [motif, setMotif] = useState("");
+  const [enCours, setEnCours] = useState(false);
+  const peutValider = motif.trim().length > 0 && date && !enCours;
+
   return (
-    <details className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3">
-      <summary className="flex items-center gap-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-        <span className="text-[12.5px] font-semibold text-slate-700">Comprendre le parcours d'une réparation</span>
-      </summary>
-      <div className="mt-3 space-y-2.5">
-        <div className="flex items-center gap-1.5 flex-wrap text-[12px] text-slate-600">
-          <ParcoursEtape icon={Calendar} label="Rendez-vous" />
-          <ArrowRight size={13} className="text-slate-300 shrink-0" />
-          <ParcoursEtape icon={ClipboardList} label="Contrôle véhicule" />
-          <ArrowRight size={13} className="text-slate-300 shrink-0" />
-          <ParcoursEtape icon={ReceiptText} label="Devis accepté / travaux validés" />
-          <ArrowRight size={13} className="text-slate-300 shrink-0" />
-          <ParcoursEtape icon={ClipboardCheck} label="Fiche atelier" />
-          <ArrowRight size={13} className="text-slate-300 shrink-0" />
-          <ParcoursEtape icon={Wrench} label="Atelier" />
-          <ArrowRight size={13} className="text-slate-300 shrink-0" />
-          <ParcoursEtape icon={CheckCircle2} label="Facture" />
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onAnnuler}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-slate-900" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold">Reporter cette tâche</h2>
+        <div className="text-[12.5px] text-slate-500 mt-1">{ligne.titre}</div>
+        <p className="mt-2 text-[12.5px] text-slate-500">
+          Elle sort de la liste jusqu'à la date choisie, puis y revient. Rien n'est envoyé, rien n'est résolu.
+        </p>
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="text-[12px] font-medium text-slate-500">Revoir le</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="text-[12px] font-medium text-slate-500">Motif</label>
+            <input autoFocus value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Ex. client injoignable, à retenter demain" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" />
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 flex-wrap text-[12px] text-slate-500 pt-2 border-t border-slate-100">
-          <ParcoursEtape icon={Clock} label="Travaux reportés ou refusés" />
-          <ArrowRight size={13} className="text-slate-300 shrink-0" />
-          <ParcoursEtape icon={BellRing} label="Travail à relancer" />
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onAnnuler} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600">Annuler</button>
+          <button
+            onClick={async () => { setEnCours(true); await onConfirmer(motif.trim(), new Date(`${date}T00:00:00`).toISOString()); setEnCours(false); }}
+            disabled={!peutValider}
+            className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+            style={{ backgroundColor: ACCENT }}
+          >
+            {enCours ? "Report…" : "Reporter"}
+          </button>
         </div>
       </div>
-    </details>
+    </div>
+  );
+}
+
+/**
+ * « Comprendre Nexora » — ce qui occupait le bas de l'accueil en permanence.
+ *
+ * Le parcours d'une réparation et ce qui part vers les clients sont utiles,
+ * mais une fois. Les laisser sous les tâches du jour revenait à poser un mode
+ * d'emploi sur un plan de travail.
+ */
+function ComprendreNexora({ onFermer }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onFermer}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[85vh] overflow-auto text-slate-900" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4">
+          <h2 className="text-lg font-semibold">Comprendre Nexora</h2>
+          <button onClick={onFermer} className="text-slate-400 hover:text-slate-700 text-sm font-medium">Fermer</button>
+        </div>
+
+        <div className="mt-5">
+          <div className="text-[12.5px] font-semibold text-slate-700 mb-2">Le parcours d'une réparation</div>
+          <div className="flex items-center gap-1.5 flex-wrap text-[12px] text-slate-600">
+            <ParcoursEtape icon={Calendar} label="Rendez-vous" />
+            <ArrowRight size={13} className="text-slate-300 shrink-0" />
+            <ParcoursEtape icon={ClipboardList} label="Contrôle véhicule" />
+            <ArrowRight size={13} className="text-slate-300 shrink-0" />
+            <ParcoursEtape icon={ReceiptText} label="Devis accepté / travaux validés" />
+            <ArrowRight size={13} className="text-slate-300 shrink-0" />
+            <ParcoursEtape icon={ClipboardCheck} label="Fiche atelier" />
+            <ArrowRight size={13} className="text-slate-300 shrink-0" />
+            <ParcoursEtape icon={Wrench} label="Atelier" />
+            <ArrowRight size={13} className="text-slate-300 shrink-0" />
+            <ParcoursEtape icon={CheckCircle2} label="Facture" />
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap text-[12px] text-slate-500 pt-3 mt-3 border-t border-slate-100">
+            <ParcoursEtape icon={Clock} label="Travaux reportés ou refusés" />
+            <ArrowRight size={13} className="text-slate-300 shrink-0" />
+            <ParcoursEtape icon={BellRing} label="Travail à relancer" />
+          </div>
+        </div>
+
+        <div className="mt-6 pt-5 border-t border-slate-100">
+          <div className="text-[12.5px] font-semibold text-slate-700 mb-2">Ce qui part vers vos clients</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-2">
+            {lignesEtatEnvois({ automatiqueDisponible: CAPACITES.reponseAutomatique.disponible, canauxEnAttente: [] }).map((ligne) => (
+              <div key={ligne.cle} className="flex items-start gap-2 text-[12.5px] text-slate-500 leading-snug">
+                <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: ligne.ton === "attention" ? "#B45309" : ligne.ton === "pret" ? "#16A34A" : "#CBD5E1" }} />
+                <span><b className="text-slate-900 font-semibold">{ligne.titre}</b> — {ligne.detail}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-6 pt-5 border-t border-slate-100 text-[12.5px] text-slate-500 leading-relaxed">
+          <b className="text-slate-700 font-semibold">« Marquer traité »</b> est une note de suivi : la tâche sort de la liste,
+          et rien d'autre ne se passe. Aucune réparation n'est enregistrée, aucune facture établie, aucun devis accepté,
+          aucun message envoyé. <b className="text-slate-700 font-semibold">« Reporter »</b> la masque jusqu'à la date choisie,
+          puis elle revient. Les deux se défont depuis « Suivi et reports ».
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1788,6 +1872,38 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
 function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, ordresReparation = [], onPrevenirClient, onAgirSurPriorite, stats, propositions, demandes, devisList = [], vehicules = [], onOuvrirDossierVehicule, setView, onAllerConfigurer, onGererAbonnement, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   const [cockpitCompteurs, setCockpitCompteurs] = useState(null);
+
+  // ---- Le moteur du Cockpit, branché sur la liste unique -------------------------
+  //
+  // `deriveOpportunites` et son journal `opportunites_actions` restent la
+  // mécanique des sources hors atelier. Ce qui disparaît, c'est l'ÉCRAN
+  // séparé qui les affichait à côté d'une autre liste de priorités.
+  //
+  // Le journal n'est lisible que par le propriétaire du garage
+  // (`opportunites_actions_isolation`). Pour les autres, on n'affiche pas des
+  // commandes qui échoueraient en silence — et rien n'est masqué, donc aucune
+  // tâche n'est perdue. Voir docs/architecture/aujourdhui-a-traiter.md.
+  const donneesOpportunites = { demandes, propositions, devisList, rappelsManques, rendezVous, travauxDifferes, clients };
+  const handlersOpportunites = {
+    onSelectDemande, onSelectAppt, setView,
+    onChangerStatutRappel, onMarquerContacteTravail, onReprogrammerTravail,
+    onMarquerRecupereTravail, onCloturerRefusTravail, onOuvrirInspection, onToast,
+  };
+  const {
+    opportunites, chargement: chargementOpportunites, erreur: erreurOpportunites,
+    traiter: traiterOpportunite, reporter: reporterOpportunite, reactiver: reactiverOpportunite,
+    journalDisponible,
+  } = useOpportunites({
+    garageId,
+    proprietaireUserId: garageData?.owner_user_id || null,
+    donnees: donneesOpportunites,
+    handlers: handlersOpportunites,
+    onToast,
+  });
+
+  const [reporterCible, setReporterCible] = useState(null);
+  const [aideOuverte, setAideOuverte] = useState(false);
+
   if (loading) {
     return <SquelettteAccueil />;
   }
@@ -1848,225 +1964,6 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, or
   });
 
   // ---- Zone 1 — À traiter maintenant (rouge = urgence réelle ou délai dépassé) -----
-  const zone1Rows = [
-    // Les réponses des clients aux devis, 48 h durant. Recette du 2026-09-11 :
-    // un devis accepté disparaissait de l'accueil sans laisser de trace.
-    ...reponsesRecentes(devisList, now, 2).map((d) => ({
-      key: `rep-${d.id}`,
-      stripe: d.statut === "accepte" ? "#16A34A" : "#64748B",
-      urgent: false,
-      title: titreReponse(d, d.client),
-      // La voiture d'abord : « Accord de M. Martin » ne dit pas sur quel
-      // véhicule, et un garage tient deux voitures du même client. Observé le
-      // 13 septembre 2026 : aucune ligne de cet écran ne nommait la voiture.
-      meta: [
-        libelleVehicule(vehicules.find((v) => v.id === d.vehicule_id)),
-        depuisLabel(d.date_validation),
-        mentionOrigine(d),
-        `${formatEuro(d.montant_ttc)} TTC`,
-      ].filter(Boolean).join(" · "),
-      action: "Ouvrir le dossier",
-      // Le dossier plutôt que l'écran Devis : on garde l'écran d'origine
-      // derrière le panneau, donc la liste et son filtre.
-      onAction: () => (d.vehicule_id && onOuvrirDossierVehicule
-        ? onOuvrirDossierVehicule(d.vehicule_id)
-        : setView("devis")),
-    })),
-    ...demandesUrgentes.map((d) => ({
-      key: `du-${d.id}`,
-      stripe: "#DC2626",
-      urgent: true,
-      title: `Demande urgente — ${d.clients?.nom || "Client"}`,
-      meta: `${depuisLabel(d.created_at)} · ${d.motif || d.type_demande || "motif non précisé"}`,
-      action: "Répondre",
-      onAction: () => setView("demandes"),
-    })),
-    ...propositionsEnRetard.map((p) => ({
-      key: `pr-${p.id}`,
-      stripe: "#DC2626",
-      urgent: true,
-      title: `Créneau en attente — ${p.client}`,
-      meta: `${depuisLabel(p.created_at)} · ${p.prestation || "prestation non précisée"}`,
-      action: "Valider",
-      onAction: () => setView("valider"),
-    })),
-    ...demandesNonUrgentesRecentes.map((d) => ({
-      key: `dn-${d.id}`,
-      stripe: ACCENT,
-      urgent: false,
-      title: `Nouvelle demande — ${d.clients?.nom || "Client"}`,
-      meta: `${depuisLabel(d.created_at)} · ${d.motif || d.type_demande || "motif non précisé"}`,
-      action: "Répondre",
-      onAction: () => setView("demandes"),
-    })),
-    // Nexora Relais Appels V1 — rappels saisis manuellement, statuts actifs uniquement
-    ...rappelsManques
-      .filter((r) => ["a_rappeler", "tentative_sans_reponse", "rdv_a_creer"].includes(r.statut))
-      .map((r) => {
-        const telHref = isLikelyPhone(r.telephone) ? `tel:${r.telephone.replace(/[\s.\-()]/g, "")}` : null;
-        const statusControl = {
-          value: r.statut,
-          options: RAPPEL_STATUT_OPTIONS,
-          onChange: (statut) => onChangerStatutRappel && onChangerStatutRappel(r.id, statut),
-        };
-        if (r.statut === "rdv_a_creer") {
-          return {
-            key: `rp-${r.id}`,
-            stripe: r.urgent ? "#DC2626" : ACCENT,
-            urgent: !!r.urgent,
-            title: `RDV à créer — ${r.telephone || "numéro non renseigné"}`,
-            meta: `${depuisLabel(r.created_at)}${r.motif ? ` · ${r.motif}` : ""}`,
-            action: "Créer le rendez-vous →",
-            onAction: () => setView("agenda"),
-            statusControl,
-          };
-        }
-        return {
-          key: `rp-${r.id}`,
-          stripe: r.urgent ? "#DC2626" : ACCENT,
-          urgent: !!r.urgent,
-          title: `${r.statut === "tentative_sans_reponse" ? "Rappel — sans réponse" : "Rappel à faire"} — ${r.telephone || "numéro non renseigné"}`,
-          meta: `${depuisLabel(r.created_at)}${r.motif ? ` · ${r.motif}` : ""}`,
-          action: r.statut === "tentative_sans_reponse" ? "Réessayer" : "Rappeler",
-          telHref,
-          onAction: telHref ? undefined : () => onToast && onToast("Aucun numéro reconnu pour cet appel."),
-          statusControl,
-        };
-      }),
-    ...rendezVous
-      .filter((r) => r.statut_confirmation === "report_demande")
-      .map((r) => ({
-        key: `rc-${r.id}`,
-        stripe: "#DC2626",
-        urgent: true,
-        title: `Report demandé — ${r.client}`,
-        meta: `${r.jour || ""} ${r.debut || ""} · ${r.prestation || "—"}${r.confirmation_repondu_at ? ` · ${depuisLabel(r.confirmation_repondu_at)}` : ""}`.trim(),
-        action: "Proposer un nouveau créneau",
-        onAction: () => setView("agenda"),
-      })),
-  ];
-
-  // ---- Zone 2 — Prêt à valider (toujours bleu, actions habituelles) ---------------
-  const zone2Rows = [
-    ...propositionsRecentes.map((p) => ({
-      key: `p2-${p.id}`,
-      stripe: ACCENT,
-      urgent: false,
-      title: `Créneau proposé — ${p.client}`,
-      meta: `${p.jour || ""} ${p.debut || ""}${p.fin ? `–${p.fin}` : ""} · ${p.prestation || "—"}`.trim(),
-      action: "Valider",
-      onAction: () => setView("valider"),
-    })),
-    ...devisRecents.map((d) => ({
-      key: `d2-${d.id}`,
-      stripe: ACCENT,
-      urgent: false,
-      // « Prévisualiser et envoyer » s'affichait aussi pour un devis déjà
-      // envoyé : la ligne ouvre le devis, où l'état réel de l'envoi est lu.
-      title: `Devis en cours — ${d.client}`,
-      meta: [
-        libelleVehicule(vehicules.find((v) => v.id === d.vehicule_id)),
-        d.prestation || null,
-        `${Number(d.montant_ttc || 0).toFixed(0)} € TTC`,
-      ].filter(Boolean).join(" · "),
-      action: "Ouvrir le dossier",
-      onAction: () => (d.vehicule_id && onOuvrirDossierVehicule
-        ? onOuvrirDossierVehicule(d.vehicule_id)
-        : setView("devis")),
-    })),
-  ];
-
-  // ---- Zone 3 — Argent à risque (montant réel si connu, sinon "non estimé") -------
-  const zone3Rows = [
-    ...devisAges.map((d) => ({
-      key: `da-${d.id}`,
-      stripe: "#B45309",
-      urgent: false,
-      title: `Devis sans réponse depuis ${joursDepuis(d.created_at)} jour${joursDepuis(d.created_at) > 1 ? "s" : ""}`,
-      meta: `${d.client} · ${d.prestation || "—"}`,
-      amount: Number(d.montant_ttc || 0),
-      action: "Ouvrir le devis",
-      onAction: () => setView("devis"),
-    })),
-    ...demandesEnRisque.map((d) => ({
-      key: `dr-${d.id}`,
-      stripe: "#B45309",
-      urgent: false,
-      title: `Demande sans réponse depuis ${heuresDepuis(d.created_at)} h`,
-      meta: `${d.clients?.nom || "Client"} · ${d.motif || d.type_demande || "motif non précisé"}`,
-      amount: 0,
-      action: "Répondre",
-      onAction: () => setView("demandes"),
-    })),
-    ...dormantClients.map((c) => ({
-      key: `cf-${c.id}`,
-      stripe: "#B45309",
-      urgent: false,
-      title: "Client fidèle silencieux",
-      meta: c.nom || "Client",
-      amount: 0,
-      action: "Voir la fiche",
-      onAction: () => setView("clients"),
-    })),
-    ...travauxTries.map((t) => {
-      const retardJours = joursDepuis(t.date_relance);
-      const critique = t.niveau === "securite" || retardJours >= 14;
-      return {
-        key: `td-${t.id}`,
-        stripe: critique ? "#DC2626" : "#B45309",
-        urgent: critique,
-        title: `${t.intervention}${t.niveau === "securite" ? " · sécurité" : ""}`,
-        meta: `${t.clientNom}${t.vehiculeLabel ? ` · ${t.vehiculeLabel}` : ""} · reporté depuis ${retardJours} jour${retardJours > 1 ? "s" : ""}${t.statut === "contacte_en_attente" ? " · contacté, en attente" : ""}`,
-        amount: t.montant_ttc ? Number(t.montant_ttc) : 0,
-        action: "Ouvrir la fiche",
-        onAction: () => setView("clients"),
-        statusControl: {
-          value: t.statut === "planifie" ? "a_relancer" : t.statut,
-          options: [
-            { value: "a_relancer", label: "À relancer" },
-            { value: "contacte_en_attente", label: "Contacté — en attente" },
-            { value: "recupere", label: "Récupéré" },
-            { value: "refus_definitif", label: "Refus définitif" },
-          ],
-          onChange: (statut) => {
-            if (statut === "contacte_en_attente") onMarquerContacteTravail && onMarquerContacteTravail(t.id);
-            else if (statut === "recupere") onMarquerRecupereTravail && onMarquerRecupereTravail(t.id);
-            else if (statut === "refus_definitif") onCloturerRefusTravail && onCloturerRefusTravail(t.id);
-          },
-        },
-        dateControl: { onChange: (date) => onReprogrammerTravail && onReprogrammerTravail(t.id, date) },
-      };
-    }),
-  ];
-  const zone3TotalConnu = zone3Rows.reduce((s, r) => s + (r.amount || 0), 0);
-  const zone3NonChiffrees = zone3Rows.filter((r) => !r.amount).length;
-  const debutMoisTravaux = new Date(now.getFullYear(), now.getMonth(), 1);
-  const travailleRecupereCeMois = travauxDifferes
-    .filter((t) => t.statut === "recupere" && t.recupere_le && new Date(t.recupere_le) >= debutMoisTravaux)
-    .reduce((s, t) => s + (Number(t.montant_ttc) || 0), 0);
-  const zone3TotalLine = (
-    <div className="text-[12px] text-slate-500 mt-0.5 space-y-0.5">
-      {zone3Rows.length > 0 && (
-        <div>
-          <b className="text-slate-900 font-bold">{zone3TotalConnu.toLocaleString("fr-FR")} €</b> identifiés à risque
-          {zone3NonChiffrees > 0 ? ` · ${zone3NonChiffrees} opportunité${zone3NonChiffrees > 1 ? "s" : ""} non chiffrée${zone3NonChiffrees > 1 ? "s" : ""}` : ""}
-        </div>
-      )}
-      <div><b className="text-slate-900 font-bold">{travailleRecupereCeMois.toLocaleString("fr-FR")} €</b> récupérés ce mois-ci</div>
-    </div>
-  );
-
-  // LE SECOND COMPTAGE DE L'ATELIER EST SUPPRIMÉ
-  //
-  // `calculerProgressionAtelier` limitait « prêt » et « restitué » aux
-  // rendez-vous DU JOUR. Une voiture déposée hier et prête ce matin n'y
-  // figurait donc pas : l'écran affichait « 0 prêt » à dix centimètres d'un
-  // résumé annonçant « Prêtes 2 ». Les deux lisaient la même base et n'en
-  // tiraient pas le même fait.
-  //
-  // Le résumé de l'Atelier dans `AujourdhuiJour` est désormais le seul, et il
-  // compte les quatre files comme l'écran Atelier les affiche.
-
   // ---- Aperçu "Ce mois-ci" (glance, le détail complet est dans Statistiques) ------
   const debutMoisCourant = new Date(now.getFullYear(), now.getMonth(), 1);
   const facturesMoisCourant = factures.filter((f) => new Date(f.created_at) >= debutMoisCourant);
@@ -2113,89 +2010,29 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, or
 
   const vehiculesEngages = compterVehiculesEngages(rendezVous);
   const alertesAtelier = compterAlertesAtelier(rendezVous);
-  const decisionsEnAttente = COCKPIT_OPPORTUNITES_ACTIF
-    ? (cockpitCompteurs ? cockpitCompteurs.total : null)
-    : zone1Rows.length + zone2Rows.length + zone3Rows.length;
-  const montantRisque = COCKPIT_OPPORTUNITES_ACTIF
-    ? (cockpitCompteurs ? cockpitCompteurs.montantConnu : null)
-    : zone3TotalConnu;
 
-  // ---- La zone de travail : ce qui vient des clients, ce qui attend un oui -------
-  //
-  // Ces deux blocs vivaient en bas de page. Ils remontent SOUS les priorités,
-  // dans la colonne large, là où l'écran de bureau laissait du vide. Rien
-  // n'est recalculé : ce sont les mêmes lignes, au bon endroit.
-  //
-  // Journée calme : trois cadres vides occupaient 275 px pour dire trois fois
-  // « rien », et la phrase d'en-tête le dit déjà. Ne reste que le geste
-  // d'ajout — la seule chose de ces cartes qui n'existe nulle part ailleurs.
-  const zonesTravail = zone1Rows.length + zone2Rows.length === 0 ? (
-    <div className="flex items-center gap-4 flex-wrap px-1">
-      <button
-        onClick={() => onAjouterRappel && onAjouterRappel()}
-        className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
-        style={{ color: ACCENT }}
-      >
-        <Phone size={12} /> Un appel à rappeler
-      </button>
-    </div>
-  ) : (
-    <div className="space-y-4">
-      <CommandZone
-        icon={AlertTriangle}
-        iconBg="#FDECEC"
-        iconColor="#DC2626"
-        title="Demandes et devis à traiter"
-        subtitle="Ce qui vient des clients et attend une réponse"
-        countBg="#FDECEC"
-        countColor="#B91C1C"
-        rows={zone1Rows}
-        emptyLabel="Rien à traiter pour l'instant."
-        accentue={zone1Rows.length > 0}
-        headerAction={
-          <button
-            onClick={() => onAjouterRappel && onAjouterRappel()}
-            className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
-            style={{ color: ACCENT }}
-          >
-            <Phone size={12} /> Ajouter un appel à rappeler
-          </button>
-        }
-      />
-
-      <CommandZone
-        icon={Bot}
-        iconBg={ACCENT_SOFT}
-        iconColor={ACCENT}
-        title="Prêt à valider"
-        subtitle="Éléments en attente de votre validation"
-        countBg={ACCENT_SOFT}
-        countColor={ACCENT}
-        rows={zone2Rows}
-        emptyLabel="Rien de préparé pour l'instant."
-      />
-    </div>
-  );
 
   return (
-    <div className="space-y-5">
-      {/* LA JOURNÉE, EN HAUT — disposition validée le 13 septembre 2026.
-          Remplace le grand « Bonjour », les quatre cartes de compteurs, les
-          raccourcis déjà présents dans la barre latérale — et « Votre
-          journée », qui redonnait la progression de l'atelier et les prochains
-          rendez-vous, avec un comptage DIFFÉRENT : il annonçait « 0 prêt »
-          quand le résumé d'à côté en comptait deux, parce qu'il ne regardait
-          que les rendez-vous du jour. Deux lectures du même fait, dont une
-          fausse. Une seule reste. */}
+    <div className="space-y-4">
+      {/* UNE SEULE ZONE DE TRAVAIL — 14 septembre 2026.
+          Ont quitté l'affichage permanent, chacun vérifié joignable ailleurs
+          (docs/architecture/aujourdhui-a-traiter.md) :
+            · le Cockpit séparé        → ses lignes sont dans « À traiter »,
+                                         avec traité/reporté et le suivi ;
+            · les trois zones          → mêmes lignes, même liste ;
+            · arrivées et prêtes       → ce qui demandait un geste est listé ;
+                                         le reste est dans Agenda et Atelier ;
+            · compteurs d'atelier      → la ligne d'activité, puis l'Atelier ;
+            · « Nexora a repéré »      → répétait une ligne déjà listée ;
+            · « Ce mois-ci »           → Statistiques ;
+            · les deux blocs explicatifs → « Comprendre Nexora », ci-dessous. */}
       <div className="nx-apparait">
         <AujourdhuiJour
-          zonesTravail={COCKPIT_OPPORTUNITES_ACTIF ? null : zonesTravail}
           rendezVous={rendezVous}
           devisList={devisList}
           ordresReparation={ordresReparation}
           factures={factures}
           clients={clients}
-          garageData={garageData}
           chargement={loading}
           erreurChargement={erreurChargement}
           peutVoirLesEnvois={peutFacturer(monRole)}
@@ -2206,72 +2043,23 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, or
           onOuvrirAtelier={() => setView("atelier")}
           onPrevenirClient={onPrevenirClient}
           onAgirSurPriorite={onAgirSurPriorite}
+          opportunites={opportunites}
+          journalDisponible={journalDisponible}
+          chargementOpportunites={chargementOpportunites}
+          erreurOpportunites={erreurOpportunites === "inspections" ? "les inspections" : erreurOpportunites === "journal" ? "le suivi des tâches" : null}
+          onTraiter={traiterOpportunite}
+          onReporter={(l) => setReporterCible(l)}
+          onReactiver={reactiverOpportunite}
+          onAjouterRappel={onAjouterRappel}
+          onOuvrirTravailDiffereModal={onOuvrirTravailDiffereModal}
+          onOuvrirAide={() => setAideOuverte(true)}
+          travauxDifferes={travauxDifferes}
         />
       </div>
 
-
-      {COCKPIT_OPPORTUNITES_ACTIF && (
-        <CentreDecisionnel
-          onCompteurs={setCockpitCompteurs}
-          garageId={garageId}
-          demandes={demandes}
-          propositions={propositions}
-          devisList={devisList}
-          rappelsManques={rappelsManques}
-          rendezVous={rendezVous}
-          travauxDifferes={travauxDifferes}
-          clients={clients}
-          onSelectDemande={onSelectDemande}
-          onSelectAppt={onSelectAppt}
-          setView={setView}
-          onChangerStatutRappel={onChangerStatutRappel}
-          onAjouterRappel={onAjouterRappel}
-          onOuvrirTravailDiffereModal={onOuvrirTravailDiffereModal}
-          onMarquerContacteTravail={onMarquerContacteTravail}
-          onReprogrammerTravail={onReprogrammerTravail}
-          onMarquerRecupereTravail={onMarquerRecupereTravail}
-          onCloturerRefusTravail={onCloturerRefusTravail}
-          onOuvrirInspection={onOuvrirInspection}
-          onToast={onToast}
-        />
-      )}
-
-      {/* ARGENT À RISQUE reste hors de la zone de travail : ce n'est pas une
-          décision du jour, c'est une veille. Une seule ligne quand il n'y a
-          rien, et le geste d'ajout dans tous les cas — il n'existe nulle part
-          ailleurs. */}
-      {!COCKPIT_OPPORTUNITES_ACTIF && (
-        <div className="nx-apparait">
-          <CommandZone
-            icon={CircleDollarSign}
-            iconBg="#FEF3E2"
-            iconColor="#B45309"
-            title="Argent à risque"
-            subtitle="Ce qui peut vous échapper si personne ne relance"
-            extraHeaderInfo={zone3TotalLine}
-            countBg="#FEF3E2"
-            countColor="#B45309"
-            rows={zone3Rows}
-            emptyLabel="Rien à risque actuellement."
-            headerAction={
-              <button
-                onClick={() => onOuvrirTravailDiffereModal && onOuvrirTravailDiffereModal()}
-                className="text-[12px] font-semibold flex items-center gap-1.5 whitespace-nowrap"
-                style={{ color: ACCENT }}
-              >
-                <Plus size={12} /> Ajouter un travail à relancer
-              </button>
-            }
-          />
-        </div>
-      )}
-
-      {/* LA MISE EN ROUTE DESCEND EN BAS DE PAGE
-          Elle occupait le haut de l'écran, au-dessus de ce qu'il y a à faire
-          aujourd'hui. Un garage qui travaille n'a pas besoin qu'on lui rappelle
-          sa configuration avant de lui montrer ses voitures. Elle reste — un
-          réglage manquant bloque de vraies actions — mais après. Un garage
-          installé ne la voit jamais : voir garage-os/miseEnRoute.js. */}
+      {/* La mise en route reste — un réglage manquant bloque de vraies actions —
+          mais sous la liste, et un garage installé ne la voit jamais :
+          voir garage-os/miseEnRoute.js. */}
       <MiseEnRoute
         garageData={garageData}
         mecaniciens={mecaniciens}
@@ -2282,112 +2070,18 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, or
         onAller={onAllerConfigurer}
       />
 
-      {/* CE MOIS-CI — UN ACCÈS, PAS UN TABLEAU
-          Le détail complet vit dans Statistiques, et la facturation dans
-          Facturation. Répéter ici trois chiffres qu'on retrouve à un clic
-          allongeait la page sans rien apprendre. La ligne reste — un garage
-          veut voir son mois — mais en une ligne, et elle mène au détail. */}
-      {peutVoir(monRole, "stats") && (
-        <button
-          type="button"
-          onClick={() => setView(factures.length === 0 ? "factures" : "stats")}
-          className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 flex items-center justify-between gap-3 text-left hover:border-slate-300"
-        >
-          <span className="text-[12.5px] text-slate-500">
-            {factures.length === 0 ? (
-              <>Votre chiffre d&apos;affaires s&apos;affichera ici dès votre première facture.</>
-            ) : (
-              <>
-                <b className="text-slate-900 font-bold tabular-nums">{caMoisCourant.toLocaleString("fr-FR")} €</b> ce mois-ci
-                {" · "}{rdvFactures} facture{rdvFactures > 1 ? "s" : ""}
-                {panierMoyen ? ` · ${panierMoyen} € de panier moyen` : ""}
-              </>
-            )}
-          </span>
-          <span className="text-[12.5px] font-semibold whitespace-nowrap flex items-center gap-1" style={{ color: ACCENT }}>
-            {factures.length === 0 ? "Ouvrir la facturation" : "Voir les statistiques"} <ChevronRight size={13} />
-          </span>
-        </button>
+      {reporterCible && (
+        <ReporterTache
+          ligne={reporterCible}
+          onAnnuler={() => setReporterCible(null)}
+          onConfirmer={async (motif, jusquAu) => {
+            const ok = await reporterOpportunite(reporterCible, motif, jusquAu);
+            if (ok) setReporterCible(null);
+          }}
+        />
       )}
 
-      {/* « Nexora a repéré » ne répète pas ce qui est déjà listé au-dessus.
-          La pastille « 2 devis en attente » annonçait exactement les deux
-          lignes de « Prêt à valider », à trois centimètres : le garage lisait
-          deux fois le même travail et pouvait croire à quatre devis. Ces
-          pastilles ne gardent donc que ce qui n'a pas d'autre présence sur la
-          page — les créneaux à valider et les inspections, notamment. */}
-      <NexoraARepere
-        actif={COCKPIT_OPPORTUNITES_ACTIF}
-        cockpitCompteurs={cockpitCompteurs}
-        propositionsCount={propositionsRecentes.length + propositionsEnRetard.length}
-        devisEnAttenteCount={zone2Rows.length > 0 ? 0 : devisEnAttenteTous.length}
-        travauxEchusCount={zone3Rows.length > 0 ? 0 : travauxTries.length}
-        setView={setView}
-      />
-
-
-      <ParcoursExplique />
-
-      {demandes.length > 0 && (
-      <details className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3">
-        <summary className="flex items-center gap-3 flex-wrap cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-          <span className="text-[12.5px] font-semibold text-slate-700">Demandes de rendez-vous — {periodePilote === "pilote" ? "depuis le début" : periodePilote.replace("j", " derniers jours")}</span>
-          <div className="flex items-center gap-4 flex-wrap ml-auto text-[12px] text-slate-500">
-            <span><b className="text-slate-900 font-bold">{detecteesCount}</b> Demandes</span>
-            <span><b className="text-slate-900 font-bold">{parseesCount}</b> Propositions</span>
-            <span style={{ color: "#16A34A" }}><b className="font-bold">{valideesCount}</b> RDV confirmés</span>
-            <span style={{ color: "#DC2626" }}><b className="font-bold">{refuseesCount}</b> Refus</span>
-            <span style={{ color: "#B45309" }}><b className="font-bold">{enAttenteCount}</b> En attente</span>
-          </div>
-          <ChevronRight size={16} className="text-slate-400" />
-        </summary>
-        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
-          <div className="text-[12.5px] text-slate-500">
-            Délai moyen détection → décision : <span className="font-semibold text-slate-700">{formatDelai(delaiMoyenMin)}</span>
-          </div>
-          <div className="flex items-center gap-1 text-xs">
-            {piloteDebut && (
-              <button onClick={() => setPeriodePilote("pilote")} className={`px-2.5 py-1 rounded-lg font-medium ${periodePilote === "pilote" ? "text-white" : "text-slate-500 hover:bg-slate-100"}`} style={periodePilote === "pilote" ? { backgroundColor: ACCENT } : {}}>Depuis le début</button>
-            )}
-            {["7j", "14j", "30j"].map((p) => (
-              <button key={p} onClick={() => setPeriodePilote(p)} className={`px-2.5 py-1 rounded-lg font-medium ${periodePilote === p ? "text-white" : "text-slate-500 hover:bg-slate-100"}`} style={periodePilote === p ? { backgroundColor: ACCENT } : {}}>{p.replace("j", " j")}</button>
-            ))}
-          </div>
-        </div>
-      </details>
-      )}
-
-      {/* Ce que Nexora envoie, et ce qu'il n'envoie pas. La pastille
-          « Email — actif » annonçait un automatisme que rien ne fait ; ces
-          lignes ne décrivent que des comportements réels (voir
-          garage-os/etatDesEnvois.js). */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3.5">
-        <div className="text-[12.5px] font-semibold text-slate-700 mb-2">Ce qui part vers vos clients</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-2">
-          {lignesEtatEnvois({
-            automatiqueDisponible: CAPACITES.reponseAutomatique.disponible,
-            canauxEnAttente: ["sms", "whatsapp"].filter((c) => canalEstChoisi(c)),
-          }).map((ligne) => (
-            <div key={ligne.cle} className="flex items-start gap-2 text-[12.5px] text-slate-500 leading-snug">
-              <span
-                className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
-                style={{ backgroundColor: ligne.ton === "attention" ? "#B45309" : ligne.ton === "pret" ? "#16A34A" : "#CBD5E1" }}
-              />
-              <span>
-                <b className="text-slate-900 font-semibold">{ligne.titre}</b> — {ligne.detail}
-              </span>
-            </div>
-          ))}
-          {/* Tant que la connexion Google n'existe pas, annoncer « non connecté »
-              désigne un manque là où il n'y a rien à connecter. */}
-          {GOOGLE_CALENDAR_CONFIGURE && (
-            <div className="flex items-start gap-2 text-[12.5px] text-slate-500 leading-snug">
-              <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: garageData?.google_agenda_connecte ? "#16A34A" : "#CBD5E1" }} />
-              <span><b className="text-slate-900 font-semibold">Google Calendar</b> — {garageData?.google_agenda_connecte ? "connecté" : "non connecté"}</span>
-            </div>
-          )}
-        </div>
-      </div>
+      {aideOuverte && <ComprendreNexora onFermer={() => setAideOuverte(false)} />}
     </div>
   );
 }

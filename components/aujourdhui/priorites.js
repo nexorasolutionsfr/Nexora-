@@ -107,14 +107,18 @@ export function raisonDePriorite({ fil, rdv, etatEnvoiDevis = null, etatEnvoiFac
   // remonte pas comme un « non envoyé ». Afficher « le client ne le sait pas »
   // sans l'avoir vérifié serait une affirmation gratuite sur une personne.
   if (etape === "pret") {
+    // Mots simples : le garagiste ne dit pas « notification », il dit
+    // « je n'ai pas prévenu le client ». Et le geste proposé est de VÉRIFIER,
+    // jamais de revalider d'un clic : la date, le motif, le destinataire et
+    // l'aperçu se lisent avant toute confirmation.
     if (etatNotification === "bloque") {
-      return { cle: "notification_bloquee", texte: "Notification bloquée : à revalider" };
+      return { cle: "notification_bloquee", texte: "Message de disponibilité bloqué" };
     }
     if (etatNotification === "aucune" || etatNotification === "a_valider") {
-      return { cle: "notification_non_envoyee", texte: "Notification de disponibilité non envoyée" };
+      return { cle: "notification_non_envoyee", texte: "Message de disponibilité non envoyé" };
     }
     if (etatNotification === "envoi_en_cours") {
-      return { cle: "notification_incertaine", texte: "Envoi de la notification à vérifier" };
+      return { cle: "notification_incertaine", texte: "Message de disponibilité à vérifier" };
     }
     // `envoye`, `en_attente_envoi` : rien à faire. `null` : on ne sait pas,
     // et on ne fabrique pas une tâche à partir d'une ignorance.
