@@ -21,8 +21,8 @@
 // Le client Supabase est injectable (prop `client`) pour permettre un rendu
 // hors réseau (harnais local, tests) — par défaut, le client applicatif.
 
-import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Camera, ClipboardList, Lock, Pencil, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, BookmarkPlus, Camera, ClipboardList, LayoutTemplate, Lock, Pencil, Plus, Trash2 } from "lucide-react";
 import { supabase as supabaseClient } from "@/lib/supabase";
 import { ACCENT, ACCENT_SOFT } from "../garage-os/tokens";
 import { GARAGE_PHOTO_SIGNED_URL_TTL_SECONDES, PHOTOS_BUCKET } from "../inspections/inspectionsConstants";
@@ -318,6 +318,67 @@ function usePhotosDesConstats(client, lignes) {
 }
 
 /**
+ * « Ajouter un modèle » : la liste des modèles actifs du garage, chargée à
+ * l'ouverture, et un identifiant d'insertion tiré UNE fois par ouverture —
+ * deux clics n'insèrent qu'une fois (migration 20260919000200).
+ */
+function ChoisirModele({ client, garageId, constats = [], onInserer, onFermer, busy }) {
+  const [modeles, setModeles] = useState(null);
+  const [modeleId, setModeleId] = useState("");
+  const [constatId, setConstatId] = useState("");
+  const insertionId = useRef(typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : null);
+
+  useEffect(() => {
+    let annule = false;
+    client.from("modeles_travaux").select("id, nom, modeles_travaux_lignes ( id, prix_unitaire_ht )").eq("garage_id", garageId).eq("actif", true).order("nom")
+      .then(({ data }) => { if (!annule) setModeles(data || []); });
+    return () => { annule = true; };
+  }, [client, garageId]);
+
+  const choisi = (modeles || []).find((m) => m.id === modeleId) || null;
+  const nbLignes = choisi?.modeles_travaux_lignes?.length || 0;
+  const sansPrix = (choisi?.modeles_travaux_lignes || []).filter((l) => l.prix_unitaire_ht == null).length;
+
+  return (
+    <div className="bg-slate-50 rounded-xl p-3 space-y-2.5">
+      <div>
+        <label className="text-[11.5px] font-medium text-slate-500">Modèle de travaux</label>
+        {modeles === null ? (
+          <div className="text-[12.5px] text-slate-400 mt-1">Chargement…</div>
+        ) : modeles.length === 0 ? (
+          <div className="text-[12.5px] text-slate-500 mt-1">Aucun modèle pour l'instant. Le dirigeant peut en créer dans Paramètres › Mon garage, ou enregistrer ce devis comme modèle.</div>
+        ) : (
+          <select value={modeleId} onChange={(e) => setModeleId(e.target.value)} className={champInput}>
+            <option value="">— Choisir un modèle —</option>
+            {modeles.map((m) => <option key={m.id} value={m.id}>{m.nom} ({m.modeles_travaux_lignes?.length || 0} ligne{(m.modeles_travaux_lignes?.length || 0) > 1 ? "s" : ""})</option>)}
+          </select>
+        )}
+        {choisi && (
+          <div className="text-[11.5px] text-slate-500 mt-0.5">
+            {nbLignes} ligne{nbLignes > 1 ? "s" : ""} copiée{nbLignes > 1 ? "s" : ""} telles quelles{sansPrix > 0 ? ` — ${sansPrix} sans prix, à renseigner ensuite` : ""}.
+          </div>
+        )}
+      </div>
+      {constats.length > 0 && (
+        <div>
+          <label className="text-[11.5px] font-medium text-slate-500">Pour chiffrer un constat (facultatif)</label>
+          <select value={constatId} onChange={(e) => setConstatId(e.target.value)} className={champInput}>
+            <option value="">— Aucun —</option>
+            {constats.map((c) => <option key={c.id} value={c.id}>{c.libelle}</option>)}
+          </select>
+        </div>
+      )}
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onFermer} disabled={busy} className="min-h-[40px] px-3.5 rounded-lg text-[13px] font-medium text-slate-500">Annuler</button>
+        <button type="button" disabled={busy || !modeleId || !insertionId.current} onClick={() => onInserer({ insertionId: insertionId.current, modeleId, constatId: constatId || null })} className="min-h-[40px] px-4 rounded-lg text-[13px] font-semibold text-white disabled:opacity-50" style={{ backgroundColor: ACCENT }}>
+          {busy ? "Ajout…" : "Ajouter au devis"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Props :
  *  - devis        : { id, garage_id, statut, devis_lignes? }
  *  - lignes       : lignes déjà chargées (par défaut devis.devis_lignes)
@@ -326,14 +387,16 @@ function usePhotosDesConstats(client, lignes) {
  *  - onChange     : (devisId, { lignes, montant_ht, montant_ttc }) après chaque mutation relue
  *  - onToast      : (message, type)
  *  - client       : client Supabase injectable
+ *  - peutCreerModele : vrai pour le dirigeant — « Enregistrer comme modèle »
  */
-export default function DevisLignesEditor({ devis, lignes: lignesProp, prestations = [], readOnly, onChange, onToast, client = supabaseClient, ajoutInitial = false }) {
+export default function DevisLignesEditor({ devis, lignes: lignesProp, prestations = [], readOnly, onChange, onToast, client = supabaseClient, ajoutInitial = false, peutCreerModele = false }) {
   const garageId = devis?.garage_id;
   const modifiable = readOnly === true ? false : devisStatutModifiable(devis?.statut);
   const [lignes, setLignes] = useState(trierLignes(lignesProp ?? devis?.devis_lignes ?? []));
   // Un devis tout juste créé arrive formulaire ouvert : la suite évidente est
   // d'y mettre la main-d'œuvre et les pièces (recette du 2026-09-11).
   const [ajoutOuvert, setAjoutOuvert] = useState(Boolean(ajoutInitial && modifiable));
+  const [modeleOuvert, setModeleOuvert] = useState(false);
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState(null);
   const [photoOuverte, setPhotoOuverte] = useState(null);
@@ -410,6 +473,52 @@ export default function DevisLignesEditor({ devis, lignes: lignesProp, prestatio
 
   const ouvrirPhoto = (urls, index, titre, commentaire) => setPhotoOuverte({ urls, index, titre, commentaire });
 
+  // Insérer un modèle : la base copie les lignes et garantit qu'un même
+  // identifiant d'insertion n'écrit qu'une fois. On relit ensuite.
+  const insererModele = async ({ insertionId, modeleId, constatId }) => {
+    setBusy(true);
+    setErreur(null);
+    const { data, error } = await client.rpc("inserer_modele_dans_devis", {
+      p_insertion_id: insertionId, p_devis_id: devis.id, p_modele_id: modeleId, p_inspection_point_id: constatId,
+    });
+    setBusy(false);
+    if (error) {
+      const msg = /accès refusé|introuvable/i.test(error.message || "") ? "Ce modèle n'est pas disponible pour ce devis." : traduireErreurDevisLignes(error);
+      setErreur(msg); toast(msg, "error"); return;
+    }
+    if (!data?.ok) {
+      const msg = data?.raison === "modele_archive" ? "Ce modèle est archivé : réactivez-le pour l'utiliser."
+        : data?.raison === "modele_vide" ? "Ce modèle n'a aucune ligne."
+        : data?.raison === "devis_verrouille" ? "Ce devis est verrouillé : ses lignes ne peuvent plus être modifiées."
+        : data?.raison === "vehicule_different" ? "Ce constat concerne un autre véhicule."
+        : "L'ajout n'a pas abouti.";
+      setErreur(msg); toast(msg, "error"); return;
+    }
+    await relire();
+    setModeleOuvert(false);
+    const n = (data.lignes_creees || []).length;
+    const aRenseigner = (data.lignes_creees || []).filter((l) => l.prix_a_renseigner).length;
+    toast(data.deja_jouee ? "Ce modèle avait déjà été ajouté : rien n'a été dupliqué."
+      : `${n} ligne${n > 1 ? "s" : ""} ajoutée${n > 1 ? "s" : ""} depuis « ${data.modele} »${aRenseigner > 0 ? ` — ${aRenseigner} à chiffrer` : ""}.`);
+  };
+
+  // Enregistrer ce devis comme modèle : le dirigeant seulement, et depuis un
+  // devis en lecture aussi (lire n'est pas modifier). Un nom suffit.
+  const enregistrerCommeModele = async () => {
+    if (typeof window === "undefined") return;
+    const nom = window.prompt("Nom du modèle de travaux (ex. « Plaquettes avant ») :", "");
+    if (nom == null) return;
+    if (!nom.trim()) { toast("Donnez un nom au modèle.", "error"); return; }
+    setBusy(true);
+    const { error } = await client.rpc("enregistrer_devis_comme_modele", { p_devis_id: devis.id, p_nom: nom.trim() });
+    setBusy(false);
+    if (error) {
+      toast(/accès refusé|introuvable/i.test(error.message || "") ? "Seul le dirigeant peut enregistrer un modèle." : (error.message?.includes("pas de lignes") ? "Ce devis n'a pas de lignes : rien à enregistrer." : "Impossible d'enregistrer ce modèle."), "error");
+      return;
+    }
+    toast(`Modèle « ${nom.trim()} » enregistré. Il se gère dans Paramètres › Mon garage.`);
+  };
+
   const statutLabel = STATUT_DEVIS_LABEL[devis?.statut] || (devis?.statut ? devis.statut : "statut inconnu");
   const grilleEntete = modifiable
     ? "md:grid md:grid-cols-[minmax(0,1fr)_56px_92px_56px_100px_168px] md:items-center md:gap-2.5"
@@ -478,16 +587,31 @@ export default function DevisLignesEditor({ devis, lignes: lignesProp, prestatio
         {ajoutOuvert && (
           <LigneDevisForm prestations={prestations} constats={constats} submitting={busy} onCancel={() => setAjoutOuvert(false)} onSave={ajouter} />
         )}
+        {modeleOuvert && (
+          <ChoisirModele client={client} garageId={garageId} constats={constats} busy={busy} onFermer={() => setModeleOuvert(false)} onInserer={insererModele} />
+        )}
       </div>
 
       {erreur && <div className="mt-2 text-[12.5px] text-red-600">{erreur}</div>}
 
       <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        {modifiable && !ajoutOuvert ? (
-          <button type="button" onClick={() => setAjoutOuvert(true)} disabled={busy} className="min-h-[40px] inline-flex items-center justify-center gap-1.5 px-3.5 rounded-lg text-[13px] font-medium disabled:opacity-50" style={{ backgroundColor: ACCENT_SOFT, color: ACCENT }}>
-            <Plus size={14} /> {lignes.length === 0 ? "Détailler en lignes" : "Ajouter une ligne"}
-          </button>
-        ) : <div />}
+        <div className="flex flex-wrap items-center gap-2">
+          {modifiable && !ajoutOuvert && !modeleOuvert && (
+            <button type="button" onClick={() => setAjoutOuvert(true)} disabled={busy} className="min-h-[40px] inline-flex items-center justify-center gap-1.5 px-3.5 rounded-lg text-[13px] font-medium disabled:opacity-50" style={{ backgroundColor: ACCENT_SOFT, color: ACCENT }}>
+              <Plus size={14} /> {lignes.length === 0 ? "Détailler en lignes" : "Ajouter une ligne"}
+            </button>
+          )}
+          {modifiable && !ajoutOuvert && !modeleOuvert && (
+            <button type="button" onClick={() => setModeleOuvert(true)} disabled={busy} className="min-h-[40px] inline-flex items-center justify-center gap-1.5 px-3.5 rounded-lg text-[13px] font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+              <LayoutTemplate size={14} /> Ajouter un modèle
+            </button>
+          )}
+          {peutCreerModele && lignes.length > 0 && !ajoutOuvert && !modeleOuvert && (
+            <button type="button" onClick={enregistrerCommeModele} disabled={busy} className="min-h-[40px] inline-flex items-center justify-center gap-1.5 px-3 rounded-lg text-[12.5px] font-medium text-slate-500 hover:text-slate-800 disabled:opacity-50" title="Réutiliser ces lignes dans d'autres devis">
+              <BookmarkPlus size={14} /> Enregistrer comme modèle
+            </button>
+          )}
+        </div>
 
         {lignes.length > 0 && (
           <div className="grid grid-cols-3 gap-3 sm:flex sm:items-baseline sm:gap-5 text-right">

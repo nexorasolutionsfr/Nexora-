@@ -1,6 +1,7 @@
 
 "use client"; import { supabase } from "@/lib/supabase";
 import DevisLignesEditor from "./devis-lignes/DevisLignesEditor";
+import ModelesTravauxSection from "./devis-lignes/ModelesTravauxSection";
 import { calculerLigne, calculerTotaux, devisALignes, devisChiffrageIncomplet, formatEuro, preremplirDepuisPrestation } from "./devis-lignes/calculs";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
@@ -2923,14 +2924,14 @@ function FacturationView({ monRole = ROLE_DIRIGEANT, view, setView, devisList, c
           <button key={key} onClick={() => setView(key)} className="text-[13px] font-medium px-4 py-1.5 rounded-lg" style={view === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>{label}</button>
         ))}
       </div>
-      {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} onLignesChange={onLignesChange} onToast={onToast} onCreerVehicule={onCreerVehicule} ouvrirCreation={ouvrirCreation} onCreationOuverte={onCreationOuverte} devisOuvertId={devisOuvertId} onCreerOrdreReparation={onCreerOrdreReparation} historiqueAccessible={tabs.some(([cle]) => cle === "historique")} />}
+      {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} onLignesChange={onLignesChange} onToast={onToast} onCreerVehicule={onCreerVehicule} ouvrirCreation={ouvrirCreation} onCreationOuverte={onCreationOuverte} devisOuvertId={devisOuvertId} onCreerOrdreReparation={onCreerOrdreReparation} historiqueAccessible={tabs.some(([cle]) => cle === "historique")} peutCreerModele={monRole === ROLE_DIRIGEANT} />}
       {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={onGenererFacture} onMarquerPayee={onMarquerPayee} onSauvegarder={onSauvegarderFacture} facturesLiens={facturesLiens} facturesBusyId={facturesBusyId} onGenererLien={onGenererLienFacture} onRevoquerLien={onRevoquerLienFacture} onToast={onToast} />}
-      {view === "historique" && <HistoriqueView devisList={devisList} garageId={garageId} onCreerOrdreReparation={onCreerOrdreReparation} prestations={prestations} />}
+      {view === "historique" && <HistoriqueView devisList={devisList} garageId={garageId} onCreerOrdreReparation={onCreerOrdreReparation} prestations={prestations} peutCreerModele={monRole === ROLE_DIRIGEANT} onToast={onToast} />}
     </div>
   );
 }
 
-function HistoriqueView({ devisList, garageId, onCreerOrdreReparation, prestations = [] }) {
+function HistoriqueView({ devisList, garageId, onCreerOrdreReparation, prestations = [], peutCreerModele = false, onToast }) {
   const [rdvHistory, setRdvHistory] = useState([]);
   const [lignesOuvertes, setLignesOuvertes] = useState({});
   const [loading, setLoading] = useState(true);
@@ -3050,7 +3051,7 @@ function HistoriqueView({ devisList, garageId, onCreerOrdreReparation, prestatio
                     <button type="button" onClick={() => setLignesOuvertes((o) => ({ ...o, [it.id]: !o[it.id] }))} className="text-[12px] font-medium text-slate-500 hover:text-slate-700 min-h-[32px]">
                       {lignesOuvertes[it.id] ? "Masquer les lignes" : `Voir les lignes (${it.raw.devis_lignes.length})`}
                     </button>
-                    {lignesOuvertes[it.id] && <DevisLignesEditor devis={it.raw} lignes={it.raw.devis_lignes} prestations={prestations} readOnly />}
+                    {lignesOuvertes[it.id] && <DevisLignesEditor devis={it.raw} lignes={it.raw.devis_lignes} prestations={prestations} readOnly peutCreerModele={peutCreerModele} onToast={onToast} />}
                   </div>
                 )}
               </div>
@@ -3076,7 +3077,7 @@ function HistoriqueView({ devisList, garageId, onCreerOrdreReparation, prestatio
 
 const dateHeureCourte = (d) => (d ? new Date(d).toLocaleString("fr-FR", { timeZone: APP_TIME_ZONE, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
 
-function DevisView({ devisList: devisListToutesSources, clients, prestations, garageData, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient, onCreerVehicule, devisLiens = {}, devisBusyId, onGenererLien, onRevoquerLien, onLignesChange, onToast, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null, onCreerOrdreReparation, historiqueAccessible = true }) {
+function DevisView({ devisList: devisListToutesSources, clients, prestations, garageData, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient, onCreerVehicule, devisLiens = {}, devisBusyId, onGenererLien, onRevoquerLien, onLignesChange, onToast, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null, onCreerOrdreReparation, historiqueAccessible = true, peutCreerModele = false }) {
   const devisList = devisListToutesSources.filter((d) => d.statut === "en_attente");
   // Recette du 2026-09-11 : un devis accepté disparaissait d'ici sans laisser
   // de trace ; il ne restait que l'onglet Historique. Les réponses récentes
@@ -3144,7 +3145,7 @@ function DevisView({ devisList: devisListToutesSources, clients, prestations, ga
         />
       ) : (
         devisList.map((d) => (
-          <DevisCard key={d.id} d={d} garageData={garageData} onAccept={onAccept} onRefuse={onRefuse} onUpdateMontant={onUpdateMontant} lien={devisLiens[d.id]} busy={devisBusyId === d.id} onGenererLien={onGenererLien} onRevoquerLien={onRevoquerLien} prestations={prestations} onLignesChange={onLignesChange} onToast={onToast} nouveau={d.id === dernierCreeId} />
+          <DevisCard key={d.id} d={d} garageData={garageData} onAccept={onAccept} onRefuse={onRefuse} onUpdateMontant={onUpdateMontant} lien={devisLiens[d.id]} busy={devisBusyId === d.id} onGenererLien={onGenererLien} onRevoquerLien={onRevoquerLien} prestations={prestations} onLignesChange={onLignesChange} onToast={onToast} nouveau={d.id === dernierCreeId} peutCreerModele={peutCreerModele} />
         ))
       )}
       {modalOuvert && (
@@ -3190,7 +3191,7 @@ function DevisApercuModal({ d, garageData, onClose }) {
 // lui transmettre soi-même, qui n'envoie rien ; noter une réponse reçue par
 // un autre moyen. Les libellés sont dans envoi/etatsEnvoi.js, où ils sont
 // testés.
-function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, busy, onGenererLien, onRevoquerLien, prestations = [], onLignesChange, onToast, nouveau = false }) {
+function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, busy, onGenererLien, onRevoquerLien, prestations = [], onLignesChange, onToast, nouveau = false, peutCreerModele = false }) {
   const [editing, setEditing] = useState(false);
   const aDesLignes = devisALignes(d);
   // Des lignes « Prix à renseigner » : le devis n'est pas un devis tant
@@ -3277,7 +3278,7 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
           )}
         </div>
 
-        <DevisLignesEditor devis={d} lignes={d.devis_lignes || []} prestations={prestations} onChange={onLignesChange} onToast={onToast} ajoutInitial={nouveau && !aDesLignes} />
+        <DevisLignesEditor devis={d} lignes={d.devis_lignes || []} prestations={prestations} onChange={onLignesChange} onToast={onToast} ajoutInitial={nouveau && !aDesLignes} peutCreerModele={peutCreerModele} />
 
         {d.message_original && (
           <>
@@ -4754,7 +4755,7 @@ const THEMES_DASHBOARD = [
   { key: "automatique", label: "Automatique", description: "S'adapte aux réglages de l'appareil." },
 ];
 
-function ParametresView({ garageId, garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, ongletInitial = "garage", onGererAbonnement, onConnecterGmail, onImportTermine, monRole = ROLE_DIRIGEANT }) {
+function ParametresView({ garageId, garageData, onGarageChange, onSave, prestations = [], onAddPrestation, onDeletePrestation, saving, mecaniciens = [], onAddMecanicien, onToggleMecanicienActif, ongletInitial = "garage", onGererAbonnement, onConnecterGmail, onImportTermine, monRole = ROLE_DIRIGEANT, onToast }) {
   // Ouvert sur l'onglet demandé par l'appelant : la liste de mise en route
   // envoie vers « Reprise de données » sans faire chercher le bon onglet.
   const [onglet, setOnglet] = useState(ongletInitial);
@@ -4867,6 +4868,13 @@ function ParametresView({ garageId, garageData, onGarageChange, onSave, prestati
         <SettingsSection title="Horaires d’ouverture"><div className="space-y-2">{JOURS_SEMAINE.map(([jour, libelle]) => { const plages = plagesDuJour(jour); const ouvert = plages.length > 0; return <div key={jour} className="flex flex-wrap items-center gap-2 py-1.5 border-b border-slate-100 last:border-0"><label className="flex items-center gap-2 w-[112px] sm:w-[132px] shrink-0"><input type="checkbox" checked={ouvert} onChange={(e) => basculerJour(jour, e.target.checked)} className="accent-blue-600" /><span className="text-[13px] font-medium text-slate-700">{libelle}</span></label>{ouvert ? <div className="flex flex-wrap items-center gap-1.5">{champHeure(jour, 0, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 0, 1)}{plages.length > 1 ? <><span className="text-slate-300 px-1">|</span>{champHeure(jour, 1, 0)}<span className="text-slate-400 text-xs">→</span>{champHeure(jour, 1, 1)}<button type="button" onClick={() => retirerApresMidi(jour)} className="text-[11px] text-slate-400 hover:text-red-500 px-1">retirer</button></> : <button type="button" onClick={() => ajouterApresMidi(jour)} className="text-[11px] text-blue-600 hover:underline px-1">+ après-midi</button>}</div> : <span className="text-[13px] text-slate-400">Fermé</span>}</div>; })}</div><div className="mt-4 rounded-xl bg-slate-50 p-3 text-[12.5px] text-slate-600">Ces horaires servent au calcul des créneaux proposés aux clients. Laissez un jour décoché pour le déclarer fermé.</div></SettingsSection>
         <SettingsSection title="Mécaniciens"><div className="space-y-2">{mecaniciens.length === 0 && <div className="text-[13px] text-slate-400">Aucun mécanicien pour l’instant.</div>}{mecaniciens.map((m) => <div key={m.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-slate-100 last:border-0"><div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: m.couleur || "#3D6BE0" }} /><span className="text-[13px] font-medium text-slate-700">{m.nom}</span></div><label className="flex items-center gap-1.5 text-[12px] text-slate-500"><input type="checkbox" checked={m.actif !== false} onChange={(e) => onToggleMecanicienActif(m.id, e.target.checked)} className="accent-blue-600" />Actif</label></div>)}</div><div className="mt-3 flex gap-2"><input type="text" value={newMecanicienNom} onChange={(e) => setNewMecanicienNom(e.target.value)} placeholder="Nom du mécanicien" className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500" /><button type="button" onClick={() => { if (newMecanicienNom.trim()) { onAddMecanicien(newMecanicienNom.trim()); setNewMecanicienNom(""); } }} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}>Ajouter</button></div></SettingsSection>
         <SettingsSection title="Prestations disponibles"><div className="space-y-1.5 max-h-[230px] overflow-y-auto">{catalogue.length === 0 && <div className="text-[13px] text-slate-400 py-3">Aucune prestation pour l&apos;instant. Ajoutez la première ci-dessous : elle apparaîtra aussitôt dans vos rendez-vous et vos devis.</div>}{catalogue.map((p) => <div key={p.id || p.nom} className="flex items-center gap-2 text-sm py-2 border-b border-slate-100 last:border-0"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(p.categorie).bar }} /><span className="flex-1 text-slate-700">{p.nom}</span><span className="text-slate-500 text-[12px]">{p.duree_minutes || p.duree_min || p.duree} min</span>{p.id && <button onClick={() => onDeletePrestation(p.id)} className="ml-1 text-slate-400 hover:text-red-600" title="Supprimer"><Trash2 size={14} /></button>}</div>)}</div><div className="grid grid-cols-1 sm:grid-cols-[1fr_110px_74px] gap-2 mt-4"><input value={newPrestation.nom} onChange={(event) => setNewPrestation((prev) => ({ ...prev, nom: event.target.value }))} className="min-w-0 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900" placeholder="Nouvelle prestation" /><input type="number" min="15" step="15" value={newPrestation.duree_minutes} onChange={(event) => setNewPrestation((prev) => ({ ...prev, duree_minutes: Number(event.target.value) }))} className="rounded-xl border border-slate-200 px-2 py-2 text-sm text-slate-900" /><button onClick={createPrestation} className="rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: ACCENT }}><Plus size={15} className="inline" /> Ajouter</button></div></SettingsSection>
+        {/* Les modèles de travaux vivent à côté des prestations : c'est le
+            même endroit où le garage décrit ce qu'il fait. Pas de rubrique
+            nouvelle. « Modèle », jamais « forfait » — ce mot est pris par
+            l'abonnement Nexora (garages.forfait). */}
+        <SettingsSection title="Modèles de travaux">
+          <ModelesTravauxSection garageId={garageId} peutModifier={monRole === ROLE_DIRIGEANT} onToast={onToast} />
+        </SettingsSection>
       </div>
     )}
 
@@ -7528,7 +7536,12 @@ if (updateError) {
 )}
       <main className="flex-1 min-w-0">
         <div className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-y-3 px-5 md:px-8 py-4 sm:py-5 border-b border-slate-200 bg-white">
-          <div className="flex items-center gap-3">
+          {/* `min-w-0 max-w-full` : sans eux, ce bloc prend la largeur du
+              sous-titre en une ligne (« truncate » = nowrap) et, sur téléphone,
+              Chrome élargit toute la page à cette largeur — 548 px mesurés à
+              430 px le 14 septembre 2026. Chaque fenêtre (contrôle, devis)
+              paraissait alors « coupée à droite ». Le défaut était ici. */}
+          <div className="flex items-center gap-3 min-w-0 max-w-full">
             <button onClick={() => setMobileMenuOpen(true)} aria-label="Ouvrir le menu" className="md:hidden -ml-1.5 w-11 h-11 shrink-0 rounded-lg text-slate-500 hover:bg-slate-100 flex items-center justify-center">
               <Menu size={22} />
             </button>
@@ -7729,7 +7742,7 @@ if (updateError) {
               onCountChange={setNotifsAVerifierCount}
             />
           )}
-          {view === "parametres" && <ParametresView monRole={monRole} onImportTermine={() => setRechargementClients((n) => n + 1)} onGererAbonnement={ouvrirPortailAbonnement} onConnecterGmail={connecterBoiteGmail} ongletInitial={parametresOnglet} key={parametresOnglet} garageId={garageId} garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} />}
+          {view === "parametres" && <ParametresView monRole={monRole} onImportTermine={() => setRechargementClients((n) => n + 1)} onGererAbonnement={ouvrirPortailAbonnement} onConnecterGmail={connecterBoiteGmail} ongletInitial={parametresOnglet} key={parametresOnglet} garageId={garageId} garageData={garageData} onGarageChange={updateGarageField} onSave={saveGarageSettings} prestations={prestations} onAddPrestation={addPrestation} onDeletePrestation={deletePrestation} saving={savingSettings} mecaniciens={mecaniciens} onAddMecanicien={addMecanicien} onToggleMecanicienActif={toggleMecanicienActif} onToast={flashToast} />}
         </div>
       </main>
 
