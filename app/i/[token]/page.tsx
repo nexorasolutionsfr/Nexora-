@@ -4,7 +4,6 @@ import { use, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { CATEGORIE_LABEL, ETAT_POINT_LABEL, NIVEAU_CARBURANT_LABEL } from "@/components/inspections/inspectionsConstants";
 import PhotoEnGrand from "@/components/inspections/PhotoEnGrand";
-import { ouvreAuClavier } from "@/components/inspections/photoEnGrand";
 
 const ETAT_COLOR = { ok: "#16A34A", a_surveiller: "#D97706", a_valider_client: "#D97706", dommage: "#DC2626" };
 
@@ -27,11 +26,6 @@ function PointCard({ point, photoUrls, onDecider, pending, onConfirmer, onAnnule
               key={p}
               type="button"
               onClick={() => onOuvrirPhoto(photos.map((c) => photoUrls[c]), i, titrePoint, point.commentaire)}
-              onKeyDown={(e) => {
-                if (!ouvreAuClavier(e.key)) return;
-                e.preventDefault();
-                onOuvrirPhoto(photos.map((c) => photoUrls[c]), i, titrePoint, point.commentaire);
-              }}
               aria-label={`Voir la photo en grand — ${titrePoint}${photos.length > 1 ? ` (${i + 1} sur ${photos.length})` : ""}`}
               style={{ padding: 0, border: "1px solid #E7EAF0", borderRadius: 10, background: "white", cursor: "pointer", lineHeight: 0 }}
             >

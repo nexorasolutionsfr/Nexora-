@@ -35,18 +35,23 @@ Garage fictif « Garage Démo Vidéo », cliente fictive Claire Bernard, Peugeot
 | 13 | Aucune écriture en base | `inspections_points.decision_client` reste `null` sur les deux contrôles ; `inspections_historique` ne contient que les transitions attendues (brouillon → en attente client → consulté) |
 | 14 | Stockage toujours privé | accès public direct à l'objet : **HTTP 400**. La fenêtre réutilise l'URL signée de la vignette (aucune route, aucun droit, aucune migration) |
 | 15 | Échec de chargement | voir ci-dessous |
-| 16 | Tests unitaires | `node --test components/inspections/photoEnGrand.test.js` — 8 tests, 8 passés |
+| 16 | Tests unitaires | `node --test components/inspections/photoEnGrand.test.js` — 7 tests, 7 passés |
+| 17 | Compilation sur la tête exacte de la PR | `next build` : succès, aucune erreur ni avertissement |
 
 Les clics et les frappes des points 3 à 12 sont de **vrais événements** du navigateur (pas des `.click()` en
 JavaScript), sauf mention contraire.
 
-### Point 8 — pourquoi une activation clavier explicite
+### Point 8 — le clavier, vérifié dans un vrai Chrome
 
-Avec un `<button>` seul, la touche Entrée n'ouvrait pas la fenêtre alors que l'événement `keydown` arrivait bien
-(`isTrusted: true`) : l'activation native dépend de l'action par défaut de l'événement, qui n'est pas toujours
-délivrée. Le composant gère donc Entrée et Espace explicitement, avec `preventDefault` — jamais de double
-ouverture (vérifié : une seule fenêtre dans le DOM). La touche Espace n'a pas pu être émise correctement par
-l'outil de pilotage (touche vide) ; elle est couverte par les tests unitaires.
+Pendant la recette pilotée, Entrée n'ouvrait pas la fenêtre alors que le `keydown` arrivait bien
+(`isTrusted: true`). Un gestionnaire clavier explicite avait donc été ajouté. **Contrôle fait ensuite dans le
+Chrome de l'utilisateur, avec de vraies frappes** (touches système, pas d'événements fabriqués) :
+
+- un `<button>` témoin ordinaire, hors produit : Espace produit `keydown " "` **et** un `click` de confiance —
+  l'activation native fonctionne parfaitement dans un vrai navigateur ;
+- le gestionnaire explicite ne compensait donc qu'un défaut de l'outil de simulation : **il a été retiré** ;
+- sans lui, dans ce même Chrome : **Espace ouvre**, **Entrée ouvre**, **Échap ferme**, le focus revient à la
+  vignette exacte et le défilement de la page est rendu. Une seule fenêtre dans le DOM à chaque fois.
 
 ### Point 15 — échec de chargement
 

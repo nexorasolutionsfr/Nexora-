@@ -38,14 +38,3 @@ export function actionTouche(key, total) {
   if (total > 1 && (key === "ArrowLeft" || key === "ArrowUp")) return "precedente";
   return null;
 }
-
-/**
- * Activation de la vignette au clavier. Un <button> s'active nativement avec
- * Entrée et Espace, mais nous le déclenchons explicitement : l'activation native
- * dépend de l'action par défaut de l'événement, qui n'est pas toujours délivrée
- * (claviers logiciels, outils d'assistance, pilotage automatisé). Avec
- * preventDefault côté appelant, il n'y a jamais double ouverture.
- */
-export function ouvreAuClavier(key) {
-  return key === "Enter" || key === " " || key === "Spacebar";
-}

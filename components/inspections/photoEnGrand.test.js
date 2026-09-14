@@ -10,7 +10,6 @@ import {
   indexPrecedent,
   indexSuivant,
   libelleDialogue,
-  ouvreAuClavier,
 } from "./photoEnGrand.js";
 
 test("une seule photo : la navigation ne bouge pas et le compteur reste vide", () => {
@@ -61,13 +60,4 @@ test("le message d'erreur ne conclut pas à l'expiration du lien", () => {
   assert.match(MESSAGE_ERREUR_PHOTO, /connexion/i);
   assert.match(MESSAGE_ERREUR_PHOTO, /réessayez/i);
   assert.doesNotMatch(MESSAGE_ERREUR_PHOTO, /expiré/i);
-});
-
-test("la vignette s'ouvre avec Entrée et Espace, pas avec une autre touche", () => {
-  assert.equal(ouvreAuClavier("Enter"), true);
-  assert.equal(ouvreAuClavier(" "), true);
-  assert.equal(ouvreAuClavier("Spacebar"), true);
-  assert.equal(ouvreAuClavier("Escape"), false);
-  assert.equal(ouvreAuClavier("a"), false);
-  assert.equal(ouvreAuClavier("Tab"), false);
 });
