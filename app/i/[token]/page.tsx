@@ -3,11 +3,14 @@
 import { use, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { CATEGORIE_LABEL, ETAT_POINT_LABEL, NIVEAU_CARBURANT_LABEL } from "@/components/inspections/inspectionsConstants";
+import PhotoEnGrand from "@/components/inspections/PhotoEnGrand";
+import { ouvreAuClavier } from "@/components/inspections/photoEnGrand";
 
 const ETAT_COLOR = { ok: "#16A34A", a_surveiller: "#D97706", a_valider_client: "#D97706", dommage: "#DC2626" };
 
-function PointCard({ point, photoUrls, onDecider, pending, onConfirmer, onAnnuler, deciding }) {
+function PointCard({ point, photoUrls, onDecider, pending, onConfirmer, onAnnuler, deciding, onOuvrirPhoto }) {
   const photos = (point.photos || []).filter((p) => photoUrls[p]);
+  const titrePoint = `${CATEGORIE_LABEL[point.categorie]} · ${point.libelle}`;
   return (
     <div style={{ background: "white", borderRadius: 14, padding: 14, marginBottom: 10, border: "1px solid #E7EAF0" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
@@ -18,10 +21,24 @@ function PointCard({ point, photoUrls, onDecider, pending, onConfirmer, onAnnule
       </div>
       {point.commentaire && <div style={{ fontSize: 13, color: "#475569", marginTop: 6 }}>{point.commentaire}</div>}
       {photos.length > 0 && (
-        <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-          {photos.map((p) => (
-            <img key={p} src={photoUrls[p]} alt="" style={{ width: 64, height: 64, borderRadius: 10, objectFit: "cover", border: "1px solid #E7EAF0" }} />
+        <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {photos.map((p, i) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onOuvrirPhoto(photos.map((c) => photoUrls[c]), i, titrePoint, point.commentaire)}
+              onKeyDown={(e) => {
+                if (!ouvreAuClavier(e.key)) return;
+                e.preventDefault();
+                onOuvrirPhoto(photos.map((c) => photoUrls[c]), i, titrePoint, point.commentaire);
+              }}
+              aria-label={`Voir la photo en grand — ${titrePoint}${photos.length > 1 ? ` (${i + 1} sur ${photos.length})` : ""}`}
+              style={{ padding: 0, border: "1px solid #E7EAF0", borderRadius: 10, background: "white", cursor: "pointer", lineHeight: 0 }}
+            >
+              <img src={photoUrls[p]} alt="" style={{ width: 64, height: 64, borderRadius: 9, objectFit: "cover", display: "block" }} />
+            </button>
           ))}
+          <span style={{ fontSize: 12, color: "#94A3B8" }}>Touchez la photo pour l&apos;agrandir</span>
         </div>
       )}
       {point.soumis_client && (
@@ -68,6 +85,9 @@ export default function InspectionTokenPage({ params }) {
   const [pending, setPending] = useState({ id: null, choix: null });
   const [deciding, setDeciding] = useState(false);
   const [photoUrls, setPhotoUrls] = useState({});
+  // Photo affichée en grand : aucune écriture, aucun effet sur les décisions du contrôle.
+  const [photoOuverte, setPhotoOuverte] = useState(null);
+  const ouvrirPhoto = (urls, index, titre, commentaire) => setPhotoOuverte({ urls, index, titre, commentaire });
 
   const load = async () => {
     const { data, error } = await supabase.rpc("lire_inspection_par_jeton", { p_token: token });
@@ -157,6 +177,7 @@ export default function InspectionTokenPage({ params }) {
                 onDecider={(id, choix) => setPending({ id, choix })}
                 onConfirmer={confirmer}
                 onAnnuler={() => setPending({ id: null, choix: null })}
+                onOuvrirPhoto={ouvrirPhoto}
               />
             ))}
           </>
@@ -169,7 +190,7 @@ export default function InspectionTokenPage({ params }) {
               Ces points sont communiqués à titre d'information et ne demandent aucune décision de votre part.
             </div>
             {pointsInfo.map((p) => (
-              <PointCard key={p.id} point={p} photoUrls={photoUrls} pending={null} deciding={false} onDecider={() => {}} onConfirmer={() => {}} onAnnuler={() => {}} />
+              <PointCard key={p.id} point={p} photoUrls={photoUrls} pending={null} deciding={false} onDecider={() => {}} onConfirmer={() => {}} onAnnuler={() => {}} onOuvrirPhoto={ouvrirPhoto} />
             ))}
           </>
         )}
@@ -178,6 +199,16 @@ export default function InspectionTokenPage({ params }) {
           <div style={{ fontSize: 13, color: "#94A3B8", textAlign: "center", padding: "24px 0" }}>Aucun constat renseigné pour cette inspection.</div>
         )}
       </div>
+
+      {photoOuverte && (
+        <PhotoEnGrand
+          photos={photoOuverte.urls}
+          indexInitial={photoOuverte.index}
+          titre={photoOuverte.titre}
+          commentaire={photoOuverte.commentaire}
+          onFermer={() => setPhotoOuverte(null)}
+        />
+      )}
     </div>
   );
 }
