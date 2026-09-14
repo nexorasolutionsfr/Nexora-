@@ -48,14 +48,37 @@ function preuveDe(l) {
   return null;
 }
 
+// UN CONSTAT SE MONTRE UNE FOIS
+// Les lignes ajoutées « pour chiffrer un constat » (main-d'œuvre, pièce d'un
+// modèle) portent les mêmes photos que la ligne du constat, sans son texte. Le
+// client lisait trois fois « Constat du garage », deux fois vide, avec la même
+// photo (recette du 15 septembre 2026). La preuve reste sur la première ligne
+// qui la montre ; une ligne suivante la garde si elle a son propre texte ou une
+// photo encore jamais montrée.
+function sansPreuveRepetee(lignes) {
+  const dejaMontrees = new Set();
+  return lignes.map((l) => {
+    const p = l.preuve;
+    if (!p || p.constat || p.photos.length === 0) {
+      (p?.photos || []).forEach((id) => dejaMontrees.add(id));
+      return l;
+    }
+    const nouvelles = p.photos.filter((id) => !dejaMontrees.has(id));
+    p.photos.forEach((id) => dejaMontrees.add(id));
+    return nouvelles.length === 0 ? { ...l, preuve: null } : l;
+  });
+}
+
 function vue({ garage, vehicule, prestation, montantHt, montantTtc, lignes }) {
   const ht = arrondi(montantHt);
   const ttc = arrondi(montantTtc);
   return {
     garage: garage || "Votre garage",
     vehicule: vehicule || "Véhicule",
-    prestation: prestation || "—",
-    lignes: ordonner(lignes).map((l) => ({
+    // Pas de prestation : rien. Un « — » seul sous le véhicule ne disait rien au
+    // client (devis préparé depuis un constat, recette du 15 septembre 2026).
+    prestation: prestation || null,
+    lignes: sansPreuveRepetee(ordonner(lignes).map((l) => ({
       id: l.id,
       libelle: l.libelle,
       type: TYPE_LABEL[l.type] || l.type,
@@ -64,7 +87,7 @@ function vue({ garage, vehicule, prestation, montantHt, montantTtc, lignes }) {
       tauxTva: Number(l.taux_tva),
       montantTtc: montantTtcLigne(l),
       preuve: preuveDe(l),
-    })),
+    }))),
     montantHt: ht,
     montantTva: arrondi(ttc - ht),
     montantTtc: ttc,

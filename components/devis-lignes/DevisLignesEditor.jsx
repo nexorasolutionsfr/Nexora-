@@ -158,7 +158,9 @@ function LigneDevisForm({ initial, prestations = [], constats = [], onSave, onCa
         </div>
         <div>
           <label className="text-[11.5px] font-medium text-slate-500">Prix unitaire HT</label>
-          <input type="number" inputMode="decimal" min="0" step="0.01" value={prixUnitaireHt} onChange={(e) => setPrixUnitaireHt(e.target.value)} placeholder={aRenseigner ? "À renseigner" : "0,00"} className={champInput} />
+          {/* « Chiffrer la ligne » ouvre ce formulaire pour le prix : le focus y va,
+              sinon il retombait sur la page et le clavier repartait du haut. */}
+          <input type="number" inputMode="decimal" min="0" step="0.01" autoFocus={aRenseigner} value={prixUnitaireHt} onChange={(e) => setPrixUnitaireHt(e.target.value)} placeholder={aRenseigner ? "À renseigner" : "0,00"} className={champInput} />
           {erreurs.prix_unitaire_ht && <div className="text-[11px] text-red-600 mt-0.5">{erreurs.prix_unitaire_ht}</div>}
           {aRenseigner && !erreurs.prix_unitaire_ht && (
             <div className="text-[11px] text-amber-700 mt-0.5">
@@ -348,7 +350,9 @@ function ChoisirModele({ client, garageId, constats = [], onInserer, onFermer, b
         ) : modeles.length === 0 ? (
           <div className="text-[12.5px] text-slate-500 mt-1">Aucun modèle pour l'instant. Le dirigeant peut en créer dans Paramètres › Mon garage, ou enregistrer ce devis comme modèle.</div>
         ) : (
-          <select value={modeleId} onChange={(e) => setModeleId(e.target.value)} className={champInput}>
+          /* « Ajouter un modèle » ouvre ce choix : le focus y va, sinon il
+             retombait sur la page (recette clavier du 15 septembre 2026). */
+          <select autoFocus value={modeleId} onChange={(e) => setModeleId(e.target.value)} className={champInput}>
             <option value="">— Choisir un modèle —</option>
             {modeles.map((m) => <option key={m.id} value={m.id}>{m.nom} ({m.modeles_travaux_lignes?.length || 0} ligne{(m.modeles_travaux_lignes?.length || 0) > 1 ? "s" : ""})</option>)}
           </select>

@@ -56,7 +56,12 @@ if (!/^recette\.[a-z0-9.\-]+@nexora-recette\.invalid$/.test(email || "")) {
 }
 const largeur = Number(largeurArg || 1280);
 const hauteur = Number(hauteurArg || 900);
-const PORT_APP = process.env.PORT_APP || "3113";
+// Le serveur de dev de CE worktree (config `nexora-constat-devis`) écoute sur
+// 3000. L'ancien défaut, 3113, est celui d'un autre worktree
+// (`nexora-atelier-continuite`) : une capture lancée sans PORT_APP y mesurait
+// un autre code, sans erreur. Constaté le 15 septembre 2026.
+const PORT_APP = process.env.PORT_APP || "3000";
+console.log(`Application mesurée : http://localhost:${PORT_APP}`);
 const DOSSIER = process.env.DOSSIER_CAPTURES || resolve(RACINE, "docs/recette/captures");
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
@@ -156,6 +161,19 @@ try {
     Escape: { key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 },
   };
   for (const geste of (process.env.GESTES || "").split("\n").filter(Boolean)) {
+    // `fichier:<sélecteur CSS>|<chemin absolu>` : choisit un fichier dans un
+    // <input type="file"> comme le sélecteur de fichiers du navigateur
+    // (DOM.setFileInputFiles), puis laisse l'application réagir à `change`.
+    if (geste.startsWith("fichier:")) {
+      const [selecteur, cheminFichier] = geste.slice(8).split("|");
+      const { root } = await cdp("DOM.getDocument", { depth: 0 });
+      const { nodeId } = await cdp("DOM.querySelector", { nodeId: root.nodeId, selector: selecteur.trim() });
+      if (!nodeId) { console.log(`  fichier : aucun élément « ${selecteur} »`); continue; }
+      await cdp("DOM.setFileInputFiles", { nodeId, files: [cheminFichier.trim()] });
+      console.log(`  fichier ${cheminFichier.trim().split("/").pop()} → ${selecteur}`);
+      await patienter(Number(process.env.ATTENTE_GESTE_MS || 1400));
+      continue;
+    }
     if (geste.startsWith("touche:")) {
       const nom = geste.slice(7).trim();
       const maj = nom.startsWith("Shift+");
@@ -178,8 +196,9 @@ try {
     format: "png",
     captureBeyondViewport: process.env.PLEINE_PAGE === "1",
   });
-  mkdirSync(DOSSIER, { recursive: true });
   const sortie = resolve(DOSSIER, fichier);
+  // Le nom peut porter un sous-dossier (`parcours-2026-09-15/ecran.png`).
+  mkdirSync(dirname(sortie), { recursive: true });
   writeFileSync(sortie, Buffer.from(data, "base64"));
   console.log(sortie);
 } finally {

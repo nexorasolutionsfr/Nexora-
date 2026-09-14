@@ -1,4 +1,4 @@
-import { SECTION_FIXE, SEUILS, SOURCES_REACTIVATION_AUTO } from "./cockpitConstants";
+import { SECTION_FIXE, SEUILS, SOURCES_REACTIVATION_AUTO, sourceJournal } from "./cockpitConstants.js";
 
 // Cockpit Opportunités V1 — dérivation pure des opportunités à partir des
 // données déjà existantes. Aucune donnée n'est stockée ici : uniquement
@@ -114,11 +114,16 @@ export function construireCandidats(ctx) {
       key: `reponse-devis:${d.id}`,
       sourceType: "reponse_devis",
       sourceId: d.id,
+      // Date de la réponse : une marque de suivi plus ancienne ne la masque pas (appliquerActions).
+      updatedAt: d.date_validation,
       section: "maintenant",
       stripe: accepte ? "#16A34A" : "#64748B",
       urgent: false,
       titre: `${accepte ? "Devis accepté" : "Devis refusé"} par ${d.client}`,
-      meta: `${depuisLabel(d.date_validation, now)} · ${d.prestations?.nom || d.prestation || "—"}`,
+      // Le nom de la prestation s'il existe, sinon la première ligne du devis.
+      // `d.prestation` vaut « Prestation » quand il n'y en a pas : un devis
+      // préparé depuis un constat affichait ce mot seul (recette du 15 septembre 2026).
+      meta: [depuisLabel(d.date_validation, now), d.prestations?.nom || [...(d.devis_lignes || [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0]?.libelle || null].filter(Boolean).join(" · "),
       amount: accepte ? Number(d.montant_ttc || 0) : 0,
       action: "Voir la réponse",
       onAction: () => setView && setView("devis"),
@@ -282,8 +287,19 @@ export function appliquerActions(candidats, actions, now) {
   const masquees = [];
 
   for (const c of candidats) {
-    const derniere = dernierParCle.get(c.key);
+    // La clé du JOURNAL, pas celle de l'affichage : l'action s'écrit
+    // `source_type:source_id`. La réponse au devis a pour clé d'affichage
+    // `reponse-devis:<id>` et s'écrit sous `devis:<id>` (sourceJournal) — les deux
+    // ne se rejoignaient jamais (recette du 15 septembre 2026).
+    const cleJournal = c.sourceType && c.sourceId ? `${sourceJournal(c.sourceType)}:${c.sourceId}` : c.key;
+    const derniere = dernierParCle.get(cleJournal);
     if (!derniere) {
+      visibles.push(c);
+      continue;
+    }
+    // Une marque posée AVANT la réponse du client (sur le devis encore en
+    // attente) ne masque pas la réponse : c'est un fait nouveau.
+    if (c.sourceType === "reponse_devis" && c.updatedAt && new Date(derniere.created_at) < new Date(c.updatedAt)) {
       visibles.push(c);
       continue;
     }

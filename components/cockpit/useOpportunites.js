@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { deriveOpportunites } from "./deriveOpportunites";
+import { sourceJournal } from "./cockpitConstants";
 
 export function useOpportunites({ garageId, peutSuivre = false, donnees = {}, handlers = {}, onToast }) {
   // LE SUIVI EST CELUI DE L'ÉQUIPE
@@ -86,19 +87,20 @@ export function useOpportunites({ garageId, peutSuivre = false, donnees = {}, ha
     return true;
   }, [garageId, chargerActions, onToast]);
 
+  // Le journal connaît le devis, pas la « réponse au devis » : voir sourceJournal.
   const traiter = useCallback(async (l) => {
-    const ok = await enregistrer({ source_type: l.sourceType, source_id: l.sourceId, action: "traite" });
+    const ok = await enregistrer({ source_type: sourceJournal(l.sourceType), source_id: l.sourceId, action: "traite" });
     if (ok) onToast?.("Marqué traité — rien n'a été envoyé ni facturé");
   }, [enregistrer, onToast]);
 
   const reporter = useCallback(async (l, motif, masquerJusquAu) => {
-    const ok = await enregistrer({ source_type: l.sourceType, source_id: l.sourceId, action: "reporte", motif, masquer_jusqu_au: masquerJusquAu });
+    const ok = await enregistrer({ source_type: sourceJournal(l.sourceType), source_id: l.sourceId, action: "reporte", motif, masquer_jusqu_au: masquerJusquAu });
     if (ok) onToast?.("Reporté");
     return ok;
   }, [enregistrer, onToast]);
 
   const reactiver = useCallback(async (l) => {
-    const ok = await enregistrer({ source_type: l.sourceType, source_id: l.sourceId, action: "reactiver" });
+    const ok = await enregistrer({ source_type: sourceJournal(l.sourceType), source_id: l.sourceId, action: "reactiver" });
     if (ok) onToast?.("Remise dans la liste");
   }, [enregistrer, onToast]);
 

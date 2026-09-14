@@ -19,7 +19,7 @@ export default function DevisVueClient({ vue = null, photoUrls = null, children 
       <div style={{ background: "#0F1B33", color: "white", borderRadius: 16, padding: 20, marginBottom: 20 }}>
         <div style={{ fontSize: 13, opacity: 0.7 }}>{vue.garage}</div>
         <div style={{ fontSize: 18, fontWeight: 600, marginTop: 4 }}>{vue.vehicule}</div>
-        <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>{vue.prestation}</div>
+        {vue.prestation && <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>{vue.prestation}</div>}
         <div style={{ fontSize: 28, fontWeight: 700, marginTop: 12 }}>{euros(vue.montantTtc)}</div>
       </div>
 

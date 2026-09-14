@@ -57,6 +57,15 @@ export const SOURCES_REACTIVATION_AUTO = ["rappel", "inspection", "travail_diffe
 // dossier, faute de dossier dédié existant pour l'instant.
 export const SOURCES_SUIVI_INTERNE = ["rappel", "travail_differe"];
 
+// Le type sous lequel une ligne s'écrit dans le journal `opportunites_actions`.
+// La réponse d'un client à un devis (`reponse_devis`) porte sur le devis : elle
+// s'écrit sous `devis`, que la contrainte de la table accepte. Sans cela,
+// « Marquer traité » et « Reporter » échouaient sur toute ligne de réponse
+// (« Impossible d'enregistrer cette action », recette du 15 septembre 2026).
+export function sourceJournal(sourceType) {
+  return sourceType === "reponse_devis" ? "devis" : sourceType;
+}
+
 export const ORIGINE_LABEL = {
   rappel: "Relais Appels",
   demande: "Demande Gmail",

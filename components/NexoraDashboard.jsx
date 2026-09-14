@@ -2912,7 +2912,7 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
   );
 }
 
-function FacturationView({ monRole = ROLE_DIRIGEANT, view, setView, devisList, clients, prestations, garageData, onAcceptDevis, onRefuseDevis, onUpdateMontant, onCreerDevis, onCreerClient, rendezVous, factures, onGenererFacture, onMarquerPayee, onSauvegarderFacture, garageId, devisLiens, devisBusyId, onGenererLienDevis, onRevoquerLienDevis, facturesLiens, facturesBusyId, onGenererLienFacture, onRevoquerLienFacture, onCreerOrdreReparation, onLignesChange, onToast, onCreerVehicule, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null }) {
+function FacturationView({ monRole = ROLE_DIRIGEANT, view, setView, devisList, ordresReparation = [], clients, prestations, garageData, onAcceptDevis, onRefuseDevis, onUpdateMontant, onCreerDevis, onCreerClient, rendezVous, factures, onGenererFacture, onMarquerPayee, onSauvegarderFacture, garageId, devisLiens, devisBusyId, onGenererLienDevis, onRevoquerLienDevis, facturesLiens, facturesBusyId, onGenererLienFacture, onRevoquerLienFacture, onCreerOrdreReparation, onLignesChange, onToast, onCreerVehicule, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null }) {
   // Les onglets suivent les droits : un compte accueil ne voit ni les
   // factures ni l'historique, qui ne lui sont pas ouverts.
   const tabs = [
@@ -2927,14 +2927,14 @@ function FacturationView({ monRole = ROLE_DIRIGEANT, view, setView, devisList, c
           <button key={key} onClick={() => setView(key)} className="text-[13px] font-medium px-4 py-1.5 rounded-lg" style={view === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>{label}</button>
         ))}
       </div>
-      {view === "devis" && <DevisView devisList={devisList} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} onLignesChange={onLignesChange} onToast={onToast} onCreerVehicule={onCreerVehicule} ouvrirCreation={ouvrirCreation} onCreationOuverte={onCreationOuverte} devisOuvertId={devisOuvertId} onCreerOrdreReparation={onCreerOrdreReparation} historiqueAccessible={tabs.some(([cle]) => cle === "historique")} peutCreerModele={monRole === ROLE_DIRIGEANT} />}
+      {view === "devis" && <DevisView devisList={devisList} ordresReparation={ordresReparation} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} onLignesChange={onLignesChange} onToast={onToast} onCreerVehicule={onCreerVehicule} ouvrirCreation={ouvrirCreation} onCreationOuverte={onCreationOuverte} devisOuvertId={devisOuvertId} onCreerOrdreReparation={onCreerOrdreReparation} historiqueAccessible={tabs.some(([cle]) => cle === "historique")} peutCreerModele={monRole === ROLE_DIRIGEANT} />}
       {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={onGenererFacture} onMarquerPayee={onMarquerPayee} onSauvegarder={onSauvegarderFacture} facturesLiens={facturesLiens} facturesBusyId={facturesBusyId} onGenererLien={onGenererLienFacture} onRevoquerLien={onRevoquerLienFacture} onToast={onToast} />}
-      {view === "historique" && <HistoriqueView devisList={devisList} garageId={garageId} onCreerOrdreReparation={onCreerOrdreReparation} prestations={prestations} peutCreerModele={monRole === ROLE_DIRIGEANT} onToast={onToast} />}
+      {view === "historique" && <HistoriqueView devisList={devisList} ordresReparation={ordresReparation} garageId={garageId} onCreerOrdreReparation={onCreerOrdreReparation} prestations={prestations} peutCreerModele={monRole === ROLE_DIRIGEANT} onToast={onToast} />}
     </div>
   );
 }
 
-function HistoriqueView({ devisList, garageId, onCreerOrdreReparation, prestations = [], peutCreerModele = false, onToast }) {
+function HistoriqueView({ devisList, ordresReparation = [], garageId, onCreerOrdreReparation, prestations = [], peutCreerModele = false, onToast }) {
   const [rdvHistory, setRdvHistory] = useState([]);
   const [lignesOuvertes, setLignesOuvertes] = useState({});
   const [loading, setLoading] = useState(true);
@@ -3059,7 +3059,11 @@ function HistoriqueView({ devisList, garageId, onCreerOrdreReparation, prestatio
                 )}
               </div>
               <div className="flex items-center gap-3">
-                {it.type === "devis" && it.statut === "accepte" && onCreerOrdreReparation && (
+                {/* Un devis déjà porté par une fiche atelier ne propose plus d'en
+                    créer une (recette du 15 septembre 2026, BC-303-CC). */}
+                {it.type === "devis" && it.statut === "accepte" && ordresReparation.some((o) => o.devis_id === it.id || (it.raw?.rendez_vous_id && o.rendez_vous_id === it.raw.rendez_vous_id)) ? (
+                  <span className="text-[12.5px] text-slate-500 whitespace-nowrap">Fiche atelier existante</span>
+                ) : it.type === "devis" && it.statut === "accepte" && onCreerOrdreReparation && (
                   <button
                     type="button"
                     onClick={() => onCreerOrdreReparation(it.raw)}
@@ -3080,7 +3084,7 @@ function HistoriqueView({ devisList, garageId, onCreerOrdreReparation, prestatio
 
 const dateHeureCourte = (d) => (d ? new Date(d).toLocaleString("fr-FR", { timeZone: APP_TIME_ZONE, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
 
-function DevisView({ devisList: devisListToutesSources, clients, prestations, garageData, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient, onCreerVehicule, devisLiens = {}, devisBusyId, onGenererLien, onRevoquerLien, onLignesChange, onToast, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null, onCreerOrdreReparation, historiqueAccessible = true, peutCreerModele = false }) {
+function DevisView({ devisList: devisListToutesSources, ordresReparation = [], clients, prestations, garageData, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient, onCreerVehicule, devisLiens = {}, devisBusyId, onGenererLien, onRevoquerLien, onLignesChange, onToast, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null, onCreerOrdreReparation, historiqueAccessible = true, peutCreerModele = false }) {
   const devisList = devisListToutesSources.filter((d) => d.statut === "en_attente");
   // Recette du 2026-09-11 : un devis accepté disparaissait d'ici sans laisser
   // de trace ; il ne restait que l'onglet Historique. Les réponses récentes
@@ -3129,7 +3133,13 @@ function DevisView({ devisList: devisListToutesSources, clients, prestations, ga
                     {[[d.vehicule, d.immatriculation].filter(Boolean).join(" · "), d.prestations?.nom, `${formatEuro(d.montant_ttc)} TTC`, dateHeureCourte(d.date_validation), mentionOrigine(d)].filter(Boolean).join(" · ")}
                   </div>
                 </div>
-                {d.statut === "accepte" && onCreerOrdreReparation && (
+                {/* Le bouton proposait de créer un ordre déjà existant (recette du
+                    15 septembre 2026) : devis porté par une fiche (BC-303-CC), ou
+                    devis de la visite dont la fiche était déjà ouverte (BB-202-BB) —
+                    le formulaire de création n'offrait alors aucun rendez-vous. */}
+                {d.statut === "accepte" && ordresReparation.some((o) => o.devis_id === d.id || (d.rendez_vous_id && o.rendez_vous_id === d.rendez_vous_id)) ? (
+                  <span className="text-[12.5px] text-slate-500 whitespace-nowrap">Fiche atelier existante</span>
+                ) : d.statut === "accepte" && onCreerOrdreReparation && (
                   <button type="button" onClick={() => onCreerOrdreReparation(d)} className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 whitespace-nowrap">
                     Créer l&apos;ordre de réparation
                   </button>
@@ -7654,6 +7664,7 @@ if (updateError) {
               view={view}
               setView={setView}
               devisList={devisList}
+              ordresReparation={ordresReparation}
             onLignesChange={handleLignesDevisChange}
             onToast={flashToast}
               clients={clients}

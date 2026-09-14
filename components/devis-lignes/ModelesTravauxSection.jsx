@@ -104,35 +104,47 @@ function EditeurModele({ garageId, initial, client, onEnregistre, onAnnuler, onT
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3">
       <div>
         <label className="text-[11.5px] font-medium text-slate-500">Nom du modèle</label>
-        <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Ex. Plaquettes avant" className={`mt-1 ${champ}`} />
+        {/* Le formulaire s'ouvre sur un geste explicite : le focus va au nom,
+            sinon il restait sur la page (recette clavier du 15 septembre 2026). */}
+        <input autoFocus value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Ex. Plaquettes avant" className={`mt-1 ${champ}`} />
       </div>
       <div className="space-y-2">
         {lignes.map((l, i) => (
-          <div key={l.cle} className="rounded-lg border border-slate-200 bg-white p-2.5 grid grid-cols-2 sm:grid-cols-[110px_minmax(0,1fr)_64px_96px_64px_40px] gap-2 items-end">
-            <div className="col-span-2 sm:col-span-1">
+          // DEUX RANGÉES, QUELLE QUE SOIT LA LARGEUR DE LA CARTE
+          // Une seule rangée de six colonnes (dont cinq de largeur fixe) se
+          // calait sur la largeur de l'ÉCRAN, pas de la carte : dans Paramètres
+          // (carte de 410 px à 1280 px), le libellé tombait à 22 px, recouvert par
+          // la quantité — impossible à cliquer, la frappe partait dans un champ
+          // numérique. Mesuré le 15 septembre 2026.
+          <div key={l.cle} className="rounded-lg border border-slate-200 bg-white p-2.5 grid grid-cols-[110px_minmax(0,1fr)] gap-2 items-end">
+            <div>
               <label className="text-[11px] text-slate-500">Type</label>
               <select value={l.type} onChange={(e) => maj(l.cle, { type: e.target.value })} className={champ}>
                 <option value="main_oeuvre">{TYPE_LIGNE_LABEL.main_oeuvre}</option>
                 <option value="piece">{TYPE_LIGNE_LABEL.piece}</option>
               </select>
             </div>
-            <div className="col-span-2 sm:col-span-1">
+            <div>
               <label className="text-[11px] text-slate-500">Libellé</label>
               <input value={l.libelle} onChange={(e) => maj(l.cle, { libelle: e.target.value })} placeholder={l.type === "piece" ? "Ex. Jeu de plaquettes avant" : "Ex. Remplacement plaquettes"} className={champ} />
             </div>
-            <div>
-              <label className="text-[11px] text-slate-500">Qté</label>
-              <input type="number" inputMode="decimal" min="0.001" step="0.001" value={l.quantite} onChange={(e) => maj(l.cle, { quantite: e.target.value })} className={champ} />
+            {/* Largeurs plafonnées, pas fixes : à 375 px, 64 + 96 + 64 + 40 débordaient
+                de la carte et la corbeille sortait de son cadre. */}
+            <div className="col-span-2 grid grid-cols-[minmax(0,56px)_minmax(0,1fr)_minmax(0,56px)_40px] gap-2 items-end">
+              <div>
+                <label className="text-[11px] text-slate-500">Qté</label>
+                <input type="number" inputMode="decimal" min="0.001" step="0.001" value={l.quantite} onChange={(e) => maj(l.cle, { quantite: e.target.value })} className={champ} />
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-500">Prix HT</label>
+                <input type="number" inputMode="decimal" min="0" step="0.01" value={l.prix_unitaire_ht} onChange={(e) => maj(l.cle, { prix_unitaire_ht: e.target.value })} placeholder="à renseigner" className={champ} />
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-500">TVA %</label>
+                <input type="number" inputMode="decimal" min="0" max="100" step="0.1" value={l.taux_tva} onChange={(e) => maj(l.cle, { taux_tva: e.target.value })} className={champ} />
+              </div>
+              <button type="button" aria-label="Retirer la ligne" disabled={lignes.length === 1} onClick={() => setLignes((prev) => prev.filter((x) => x.cle !== l.cle))} className="min-h-[40px] min-w-[40px] rounded-lg text-slate-400 hover:text-red-600 disabled:opacity-30 flex items-center justify-center justify-self-end"><Trash2 size={15} /></button>
             </div>
-            <div>
-              <label className="text-[11px] text-slate-500">Prix HT</label>
-              <input type="number" inputMode="decimal" min="0" step="0.01" value={l.prix_unitaire_ht} onChange={(e) => maj(l.cle, { prix_unitaire_ht: e.target.value })} placeholder="à renseigner" className={champ} />
-            </div>
-            <div>
-              <label className="text-[11px] text-slate-500">TVA %</label>
-              <input type="number" inputMode="decimal" min="0" max="100" step="0.1" value={l.taux_tva} onChange={(e) => maj(l.cle, { taux_tva: e.target.value })} className={champ} />
-            </div>
-            <button type="button" aria-label="Retirer la ligne" disabled={lignes.length === 1} onClick={() => setLignes((prev) => prev.filter((x) => x.cle !== l.cle))} className="min-h-[40px] min-w-[40px] rounded-lg text-slate-400 hover:text-red-600 disabled:opacity-30 flex items-center justify-center justify-self-end"><Trash2 size={15} /></button>
             {i === lignes.length - 1 && null}
           </div>
         ))}
