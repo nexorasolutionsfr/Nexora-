@@ -56,3 +56,22 @@ test("sans véhicule ni prestation, les deux côtés retombent sur les mêmes mo
   assert.equal(garage.vehicule, "Véhicule");
   assert.equal(garage.prestation, "—");
 });
+
+test("une ligne reprise d'un constat porte sa preuve, des deux côtés", () => {
+  const garage = vueDepuisDevisGarage({
+    ...DEVIS_GARAGE,
+    devis_lignes: [{ ...DEVIS_GARAGE.devis_lignes[1], inspection_point_id: "pt", note_constat: "Usées à 2 mm" }],
+  }, "Garage Recette");
+  assert.deepEqual(garage.lignes[0].preuve, { constat: "Usées à 2 mm", photos: [] });
+
+  const publique = vueDepuisPagePublique({
+    ...REPONSE_PUBLIQUE,
+    lignes: [{ ...REPONSE_PUBLIQUE.lignes[0], preuve: { constat: "Usées à 2 mm", photos: ["g/i/a.png"] } }],
+  });
+  assert.deepEqual(publique.lignes[0].preuve, { constat: "Usées à 2 mm", photos: ["g/i/a.png"] });
+});
+
+test("une ligne sans constat n'a pas de preuve — jamais une photo inventée", () => {
+  const v = vueDepuisPagePublique(REPONSE_PUBLIQUE);
+  assert.equal(v.lignes[0].preuve, null);
+});

@@ -56,6 +56,30 @@ docker exec $CONTENEUR psql -U supabase_admin -d postgres -qc \
   "revoke execute on function public.reserver_notifications(text, integer, uuid[]) from public, anon, authenticated;" >/dev/null
 echo "   reserver_notifications ramenée à l'état déclaré par la Production"
 
+# LE SCHÉMA `storage` N'EST PAS DANS LA COPIE
+# Il est créé par le service de stockage de Supabase, pas par l'image Postgres,
+# et le dump de schéma ne le reprend pas. Les migrations 20260919000700/0800
+# posent des politiques sur `storage.objects` : sans ce socle minimal, elles ne
+# s'appliquent pas ici. Ce socle ne reproduit que les colonnes utilisées ; il
+# permet de vérifier le TEXTE des politiques et les droits, pas le comportement
+# du service de stockage, qui est prouvé sur Test
+# (scripts/recette/constats-mecanicien-serveur.mjs, preuves-devis-serveur.mjs).
+docker exec -i $CONTENEUR psql -U supabase_admin -d postgres -q -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
+create schema if not exists storage;
+create table if not exists storage.buckets (id text primary key, name text not null, public boolean default false);
+create table if not exists storage.objects (
+  id uuid primary key default gen_random_uuid(),
+  bucket_id text references storage.buckets(id),
+  name text,
+  owner uuid,
+  created_at timestamptz default now()
+);
+alter table storage.objects enable row level security;
+grant usage on schema storage to authenticated, anon, service_role;
+insert into storage.buckets (id, name, public) values ('inspections-photos', 'inspections-photos', false) on conflict do nothing;
+SQL
+echo "   socle storage minimal posé (buckets, objects, RLS) — voir le commentaire"
+
 echo "== 5. Les migrations du 14 septembre (20260919*), dans l'ordre =="
 docker exec $CONTENEUR rm -rf /tmp/mig >/dev/null 2>&1
 docker cp "$DEPOT/supabase/migrations" $CONTENEUR:/tmp/mig >/dev/null

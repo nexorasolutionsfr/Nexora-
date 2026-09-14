@@ -40,8 +40,8 @@ with f(nom, sig) as (values
   ('modifier_relance_travail', 'uuid, text, text'),
   ('autoriser_envoi_relance_travail', 'uuid, text'),
   ('annuler_relance_travail', 'uuid, text'),
-  ('preparer_relances_travaux', 'uuid[], date'),
-  ('reserver_relances_travaux', 'integer, uuid[]'),
+  ('preparer_relances_travaux', 'uuid[], date, uuid[]'),
+  ('reserver_relances_travaux', 'integer, uuid[], uuid[]'),
   ('terminer_relance_travail', 'uuid, text, text'),
   ('devis_chiffrage_incomplet', 'uuid'),
   ('composer_relance_travail', 'uuid'),
@@ -51,8 +51,8 @@ select case when has_function_privilege('anon', format('public.%s(%s)', nom, sig
   from f;
 
 with f(nom, sig) as (values
-  ('preparer_relances_travaux', 'uuid[], date'),
-  ('reserver_relances_travaux', 'integer, uuid[]'),
+  ('preparer_relances_travaux', 'uuid[], date, uuid[]'),
+  ('reserver_relances_travaux', 'integer, uuid[], uuid[]'),
   ('terminer_relance_travail', 'uuid, text, text'),
   ('devis_chiffrage_incomplet', 'uuid'),
   ('composer_relance_travail', 'uuid'),
@@ -70,8 +70,8 @@ select case when has_function_privilege('authenticated', format('public.%s(%s)',
        || 'authenticated peut exécuter ' || nom
   from f;
 
-select case when has_function_privilege('service_role', 'public.reserver_relances_travaux(integer, uuid[])', 'execute')
-             and has_function_privilege('service_role', 'public.preparer_relances_travaux(uuid[], date)', 'execute')
+select case when has_function_privilege('service_role', 'public.reserver_relances_travaux(integer, uuid[], uuid[])', 'execute')
+             and has_function_privilege('service_role', 'public.preparer_relances_travaux(uuid[], date, uuid[])', 'execute')
        then 'OK ' else 'KO ' end || 'service_role exécute préparation et réservation des relances';
 
 select case when has_table_privilege('anon', 'public.relances_travaux', 'select') then 'KO ' else 'OK ' end || 'anon ne lit pas relances_travaux';
@@ -89,6 +89,52 @@ with t(nom) as (values ('devis_reprises'), ('devis_insertions_modeles'), ('relan
 select case when has_table_privilege('authenticated', format('public.%s', t.nom), 'select') then 'OK ' else 'KO ' end
        || 'authenticated garde la lecture de ' || t.nom
   from t;
+
+-- ---------------------------------------------------------------
+-- 2 bis. Migrations 000600 → 000900
+-- ---------------------------------------------------------------
+select case when to_regprocedure('public.reserver_relances_travaux(integer, uuid[])') is null
+             and to_regprocedure('public.preparer_relances_travaux(uuid[], date)') is null
+       then 'OK ' else 'KO ' end || 'anciennes signatures des relances supprimées (aucun appel ambigu)';
+with f(sig) as (values
+  ('public.reserver_relances_travaux(integer, uuid[], uuid[])'),
+  ('public.preparer_relances_travaux(uuid[], date, uuid[])'),
+  ('public.chemins_preuves_devis(text)'))
+select case when has_function_privilege('service_role', sig, 'execute')
+             and not has_function_privilege('authenticated', sig, 'execute')
+             and not has_function_privilege('anon', sig, 'execute')
+       then 'OK ' else 'KO ' end || 'réservée au service : ' || sig
+  from f;
+select case when not has_function_privilege('anon', 'public.preuves_devis(uuid)', 'execute')
+             and not has_function_privilege('authenticated', 'public.preuves_devis(uuid)', 'execute')
+       then 'OK ' else 'KO ' end || 'preuves_devis fermée aux rôles applicatifs';
+with f(sig) as (values
+  ('public.atelier_mes_constats(uuid)'),
+  ('public.atelier_ajouter_constat(uuid, text, text, text, text)'),
+  ('public.atelier_ajouter_photo(uuid, text)'),
+  ('public.atelier_photo_visible(text)'),
+  ('public.atelier_depot_photo_autorise(text)'))
+select case when has_function_privilege('authenticated', sig, 'execute') and not has_function_privilege('anon', sig, 'execute')
+       then 'OK ' else 'KO ' end || 'mécanicien (authenticated seul) : ' || sig
+  from f;
+select case when count(*) = 3 then 'OK ' else 'KO ' end || 'stockage inspections-photos : 3 politiques (lecture, dépôt, suppression)'
+  from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname like 'inspections_photos_storage_%';
+select case when count(*) = 0 then 'OK ' else 'KO ' end || 'plus aucune politique de stockage réservée au seul propriétaire'
+  from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname like 'inspections_photos_storage_%'
+   and (coalesce(qual, '') || coalesce(with_check, '')) like '%owner_user_id%';
+select case when coalesce(bool_and(qual like '%photo_figee%'), false) then 'OK ' else 'KO ' end || 'suppression de stockage refusée pour une photo figée'
+  from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'inspections_photos_storage_delete';
+select case when c.relrowsecurity and not has_table_privilege('authenticated', 'public.devis_preuves', 'insert') and has_table_privilege('authenticated', 'public.devis_preuves', 'select')
+       then 'OK ' else 'KO ' end || 'devis_preuves : RLS, lecture seule pour authenticated'
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relname = 'devis_preuves';
+select case when count(*) = 2 then 'OK ' else 'KO ' end || 'triggers de gel et de protection des preuves présents'
+  from pg_trigger where not tgisinternal and tgname in ('devis_figer_preuves_trigger', 'inspections_photos_proteger_preuve_trigger');
+select case when count(*) = 0 then 'OK ' else 'KO ' end || 'fonctions mécanicien : search_path fixé (public, pg_temp)'
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.prosecdef
+   and p.proname in ('atelier_mes_constats', 'atelier_ajouter_constat', 'atelier_ajouter_photo', 'atelier_photo_visible', 'atelier_depot_photo_autorise',
+                     'preuves_devis', 'chemins_preuves_devis', 'photo_figee', 'devis_figer_preuves', 'inspections_photos_proteger_preuve')
+   and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%');
 
 -- Les fonctions SECURITY DEFINER nouvelles ont un search_path figé.
 select case when count(*) = 0 then 'OK ' else 'KO ' end || 'toutes les fonctions SECURITY DEFINER nouvelles ont search_path fixé'
@@ -155,6 +201,64 @@ select case when count(*) = 0 then 'OK ' else 'KO ' end || 'réservation : rien 
 -- 3c. La préparation ne touche pas les autres garages (borne p_garages)
 select case when count(*) = 0 then 'OK ' else 'KO ' end || 'préparation bornée : aucun garage hors liste'
   from public.preparer_relances_travaux(array['00000000-0000-4000-8000-0000000000ff']::uuid[]);
+
+-- 3d. Réservation bornée à des lignes précises, dans l'instruction (000600)
+insert into public.travaux_differes (id, garage_id, client_id, vehicule_id, intervention, niveau, statut, date_relance, source) values
+  ('00000000-0000-4000-8000-0000000000f2', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-0000000000e1', 'Mien', 'normal', 'a_relancer', current_date - 1, 'manuel'),
+  ('00000000-0000-4000-8000-0000000000f3', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-0000000000e1', 'Hors', 'normal', 'a_relancer', current_date - 1, 'manuel');
+select case when count(*) = 1 then 'OK ' else 'KO ' end || 'préparation bornée à p_travaux : un seul travail préparé'
+  from public.preparer_relances_travaux(array['00000000-0000-4000-8000-0000000000a1']::uuid[], current_date, array['00000000-0000-4000-8000-0000000000f2']::uuid[]) where action = 'preparee';
+select public.preparer_relances_travaux(array['00000000-0000-4000-8000-0000000000a1']::uuid[], current_date, array['00000000-0000-4000-8000-0000000000f3']::uuid[]) is not null as _;
+update public.relances_travaux set statut = 'en_attente', destinataire_valide = 'client@nexora-recette.invalid'
+ where travail_differe_id in ('00000000-0000-4000-8000-0000000000f2', '00000000-0000-4000-8000-0000000000f3');
+update public.relances_travaux set empreinte_document = public.empreinte_relance_travail(id)
+ where travail_differe_id in ('00000000-0000-4000-8000-0000000000f2', '00000000-0000-4000-8000-0000000000f3');
+select case when count(*) = 1 and bool_and(r.garage_id is not null) then 'OK ' else 'KO ' end || 'réservation bornée à p_relances : une seule ligne prise'
+  from public.reserver_relances_travaux(10, array['00000000-0000-4000-8000-0000000000a1']::uuid[],
+       array(select id from public.relances_travaux where travail_differe_id = '00000000-0000-4000-8000-0000000000f2')) r;
+select case when statut = 'en_attente' and tentatives = 0 then 'OK ' else 'KO ' end || 'la ligne hors périmètre reste en_attente, 0 tentative'
+  from public.relances_travaux where travail_differe_id = '00000000-0000-4000-8000-0000000000f3';
+select case when count(*) = 0 then 'OK ' else 'KO ' end || 'p_relances vide : rien réservé'
+  from public.reserver_relances_travaux(10, array['00000000-0000-4000-8000-0000000000a1']::uuid[], '{}'::uuid[]);
+
+-- 3e. Gel de la preuve au passage à « accepté », protection, identifiants opaques (000800, 000900)
+insert into public.inspections (id, garage_id, client_id, vehicule_id, statut)
+values ('00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-0000000000e1', 'brouillon');
+insert into public.inspections_points (id, inspection_id, garage_id, categorie, libelle, etat, commentaire, soumis_client)
+values ('00000000-0000-4000-8000-0000000000b2', '00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000a1', 'pneus', 'Plaquettes', 'dommage', 'Usées', false);
+insert into public.inspections_photos (id, inspection_id, garage_id, point_id, storage_path)
+values ('00000000-0000-4000-8000-0000000000b3', '00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000b2',
+        '00000000-0000-4000-8000-0000000000a1/00000000-0000-4000-8000-0000000000b1/00000000-0000-4000-8000-0000000000b4.png');
+insert into public.devis (id, garage_id, client_id, vehicule_id, montant_ht, montant_ttc, statut)
+values ('00000000-0000-4000-8000-0000000000d2', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-0000000000e1', 0, 0, 'en_attente');
+insert into public.devis_lignes (devis_id, garage_id, type, libelle, quantite, prix_unitaire_ht, taux_tva, inspection_point_id, note_constat)
+values ('00000000-0000-4000-8000-0000000000d2', '00000000-0000-4000-8000-0000000000a1', 'main_oeuvre', 'Plaquettes', 1, 90, 20, '00000000-0000-4000-8000-0000000000b2', 'Usées');
+insert into public.devis_jetons (devis_id, garage_id, jeton_hash, expires_at)
+values ('00000000-0000-4000-8000-0000000000d2', '00000000-0000-4000-8000-0000000000a1', encode(extensions.digest('jeton-jetable', 'sha256'), 'hex'), now() + interval '1 day');
+
+select case when (public.lire_devis_par_jeton('jeton-jetable')->'lignes'->0->'preuve'->'photos'->>0) = '00000000-0000-4000-8000-0000000000b3'
+             and position('/' in (public.lire_devis_par_jeton('jeton-jetable'))::text) = 0
+       then 'OK ' else 'KO ' end || 'lecture publique : identifiant opaque, aucun chemin (devis en attente)';
+select case when count(*) = 1 and bool_and(chemin like '%/%') then 'OK ' else 'KO ' end || 'chemins_preuves_devis : le chemin, pour le service seulement'
+  from public.chemins_preuves_devis('jeton-jetable');
+update public.devis set statut = 'accepte' where id = '00000000-0000-4000-8000-0000000000d2';
+select case when count(*) = 1 then 'OK ' else 'KO ' end || 'acceptation : la photo est figée dans devis_preuves'
+  from public.devis_preuves where devis_id = '00000000-0000-4000-8000-0000000000d2';
+select case when public.photo_figee('00000000-0000-4000-8000-0000000000a1/00000000-0000-4000-8000-0000000000b1/00000000-0000-4000-8000-0000000000b4.png')
+       then 'OK ' else 'KO ' end || 'photo_figee vrai pour le chemin de la preuve';
+do $$ begin
+  begin
+    delete from public.inspections_photos where id = '00000000-0000-4000-8000-0000000000b3';
+    raise notice 'KO suppression d''une photo figée acceptée';
+  exception when raise_exception then
+    raise notice 'OK suppression d''une photo figée refusée';
+  end;
+end $$;
+insert into public.inspections_photos (inspection_id, garage_id, point_id, storage_path)
+values ('00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000b2',
+        '00000000-0000-4000-8000-0000000000a1/00000000-0000-4000-8000-0000000000b1/00000000-0000-4000-8000-0000000000b5.png');
+select case when jsonb_array_length(public.lire_devis_par_jeton('jeton-jetable')->'lignes'->0->'preuve'->'photos') = 1
+       then 'OK ' else 'KO ' end || 'photo ajoutée après acceptation : le devis public n''en montre qu''une (figée)';
 
 rollback;
 

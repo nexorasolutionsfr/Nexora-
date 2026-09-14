@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import ConstatsMecanicien from "./ConstatsMecanicien";
 
 import {
   ajouterNote,
@@ -275,8 +276,15 @@ export default function AtelierMecanicienScreen() {
             )}
           </section>
 
+          {/* Le constat qui ira au devis : état, précision, photo. Distinct des
+              notes techniques ci-dessous, qui restent un fil de travail. */}
+          <section className="bg-white border border-slate-200 rounded-xl p-4 mb-4">
+            <h2 className="text-[14px] font-semibold text-slate-900 mb-2">Constats du véhicule</h2>
+            <ConstatsMecanicien supabase={supabase} ordreId={ordreOuvert.ordre_id} />
+          </section>
+
           <section className="bg-white border border-slate-200 rounded-xl p-4">
-            <h2 className="text-[14px] font-semibold text-slate-900 mb-2">Vos constats</h2>
+            <h2 className="text-[14px] font-semibold text-slate-900 mb-2">Notes techniques</h2>
             {notes.length === 0 ? (
               <p className="text-sm text-slate-500 mb-3">Aucun constat pour l'instant.</p>
             ) : (

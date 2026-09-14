@@ -52,7 +52,8 @@
           "id": "fk85N6k6Aea2u0fb",
           "name": "RPC Supabase Production"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -86,7 +87,20 @@
           "id": "fk85N6k6Aea2u0fb",
           "name": "RPC Supabase Production"
         }
-      }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().filter((i) => i.json && i.json.id);"
+      },
+      "name": "Garder les lignes réservées",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        300
+      ]
     },
     {
       "parameters": {
@@ -141,14 +155,45 @@
     },
     {
       "parameters": {
-        "jsCode": "const r = $('Une relance à la fois').item.json;\nreturn [{ json: { id: r.id, resultat: 'a_reprendre', motif: 'refus du fournisseur d\\'envoi' } }];"
+        "jsCode": "// Un échec n'est CERTAIN que si le fournisseur a refusé avant d'accepter le\n// message. Tout le reste (délai, connexion coupée, erreur inconnue) est\n// INCERTAIN : le message a pu partir, on ne le rejoue pas.\nconst r = $('Une relance à la fois').item.json;\nconst m = String(($json.error && ($json.error.message || $json.error)) || $json.message || '');\nif (/\\b5\\d\\d\\b/.test(m)) return [{ json: { id: r.id, resultat: 'bloque', motif: 'refus définitif du fournisseur : ' + m.slice(0, 200) } }];\nif (/ECONNREFUSED|ENOTFOUND|EAUTH|Invalid login|\\b4\\d\\d\\b/i.test(m)) return [{ json: { id: r.id, resultat: 'a_reprendre', motif: 'échec certain avant envoi : ' + m.slice(0, 200) } }];\nreturn [{ json: { id: r.id, resultat: 'incertain', motif: 'issue inconnue : ' + m.slice(0, 200) } }];"
       },
-      "name": "Refusé par le fournisseur",
+      "name": "Classer l'échec",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         1200,
         400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "issue-connue",
+              "leftValue": "={{ $json.resultat }}",
+              "rightValue": "incertain",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Issue connue ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        300
       ]
     },
     {
@@ -175,15 +220,26 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1440,
-        300
+        1680,
+        220
       ],
       "credentials": {
         "httpCustomAuth": {
           "id": "fk85N6k6Aea2u0fb",
           "name": "RPC Supabase Production"
         }
-      }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {},
+      "name": "Issue incertaine : rien n'est clos",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        420
+      ]
     }
   ],
   "connections": {
@@ -210,6 +266,57 @@
       ]
     },
     "Réserver les relances autorisées": {
+      "main": [
+        [
+          {
+            "node": "Garder les lignes réservées",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Garder les lignes réservées": {
+      "main": [
+        [
+          {
+            "node": "Une relance à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Issue connue ?": {
+      "main": [
+        [
+          {
+            "node": "Clore la relance",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Issue incertaine : rien n'est clos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clore la relance": {
+      "main": [
+        [
+          {
+            "node": "Une relance à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Issue incertaine : rien n'est clos": {
       "main": [
         [
           {
@@ -243,7 +350,7 @@
         ],
         [
           {
-            "node": "Refusé par le fournisseur",
+            "node": "Classer l'échec",
             "type": "main",
             "index": 0
           }
@@ -254,29 +361,18 @@
       "main": [
         [
           {
-            "node": "Clore la relance",
+            "node": "Issue connue ?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Refusé par le fournisseur": {
+    "Classer l'échec": {
       "main": [
         [
           {
-            "node": "Clore la relance",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Clore la relance": {
-      "main": [
-        [
-          {
-            "node": "Une relance à la fois",
+            "node": "Issue connue ?",
             "type": "main",
             "index": 0
           }

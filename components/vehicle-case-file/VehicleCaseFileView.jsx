@@ -129,15 +129,27 @@ export default function VehicleCaseFileView({
   }, [devisCourantId, factureCouranteId]);
 
 
+  // LE FOCUS SE POSE À L'OUVERTURE, PAS À CHAQUE RENDU
+  //
+  // Cet effet dépendait de `onClose`, que le tableau de bord recrée à chaque
+  // rendu : à chaque rechargement de données, le focus revenait sur « Fermer ».
+  // Mesuré au clavier CDP le 14 septembre 2026 : Entrée sur « Préparer le devis
+  // depuis le constat » a fermé le dossier, parce que le focus avait déjà été
+  // repris. Focus initial au montage seulement ; Échap lit la version courante
+  // par référence.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const preparerOuvertRef = useRef(false);
+  preparerOuvertRef.current = preparerOuvert;
   useEffect(() => {
     fermerRef.current?.focus();
     function handleKeyDown(event) {
       // La fenêtre « Préparer le devis » gère sa propre touche Échap.
-      if (event.key === "Escape" && !preparerOuvert) onClose?.();
+      if (event.key === "Escape" && !preparerOuvertRef.current) onCloseRef.current?.();
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, preparerOuvert]);
+  }, []);
 
   if (!vehicule) return null;
 

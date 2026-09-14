@@ -113,6 +113,12 @@ const devis = await nouveauDevis();
   verifier("provenance posée (modele_id, insertion_id)", lignes.every((l) => l.modele_id === modele.id && l.insertion_id === ins));
   const { data: d } = await admin.from("devis").select("montant_ht").eq("id", devis.id).single();
   verifier("total partiel = 64 + 89 (la ligne à renseigner pèse 0)", Number(d.montant_ht) === 153, String(d.montant_ht));
+  // Le prix absent du modèle bloque le partage et l'envoi, côté serveur.
+  const { data: cl } = await admin.from("clients").select("email").eq("id", vehicule.client_id).single();
+  const jetonIncomplet = await dirigeant.rpc("creer_jeton_devis", { p_devis_id: devis.id });
+  verifier("partage (lien public) refusé tant qu'une ligne du modèle attend son prix", Boolean(jetonIncomplet.error) && /incomplet/i.test(jetonIncomplet.error.message), jetonIncomplet.error?.message || "jeton rendu");
+  const autIncomplet = await accueil.rpc("autoriser_envoi_devis", { p_devis_id: devis.id, p_destinataire: cl.email });
+  verifier("autorisation d'envoi refusée : chiffrage_incomplet", autIncomplet.data?.ok === false && autIncomplet.data.raison === "chiffrage_incomplet", JSON.stringify(autIncomplet.data || autIncomplet.error));
 }
 
 // 5. Modifier le modèle ne touche pas le devis.
@@ -159,7 +165,11 @@ console.log("7. Enregistrer ce devis comme modèle");
   const { data: m } = await dirigeant.from("modeles_travaux").select("nom, modeles_travaux_lignes(libelle, prix_unitaire_ht, position)").eq("id", rD.data).single();
   const lignes = (m?.modeles_travaux_lignes || []).sort((a, b) => a.position - b.position);
   verifier("3 lignes reprises, la ligne « à renseigner » a un prix NULL", lignes.length === 3 && lignes.find((l) => l.libelle.startsWith("Disques"))?.prix_unitaire_ht === null, JSON.stringify(lignes));
-  const rV = await dirigeant.rpc("enregistrer_devis_comme_modele", { p_devis_id: devisAccepte.id, p_nom: "Depuis un devis accepté" });
+  // Un devis décidé SANS lignes — choisi explicitement : d'autres recettes
+  // laissent dans ce garage des devis acceptés qui en portent.
+  const { data: acceptes } = await dirigeant.from("devis").select("id, devis_lignes(id)").eq("garage_id", garageId).eq("statut", "accepte");
+  const sansLignes = (acceptes || []).find((x) => (x.devis_lignes || []).length === 0);
+  const rV = await dirigeant.rpc("enregistrer_devis_comme_modele", { p_devis_id: sansLignes.id, p_nom: "Depuis un devis accepté" });
   verifier("un devis accepté sans lignes → refus explicite « pas de lignes »", Boolean(rV.error) && /pas de lignes/.test(rV.error.message), rV.error?.message || "accepté");
   await dirigeant.from("modeles_travaux").delete().eq("id", rD.data);
 }

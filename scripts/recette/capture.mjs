@@ -143,7 +143,32 @@ try {
   // Les gestes demandés avant la prise de vue, s'il y en a : une expression
   // JavaScript par ligne dans GESTES, jouée dans l'ordre. Sert à capturer un
   // écran qui n'existe qu'après un clic (un panneau ouvert, un filtre posé).
+  //
+  // Une ligne `touche:Tab`, `touche:Enter`, `touche:Space`, `touche:Escape` ou
+  // `touche:Shift+Tab` envoie une VRAIE frappe par CDP (Input.dispatchKeyEvent,
+  // avec key, code et windowsVirtualKeyCode). Sans `code`, un <button> natif ne
+  // s'active pas : c'est ce qui avait fait croire, sur #100, qu'il fallait un
+  // gestionnaire clavier. On mesure le comportement natif, sans en ajouter.
+  const TOUCHES = {
+    Tab: { key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 },
+    Enter: { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" },
+    Space: { key: " ", code: "Space", windowsVirtualKeyCode: 32, text: " " },
+    Escape: { key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 },
+  };
   for (const geste of (process.env.GESTES || "").split("\n").filter(Boolean)) {
+    if (geste.startsWith("touche:")) {
+      const nom = geste.slice(7).trim();
+      const maj = nom.startsWith("Shift+");
+      const t = TOUCHES[maj ? nom.slice(6) : nom];
+      if (!t) { console.log(`  touche inconnue : ${nom}`); continue; }
+      const modifiers = maj ? 8 : 0;
+      await cdp("Input.dispatchKeyEvent", { type: t.text ? "keyDown" : "rawKeyDown", modifiers, ...t });
+      await cdp("Input.dispatchKeyEvent", { type: "keyUp", modifiers, key: t.key, code: t.code, windowsVirtualKeyCode: t.windowsVirtualKeyCode });
+      const focus = await evaluer("(() => { const e = document.activeElement; return e ? (e.getAttribute('aria-label') || e.textContent || e.tagName).trim().replace(/\\s+/g, ' ').slice(0, 60) : null })()");
+      console.log(`  touche ${nom} → focus : ${JSON.stringify(focus)}`);
+      await patienter(Number(process.env.ATTENTE_TOUCHE_MS || 400));
+      continue;
+    }
     const retour = await evaluer(geste);
     console.log(`  geste → ${JSON.stringify(retour)}`);
     await patienter(Number(process.env.ATTENTE_GESTE_MS || 1400));

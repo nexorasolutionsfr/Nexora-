@@ -28,10 +28,12 @@ function EtatTone({ tone }) {
   return { color: tones[tone], backgroundColor: bg[tone] };
 }
 
-function EtatPicker({ value, onChange }) {
+// Exporté pour l'écran du mécanicien : même sélecteur, même vocabulaire. Il
+// n'y propose pas « OK » — un constat est ce qui cloche.
+export function EtatPicker({ value, onChange, etats = ETATS }) {
   return (
     <div className="grid grid-cols-2 gap-2 mt-2">
-      {ETATS.map((etat) => (
+      {etats.map((etat) => (
         <button
           key={etat}
           type="button"

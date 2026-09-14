@@ -128,13 +128,76 @@ Deux défauts trouvés et corrigés :
   rendues dans `document.body` (`garage-os/Portail.jsx`). Mesuré : titre à
   12 px du haut, visible, aucun débordement (`scrollWidth = innerWidth`).
 
+## Suite du 14 septembre (soir)
+
+### Mécanicien : constat et photo depuis son écran
+
+`scripts/recette/constats-mecanicien-serveur.mjs` — **35/35**, sessions
+réelles (lien magique), jamais la clé de service pour un geste métier.
+Écran « Mon atelier » → section « Constats du véhicule » : libellé, état
+(à surveiller / à valider par le client / dommage), précision, photo ; le
+constat et sa miniature reviennent après rechargement.
+
+Refusé côté serveur, et prouvé : intervention non affectée, autre garage,
+salarié révoqué (pendant le test), contrôle verrouillé, fiche terminée,
+chemin de photo forgé ou objet absent du stockage, suppression de photo par
+le mécanicien. Aucun accès financier ajouté (les fonctions `atelier_*` ne
+renvoient ni prix ni devis).
+
+### Preuve photo sur le devis public
+
+`scripts/recette/preuves-devis-serveur.mjs` — **20/20**. Par ligne reliée à un
+constat : le texte du constat et ses photos, dans la visionneuse existante.
+Le stockage reste privé : la page reçoit des **identifiants opaques**, la
+route `/api/devis/preuves` revalide le jeton et signe les chemins. Le lien ne
+donne ni les autres constats, ni les autres photos, ni les notes internes ;
+lien révoqué, expiré ou chiffrage incomplet → aucune URL.
+
+**Décision de modèle** (`000800`) : à l'acceptation ou au refus, les photos des
+lignes sont **figées** (`devis_preuves`) et protégées contre la modification
+et la suppression. Un constat modifié ensuite ne change pas silencieusement un
+devis décidé ; tant que le devis est modifiable, la preuve suit le constat.
+
+### Modèles joués à l'écran
+
+Créé « Vidange complète (recette écran) » (2 lignes, dont une sans prix),
+inséré par **double clic** dans un devis en attente (1 → 3 lignes, pas de
+doublon), main-d'œuvre chiffrée, enregistré, rechargé : 105,00 € HT. Prix du
+modèle changé ensuite (12 → 15 €) : le devis garde 12 €. « Prix à renseigner »
+affiché. Côté serveur (`modeles-travaux-serveur.mjs` **27/27**) : partage
+(jeton) et autorisation d'envoi **refusés** tant qu'un prix manque ; droits
+dirigeant / accueil (insère, ne crée pas de modèle) / mécanicien (rien) /
+autre garage (rien).
+
+### Relances : isolation de la recette
+
+`relances-travaux-serveur.mjs` **34/34**. La réservation est bornée **dans
+l'opération SQL atomique** au garage et aux relances demandées (`000600`) ;
+cas ajoutés : relance hors périmètre déjà `en_attente` avec un texte qui
+dérive, autorisation concurrente, tableau vide. Aucune ligne hors périmètre
+n'est réservée ni modifiée. Incident passé documenté sans le réparer :
+`docs/recette/incident-relance-2026-09-14.md`.
+
+### n8n exécuté
+
+`docs/recette/n8n-relances-execution-2026-09-14.md`. **Workflow exécuté avec
+transport simulé ; réception réelle non testée.**
+
+### Clavier et 375 px
+
+Vraies frappes (CDP `Input.dispatchKeyEvent`) à 375 px :
+- formulaire du mécanicien : ordre de tabulation, Espace sur l'état, focus
+  visible sur « Ajouter une photo », Entrée enregistre ;
+- devis public : Espace ouvre la photo, focus gardé, Échap rend le focus ;
+- « Préparer le devis » : défaut trouvé et corrigé — le dossier reprenait le
+  focus à chaque rendu (Entrée fermait le dossier) ;
+- « Relance du travail différé » : Entrée ouvre, Échap rend le focus. Défauts
+  trouvés : focus initial absent (référence non posée) et Tab sortait de la
+  fenêtre. Corrigés (`garderLeFocus`, même règle que la visionneuse).
+
 ## Ce que la recette ne prouve pas
 
-- **Aucun message réel** : le transport des relances est simulé ; le workflow
-  n8n de Test n'a **pas été importé ni exécuté**.
-- La **page publique** du devis ne montre pas la photo du constat (non livré).
-- Le **mécanicien** ne saisit pas encore de constat depuis son écran.
+- **Réception réelle non testée** : aucun SMTP appelé ; classement des erreurs
+  SMTP de la variante Production écrit mais non exécuté.
 - Les **captures** prouvent la mise en page, pas l'absence de régression
-  ailleurs ; le build de production (`next build`) n'a pas été lancé.
-- Le **clavier** n'a pas été rejoué avec de vraies frappes sur les nouvelles
-  fenêtres (seulement Échap par code).
+  ailleurs.

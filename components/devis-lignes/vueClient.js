@@ -36,6 +36,18 @@ function ordonner(lignes) {
   return liste;
 }
 
+// La preuve d'une ligne : le constat copié à la reprise et les chemins de ses
+// photos. Côté public, `lire_devis_par_jeton` la fournit (photos figées dès
+// que le devis est décidé). Côté garage, l'aperçu n'a que le texte : les
+// photos sont signées pour le client par la route /api/devis/preuves.
+function preuveDe(l) {
+  if (l.preuve) {
+    return { constat: l.preuve.constat || null, photos: Array.isArray(l.preuve.photos) ? l.preuve.photos : [] };
+  }
+  if (l.inspection_point_id) return { constat: l.note_constat || null, photos: [] };
+  return null;
+}
+
 function vue({ garage, vehicule, prestation, montantHt, montantTtc, lignes }) {
   const ht = arrondi(montantHt);
   const ttc = arrondi(montantTtc);
@@ -51,6 +63,7 @@ function vue({ garage, vehicule, prestation, montantHt, montantTtc, lignes }) {
       prixUnitaireHt: arrondi(l.prix_unitaire_ht),
       tauxTva: Number(l.taux_tva),
       montantTtc: montantTtcLigne(l),
+      preuve: preuveDe(l),
     })),
     montantHt: ht,
     montantTva: arrondi(ttc - ht),

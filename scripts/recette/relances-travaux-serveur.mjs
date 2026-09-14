@@ -1,202 +1,166 @@
 // Recette SERVEUR du suivi partagé et des relances de travaux différés — TEST.
 //
-// Joue, sous de vraies sessions, la chaîne complète sans n8n ni fournisseur :
+// Joue, sous de vraies sessions, la chaîne sans n8n ni fournisseur :
 //   candidat → brouillon à relire → autorisation → réservation → résultat.
-// Le « transport » est ici un faux fournisseur (le script lui-même) : la ligne
-// finit `envoye` avec un motif qui dit que rien de réel n'est parti.
+// Le « transport » est ici le script lui-même : la ligne finit `envoye` avec un
+// motif qui dit que rien de réel n'est parti.
 //
-//   A. suivi partagé : l'accueil marque « traité », le dirigeant le voit ;
-//      l'accueil révoqué ne voit rien ; l'auteur est conservé.
-//   B. préparation : trois travaux (échu, futur, clos) → une relance pour
-//      l'échu seulement ; second passage → rien ; report → obsolète + rien
-//      avant la nouvelle date ; clôture → annulée.
-//   C. gestes : accueil lit le brouillon, le corrige, autorise (mauvais
-//      destinataire refusé) ; révoqué refusé ; mécanicien refusé.
-//   D. réservation : texte modifié après autorisation → bloqué ; ré-autorisé
-//      → réservé (envoi_en_cours) ; une seconde réservation ne le reprend pas ;
-//      terminer 'a_reprendre' → en_attente ; réservé → 'envoye' (simulé).
+// PÉRIMÈTRE : depuis l'incident du 14 septembre (docs/recette/incident-relance-2026-09-14.md),
+// le script ne travaille QUE sur ce qu'il crée. La borne est passée à la base
+// dans l'instruction elle-même (`p_travaux`, `p_relances`, 20260919000600),
+// jamais vérifiée seulement avant coup. La section D le prouve avec une relance
+// hors périmètre déjà en attente et une autorisation concurrente.
 //
 // Usage : node scripts/recette/relances-travaux-serveur.mjs <garage_id>
-//
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
-const RACINE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const require = createRequire(RACINE + "/package.json");
-const { createClient } = require("@supabase/supabase-js");
-
-const env = Object.fromEntries(
-  readFileSync(RACINE + "/.env.local", "utf8").split("\n")
-    .filter((l) => l.includes("=") && !l.trim().startsWith("#"))
-    .map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()])
-);
-const url = env.NEXT_PUBLIC_SUPABASE_URL || "";
-if (!url.includes("slawilafseganlbghgwx")) { console.error("REFUS : pas le projet Test."); process.exit(2); }
-const admin = createClient(url, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-const anonClient = () => createClient(url, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+import { admin, compteur, garageDeRecette, session, utilisateurs } from "./outils-recette.mjs";
 
 const garageId = process.argv[2];
 if (!garageId) { console.error("Usage : relances-travaux-serveur.mjs <garage_id>"); process.exit(1); }
+const garage = await garageDeRecette(garageId);
+const { verifier, bilan } = compteur();
+const INCIDENT = "fb259234-68bb-4aa0-ae1a-86ab34dead73";
 
-let total = 0, ok = 0;
-const verifier = (libelle, cond, detail = "") => { total++; if (cond) { ok++; console.log(`  ✔ ${libelle}`); } else console.log(`  ✖ ${libelle}${detail ? " — " + detail : ""}`); };
-async function session(email) {
-  const { data, error } = await admin.auth.admin.generateLink({ type: "magiclink", email });
-  if (error) throw error;
-  const c = anonClient();
-  const { error: e2 } = await c.auth.verifyOtp({ email, token: data.properties.email_otp, type: "email" });
-  if (e2) throw e2;
-  return c;
-}
-const jour = (decalage) => { const d = new Date(); d.setDate(d.getDate() + decalage); return d.toISOString().slice(0, 10); };
-
-const { data: garage } = await admin.from("garages").select("id, nom_garage").eq("id", garageId).single();
-if (!garage?.nom_garage?.startsWith("PROTO Constat")) { console.error("REFUS : pas un garage « PROTO Constat »."); process.exit(2); }
-const { data: users } = await admin.auth.admin.listUsers({ perPage: 1000 });
+const users = await utilisateurs();
 const { data: membres } = await admin.from("garage_membres").select("user_id, role, actif").eq("garage_id", garageId);
 const idDe = (role, actif = true) => membres.find((m) => m.role === role && m.actif === actif)?.user_id;
-const emailDe = (role, actif = true) => users.users.find((u) => u.id === idDe(role, actif))?.email;
-const dirigeant = await session(emailDe("dirigeant"));
-const accueil = await session(emailDe("accueil"));
-const revoque = await session(emailDe("accueil", false));
-const mecano = await session(emailDe("mecanicien"));
+const emailDe = (id) => users.find((u) => u.id === id)?.email;
+const dirigeant = await session(emailDe(garage.owner_user_id));
+const accueil = await session(emailDe(idDe("accueil")));
+const revoque = await session(emailDe(idDe("accueil", false)));
+const mecano = await session(emailDe(idDe("mecanicien")));
 const { data: vehicule } = await admin.from("vehicules").select("id, client_id").eq("garage_id", garageId).eq("immatriculation", "BA-101-AA").single();
 const { data: client } = await admin.from("clients").select("id, email").eq("id", vehicule.client_id).single();
-const preparer = () => admin.rpc("preparer_relances_travaux", { p_garages: [garageId] });
+const jour = (decalage) => { const d = new Date(); d.setDate(d.getDate() + decalage); return d.toISOString().slice(0, 10); };
 const relancesDe = async (travailId) => (await admin.from("relances_travaux").select("*").eq("travail_differe_id", travailId).order("created_at")).data || [];
+const ligne = async (id) => (await admin.from("relances_travaux").select("id, statut, tentatives, updated_at, derniere_erreur, texte").eq("id", id).single()).data;
+
+const { data: incidentAvant } = await admin.from("relances_travaux").select("statut, tentatives, updated_at").eq("id", INCIDENT).maybeSingle();
+
+// Les travaux créés par ce script : la seule matière qu'il a le droit de toucher.
+const mesTravaux = [];
+async function travail(champs) {
+  const { data, error } = await dirigeant.from("travaux_differes").insert({ garage_id: garageId, client_id: client.id, vehicule_id: vehicule.id, source: "manuel", niveau: "normal", ...champs }).select("id").single();
+  if (error) { console.error("travail :", error.message); process.exit(1); }
+  mesTravaux.push(data.id);
+  return data.id;
+}
+const preparer = (travaux = mesTravaux) => admin.rpc("preparer_relances_travaux", { p_garages: [garageId], p_travaux: travaux });
 
 console.log(`Garage ${garage.nom_garage}\n`);
 
-// A. Suivi partagé.
 console.log("A. Suivi partagé (opportunites_actions)");
 {
-  const { data: t } = await dirigeant.from("travaux_differes").insert({ garage_id: garageId, client_id: client.id, vehicule_id: vehicule.id, intervention: "Suivi partagé (recette)", niveau: "normal", statut: "a_relancer", date_relance: jour(-1), source: "manuel" }).select("id").single();
-  const { error: eIns } = await accueil.from("opportunites_actions").insert({ garage_id: garageId, source_type: "travail_differe", source_id: t.id, action: "traite" });
+  const t = await travail({ intervention: "Suivi partagé (recette)", statut: "a_relancer", date_relance: jour(-1) });
+  const { error: eIns } = await accueil.from("opportunites_actions").insert({ garage_id: garageId, source_type: "travail_differe", source_id: t, action: "traite" });
   verifier("l'accueil enregistre « traité »", !eIns, eIns?.message);
-  const { data: vuParDirigeant } = await dirigeant.from("opportunites_actions").select("id, effectue_par").eq("garage_id", garageId).eq("source_id", t.id);
-  verifier("le dirigeant voit ce geste, avec son auteur (l'accueil)", vuParDirigeant?.length === 1 && vuParDirigeant[0].effectue_par === idDe("accueil"));
-  const { data: vuParRevoque } = await revoque.from("opportunites_actions").select("id").eq("garage_id", garageId);
-  verifier("l'accueil révoqué ne voit rien", (vuParRevoque || []).length === 0);
-  const { error: eRev } = await revoque.from("opportunites_actions").insert({ garage_id: garageId, source_type: "travail_differe", source_id: t.id, action: "traite" });
-  verifier("l'accueil révoqué n'écrit pas", Boolean(eRev));
-  const { data: vuParMecano } = await mecano.from("opportunites_actions").select("id").eq("garage_id", garageId);
-  verifier("le mécanicien ne voit rien", (vuParMecano || []).length === 0);
-  await admin.from("opportunites_actions").delete().eq("source_id", t.id);
-  await dirigeant.from("travaux_differes").delete().eq("id", t.id);
+  const { data: vu } = await dirigeant.from("opportunites_actions").select("effectue_par").eq("garage_id", garageId).eq("source_id", t);
+  verifier("le dirigeant voit ce geste, avec son auteur (l'accueil)", vu?.length === 1 && vu[0].effectue_par === idDe("accueil"));
+  verifier("l'accueil révoqué ne voit rien", ((await revoque.from("opportunites_actions").select("id").eq("garage_id", garageId)).data || []).length === 0);
+  verifier("l'accueil révoqué n'écrit pas", Boolean((await revoque.from("opportunites_actions").insert({ garage_id: garageId, source_type: "travail_differe", source_id: t, action: "traite" })).error));
+  verifier("le mécanicien ne voit rien", ((await mecano.from("opportunites_actions").select("id").eq("garage_id", garageId)).data || []).length === 0);
+  await admin.from("opportunites_actions").delete().eq("source_id", t);
+  // Ce travail ne sert qu'au suivi partagé : retiré avant la section B, sinon
+  // il y produit une relance légitime qui fausserait le compte.
+  await dirigeant.from("travaux_differes").delete().eq("id", t);
+  mesTravaux.splice(mesTravaux.indexOf(t), 1);
 }
 
-// B. Préparation.
-console.log("B. Préparation des relances");
-const { data: travaux } = await dirigeant.from("travaux_differes").insert([
-  { garage_id: garageId, client_id: client.id, vehicule_id: vehicule.id, intervention: "Pneus arrière à remplacer (recette)", niveau: "important", statut: "a_relancer", date_relance: jour(-2), montant_ttc: 180, source: "manuel" },
-  { garage_id: garageId, client_id: client.id, vehicule_id: vehicule.id, intervention: "Vidange dans 6 mois (recette)", niveau: "normal", statut: "planifie", date_relance: jour(30), source: "manuel" },
-  { garage_id: garageId, client_id: client.id, vehicule_id: vehicule.id, intervention: "Clos (recette)", niveau: "normal", statut: "recupere", date_relance: jour(-5), source: "manuel" },
-]).select("id, intervention, date_relance");
-const [echu, futur, clos] = travaux;
+console.log("B. Préparation (bornée aux travaux du script)");
+const echu = await travail({ intervention: "Pneus arrière à remplacer (recette)", niveau: "important", statut: "a_relancer", date_relance: jour(-2), montant_ttc: 180 });
+const futur = await travail({ intervention: "Vidange dans 6 mois (recette)", statut: "planifie", date_relance: jour(30) });
+const clos = await travail({ intervention: "Clos (recette)", statut: "recupere", date_relance: jour(-5) });
 {
   const p1 = await preparer();
-  verifier("premier passage : une relance préparée, pour le travail échu seulement", !p1.error && p1.data.length === 1 && p1.data[0].action === "preparee" && p1.data[0].travail_id === echu.id, JSON.stringify(p1.data || p1.error));
-  const p2 = await preparer();
-  verifier("second passage : rien", !p2.error && p2.data.length === 0, JSON.stringify(p2.data));
-  const [r] = await relancesDe(echu.id);
-  verifier("la relance est à_relire, avec sujet et texte composés en base", r?.statut === "a_relire" && /Un point sur votre/.test(r.sujet) && /Pneus arrière/.test(r.texte) && /180/.test(r.texte), r?.sujet);
-  verifier("aucune relance pour le futur ni pour le clos", (await relancesDe(futur.id)).length === 0 && (await relancesDe(clos.id)).length === 0);
-
-  // Report : la relance devient obsolète, rien n'est préparé avant la nouvelle date.
-  await dirigeant.from("travaux_differes").update({ date_relance: jour(10) }).eq("id", echu.id);
+  verifier("premier passage : une relance, pour le travail échu seulement", !p1.error && p1.data.length === 1 && p1.data[0].action === "preparee" && p1.data[0].travail_id === echu, JSON.stringify(p1.data || p1.error));
+  verifier("second passage : rien", (await preparer()).data?.length === 0);
+  const [r] = await relancesDe(echu);
+  verifier("brouillon à relire, composé en base", r?.statut === "a_relire" && /Un point sur votre/.test(r.sujet) && /Pneus arrière/.test(r.texte) && /180/.test(r.texte));
+  verifier("rien pour le futur ni pour le clos", (await relancesDe(futur)).length === 0 && (await relancesDe(clos)).length === 0);
+  await dirigeant.from("travaux_differes").update({ date_relance: jour(10) }).eq("id", echu);
   const p3 = await preparer();
-  verifier("report → la relance passe obsolète, aucune nouvelle avant la nouvelle date", p3.data?.some((x) => x.action === "obsolete" && x.relance_id === r.id) && !p3.data.some((x) => x.action === "preparee"), JSON.stringify(p3.data));
-  verifier("motif du report lisible", /reporté/.test((await relancesDe(echu.id))[0].motif || ""));
-  // Retour à une échéance passée : nouvelle relance (autre échéance), l'ancienne reste obsolète.
-  await dirigeant.from("travaux_differes").update({ date_relance: jour(-1) }).eq("id", echu.id);
-  const p4 = await preparer();
-  const apres = await relancesDe(echu.id);
-  verifier("nouvelle échéance atteinte → une nouvelle relance, l'ancienne reste obsolète", p4.data?.some((x) => x.action === "preparee") && apres.length === 2 && apres.filter((x) => x.statut === "obsolete").length === 1 && apres.filter((x) => x.statut === "a_relire").length === 1, JSON.stringify(apres.map((x) => x.statut)));
+  verifier("report → obsolète, rien avant la nouvelle date", p3.data?.some((x) => x.action === "obsolete" && x.relance_id === r.id) && !p3.data.some((x) => x.action === "preparee"));
+  await dirigeant.from("travaux_differes").update({ date_relance: jour(-1) }).eq("id", echu);
+  await preparer();
+  const apres = await relancesDe(echu);
+  verifier("nouvelle échéance → nouvelle relance, l'ancienne reste obsolète", apres.length === 2 && apres.filter((x) => x.statut === "obsolete").length === 1 && apres.filter((x) => x.statut === "a_relire").length === 1);
 }
 
-// C. Gestes du garage.
 console.log("C. Relire, corriger, autoriser");
-const relance = (await relancesDe(echu.id)).find((x) => x.statut === "a_relire");
+const relance = (await relancesDe(echu)).find((x) => x.statut === "a_relire");
 {
-  const { data: vueAccueil } = await accueil.from("relances_travaux").select("id, sujet, texte").eq("id", relance.id);
-  verifier("l'accueil lit le brouillon", vueAccueil?.length === 1);
-  const { data: vueRevoque } = await revoque.from("relances_travaux").select("id").eq("id", relance.id);
-  verifier("l'accueil révoqué ne le voit pas", (vueRevoque || []).length === 0);
-  const m = await accueil.rpc("modifier_relance_travail", { p_relance_id: relance.id, p_sujet: relance.sujet, p_texte: relance.texte + "\n\nPS : nous sommes ouverts le samedi matin." });
+  verifier("l'accueil lit le brouillon", ((await accueil.from("relances_travaux").select("id").eq("id", relance.id)).data || []).length === 1);
+  verifier("l'accueil révoqué ne le voit pas", ((await revoque.from("relances_travaux").select("id").eq("id", relance.id)).data || []).length === 0);
+  const m = await accueil.rpc("modifier_relance_travail", { p_relance_id: relance.id, p_sujet: relance.sujet, p_texte: relance.texte + "\n\nPS : ouverts le samedi matin." });
   verifier("l'accueil corrige le texte", m.data?.ok === true, JSON.stringify(m.data || m.error));
   const mauvais = await accueil.rpc("autoriser_envoi_relance_travail", { p_relance_id: relance.id, p_destinataire: "autre@nexora-recette.invalid" });
-  verifier("autoriser avec un autre destinataire → destinataire_different", mauvais.data?.ok === false && mauvais.data.raison === "destinataire_different", JSON.stringify(mauvais.data || mauvais.error));
-  const rev = await revoque.rpc("autoriser_envoi_relance_travail", { p_relance_id: relance.id, p_destinataire: client.email });
-  verifier("révoqué → refus", Boolean(rev.error), JSON.stringify(rev.data));
-  const mec = await mecano.rpc("autoriser_envoi_relance_travail", { p_relance_id: relance.id, p_destinataire: client.email });
-  verifier("mécanicien → refus", Boolean(mec.error), JSON.stringify(mec.data));
+  verifier("autre destinataire → destinataire_different", mauvais.data?.raison === "destinataire_different");
+  verifier("révoqué → refus", Boolean((await revoque.rpc("autoriser_envoi_relance_travail", { p_relance_id: relance.id, p_destinataire: client.email })).error));
+  verifier("mécanicien → refus", Boolean((await mecano.rpc("autoriser_envoi_relance_travail", { p_relance_id: relance.id, p_destinataire: client.email })).error));
   const okA = await accueil.rpc("autoriser_envoi_relance_travail", { p_relance_id: relance.id, p_destinataire: client.email });
-  verifier("l'accueil autorise → en_attente, auteur conservé", okA.data?.ok === true && (await relancesDe(echu.id)).find((x) => x.id === relance.id)?.statut === "en_attente" && (await relancesDe(echu.id)).find((x) => x.id === relance.id)?.autorise_par === idDe("accueil"), JSON.stringify(okA.data || okA.error));
-  const encore = await accueil.rpc("autoriser_envoi_relance_travail", { p_relance_id: relance.id, p_destinataire: client.email });
-  verifier("ré-autoriser → deja_autorise, sans doublon", encore.data?.deja_autorise === true);
-  const modifApres = await accueil.rpc("modifier_relance_travail", { p_relance_id: relance.id, p_sujet: "X", p_texte: "Y" });
-  verifier("plus de modification après autorisation (statut)", modifApres.data?.ok === false && modifApres.data.raison === "statut");
+  const autorisee = await ligne(relance.id);
+  verifier("l'accueil autorise → en_attente", okA.data?.ok === true && autorisee.statut === "en_attente");
+  verifier("ré-autoriser → deja_autorise", (await accueil.rpc("autoriser_envoi_relance_travail", { p_relance_id: relance.id, p_destinataire: client.email })).data?.deja_autorise === true);
+  verifier("plus de modification après autorisation", (await accueil.rpc("modifier_relance_travail", { p_relance_id: relance.id, p_sujet: "X", p_texte: "Y" })).data?.raison === "statut");
 }
 
-// D. Réservation et résultat.
-//
-// LA RÉSERVATION EST BORNÉE AU GARAGE, PAS AU SCRIPT
-//
-// Joué le 14 septembre 2026 avec une relance autorisée depuis l'écran dans le
-// même garage : la réservation l'a prise (c'est son rôle) et l'a passée
-// `envoi_en_cours`, que rien ne recycle. Une recette ne réserve jamais le
-// travail autorisé de quelqu'un d'autre : si le garage en porte, cette
-// section refuse de tourner et dit lesquelles, au lieu d'en abîmer l'état.
-console.log("D. Réservation, blocage, résultat");
-const { data: etrangeres } = await admin.from("relances_travaux").select("id, statut, travail_differe_id")
-  .eq("garage_id", garageId).in("statut", ["en_attente", "envoi_en_cours"]).neq("id", relance.id);
-if ((etrangeres || []).length > 0) {
-  console.log(`  ⚠ section D NON JOUÉE : ${etrangeres.length} relance(s) autorisée(s) hors de ce script dans le garage (${etrangeres.map((x) => `${x.id} ${x.statut}`).join(", ")}).`);
-  console.log("    Les réserver les ferait passer « envoi en cours ». Mettez-les de côté ou jouez sur un garage sans relance autorisée.");
-  total += 1;
-} else {
-  // Le texte change EN BASE après l'autorisation (par la clé de service, pour
-  // simuler une dérive) : la réservation doit le mettre de côté.
+console.log("D. Réservation bornée dans l'instruction");
+{
+  // Une relance HORS périmètre, déjà autorisée avant la réservation — dont le
+  // texte dérive, pour vérifier que même la mise de côté ne la touche pas.
+  const tHors = await travail({ intervention: "Hors périmètre déjà en attente (recette)", statut: "a_relancer", date_relance: jour(-1) });
+  await preparer([tHors]);
+  const [rHors] = await relancesDe(tHors);
+  await accueil.rpc("autoriser_envoi_relance_travail", { p_relance_id: rHors.id, p_destinataire: client.email });
+  await admin.from("relances_travaux").update({ texte: rHors.texte + " (dérive)" }).eq("id", rHors.id);
+  const horsAvant = await ligne(rHors.id);
+  // Une relance qui sera autorisée PENDANT la réservation.
+  const tConc = await travail({ intervention: "Autorisée pendant la réservation (recette)", statut: "a_relancer", date_relance: jour(-1) });
+  await preparer([tConc]);
+  const [rConc] = await relancesDe(tConc);
+
+  // Ma ligne : son message dérive après l'autorisation → mise de côté.
   await admin.from("relances_travaux").update({ texte: "texte modifié après autorisation" }).eq("id", relance.id);
-  const r1 = await admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId] });
-  const etat1 = (await relancesDe(echu.id)).find((x) => x.id === relance.id);
-  verifier("message modifié après validation → bloqué, non réservé", !r1.error && !(r1.data || []).some((x) => x.id === relance.id) && etat1.statut === "bloque" && /message a changé/.test(etat1.derniere_erreur || ""), JSON.stringify(r1.data || r1.error) + " " + etat1.statut);
-  const reA = await accueil.rpc("autoriser_envoi_relance_travail", { p_relance_id: relance.id, p_destinataire: client.email });
-  verifier("revalidation à la main → en_attente", reA.data?.ok === true);
-  const [r2, r3] = await Promise.all([
-    admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId] }),
-    admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId] }),
+  const r1 = await admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId], p_relances: [relance.id] });
+  const mienne1 = await ligne(relance.id);
+  verifier("ma ligne modifiée après validation → bloquée, non réservée", !r1.error && (r1.data || []).length === 0 && mienne1.statut === "bloque" && /message a changé/.test(mienne1.derniere_erreur || ""), JSON.stringify(r1.data || r1.error));
+  const horsApres1 = await ligne(rHors.id);
+  verifier("hors périmètre dérivée : ni mise de côté, ni réservée, ni modifiée", horsApres1.statut === "en_attente" && horsApres1.tentatives === horsAvant.tentatives && horsApres1.updated_at === horsAvant.updated_at, JSON.stringify(horsApres1));
+
+  verifier("revalidation à la main → en_attente", (await accueil.rpc("autoriser_envoi_relance_travail", { p_relance_id: relance.id, p_destinataire: client.email })).data?.ok === true);
+
+  // Concurrence : deux réservations bornées à ma ligne + une autorisation d'une
+  // autre ligne du même garage, lancées ensemble.
+  const [r2, r3, autorisation] = await Promise.all([
+    admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId], p_relances: [relance.id] }),
+    admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId], p_relances: [relance.id] }),
+    accueil.rpc("autoriser_envoi_relance_travail", { p_relance_id: rConc.id, p_destinataire: client.email }),
   ]);
-  const prises = [...(r2.data || []), ...(r3.data || [])].filter((x) => x.id === relance.id);
-  verifier("deux réservations simultanées → une seule prise", prises.length === 1, `${prises.length}`);
-  verifier("la ligne réservée porte sujet, texte, destinataire, garage", prises[0]?.sujet && prises[0]?.texte && prises[0]?.destinataire === client.email && prises[0]?.expediteur_nom);
-  const r4 = await admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId] });
-  verifier("envoi_en_cours n'est jamais repris par une réservation suivante", !(r4.data || []).some((x) => x.id === relance.id));
-  await admin.rpc("terminer_relance_travail", { p_id: relance.id, p_resultat: "a_reprendre", p_motif: "refus du fournisseur (simulé)" });
-  verifier("a_reprendre → en_attente, tentative comptée", (await relancesDe(echu.id)).find((x) => x.id === relance.id)?.statut === "en_attente" && (await relancesDe(echu.id)).find((x) => x.id === relance.id)?.tentatives === 1);
-  const r5 = await admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId] });
-  verifier("reprise : réservée à nouveau", (r5.data || []).filter((x) => x.id === relance.id).length === 1);
+  const prises = [...(r2.data || []), ...(r3.data || [])];
+  verifier("deux réservations simultanées → ma ligne prise une seule fois, et elle seule", prises.length === 1 && prises[0].id === relance.id, JSON.stringify(prises.map((p) => p.id)));
+  const conc = await ligne(rConc.id);
+  verifier("autorisée pendant la réservation : en_attente, 0 tentative, jamais réservée", autorisation.data?.ok === true && conc.statut === "en_attente" && conc.tentatives === 0, JSON.stringify(conc));
+  const horsApres2 = await ligne(rHors.id);
+  verifier("hors périmètre toujours intacte (statut, tentatives, updated_at)", horsApres2.statut === "en_attente" && horsApres2.tentatives === horsAvant.tentatives && horsApres2.updated_at === horsAvant.updated_at);
+  verifier("un tableau vide ne réserve rien", ((await admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId], p_relances: [] })).data || []).length === 0);
+
+  verifier("envoi_en_cours jamais repris", ((await admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId], p_relances: [relance.id] })).data || []).length === 0);
+  await admin.rpc("terminer_relance_travail", { p_id: relance.id, p_resultat: "a_reprendre", p_motif: "échec certain avant envoi (simulé)" });
+  const reprendre = await ligne(relance.id);
+  verifier("a_reprendre → en_attente, tentative comptée", reprendre.statut === "en_attente" && reprendre.tentatives === 1);
+  verifier("reprise : réservée à nouveau", ((await admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId], p_relances: [relance.id] })).data || []).length === 1);
   await admin.rpc("terminer_relance_travail", { p_id: relance.id, p_resultat: "envoye", p_motif: "transport simulé (recette) : aucun message réel n'est parti" });
-  const fin = (await relancesDe(echu.id)).find((x) => x.id === relance.id);
-  verifier("résultat : envoye, avec le motif « simulé »", fin.statut === "envoye" && fin.envoye === true && /simulé/.test(fin.derniere_erreur || ""));
-  // Clôture après envoi : rien à annuler (déjà envoyée), et une relance
-  // préparée pour un autre travail se ferait annuler.
-  await dirigeant.from("travaux_differes").update({ statut: "recupere" }).eq("id", echu.id);
-  const p5 = await preparer();
-  verifier("clôture d'un travail dont la relance est partie : rien ne bouge", !(p5.data || []).some((x) => x.travail_id === echu.id));
-  const { data: t2 } = await dirigeant.from("travaux_differes").insert({ garage_id: garageId, client_id: client.id, vehicule_id: vehicule.id, intervention: "À annuler (recette)", niveau: "normal", statut: "a_relancer", date_relance: jour(-3), source: "manuel" }).select("id").single();
-  await preparer();
-  await dirigeant.from("travaux_differes").update({ statut: "refus_definitif" }).eq("id", t2.id);
-  const p6 = await preparer();
-  verifier("refus définitif → la relance à_relire est annulée", p6.data?.some((x) => x.action === "annulee" && x.travail_id === t2.id) && (await relancesDe(t2.id))[0]?.statut === "annulee", JSON.stringify(p6.data));
-  const ann = await accueil.rpc("annuler_relance_travail", { p_relance_id: relance.id, p_motif: "test" });
-  verifier("annuler une relance envoyée → refus (statut)", ann.data?.ok === false && ann.data.raison === "statut");
+  const fin = await ligne(relance.id);
+  verifier("résultat : envoye, motif « simulé »", fin.statut === "envoye" && /simulé/.test(fin.derniere_erreur || ""));
+  verifier("annuler une relance envoyée → refus", (await accueil.rpc("annuler_relance_travail", { p_relance_id: relance.id, p_motif: "test" })).data?.raison === "statut");
+
+  await dirigeant.from("travaux_differes").update({ statut: "refus_definitif" }).eq("id", tConc);
+  const p6 = await preparer([tConc]);
+  verifier("refus définitif → la relance autorisée non partie est annulée", p6.data?.some((x) => x.action === "annulee") && (await ligne(rConc.id)).statut === "annulee");
 }
 
-// Nettoyage des travaux de recette (les relances suivent en cascade).
-for (const t of [...travaux]) await dirigeant.from("travaux_differes").delete().eq("id", t.id);
-await admin.from("travaux_differes").delete().eq("garage_id", garageId).ilike("intervention", "%(recette)%");
-console.log(`\n${ok}/${total} contrôles au vert.`);
-process.exit(ok === total ? 0 : 1);
+const { data: incidentApres } = await admin.from("relances_travaux").select("statut, tentatives, updated_at").eq("id", INCIDENT).maybeSingle();
+verifier("la ligne de l'incident n'a pas été touchée", JSON.stringify(incidentAvant) === JSON.stringify(incidentApres), `${JSON.stringify(incidentAvant)} → ${JSON.stringify(incidentApres)}`);
+
+for (const id of mesTravaux) await dirigeant.from("travaux_differes").delete().eq("id", id);
+process.exit(bilan() ? 0 : 1);

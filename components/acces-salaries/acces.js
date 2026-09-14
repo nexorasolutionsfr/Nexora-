@@ -156,3 +156,58 @@ export async function ajouterNote(supabase, { ordreId, note }) {
   if (error) throw error;
   return data;
 }
+
+// --- Constats et photos du mécanicien (20260919000700) ----------------------
+//
+// Le mécanicien ne lit toujours aucune table. Il passe par trois fonctions qui
+// revérifient son affectation à chaque appel, et par le stockage, dont la
+// politique délègue à la même vérification. L'ordre des gestes compte : le
+// constat d'abord (il crée le contrôle de la visite s'il n'existe pas), le
+// dépôt du fichier ensuite, l'enregistrement de la photo en dernier.
+
+export const PHOTO_EXTENSIONS = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/heic": "heic", "image/heif": "heic" };
+
+/** L'extension acceptée par la base pour ce fichier, ou null s'il n'est pas pris en charge. */
+export function extensionPhoto(file) {
+  const parType = PHOTO_EXTENSIONS[(file?.type || "").toLowerCase()];
+  if (parType) return parType;
+  const parNom = String(file?.name || "").split(".").pop().toLowerCase();
+  if (parNom === "jpeg") return "jpg";
+  return ["jpg", "png", "webp", "heic"].includes(parNom) ? parNom : null;
+}
+
+/** <garage>/<contrôle>/<uuid>.<ext> — la seule forme que la base accepte. */
+export function cheminPhoto({ garageId, inspectionId, uuid, extension }) {
+  return `${garageId}/${inspectionId}/${String(uuid).toLowerCase()}.${extension}`;
+}
+
+export async function chargerMesConstats(supabase, ordreId) {
+  const { data, error } = await supabase.rpc("atelier_mes_constats", { p_ordre_id: ordreId });
+  if (error) throw error;
+  return data;
+}
+
+export async function ajouterConstat(supabase, { ordreId, libelle, etat, commentaire = null, categorie = "autre" }) {
+  const texte = (libelle ?? "").trim();
+  if (!texte) throw new Error("Décrivez le constat en quelques mots");
+  const { data, error } = await supabase.rpc("atelier_ajouter_constat", {
+    p_ordre_id: ordreId,
+    p_libelle: texte,
+    p_etat: etat,
+    p_commentaire: (commentaire ?? "").trim() || null,
+    p_categorie: categorie,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function deposerPhotoConstat(supabase, { bucket, garageId, inspectionId, pointId, file, uuid }) {
+  const extension = extensionPhoto(file);
+  if (!extension) throw new Error("Format de photo non pris en charge : JPEG, PNG, WebP ou HEIC.");
+  const chemin = cheminPhoto({ garageId, inspectionId, uuid, extension });
+  const { error: erreurDepot } = await supabase.storage.from(bucket).upload(chemin, file, { upsert: false, contentType: file.type || undefined });
+  if (erreurDepot) throw erreurDepot;
+  const { data, error } = await supabase.rpc("atelier_ajouter_photo", { p_point_id: pointId, p_chemin: chemin });
+  if (error) throw error;
+  return { photoId: data, chemin };
+}

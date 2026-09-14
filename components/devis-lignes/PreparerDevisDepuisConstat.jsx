@@ -28,6 +28,7 @@ import {
   PHOTOS_BUCKET,
 } from "../inspections/inspectionsConstants";
 import PhotoEnGrand from "../inspections/PhotoEnGrand";
+import { garderLeFocus } from "../garage-os/Portail";
 import { STATUT_DEVIS_LABEL } from "./devisLignesConstants";
 import { formatEuro } from "./calculs";
 import { controleParDefaut, libelleRaison, proposerDevis, proposerPoints, referenceDevis, resumerReprise } from "./reprise";
@@ -88,6 +89,7 @@ export default function PreparerDevisDepuisConstat({ garageId, vehicule, client,
   const [erreur, setErreur] = useState(null);
   const [photoOuverte, setPhotoOuverte] = useState(null);
   const fermerRef = useRef(null);
+  const fenetreRef = useRef(null);
 
   const toast = (m, t) => onToast?.(m, t);
 
@@ -157,12 +159,24 @@ export default function PreparerDevisDepuisConstat({ garageId, vehicule, client,
   const nbCoches = proposes.filter((p) => selection[p.point.id]).length;
   const inspectionChoisie = (inspections || []).find((i) => i.id === inspectionId) || null;
 
+  // Le focus se pose UNE fois, à l'ouverture. Rattaché à `onFermer` — une
+  // fonction recréée à chaque rendu du parent — il revenait sur « Fermer » à
+  // chaque rechargement de données, et un Entrée au clavier fermait la fenêtre
+  // (mesuré au clavier CDP le 14 septembre 2026).
+  const onFermerRef = useRef(onFermer);
+  onFermerRef.current = onFermer;
+  const photoOuverteRef = useRef(false);
+  photoOuverteRef.current = Boolean(photoOuverte);
   useEffect(() => {
+    const precedent = document.activeElement;
     fermerRef.current?.focus();
-    const onKey = (e) => { if (e.key === "Escape" && !photoOuverte) onFermer?.(); };
+    const onKey = (e) => { if (e.key === "Escape" && !photoOuverteRef.current) onFermerRef.current?.(); };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onFermer, photoOuverte]);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      if (precedent && typeof precedent.focus === "function" && document.contains(precedent)) precedent.focus();
+    };
+  }, []);
 
   const preparer = async () => {
     if (busy || !inspectionId || nbCoches === 0 || !repriseId.current) return;
@@ -193,7 +207,7 @@ export default function PreparerDevisDepuisConstat({ garageId, vehicule, client,
   const demande = rdv ? [rdv.prestation || rdv.prestations?.nom || null, rdv.notes || null].filter(Boolean) : [];
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-[60] flex items-stretch sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-label="Préparer le devis">
+    <div ref={fenetreRef} onKeyDown={(e) => garderLeFocus(e, fenetreRef.current)} className="fixed inset-0 bg-black/40 z-[60] flex items-stretch sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-label="Préparer le devis">
       <div className="bg-slate-50 w-full sm:max-w-xl sm:rounded-2xl sm:max-h-[92vh] h-full sm:h-auto flex flex-col overflow-hidden">
         <div className="bg-white flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-100 shrink-0">
           <div className="min-w-0">

@@ -194,3 +194,33 @@ test("inviterMembreParEmail envoie l'adresse nettoyée et la fiche du bon rôle"
   });
   assert.equal(client.appels[1].args.p_mecanicien_id, "meca-1");
 });
+
+// --- Constats du mécanicien (20260919000700) --------------------------------
+
+import { ajouterConstat, cheminPhoto, extensionPhoto } from "./acces.js";
+
+test("extensionPhoto : le type du fichier d'abord, le nom ensuite, rien d'autre", () => {
+  assert.equal(extensionPhoto({ type: "image/jpeg", name: "IMG_0001.JPG" }), "jpg");
+  assert.equal(extensionPhoto({ type: "image/heic", name: "x" }), "heic");
+  assert.equal(extensionPhoto({ type: "", name: "photo.JPEG" }), "jpg");
+  assert.equal(extensionPhoto({ type: "application/pdf", name: "facture.pdf" }), null);
+  assert.equal(extensionPhoto(null), null);
+});
+
+test("cheminPhoto : la forme exacte que la base vérifie, en minuscules", () => {
+  assert.equal(
+    cheminPhoto({ garageId: "g", inspectionId: "i", uuid: "ABCDEF00-0000-4000-8000-000000000001", extension: "png" }),
+    "g/i/abcdef00-0000-4000-8000-000000000001.png",
+  );
+});
+
+test("ajouterConstat : refuse un libellé vide avant tout appel, et nomme les arguments", async () => {
+  const sb = supabaseFactice({ atelier_ajouter_constat: { data: { point_id: "p" }, error: null } });
+  await assert.rejects(() => ajouterConstat(sb, { ordreId: "o", libelle: "   ", etat: "dommage" }));
+  assert.equal(sb.appels.length, 0);
+  await ajouterConstat(sb, { ordreId: "o", libelle: " Fuite ", etat: "dommage", commentaire: "  " });
+  assert.deepEqual(sb.appels[0], {
+    nom: "atelier_ajouter_constat",
+    args: { p_ordre_id: "o", p_libelle: "Fuite", p_etat: "dommage", p_commentaire: null, p_categorie: "autre" },
+  });
+});

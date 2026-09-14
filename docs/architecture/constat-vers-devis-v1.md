@@ -136,15 +136,17 @@ pas l'empreinte, et un envoi déjà autorisé serait parti.
 
 ## 5. Ce qui reste (et n'est pas prétendu livré)
 
-- **Preuve visible côté client** : la page publique `/devis/<jeton>` ne montre
-  pas la photo du constat. La ligne garde `inspection_point_id` ; une
-  projection sûre (URL signée par ligne partagée, sans ouvrir le contrôle
-  entier) est un incrément séparé.
-- **Le rôle mécanicien ne documente pas encore de contrôle** : il ne lit
-  aucune table (`AtelierMecanicienScreen`, fonctions `atelier_*`). Le constat
-  est saisi aujourd'hui par un compte accueil/dirigeant, sur le téléphone de
-  l'atelier. Ouvrir la saisie au mécanicien par des fonctions bornées à ses
-  interventions est le prochain incrément « 3 C », pas celui-ci.
+- ~~Preuve visible côté client~~ — **livré le 14 sept. (soir)** :
+  `20260919000800` et `000900`. La page publique montre, par ligne, le texte
+  du constat et ses photos. Elle ne reçoit que des identifiants opaques ;
+  `/api/devis/preuves` revalide le jeton et signe les chemins. **Décision** :
+  à l'acceptation ou au refus, les photos sont figées dans `devis_preuves` et
+  protégées ; avant, la preuve suit le constat.
+- ~~Le rôle mécanicien ne documente pas encore de contrôle~~ — **livré** :
+  `20260919000700`. Fonctions `atelier_mes_constats`, `atelier_ajouter_constat`,
+  `atelier_ajouter_photo`, bornées à l'intervention affectée, au garage, au
+  salarié actif, au contrôle non verrouillé ; stockage réécrit sur les mêmes
+  bornes. Aucun accès financier.
 - **Notes structurées 3 C** : les trois blocs de la fenêtre sont une
   présentation des champs existants (rendez-vous, points, lignes), pas de
   nouvelles colonnes.
