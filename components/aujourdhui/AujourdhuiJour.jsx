@@ -20,8 +20,8 @@
 // autres sources et porte le journal traité/reporté, `filVehicule` reste seul
 // juge de l'état d'une voiture. Ce fichier affiche.
 
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowRight, Calendar, ChevronRight, Clock, HelpCircle, Phone, Upload, UserPlus } from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
+import { AlertTriangle, ArrowRight, Calendar, ChevronDown, ChevronRight, Clock, HelpCircle, Phone, Upload, UserPlus } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { filVehicule } from "../atelier/filVehicule";
@@ -74,29 +74,50 @@ function Bloc({ children, className = "" }) {
  */
 function LigneATraiter({ ligne, onAction, onTraiter, onReporter, journalDisponible }) {
   const [ouvert, setOuvert] = useState(false);
+  const idDetails = useId();
   // Le suivi suit la SOURCE, pas l'origine de la ligne : une ligne
   // d'intervention qui a absorbé une opportunité en garde l'identité, donc
   // « Marquer traité » et « Reporter » restent offerts pour ce devis.
   const suivi = Boolean(ligne.sourceType && ligne.sourceId) && journalDisponible;
+  // Ne se déplie que ce qui a quelque chose à montrer : les gestes de suivi.
+  // Un chevron sur une ligne qui ne s'ouvre sur rien serait une promesse vide.
+  const depliable = suivi;
+
+  const contenu = (
+    <span className="block min-w-0">
+      <span className="flex items-baseline gap-x-2 gap-y-0.5 flex-wrap min-w-0">
+        {ligne.urgent && <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: TONS.attention }}>À faire d'abord</span>}
+        <span className="text-[14.5px] font-semibold text-slate-900 break-words min-w-0">{ligne.titre}</span>
+        {ligne.sujet && <span className="text-[12.5px] text-slate-500 break-words min-w-0">{ligne.sujet}</span>}
+      </span>
+      <span className="block text-[13px] text-slate-600 mt-0.5 break-words">
+        {ligne.probleme}
+        {ligne.precision ? <span className="text-slate-400"> · {ligne.precision}</span> : null}
+      </span>
+    </span>
+  );
+
   return (
     <div className="border-t border-slate-100 first:border-t-0" style={ligne.urgent ? { boxShadow: "inset 3px 0 0 #B45309" } : undefined}>
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 py-3 px-4">
-        <button
-          type="button"
-          onClick={() => setOuvert((v) => !v)}
-          className="min-w-0 flex-1 text-left"
-          aria-expanded={ouvert}
-        >
-          <div className="flex items-baseline gap-2 flex-wrap">
-            {ligne.urgent && <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: TONS.attention }}>À faire d'abord</span>}
-            <span className="text-[14.5px] font-semibold text-slate-900">{ligne.titre}</span>
-            {ligne.sujet && <span className="text-[12.5px] text-slate-500 truncate">{ligne.sujet}</span>}
-          </div>
-          <div className="text-[13px] text-slate-600 mt-0.5">
-            {ligne.probleme}
-            {ligne.precision ? <span className="text-slate-400"> · {ligne.precision}</span> : null}
-          </div>
-        </button>
+        {depliable ? (
+          <button
+            type="button"
+            onClick={() => setOuvert((v) => !v)}
+            aria-expanded={ouvert}
+            aria-controls={idDetails}
+            className="min-w-0 flex-1 text-left flex items-start gap-2 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+          >
+            <span className="min-w-0 flex-1">{contenu}</span>
+            <ChevronDown
+              size={16}
+              aria-hidden="true"
+              className={`shrink-0 mt-1 text-slate-400 transition-transform ${ouvert ? "rotate-180" : ""}`}
+            />
+          </button>
+        ) : (
+          <div className="min-w-0 flex-1">{contenu}</div>
+        )}
         <button
           type="button"
           onClick={() => onAction(ligne)}
@@ -107,27 +128,18 @@ function LigneATraiter({ ligne, onAction, onTraiter, onReporter, journalDisponib
         </button>
       </div>
 
-      {ouvert && (
-        <div className="px-4 pb-3 -mt-1 flex flex-wrap items-center gap-3 text-[12.5px]">
-          {ligne.origineLabel && <span className="text-slate-400">{ligne.origineLabel}</span>}
-          {suivi && (
-            <>
-              <button type="button" onClick={() => onTraiter(ligne)} className="font-semibold text-slate-500 hover:text-slate-800">
-                Marquer traité
-              </button>
-              <button type="button" onClick={() => onReporter(ligne)} className="font-semibold text-slate-500 hover:text-slate-800 inline-flex items-center gap-1">
-                <Clock size={12} /> Reporter
-              </button>
-              <span className="text-slate-400">Marquer traité n'envoie rien et ne facture rien.</span>
-            </>
-          )}
-          {ligne.fusionne?.length > 0 && suivi && (
+      {depliable && ouvert && (
+        <div id={idDetails} className="px-4 pb-3 -mt-1 flex flex-wrap items-center gap-3 text-[12.5px]">
+          <button type="button" onClick={() => onTraiter(ligne)} className="font-semibold text-slate-500 hover:text-slate-800">
+            Marquer traité
+          </button>
+          <button type="button" onClick={() => onReporter(ligne)} className="font-semibold text-slate-500 hover:text-slate-800 inline-flex items-center gap-1">
+            <Clock size={12} /> Reporter
+          </button>
+          <span className="text-slate-400">Marquer traité n'envoie rien et ne facture rien.</span>
+          {ligne.fusionne?.length > 0 && (
             <span className="text-slate-400">« Marquer traité » ne masque que la réponse du client, pas le travail sur la voiture.</span>
           )}
-          {ligne.sourceType && !journalDisponible && (
-            <span className="text-slate-400">Le suivi traité/reporté est réservé au propriétaire du garage.</span>
-          )}
-          {!ligne.sourceType && <span className="text-slate-400">Ouvrir la tâche ne la marque jamais comme traitée.</span>}
         </div>
       )}
     </div>
@@ -164,6 +176,12 @@ export default function AujourdhuiJour({
   // Les relances encore à venir : pas des tâches du jour, mais elles ne
   // doivent pas être invisibles pour autant.
   travauxDifferes = [],
+  // Lues pour rattacher chaque tâche à son véhicule par identifiant.
+  demandes = [],
+  propositions = [],
+  inspections = [],
+  // Le badge « Aujourd'hui » reçoit le nombre d'actions de CETTE liste.
+  onCompte,
 }) {
   const maintenant = new Date();
 
@@ -213,28 +231,63 @@ export default function AujourdhuiJour({
   // Le Cockpit envoyait « Voir la réponse » vers l'écran Devis — une liste
   // générique, sans le véhicule ni l'intervention. On retrouve la voiture par
   // le devis, et on ouvre le dossier. Le repli reste l'écran Devis.
-  const vehiculeParDevis = useMemo(() => {
-    const parId = new Map();
-    for (const r of rendezVous) if (r.vehicule_id) parId.set(r.vehicule_id, r.immatriculation || (r.vehicule || "").trim() || null);
+  // LE VÉHICULE D'UNE TÂCHE, PAR IDENTIFIANT
+  // Chaque source qui porte `vehicule_id` est rattachée à sa voiture ; le
+  // libellé vient de la fiche du véhicule, pas du texte de la tâche. Un rappel
+  // n'a pas de colonne véhicule : il reste une action sans voiture. Une ligne
+  // introuvable rend `null` — et le compteur de voitures cesse d'être affiché.
+  const indexVehicules = useMemo(() => {
     const m = new Map();
-    for (const d of devisList) {
-      if (!d.id || !d.vehicule_id) continue;
-      m.set(d.id, { id: d.vehicule_id, libelle: parId.get(d.vehicule_id) || null });
+    for (const c of clients) {
+      const vs = Array.isArray(c.vehicules) ? c.vehicules : c.vehicules ? [c.vehicules] : [];
+      for (const v of vs) {
+        if (!v?.id) continue;
+        m.set(v.id, {
+          plaque: v.immatriculation || null,
+          modele: `${v.marque || ""} ${v.modele || ""}`.trim() || null,
+          client: c.nom || null,
+        });
+      }
     }
     return m;
-  }, [devisList, rendezVous]);
+  }, [clients]);
+
+  const lignesParSource = useMemo(() => {
+    const parId = (liste) => new Map((liste || []).filter((x) => x?.id).map((x) => [x.id, x]));
+    const devis = parId(devisList);
+    return {
+      devis,
+      reponse_devis: devis,
+      inspection: parId(inspections),
+      demande: parId(demandes),
+      proposition: parId(propositions),
+      travail_differe: parId(travauxDifferes),
+      rdv_confirmation: parId(rendezVous),
+    };
+  }, [devisList, inspections, demandes, propositions, travauxDifferes, rendezVous]);
+
+  const resoudreVehicule = (o) => {
+    if (o.sourceType === "rappel") return { id: null };
+    const ligneSource = lignesParSource[o.sourceType]?.get(o.sourceId);
+    if (!ligneSource) return null;
+    if (!ligneSource.vehicule_id) return { id: null };
+    const v = indexVehicules.get(ligneSource.vehicule_id);
+    return { id: ligneSource.vehicule_id, plaque: v?.plaque || null, modele: v?.modele || null, client: v?.client || null };
+  };
 
   const aTraiter = useMemo(
-    () => construireATraiter({
-      opportunites, priorites, nommer: nommerVehicule, action: actionDe,
-      resoudreVehicule: (o) => (o.sourceType === "devis" || o.sourceType === "reponse_devis" ? vehiculeParDevis.get(o.sourceId) || null : null),
-    }),
-    [opportunites, priorites, vehiculeParDevis],
+    () => construireATraiter({ opportunites, priorites, nommer: nommerVehicule, action: actionDe, resoudreVehicule }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [opportunites, priorites, indexVehicules, lignesParSource],
   );
 
   const [toutes, setToutes] = useState(false);
   const { visibles, total, masquees } = decouper(aTraiter, toutes ? aTraiter.length : LIMITE);
   const compte = compterATraiter(aTraiter);
+
+  useEffect(() => {
+    onCompte?.(erreurChargement || chargement || chargementOpportunites ? null : aTraiter.length);
+  }, [onCompte, erreurChargement, chargement, chargementOpportunites, aTraiter.length]);
   const { presentes, attendues } = useMemo(() => compterLeGarage(dossiersAvecEnvoi, maintenant), [dossiersAvecEnvoi]);
   // `regrouperOperationnel` rend un TABLEAU de groupes, pas un objet indexé :
   // `groupes.pretes` valait `undefined`, et la ligne d'activité annonçait
@@ -255,7 +308,13 @@ export default function AujourdhuiJour({
 
   const agir = (l) => {
     if (l.origine === "cockpit") {
-      if (l.vehiculeId) { onOuvrirDossierVehicule?.(l.vehiculeId); return; }
+      // Seules les lignes de devis mènent au dossier du véhicule, comme avant :
+      // connaître la voiture d'une inspection ou d'une demande ne change pas
+      // sa destination.
+      if ((l.sourceType === "devis" || l.sourceType === "reponse_devis") && l.vehiculeId) {
+        onOuvrirDossierVehicule?.(l.vehiculeId);
+        return;
+      }
       l.onAction?.();
       return;
     }
@@ -328,11 +387,16 @@ export default function AujourdhuiJour({
     );
   }
 
+  // Le nombre de voitures n'apparaît que s'il est fiable ; sinon « N actions »,
+  // plutôt qu'un chiffre qui laisserait croire à moins de voitures qu'il n'y en a.
+  // Ce n'est pas le nombre de voitures présentes au garage : celui-là est sur
+  // la ligne d'activité.
+  const pluriel = (n, mot) => `${n} ${mot}${n > 1 ? "s" : ""}`;
   const phrase = total === 0
     ? "Rien n'attend de décision de votre part."
-    : compte.actions === compte.vehicules && compte.sansVehicule === 0
-      ? `${compte.actions} action${compte.actions > 1 ? "s" : ""} à traiter.`
-      : `${compte.actions} actions à traiter${compte.vehicules > 0 ? `, dont ${compte.vehicules} voiture${compte.vehicules > 1 ? "s" : ""} concernée${compte.vehicules > 1 ? "s" : ""}` : ""}.`;
+    : !compte.fiable || compte.vehicules === 0 || (compte.vehicules === compte.actions && compte.sansVehicule === 0)
+      ? `${pluriel(compte.actions, "action")} à traiter.`
+      : `${pluriel(compte.actions, "action")} à traiter, dont ${pluriel(compte.vehicules, "voiture")} concernée${compte.vehicules > 1 ? "s" : ""}.`;
 
   return (
     <div className="space-y-4">
@@ -402,10 +466,10 @@ export default function AujourdhuiJour({
       {/* LES ACCÈS DISCRETS — rien n'a disparu, tout est à un clic. */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-1 text-[12px]">
         <button type="button" onClick={() => onAjouterRappel?.()} className="font-semibold inline-flex items-center gap-1.5" style={{ color: ACCENT }}>
-          <Phone size={12} /> Un appel à rappeler
+          <Phone size={12} /> Ajouter un rappel
         </button>
         <button type="button" onClick={() => onOuvrirTravailDiffereModal?.()} className="font-semibold inline-flex items-center gap-1.5" style={{ color: ACCENT }}>
-          <Calendar size={12} /> Un travail à relancer
+          <Calendar size={12} /> Ajouter un travail à relancer
         </button>
         <SuiviReporte
           masquees={journalDisponible ? (opportunites?.masquees || []) : []}

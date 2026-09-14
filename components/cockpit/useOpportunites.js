@@ -48,7 +48,7 @@ export function useOpportunites({ garageId, proprietaireUserId = null, donnees =
   const chargerInspections = useCallback(async () => {
     const { data, error } = await supabase
       .from("inspections")
-      .select("id, statut, verrouille_le, updated_at, client_nom_libre, vehicule_libelle_libre, clients (nom), vehicules (marque, modele)")
+      .select("id, statut, verrouille_le, updated_at, vehicule_id, client_nom_libre, vehicule_libelle_libre, clients (nom), vehicules (marque, modele)")
       .eq("garage_id", garageId)
       .in("statut", ["en_attente_client", "consulte", "partiellement_valide"]);
     if (error) { setErreur("inspections"); return; }
@@ -106,5 +106,7 @@ export function useOpportunites({ garageId, proprietaireUserId = null, donnees =
     if (ok) onToast?.("Remise dans la liste");
   }, [enregistrer, onToast]);
 
-  return { opportunites, actions, chargement, erreur, traiter, reporter, reactiver, journalDisponible: estProprietaire };
+  // `inspections` remonte pour que l'écran rattache chaque inspection à son
+  // véhicule par identifiant — lecture seule, rien de plus.
+  return { opportunites, actions, inspections, chargement, erreur, traiter, reporter, reactiver, journalDisponible: estProprietaire };
 }

@@ -106,6 +106,7 @@ test("les compteurs comptent la liste, pas les sources", () => {
   assert.equal(c.actions, 3, "la source fusionnée ne compte pas deux fois");
   assert.equal(c.vehicules, 2);
   assert.equal(c.sansVehicule, 1, "une demande n'invente pas de véhicule");
+  assert.equal(c.fiable, false, "sans résolveur, on ne sait pas si la demande porte une voiture");
 });
 
 test("les urgences ne passent jamais sous la limite", () => {
@@ -179,4 +180,90 @@ test("deux interventions distinctes à facturer restent deux tâches", () => {
   assert.notEqual(facturer[0].precision, facturer[1].precision, "leurs dates les distinguent");
   assert.ok(lignes.some((l) => l.sourceType === "reponse_devis"), "et la réponse au devis reste");
   assert.equal(lignes.length, 3);
+});
+
+
+// --- Revue Production du 14 septembre : compteurs et présentation ----------
+
+const clio = { id: "VCLIO", plaque: "BB-202-BB", modele: "Renault Clio IV", client: "Étienne Vasseur" };
+const kangoo = { id: "VKANG", plaque: "CD-404-EF", modele: "Renault Kangoo", client: "Léa Martin" };
+
+test("une inspection sur un autre véhicule compte une voiture de plus", () => {
+  // Constaté : « 2 actions à traiter, dont 1 voiture » pour une Peugeot 308 et
+  // un Kangoo. Seules les interventions étaient comptées.
+  const lignes = construireATraiter({
+    opportunites: paquet({ maintenant: [], aujourdhui: [opp("inspection", "I1", "aujourdhui", { titre: "Inspection en attente — Léa Martin", meta: "Renault Kangoo · partagée depuis 2 jours" })], a_planifier: [] }),
+    priorites: [prio({ id: "r1", vehicule: "V308", raisonCle: "creneau_depasse", raison: "Travaux dépassés", rang: 5, cible: "atelier" })],
+    nommer, action,
+    resoudreVehicule: (o) => (o.sourceType === "inspection" ? kangoo : null),
+  });
+  const c = compterATraiter(lignes);
+  assert.equal(c.actions, 2);
+  assert.equal(c.vehicules, 2);
+  assert.equal(c.fiable, true);
+});
+
+test("l'inspection prend la hiérarchie d'une intervention", () => {
+  const [l] = construireATraiter({
+    opportunites: paquet({ maintenant: [], aujourdhui: [opp("inspection", "I1", "aujourdhui", { titre: "Inspection en attente — Léa Martin", meta: "Renault Kangoo · partagée depuis 2 jours" })], a_planifier: [] }),
+    priorites: [], nommer, action,
+    resoudreVehicule: () => kangoo,
+  });
+  assert.equal(l.titre, "CD-404-EF", "la plaque d'abord");
+  assert.equal(l.sujet, "Renault Kangoo · Léa Martin", "modèle et client en secondaire");
+  assert.equal(l.probleme, "Inspection en attente · partagée depuis 2 jours", "le geste et son ancienneté, sans répéter voiture ni client");
+});
+
+test("sans plaque, le modèle devient le titre", () => {
+  const [l] = construireATraiter({
+    opportunites: paquet({ maintenant: [], aujourdhui: [opp("inspection", "I1", "aujourdhui", { titre: "Inspection en attente — Léa Martin", meta: "Renault Kangoo · partagée depuis 2 jours" })], a_planifier: [] }),
+    priorites: [], nommer, action,
+    resoudreVehicule: () => ({ ...kangoo, plaque: null }),
+  });
+  assert.equal(l.titre, "Renault Kangoo");
+  assert.equal(l.sujet, "Léa Martin");
+});
+
+test("une demande sans véhicule garde son intitulé et ne crée pas de voiture", () => {
+  const [l] = construireATraiter({
+    opportunites: paquet({ maintenant: [opp("demande", "D1", "maintenant", { titre: "Nouvelle demande Gmail — Paul Morel", meta: "reçu il y a 9h · Voyant moteur" })], aujourdhui: [], a_planifier: [] }),
+    priorites: [], nommer, action,
+    resoudreVehicule: () => ({ id: null }),
+  });
+  assert.equal(l.titre, "Nouvelle demande Gmail — Paul Morel");
+  assert.equal(l.vehiculeId, null);
+  const c = compterATraiter([l]);
+  assert.equal(c.vehicules, 0);
+  assert.equal(c.fiable, true, "on SAIT qu'elle n'a pas de voiture");
+});
+
+test("plusieurs tâches d'un même véhicule, toutes sources : une seule voiture", () => {
+  const lignes = construireATraiter({
+    opportunites: paquet({ maintenant: [], aujourdhui: [
+      opp("inspection", "I1", "aujourdhui", { titre: "Inspection en attente — Étienne Vasseur", meta: "Renault Clio IV · partagée depuis 2 jours" }),
+      opp("travail_differe", "T1", "aujourdhui", { titre: "Disques arrière à remplacer", meta: "Étienne Vasseur · Renault Clio IV · reporté depuis 4 jours" }),
+    ], a_planifier: [] }),
+    priorites: [
+      prio({ id: "r1", vehicule: "VCLIO", debut: "2026-03-17T09:00:00+01:00" }),
+      prio({ id: "r2", vehicule: "VCLIO", debut: "2026-07-30T09:00:00+02:00" }),
+    ],
+    nommer, action,
+    resoudreVehicule: () => clio,
+  });
+  const c = compterATraiter(lignes);
+  assert.equal(c.actions, 4, "aucune tâche ne disparaît");
+  assert.equal(c.vehicules, 1, "dédoublonné par identifiant");
+  const travail = lignes.find((l) => l.sourceType === "travail_differe");
+  assert.equal(travail.titre, "BB-202-BB");
+  assert.equal(travail.probleme, "Disques arrière à remplacer · reporté depuis 4 jours");
+});
+
+test("une source dont on ignore le véhicule rend le compte de voitures non fiable", () => {
+  const lignes = construireATraiter({
+    opportunites: paquet({ maintenant: [], aujourdhui: [opp("proposition", "P1")], a_planifier: [] }),
+    priorites: [prio({ id: "r1", vehicule: "V1" })],
+    nommer, action,
+    resoudreVehicule: () => null,
+  });
+  assert.equal(compterATraiter(lignes).fiable, false);
 });
