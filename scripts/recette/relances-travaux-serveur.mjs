@@ -141,29 +141,43 @@ const relance = (await relancesDe(echu.id)).find((x) => x.statut === "a_relire")
 }
 
 // D. Réservation et résultat.
+//
+// LA RÉSERVATION EST BORNÉE AU GARAGE, PAS AU SCRIPT
+//
+// Joué le 14 septembre 2026 avec une relance autorisée depuis l'écran dans le
+// même garage : la réservation l'a prise (c'est son rôle) et l'a passée
+// `envoi_en_cours`, que rien ne recycle. Une recette ne réserve jamais le
+// travail autorisé de quelqu'un d'autre : si le garage en porte, cette
+// section refuse de tourner et dit lesquelles, au lieu d'en abîmer l'état.
 console.log("D. Réservation, blocage, résultat");
-{
+const { data: etrangeres } = await admin.from("relances_travaux").select("id, statut, travail_differe_id")
+  .eq("garage_id", garageId).in("statut", ["en_attente", "envoi_en_cours"]).neq("id", relance.id);
+if ((etrangeres || []).length > 0) {
+  console.log(`  ⚠ section D NON JOUÉE : ${etrangeres.length} relance(s) autorisée(s) hors de ce script dans le garage (${etrangeres.map((x) => `${x.id} ${x.statut}`).join(", ")}).`);
+  console.log("    Les réserver les ferait passer « envoi en cours ». Mettez-les de côté ou jouez sur un garage sans relance autorisée.");
+  total += 1;
+} else {
   // Le texte change EN BASE après l'autorisation (par la clé de service, pour
   // simuler une dérive) : la réservation doit le mettre de côté.
   await admin.from("relances_travaux").update({ texte: "texte modifié après autorisation" }).eq("id", relance.id);
   const r1 = await admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId] });
   const etat1 = (await relancesDe(echu.id)).find((x) => x.id === relance.id);
-  verifier("message modifié après validation → bloqué, non réservé", !r1.error && r1.data.length === 0 && etat1.statut === "bloque" && /message a changé/.test(etat1.derniere_erreur || ""), JSON.stringify(r1.data || r1.error) + " " + etat1.statut);
+  verifier("message modifié après validation → bloqué, non réservé", !r1.error && !(r1.data || []).some((x) => x.id === relance.id) && etat1.statut === "bloque" && /message a changé/.test(etat1.derniere_erreur || ""), JSON.stringify(r1.data || r1.error) + " " + etat1.statut);
   const reA = await accueil.rpc("autoriser_envoi_relance_travail", { p_relance_id: relance.id, p_destinataire: client.email });
   verifier("revalidation à la main → en_attente", reA.data?.ok === true);
   const [r2, r3] = await Promise.all([
     admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId] }),
     admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId] }),
   ]);
-  const prises = [...(r2.data || []), ...(r3.data || [])];
-  verifier("deux réservations simultanées → une seule prise", prises.length === 1 && prises[0].id === relance.id, `${prises.length}`);
+  const prises = [...(r2.data || []), ...(r3.data || [])].filter((x) => x.id === relance.id);
+  verifier("deux réservations simultanées → une seule prise", prises.length === 1, `${prises.length}`);
   verifier("la ligne réservée porte sujet, texte, destinataire, garage", prises[0]?.sujet && prises[0]?.texte && prises[0]?.destinataire === client.email && prises[0]?.expediteur_nom);
   const r4 = await admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId] });
-  verifier("envoi_en_cours n'est jamais repris par une réservation suivante", (r4.data || []).length === 0);
+  verifier("envoi_en_cours n'est jamais repris par une réservation suivante", !(r4.data || []).some((x) => x.id === relance.id));
   await admin.rpc("terminer_relance_travail", { p_id: relance.id, p_resultat: "a_reprendre", p_motif: "refus du fournisseur (simulé)" });
   verifier("a_reprendre → en_attente, tentative comptée", (await relancesDe(echu.id)).find((x) => x.id === relance.id)?.statut === "en_attente" && (await relancesDe(echu.id)).find((x) => x.id === relance.id)?.tentatives === 1);
   const r5 = await admin.rpc("reserver_relances_travaux", { p_limite: 10, p_garages: [garageId] });
-  verifier("reprise : réservée à nouveau", (r5.data || []).length === 1);
+  verifier("reprise : réservée à nouveau", (r5.data || []).filter((x) => x.id === relance.id).length === 1);
   await admin.rpc("terminer_relance_travail", { p_id: relance.id, p_resultat: "envoye", p_motif: "transport simulé (recette) : aucun message réel n'est parti" });
   const fin = (await relancesDe(echu.id)).find((x) => x.id === relance.id);
   verifier("résultat : envoye, avec le motif « simulé »", fin.statut === "envoye" && fin.envoye === true && /simulé/.test(fin.derniere_erreur || ""));

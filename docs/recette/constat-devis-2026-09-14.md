@@ -34,7 +34,29 @@ depuis le worktree). Aucun mot de passe.
 | Unitaires (tout le dépôt) | `node --test $(find components lib -name "*.test.js")` | **491 / 491** |
 | Constat → devis, serveur | `node scripts/recette/constat-devis-serveur.mjs <garage>` | **31 / 31** |
 | Modèles de travaux, serveur | `node scripts/recette/modeles-travaux-serveur.mjs <garage>` | **25 / 25** |
-| Suivi partagé + relances, serveur | `node scripts/recette/relances-travaux-serveur.mjs <garage>` | **32 / 32** |
+| Suivi partagé + relances, serveur | `node scripts/recette/relances-travaux-serveur.mjs <garage>` | **32 / 32** (rejoué après `000500`) |
+| Migrations sur le schéma de **Production** (base jetable) | `bash docs/recette/base-jetable-2026-09-14.sh` | **5 migrations OK, 53 / 53** |
+
+Les trois scripts serveur ont été **rejoués après `20260919000500`** :
+31/31, 25/25, 32/32.
+
+### Deux écarts trouvés par les preuves elles-mêmes
+
+1. **Privilège d'écriture resté ouvert** (base jetable, 1 KO sur 42 au premier
+   passage) : `authenticated` gardait insert/update/delete sur
+   `devis_reprises`, `devis_insertions_modeles` et `relances_travaux` —
+   privilèges accordés par défaut par Supabase, que les migrations ne
+   retiraient pas. La RLS refusait déjà ces écritures (seule une politique de
+   lecture existe). `20260919000500` ferme aussi le privilège ; vérifié sur
+   Test (insert/update/delete : faux, select : vrai) et sur la base jetable.
+2. **Isolation insuffisante du script de relances** : la réservation est
+   bornée au garage, pas au script. Au second passage, elle a pris la relance
+   autorisée **depuis l'écran** (`fb259234…`) et l'a passée `envoi_en_cours`.
+   Aucun transport n'a eu lieu. Réparé à la main, en le disant :
+   `terminer_relance_travail(…, 'bloque', « réservée par erreur par le script
+   de recette… aucun transport »)`. Le script refuse désormais de jouer la
+   section réservation si le garage porte une autre relance autorisée, et
+   n'affirme plus que sur sa propre ligne.
 
 Les scripts serveur ouvrent de **vraies sessions** (lien magique + OTP) et
 n'utilisent la clé de service que pour lire l'état ou jouer le rôle de n8n.
@@ -70,8 +92,15 @@ jamais repris.
 6. Paramètres › Mon garage › **Modèles de travaux** → « Nouveau modèle »
    « Plaquettes avant », 3 lignes (dont une sans prix) → la liste affiche
    « 3 lignes · 153,00 € HT + 1 à renseigner ».
-7. **Accueil** — Aujourd'hui : la ligne « Pneus arrière à remplacer » (travail
-   différé échu, relance préparée) — voir §Relances ci-dessous.
+7. **Accueil** — Aujourd'hui (liste complète) : la ligne « Pneus arrière à
+   remplacer · reporté depuis 3 jours · relance préparée, à relire » porte le
+   bouton **« Relire la relance »**. La fenêtre montre travail, échéance,
+   destinataire (`claire.fontaine@nexora-recette.invalid`), sujet et message
+   composés en base. **« Autoriser l'envoi »** → message « Elle partira au
+   prochain passage » ; la ligne dit « relance autorisée, départ en attente ».
+   Vérifié en base : `en_attente`, `autorise_par` = le compte accueil,
+   `envoye = false`. Rien n'est parti (aucun workflow n'a tourné).
+   _État actuel de cette relance : `bloque`_, voir l'écart n° 2 ci-dessus.
 
 Comptage avant / après, pour ce parcours (deux constats) : **avant**, aller
 dans Devis, choisir client puis véhicule, retaper deux libellés et deux
@@ -83,7 +112,11 @@ Aucun gain en minutes n'est avancé.
 ## Mobile
 
 Captures headless à **430** et **375** px :
-`docs/recette/captures/constat-devis-2026-09-14/saisie-controle-{430,375}.png`.
+`docs/recette/captures/constat-devis-2026-09-14/saisie-controle-{430,375}.png`
+et `preparer-devis-375.png` (compte accueil, ouvert par la vraie recherche →
+dossier → bouton) : fenêtre ouverte, titre visible, **0 élément** au-delà de
+la largeur, point refusé décoché avec sa raison, bouton « Créer le devis »
+atteignable en bas.
 
 Deux défauts trouvés et corrigés :
 
