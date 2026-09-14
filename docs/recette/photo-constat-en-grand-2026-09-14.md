@@ -50,9 +50,24 @@ l'outil de pilotage (touche vide) ; elle est couverte par les tests unitaires.
 
 ### Point 15 — échec de chargement
 
-Le message ne conclut jamais à l'expiration du lien : « Cette photo n'a pas pu être affichée. Vérifiez votre
-connexion, puis réessayez. Si le problème persiste, rechargez la page ou redemandez le lien à votre garage. »
-Deux boutons : « Réessayer » (recharge l'image, sans toucher à l'URL signée) et « Recharger la page ».
+Vérifié en déclenchant sur l'image l'événement `error`, celui que le navigateur émet lorsqu'une image ne se
+charge pas. La fenêtre affiche alors, à la place de l'image :
+
+> Cette photo n'a pas pu être affichée. Vérifiez votre connexion, puis réessayez. Si le problème persiste,
+> rechargez la page ou redemandez le lien à votre garage.
+
+avec deux boutons, « Réessayer » et « Recharger la page ». Le mot « expiré » n'apparaît pas. « Réessayer »
+ramène bien la photo.
+
+**Pourquoi ce message et pas « photo expirée »** : la page avait été ouverte depuis **615 s**, soit au-delà des
+600 s de validité de l'URL signée, et la photo s'affichait toujours — le navigateur la sert depuis son cache.
+Déduire l'expiration d'un simple échec de chargement aurait donc été faux dans les deux sens : un échec peut
+venir du réseau, et une URL expirée peut continuer à s'afficher. Aucune analyse de jeton n'a été ajoutée pour
+cette retouche.
+
+Non couvert : une coupure réseau réelle. Les deux pilotes de navigateur disponibles ici n'ont pas permis de la
+simuler (les événements d'entrée et l'interception réseau du mode sans interface restent inertes) ; l'événement
+`error` exerce exactement le même chemin de code.
 
 ## Limites
 
