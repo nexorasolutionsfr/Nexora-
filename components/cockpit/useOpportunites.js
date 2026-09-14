@@ -23,20 +23,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { deriveOpportunites } from "./deriveOpportunites";
 
-export function useOpportunites({ garageId, proprietaireUserId = null, donnees = {}, handlers = {}, onToast }) {
-  // Le journal n'est lisible et écrivable que par le PROPRIÉTAIRE du garage
-  // (policy `opportunites_actions_isolation`). On résout donc le compte
-  // courant ici plutôt que de proposer des commandes qui échoueraient en
-  // silence. Pour les autres comptes, rien n'est masqué : aucune tâche perdue.
-  const [estProprietaire, setEstProprietaire] = useState(false);
-  useEffect(() => {
-    let annule = false;
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!annule) setEstProprietaire(Boolean(proprietaireUserId && data?.user?.id === proprietaireUserId));
-    })();
-    return () => { annule = true; };
-  }, [proprietaireUserId]);
+export function useOpportunites({ garageId, peutSuivre = false, donnees = {}, handlers = {}, onToast }) {
+  // LE SUIVI EST CELUI DE L'ÉQUIPE
+  //
+  // Jusqu'au 2026-09-19, le journal n'était lisible que par le propriétaire :
+  // l'accueil voyait une ligne que le dirigeant avait marquée traitée, et ses
+  // propres gestes échouaient. La politique repose désormais sur
+  // `a_acces_garage(garage, 'dirigeant', 'accueil')` (migration
+  // 20260919000300) : adhésion active et rôle, vérifiés à chaque requête.
+  // `peutSuivre` n'est qu'un reflet d'affichage de ce rôle ; la base tranche.
+  const estProprietaire = Boolean(peutSuivre);
 
   const [inspections, setInspections] = useState([]);
   const [actions, setActions] = useState([]);

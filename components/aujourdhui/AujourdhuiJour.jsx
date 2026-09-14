@@ -28,6 +28,7 @@ import { filVehicule } from "../atelier/filVehicule";
 import { devisDeLaVisite } from "../vehicle-case-file/calculs";
 import { classerPriorites, compterLeGarage } from "./priorites";
 import { compterATraiter, construireATraiter, decouper } from "./aTraiter";
+import RelanceTravailModal, { useRelancesTravaux } from "./RelanceTravail";
 
 const ACCENT = "#3D6BE0";
 const LIMITE = 6;
@@ -183,8 +184,16 @@ export default function AujourdhuiJour({
   inspections = [],
   // Le badge « Aujourd'hui » reçoit le nombre d'actions de CETTE liste.
   onCompte,
+  // Les relances préparées pour les travaux différés (20260919000400).
+  garageId = null,
+  onToast,
 }) {
   const maintenant = new Date();
+  // Une relance préparée ne crée pas de ligne de plus : elle devient le GESTE
+  // de la ligne « travail différé » qui existe déjà. Même source, même
+  // identité, une seule tâche.
+  const { parTravail: relancesParTravail, recharger: rechargerRelances } = useRelancesTravaux(garageId, Boolean(garageId && journalDisponible));
+  const [relanceOuverte, setRelanceOuverte] = useState(null);
 
   // LE DEVIS D'UNE VISITE NE SE DEVINE PAS
   // La première version prenait « le premier devis non refusé du véhicule » :
@@ -315,6 +324,13 @@ export default function AujourdhuiJour({
     })), [travauxDifferes]);
 
   const agir = (l) => {
+    // Un travail différé dont la relance est prête à relire : on ouvre la
+    // relance, avec la voiture et le client. Sans relance, rien ne change.
+    const relance = l.sourceType === "travail_differe" ? relancesParTravail.get(l.sourceId) : null;
+    if (relance && ["a_relire", "bloque"].includes(relance.statut)) {
+      setRelanceOuverte({ relance, travail: lignesParSource.travail_differe.get(l.sourceId) || null });
+      return;
+    }
     if (l.origine === "cockpit") {
       // Seules les lignes de devis mènent au dossier du véhicule, comme avant :
       // connaître la voiture d'une inspection ou d'une demande ne change pas
@@ -441,7 +457,16 @@ export default function AujourdhuiJour({
           {visibles.map((l) => (
             <LigneATraiter
               key={l.cle}
-              ligne={l}
+              ligne={(() => {
+                const r = l.sourceType === "travail_differe" ? relancesParTravail.get(l.sourceId) : null;
+                if (!r) return l;
+                if (r.statut === "a_relire") return { ...l, actionLibelle: "Relire la relance", probleme: `${l.probleme || ""} · relance préparée, à relire`.replace(/^ · /, "") };
+                if (r.statut === "bloque") return { ...l, actionLibelle: "Revoir la relance", probleme: `${l.probleme || ""} · relance mise de côté`.replace(/^ · /, "") };
+                if (r.statut === "en_attente") return { ...l, probleme: `${l.probleme || ""} · relance autorisée, départ en attente`.replace(/^ · /, "") };
+                if (r.statut === "envoi_en_cours") return { ...l, probleme: `${l.probleme || ""} · relance : envoi à vérifier`.replace(/^ · /, "") };
+                if (r.statut === "envoye") return { ...l, probleme: `${l.probleme || ""} · relance envoyée le ${new Date(r.updated_at).toLocaleDateString("fr-FR")}`.replace(/^ · /, "") };
+                return l;
+              })()}
               onAction={agir}
               onTraiter={onTraiter}
               onReporter={onReporter}
@@ -491,6 +516,16 @@ export default function AujourdhuiJour({
           </button>
         )}
       </div>
+
+      {relanceOuverte && (
+        <RelanceTravailModal
+          relance={relanceOuverte.relance}
+          travail={relanceOuverte.travail}
+          onToast={onToast}
+          onChange={rechargerRelances}
+          onFermer={() => setRelanceOuverte(null)}
+        />
+      )}
     </div>
   );
 }
@@ -519,7 +554,7 @@ function SuiviReporte({ masquees, relancesAVenir = [], onReactiver, journalDispo
           ))}
           {!journalDisponible && (
             <div className="px-3 py-2.5 text-[11.5px] text-slate-500">
-              Le suivi traité/reporté est réservé au propriétaire du garage.
+              Le suivi traité/reporté est réservé au dirigeant et à l'accueil.
             </div>
           )}
           {total === 0 ? (

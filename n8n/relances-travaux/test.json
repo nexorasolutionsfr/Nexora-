@@ -1,0 +1,231 @@
+{
+  "name": "Relances travaux différés (TEST — transport simulé)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        }
+      },
+      "name": "Toutes les 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slawilafseganlbghgwx.supabase.co/rest/v1/rpc/preparer_relances_travaux",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"p_garages\": [\"31578a46-deba-4dd6-9487-7f2d876ec00f\"]}",
+        "options": {}
+      },
+      "name": "Préparer les relances",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        300
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "BmVzKJSWPhAJ5V3Z",
+          "name": "RPC Supabase RECETTE (Test)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slawilafseganlbghgwx.supabase.co/rest/v1/rpc/reserver_relances_travaux",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"p_limite\": 10, \"p_garages\": [\"31578a46-deba-4dd6-9487-7f2d876ec00f\"]}",
+        "options": {}
+      },
+      "name": "Réserver les relances autorisées",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "BmVzKJSWPhAJ5V3Z",
+          "name": "RPC Supabase RECETTE (Test)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Une relance à la fois",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// FAUX FOURNISSEUR — recette. N'envoie rien, ne contacte rien.\n// Refuse tout destinataire hors des boîtes de recette (.invalid),\n// pour qu'une erreur de jeu ne parte jamais vers une vraie adresse.\nconst r = $('Une relance à la fois').item.json;\nconst dest = String(r.destinataire || '');\nif (!/@[a-z0-9.-]+\\.invalid$/i.test(dest)) {\n  return [{ json: { id: r.id, resultat: 'bloque', motif: 'destinataire hors des boîtes de recette autorisées' } }];\n}\nreturn [{ json: { id: r.id, resultat: 'envoye', motif: 'transport simulé (recette) : aucun message réel n\\'est parti', sujet: r.sujet, apercu: String(r.texte).slice(0, 120) } }];"
+      },
+      "name": "Transport simulé (recette)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slawilafseganlbghgwx.supabase.co/rest/v1/rpc/terminer_relance_travail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_id\": \"{{ $json.id }}\", \"p_resultat\": \"{{ $json.resultat }}\", \"p_motif\": {{ $json.motif === null || $json.motif === undefined ? 'null' : JSON.stringify($json.motif) }}}",
+        "options": {}
+      },
+      "name": "Clore la relance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        300
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "BmVzKJSWPhAJ5V3Z",
+          "name": "RPC Supabase RECETTE (Test)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Toutes les 15 minutes": {
+      "main": [
+        [
+          {
+            "node": "Préparer les relances",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Préparer les relances": {
+      "main": [
+        [
+          {
+            "node": "Réserver les relances autorisées",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Réserver les relances autorisées": {
+      "main": [
+        [
+          {
+            "node": "Une relance à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Une relance à la fois": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Transport simulé (recette)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transport simulé (recette)": {
+      "main": [
+        [
+          {
+            "node": "Clore la relance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clore la relance": {
+      "main": [
+        [
+          {
+            "node": "Une relance à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "id": "relancestravauxtest0000001",
+  "meta": {
+    "instanceId": ""
+  },
+  "tags": []
+}

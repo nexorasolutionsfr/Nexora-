@@ -19,6 +19,7 @@ import {
   PHOTOS_BUCKET,
 } from "./inspectionsConstants";
 import InspectionCaptureFlow from "./InspectionCaptureFlow";
+import Portail from "../garage-os/Portail";
 
 function Badge({ children, tone = "slate" }) {
   const tones = {
@@ -442,7 +443,10 @@ function InspectionDetail({ garageId, garageNom, inspectionId, onClose, onToast,
 
   const estVerrouillee = !!inspection.verrouille_le;
 
+  // Rendue dans le body (voir garage-os/Portail.jsx) : sinon, sur téléphone,
+  // l'en-tête de page recouvre le haut de la fenêtre.
   return (
+    <Portail>
     <div className="fixed inset-0 bg-black/40 z-50 flex items-stretch sm:items-center sm:justify-center">
       <div className="bg-white w-full sm:max-w-2xl sm:rounded-2xl sm:max-h-[92vh] h-full sm:h-auto flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
@@ -542,6 +546,7 @@ function InspectionDetail({ garageId, garageNom, inspectionId, onClose, onToast,
       )}
       {reouvrirOpen && <ReouvrirModal onClose={() => setReouvrirOpen(false)} onConfirm={reouvrir} submitting={busy} />}
     </div>
+    </Portail>
   );
 }
 

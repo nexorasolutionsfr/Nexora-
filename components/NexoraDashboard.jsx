@@ -1897,7 +1897,8 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, or
     inspections: inspectionsOpportunites,
   } = useOpportunites({
     garageId,
-    proprietaireUserId: garageData?.owner_user_id || null,
+    // Dirigeant et accueil partagent le suivi (20260919000300).
+    peutSuivre: peutFacturer(monRole),
     donnees: donneesOpportunites,
     handlers: handlersOpportunites,
     onToast,
@@ -2060,6 +2061,8 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, or
           propositions={propositions}
           inspections={inspectionsOpportunites}
           onCompte={onCompteAujourdhui}
+          garageId={garageId}
+          onToast={onToast}
         />
       </div>
 

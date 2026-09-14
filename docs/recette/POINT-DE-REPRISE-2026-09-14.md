@@ -6,42 +6,43 @@ Mis à jour aux frontières de lots. Sert à continuer dans une autre session.
 
 - Branche d'intégration : `integ/constat-devis-suivi`, worktree
   `…/nexora-constat-devis`, créée depuis `origin/main` = `15eead5` (PR #100).
+  Commits : `d8d16b9` (lots 0+1), `e3806b7` (lot 2 + largeur mobile).
 - `.env.local` copié depuis `nexora-video-controle-photo` : vise **Test**
   (`slawilafseganlbghgwx`). `node_modules` copié (pas de lien symbolique).
 - Serveur de dev : `.claude/launch.json` de `~/Downloads`, config
   `nexora-constat-devis`, port 3000.
 - Miroir Supabase jetable : `scratchpad/miroir-test` (lié à Test, dossier
   `supabase/migrations` vidé après chaque push).
+- Migrations **appliquées sur Test** : `20260919000100_constat_vers_devis`,
+  `20260919000200_modeles_de_travaux`. Rien en Production.
 
-## Lot courant : 1 (constat → devis) — lot 0 en cours dans la même PR
+## Lots 0, 1, 2 : implémentés et recettés sur Test
 
-### Fait
-- Inventaire (schéma Test dumpé : `scratchpad/miroir-test/schema-test-public.sql`).
-- Défaut « inspection modifiée sans effet » **reproduit** : rôle `mecanicien`
-  → UPDATE 204, 0 ligne, aucune erreur ; dirigeant/accueil sur contrôle
-  verrouillé → erreur levée mais l'écran garde la valeur optimiste.
-- Migration `20260919000100_constat_vers_devis.sql` écrite et **appliquée sur
-  Test** (dry-run puis push, 14 sept.).
-- Jeu de recette `scripts/recette/jeu-constat-devis.mjs` (garage « PROTO
-  Constat … »).
+- Jeu : `scripts/recette/jeu-constat-devis.mjs creer` → garage « PROTO Constat
+  2026-09-14-16h26 » (`31578a46-deba-4dd6-9487-7f2d876ec00f`), comptes
+  `recette.constat[.accueil|.meca|.revoque].2026091416h26@nexora-recette.invalid`.
+- Serveur : `constat-devis-serveur.mjs` 31/31, `modeles-travaux-serveur.mjs` 25/25.
+- Unitaires : `node --test $(find components lib -name "*.test.js")` → 491/491.
+- Écran (navigateur intégré, dirigeant) : dossier BA-101-AA → « Préparer le
+  devis depuis le constat » → devis complété (2 lignes à chiffrer, photo) →
+  chiffrage → pièce rattachée au constat → blocs d'envoi revenus. Modèle
+  « Plaquettes avant » créé dans Paramètres.
+- Mobile : captures headless 430/375 dans
+  `docs/recette/captures/constat-devis-2026-09-14/` ; le débordement venait de
+  l'en-tête (548 px), corrigé.
+
+## Lot courant : 3 (suivi commun, préparation de suivi, inventaire n8n)
 
 ### Prochaine action
-- Écran : bouton « Préparer le devis » dans le dossier véhicule + fenêtre de
-  reprise (`components/devis-lignes/PreparerDevisDepuisConstat.jsx`) ; état
-  « Prix à renseigner » dans `DevisLignesEditor` ; suppression du `find` par
-  `vehicule_id` (`AujourdhuiJour.jsx:189`, `NexoraDashboard.jsx:6656`) au
-  profit de `devis.rendez_vous_id` / `ordre.devis_id`.
-- Lot 0 : `InspectionsSection.jsx` — sauvegardes avec `.select()` et retour
-  arrière de l'état optimiste ; modale de saisie à 375/430 px.
-
-### Tests accomplis
-- Aucun test automatisé encore lancé sur cette branche.
+- Recette écran de « Ajouter un modèle » / « Enregistrer comme modèle » (Devis).
+- Rédiger `docs/recette/constat-devis-2026-09-14.md` (lots 0-2).
+- Lot 3A : policy `opportunites_actions` (dirigeant + accueil actif),
+  préparation de suivi des travaux différés (migration `20260919000300`),
+  inventaire n8n (`docs/architecture/plan-n8n-2026-09-14.md`).
 
 ### Blocages
 - Aucun.
 
-## Lots suivants
-- Lot 2 : modèles de travaux (migration `20260919000200`).
-- Lot 3 : suivi partagé (`opportunites_actions`), préparation de suivi des
-  travaux différés, inventaire n8n.
-- Lot 4 : conditionnel.
+## Reste après (non commencé)
+- Lot 4 (import CSV) conditionnel.
+- Feuille de route unique, proposition de publication, compte rendu.
