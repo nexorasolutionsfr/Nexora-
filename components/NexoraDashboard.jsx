@@ -1,6 +1,7 @@
 
 "use client"; import { supabase } from "@/lib/supabase";
 import DevisLignesEditor from "./devis-lignes/DevisLignesEditor";
+import OppositionRelances from "./clients/OppositionRelances";
 import ModelesTravauxSection from "./devis-lignes/ModelesTravauxSection";
 import { calculerLigne, calculerTotaux, devisALignes, devisChiffrageIncomplet, formatEuro, preremplirDepuisPrestation } from "./devis-lignes/calculs";
 
@@ -4376,7 +4377,7 @@ const TRAVAIL_DIFFERE_STATUT_LABEL = {
   refus_definitif: "Refus définitif",
 };
 
-function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], travauxDifferes = [], onCreerDevis, onCreerClient, onCreerVehicule, onCreerRdv, onOuvrirTravailDiffereModal, onToast, onOuvrirDossierVehicule, ouvrirCreation = false, onCreationOuverte, onImporterFichier = null }) {
+function ClientsView({ clients = [], rendezVous = [], prestations = [], factures = [], travauxDifferes = [], onCreerDevis, onCreerClient, onCreerVehicule, onCreerRdv, onOuvrirTravailDiffereModal, onToast, onOuvrirDossierVehicule, ouvrirCreation = false, onCreationOuverte, onImporterFichier = null, garageId = null, proprietaireId = null }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [devisModalOpen, setDevisModalOpen] = useState(false);
@@ -4562,6 +4563,12 @@ function ClientsView({ clients = [], rendezVous = [], prestations = [], factures
           <Phone size={14} className="text-slate-400" /> {formatPhone(selected?.telephone)}
           <div className="flex items-center gap-2 text-sm text-slate-600"><Mail size={14} className="text-slate-400" /> {selected?.email || <span className="text-slate-400">Pas d&apos;e-mail : le devis ne pourra pas lui être envoyé par e-mail.</span>}</div>
         </div>
+
+        {/* Prérequis des relances de travaux différés : l'opposition du client
+            s'enregistre ici et la base la respecte (client_oppose_relances). */}
+        {selected && garageId && (
+          <OppositionRelances key={selected.id} garageId={garageId} clientId={selected.id} proprietaireId={proprietaireId} onToast={onToast} />
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6">
           <div className="bg-slate-50 rounded-xl p-3.5"><div className="text-[12px] text-slate-500">Dernière visite</div><div className="font-semibold text-slate-800 text-sm mt-1">{derniereVisite || "Aucune visite enregistrée"}</div></div>
@@ -7730,6 +7737,8 @@ if (updateError) {
               onOuvrirDossierVehicule={ouvrirDossierVehicule}
               ouvrirCreation={creationDemandee === "client"}
               onCreationOuverte={() => setCreationDemandee(null)}
+              garageId={garageId}
+              proprietaireId={garageData?.owner_user_id || null}
             />
           )}
           {INSPECTIONS_MODULE_ACTIF && view === "inspections" && <InspectionsSection garageId={garageId} garageNom={garageData?.nom_garage} clients={clients} rendezVous={rendezVous} onToast={flashToast} initialDetailId={inspectionCibleCockpit} onInitialDetailConsumed={() => setInspectionCibleCockpit(null)} />}
