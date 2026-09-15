@@ -4095,6 +4095,7 @@ function imprimerFacture(facture, garageData) {
 
 function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer, onMarquerPayee, onSauvegarder, facturesLiens = {}, facturesBusyId, onGenererLien, onRevoquerLien, onToast }) {
   const [factureOuverte, setFactureOuverte] = useState(null);
+  const [generationEnCours, setGenerationEnCours] = useState(null);
   const [query, setQuery] = useState("");
   const [periode, setPeriode] = useState("toutes");
   const [categorie, setCategorie] = useState("toutes");
@@ -4140,8 +4141,18 @@ function FacturesView({ rendezVous, factures, prestations, garageData, onGenerer
                   <div className="font-medium text-slate-900 text-[14px]">{r.client}</div>
                   <div className="text-[12.5px] text-slate-500">{[r.vehicule, r.immatriculation, r.prestation].filter(Boolean).join(" · ")}</div>
                 </div>
-                <button onClick={async () => { const f = await onGenerer(r); if (f) setFactureOuverte(f); }} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl" style={{ backgroundColor: ACCENT }}>
-                  <ReceiptText size={15} /> Générer la facture
+                <button
+                  type="button"
+                  disabled={generationEnCours === r.id}
+                  onClick={async () => {
+                    if (generationEnCours) return;
+                    setGenerationEnCours(r.id);
+                    try { const f = await onGenerer(r); if (f) setFactureOuverte(f); } finally { setGenerationEnCours(null); }
+                  }}
+                  className="flex items-center gap-1.5 min-h-[40px] text-sm font-medium text-white px-4 py-2 rounded-xl disabled:opacity-60"
+                  style={{ backgroundColor: ACCENT }}
+                >
+                  <ReceiptText size={15} /> {generationEnCours === r.id ? "Génération…" : "Générer la facture"}
                 </button>
               </div>
             ))}
@@ -6735,7 +6746,28 @@ if (updateError) {
   // condition était toujours fausse et le montant retombait sur un prix de
   // catalogue absent, d'où des factures à 0 € (recette du 2026-09-04).
   // Voir docs/architecture/recette-pilote-corrections-v1.md, section C.
+  // UNE VISITE, UNE FACTURE — MÊME SUR UN DOUBLE CLIC
+  //
+  // Reproduit sur Test le 15 septembre 2026 (BB-202-BB, visite du 31 juillet) :
+  // deux clics rapides sur « Générer la facture » ont créé F-2026-0003 et
+  // F-2026-0004 à 20 ms d'écart, pour la même intervention. Rien en base ne
+  // l'interdit (ni contrainte, ni trigger) et le bouton restait actif. Deux
+  // gardes ici : un seul traitement à la fois par visite, et une relecture
+  // juste avant l'insertion. Elles ne couvrent pas deux onglets ou deux
+  // postes au même instant — ce verrou-là appartient à la base (décision
+  // documentée dans la recette du lot 2).
+  const facturesEnCours = useRef(new Set());
   const handleGenererFacture = async (rdv) => {
+    if (!rdv?.id || facturesEnCours.current.has(rdv.id)) return null;
+    facturesEnCours.current.add(rdv.id);
+    try {
+      return await genererFactureUneFois(rdv);
+    } finally {
+      facturesEnCours.current.delete(rdv.id);
+    }
+  };
+
+  const genererFactureUneFois = async (rdv) => {
     const { data: ordre, error: ordreError } = await supabase
       .from("ordres_reparation")
       .select("id, statut, devis_id")
@@ -6798,6 +6830,25 @@ if (updateError) {
     const montantHt = totaux.total_ht;
     const montantTtc = totaux.total_ttc;
 
+    // La liste affichée peut dater : un autre poste a pu facturer entre-temps.
+    const { data: dejaFacturee, error: dejaError } = await supabase
+      .from("factures")
+      .select("*, clients (nom, telephone, email), vehicules (marque, modele, immatriculation)")
+      .eq("garage_id", garageId)
+      .eq("rendez_vous_id", rdv.id)
+      .limit(1);
+    if (dejaError) {
+      console.error("Erreur vérification facture existante :", dejaError);
+      flashToast("Impossible de vérifier si ce rendez-vous est déjà facturé. Rien n'a été créé.", "error");
+      return null;
+    }
+    if (dejaFacturee?.length) {
+      const existante = dejaFacturee[0];
+      setFactures((prev) => (prev.some((f) => f.id === existante.id) ? prev : [existante, ...prev]));
+      flashToast(`Ce rendez-vous a déjà sa facture${existante.numero ? ` (${existante.numero})` : ""} : rien n'a été créé.`, "error");
+      return existante;
+    }
+
     const { data, error } = await supabase
       .from("factures")
       .insert({
@@ -6817,6 +6868,21 @@ if (updateError) {
       .single();
 
     if (error) {
+      // Refus posé par la base (20260920000100) : une autre demande — autre
+      // onglet, autre poste — a facturé cette fiche au même instant. On relit
+      // la facture qui existe, on ne dit pas « impossible ».
+      if (/a deja sa facture/i.test(error.message || "")) {
+        const { data: gagnante } = await supabase
+          .from("factures")
+          .select("*, clients (nom, telephone, email), vehicules (marque, modele, immatriculation)")
+          .eq("garage_id", garageId)
+          .eq("ordre_reparation_id", ordre.id)
+          .limit(1);
+        const existante = gagnante?.[0] || null;
+        if (existante) setFactures((prev) => (prev.some((f) => f.id === existante.id) ? prev : [existante, ...prev]));
+        flashToast(`Cette fiche atelier a déjà sa facture${existante?.numero ? ` (${existante.numero})` : ""} : rien n'a été créé.`, "error");
+        return existante;
+      }
       console.error("Erreur génération facture :", JSON.stringify(error, null, 2));
       flashToast("Impossible de générer la facture", "error");
       return;

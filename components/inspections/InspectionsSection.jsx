@@ -283,6 +283,8 @@ function InspectionDetail({ garageId, garageNom, inspectionId, onClose, onToast,
   // l'état précédent et on le dit. Le contrôle verrouillé reste verrouillé.
   const messageRefus = (error) => {
     if (error?.message?.includes("verrouillée")) return "Ce contrôle est verrouillé : rouvrez-le pour le modifier.";
+    if (/autre client/i.test(error?.message || "")) return "Ce véhicule appartient à un autre client que celui du contrôle : rien n'a été changé.";
+    if (/autre garage/i.test(error?.message || "")) return "Ce véhicule n'appartient pas à votre garage : rien n'a été changé.";
     if (!error) return "Modification refusée : vous n'avez plus accès à ce contrôle. Rechargez la page.";
     return "Impossible d'enregistrer cette modification";
   };
@@ -604,7 +606,13 @@ export default function InspectionsSection({ garageId, garageNom, clients = [], 
     setSubmittingCreate(false);
     if (error) {
       console.error("Erreur création inspection :", error);
-      flashToast("Impossible de créer ce contrôle", "error");
+      // Refus de cohérence posé en base (20260920000200) : on le nomme.
+      flashToast(
+        /autre client/i.test(error.message || "") ? "Ce véhicule appartient à un autre client : choisissez un véhicule de ce client."
+          : /autre garage/i.test(error.message || "") ? "Ce véhicule n'appartient pas à votre garage."
+          : "Impossible de créer ce contrôle",
+        "error",
+      );
       return;
     }
     setCreateOpen(false);
