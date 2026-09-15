@@ -47,6 +47,14 @@ comme fait que ce qui est listé sous « Fait ».**
 - `autoriser_envoi_relance_travail` reste appelable par un utilisateur
   authentifié **hors interface** : la ligne passerait `en_attente`, rien ne la
   réserve (aucun workflow). La fermer = une migration de plus.
+- **Avant toute activation future des relances** : inventorier les
+  autorisations déjà enregistrées par cette RPC encore accessible
+  (`relances_travaux` en `en_attente`, `bloque`, `envoi_en_cours`, avec
+  `autorise_le`, garage, destinataire), vérifier pour chacune sa validité
+  (empreinte, destinataire, opposition du client, travail toujours ouvert) et
+  son périmètre (garage volontaire seulement). **Aucune reprise ni
+  réautorisation automatique** : une autorisation douteuse est annulée ou
+  refaite par un geste du garage.
 - Activation des relances bloquée : opposition client à l'écran et dans le
   message, base légale, activation par garage, preuve de réception Brevo,
   hébergement hors du Mac.
