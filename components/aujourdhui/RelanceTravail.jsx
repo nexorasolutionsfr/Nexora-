@@ -13,6 +13,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Send, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import Portail, { garderLeFocus } from "../garage-os/Portail";
+import { CAPACITES } from "../parametres/capacites";
+
+// Faux tant que l'envoi de ces relances n'est pas prouvé ni encadré
+// (voir capacites.js) : la fenêtre ne propose alors pas « Autoriser l'envoi ».
+const envoiDisponible = CAPACITES.relanceTravauxDifferes.disponible;
 
 const ACCENT = "#3D6BE0";
 const NAVY = "#0F1B33";
@@ -134,6 +139,7 @@ export default function RelanceTravailModal({ relance, travail, onFermer, onChan
   };
 
   const autoriser = async () => {
+    if (!envoiDisponible) return;
     setBusy(true); setErreur(null);
     if (!(await enregistrerTexte())) { setBusy(false); return; }
     const { data, error } = await supabase.rpc("autoriser_envoi_relance_travail", { p_relance_id: relance.id, p_destinataire: email || "" });
@@ -206,7 +212,10 @@ export default function RelanceTravailModal({ relance, travail, onFermer, onChan
               {modifiable && texteModifie && (
                 <button type="button" onClick={sauvegarder} disabled={busy} className="min-h-[40px] px-3.5 rounded-xl text-[13px] font-medium border border-slate-200 text-slate-600">Enregistrer le texte</button>
               )}
-              {modifiable && (
+              {modifiable && !envoiDisponible && (
+                <span className="self-center text-[12.5px] text-slate-500">{CAPACITES.relanceTravauxDifferes.resume}</span>
+              )}
+              {modifiable && envoiDisponible && (
                 <button type="button" onClick={autoriser} disabled={busy || !email} className="min-h-[40px] px-4 rounded-xl text-[13px] font-semibold text-white disabled:opacity-50 inline-flex items-center gap-1.5" style={{ backgroundColor: NAVY }}>
                   <Send size={14} /> {busy ? "…" : "Autoriser l'envoi"}
                 </button>

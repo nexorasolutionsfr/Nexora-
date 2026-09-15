@@ -29,6 +29,10 @@ import { devisDeLaVisite } from "../vehicle-case-file/calculs";
 import { classerPriorites, compterLeGarage } from "./priorites";
 import { compterATraiter, construireATraiter, decouper } from "./aTraiter";
 import RelanceTravailModal, { useRelancesTravaux } from "./RelanceTravail";
+import { decorerLigneRelance, ouvreLaRelance } from "./relanceLigne";
+import { CAPACITES } from "../parametres/capacites";
+
+const RELANCES_DISPONIBLES = CAPACITES.relanceTravauxDifferes.disponible;
 
 const ACCENT = "#3D6BE0";
 const LIMITE = 6;
@@ -325,9 +329,10 @@ export default function AujourdhuiJour({
 
   const agir = (l) => {
     // Un travail différé dont la relance est prête à relire : on ouvre la
-    // relance, avec la voiture et le client. Sans relance, rien ne change.
+    // relance, avec la voiture et le client. Sans relance, ou tant que l'envoi
+    // des relances n'est pas disponible, rien ne change : suivi manuel.
     const relance = l.sourceType === "travail_differe" ? relancesParTravail.get(l.sourceId) : null;
-    if (relance && ["a_relire", "bloque"].includes(relance.statut)) {
+    if (ouvreLaRelance(relance, RELANCES_DISPONIBLES)) {
       setRelanceOuverte({ relance, travail: lignesParSource.travail_differe.get(l.sourceId) || null });
       return;
     }
@@ -457,16 +462,7 @@ export default function AujourdhuiJour({
           {visibles.map((l) => (
             <LigneATraiter
               key={l.cle}
-              ligne={(() => {
-                const r = l.sourceType === "travail_differe" ? relancesParTravail.get(l.sourceId) : null;
-                if (!r) return l;
-                if (r.statut === "a_relire") return { ...l, actionLibelle: "Relire la relance", probleme: `${l.probleme || ""} · relance préparée, à relire`.replace(/^ · /, "") };
-                if (r.statut === "bloque") return { ...l, actionLibelle: "Revoir la relance", probleme: `${l.probleme || ""} · relance mise de côté`.replace(/^ · /, "") };
-                if (r.statut === "en_attente") return { ...l, probleme: `${l.probleme || ""} · relance autorisée, départ en attente`.replace(/^ · /, "") };
-                if (r.statut === "envoi_en_cours") return { ...l, probleme: `${l.probleme || ""} · relance : envoi à vérifier`.replace(/^ · /, "") };
-                if (r.statut === "envoye") return { ...l, probleme: `${l.probleme || ""} · relance envoyée le ${new Date(r.updated_at).toLocaleDateString("fr-FR")}`.replace(/^ · /, "") };
-                return l;
-              })()}
+              ligne={decorerLigneRelance(l, l.sourceType === "travail_differe" ? relancesParTravail.get(l.sourceId) : null, RELANCES_DISPONIBLES)}
               onAction={agir}
               onTraiter={onTraiter}
               onReporter={onReporter}
