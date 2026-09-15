@@ -31,7 +31,7 @@ import PhotoEnGrand from "../inspections/PhotoEnGrand";
 import { garderLeFocus } from "../garage-os/Portail";
 import { STATUT_DEVIS_LABEL } from "./devisLignesConstants";
 import { formatEuro } from "./calculs";
-import { controleParDefaut, libelleRaison, proposerDevis, proposerPoints, referenceDevis, resumerReprise } from "./reprise";
+import { controleParDefaut, couvertureDesPoints, libelleRaison, proposerDevis, proposerPoints, referenceDevis, resumerReprise, visiteAUnDevisAccepte } from "./reprise";
 
 const TONS = {
   amber: { bg: "#FEF3E2", text: "#B45309" },
@@ -74,9 +74,10 @@ function dateCourte(valeur) {
  *  - rdv          : la visite courante, ou null
  *  - devis        : les devis du véhicule, déjà chargés par le dashboard
  *  - onPrepare    : (devisId, resultat) après une préparation réussie
+ *  - onOuvrirDevis: (devisId) ouvre un devis existant (celui qui porte déjà un constat)
  *  - onFermer, onToast
  */
-export default function PreparerDevisDepuisConstat({ garageId, vehicule, client, rdv = null, devis = [], onPrepare, onFermer, onToast, supabase = supabaseClient }) {
+export default function PreparerDevisDepuisConstat({ garageId, vehicule, client, rdv = null, devis = [], onPrepare, onOuvrirDevis = null, onFermer, onToast, supabase = supabaseClient }) {
   const repriseId = useRef(typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : null);
   const [inspections, setInspections] = useState(null);
   const [inspectionId, setInspectionId] = useState(null);
@@ -154,7 +155,16 @@ export default function PreparerDevisDepuisConstat({ garageId, vehicule, client,
     return () => { annule = true; };
   }, [supabase, cibleEffective, devis]);
 
-  const proposes = useMemo(() => proposerPoints(points, lignesCible), [points, lignesCible]);
+  // Un constat déjà chiffré dans un AUTRE devis de la voiture (accepté, encore
+  // modifiable ou refusé) n'est plus coché d'avance : le garage choisit entre
+  // ouvrir ce devis et faire un complément, en le sachant.
+  const couverture = useMemo(
+    () => couvertureDesPoints(devis, cibleEffective === "nouveau" ? null : cibleEffective),
+    [devis, cibleEffective],
+  );
+  const proposes = useMemo(() => proposerPoints(points, lignesCible, couverture), [points, lignesCible, couverture]);
+  const complement = visiteAUnDevisAccepte(devis, rdv?.id || null);
+  const acceptesDeLaVisite = rdv?.id ? devis.filter((d) => d.rendez_vous_id === rdv.id && d.statut === "accepte") : [];
   const selection = coches ?? Object.fromEntries(proposes.map((p) => [p.point.id, p.coche]));
   const nbCoches = proposes.filter((p) => selection[p.point.id]).length;
   const inspectionChoisie = (inspections || []).find((i) => i.id === inspectionId) || null;
@@ -256,9 +266,10 @@ export default function PreparerDevisDepuisConstat({ garageId, vehicule, client,
                   <div className="text-[12.5px] text-slate-500">Ce contrôle n'a rien à signaler : tout est OK.</div>
                 )}
                 <div className="space-y-2">
-                  {proposes.map(({ point, raison, etatLabel, valide }) => {
-                    const desactive = raison !== null;
+                  {proposes.map(({ point, raison, devisLie, bloquant, etatLabel, valide }) => {
+                    const desactive = bloquant;
                     const photosPoint = photos[point.id] || [];
+                    const reprisAilleurs = Boolean(devisLie) && !bloquant;
                     return (
                       <label key={point.id} className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 ${desactive ? "border-slate-200 bg-slate-50" : "border-slate-200 bg-white cursor-pointer"}`}>
                         <input
@@ -277,7 +288,20 @@ export default function PreparerDevisDepuisConstat({ garageId, vehicule, client,
                           </span>
                           <span className="block text-[11.5px] text-slate-400">{CATEGORIE_LABEL[point.categorie] || point.categorie}</span>
                           {point.commentaire && <span className="block text-[12.5px] text-slate-600 mt-0.5">{point.commentaire}</span>}
-                          {raison && <span className="block text-[12px] text-amber-700 mt-0.5">{libelleRaison(raison)}</span>}
+                          {raison && <span className="block text-[12px] text-amber-700 mt-0.5">{libelleRaison(raison, devisLie)}</span>}
+                          {reprisAilleurs && selection[point.id] && (
+                            <span className="block text-[12px] text-slate-700 mt-0.5 font-medium">Complément : ce point sera chiffré à nouveau, le devis {referenceDevis(devisLie)} n&apos;est pas modifié.</span>
+                          )}
+                          {reprisAilleurs && onOuvrirDevis && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOuvrirDevis(devisLie.id); }}
+                              className="mt-1 text-[12.5px] font-medium min-h-[32px] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                              style={{ color: ACCENT }}
+                            >
+                              Ouvrir le devis {referenceDevis(devisLie)}
+                            </button>
+                          )}
                           {photosPoint.length > 0 && (
                             <span className="flex items-center gap-1.5 mt-1.5">
                               {photosPoint.map((url, i) => (
@@ -304,6 +328,19 @@ export default function PreparerDevisDepuisConstat({ garageId, vehicule, client,
 
           <Bloc icone={FileText} titre="Travaux proposés" aide={nbCoches > 0 ? `${nbCoches} ligne${nbCoches > 1 ? "s" : ""} « Prix à renseigner » à chiffrer ensuite.` : "Aucun point coché."}>
             <div className="space-y-1.5">
+              {/* Un devis accepté ne reçoit plus de lignes : on le montre, verrouillé,
+                  pour qu'on l'ouvre plutôt que d'en refaire un sans le savoir. */}
+              {acceptesDeLaVisite.map((d) => (
+                <div key={d.id} className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2.5">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-medium text-slate-900">Devis accepté {referenceDevis(d)}</span>
+                    <span className="block text-[12px] text-slate-500">{dateCourte(d.created_at)} · {formatEuro(d.montant_ttc)} TTC · verrouillé, il ne sera pas modifié</span>
+                  </span>
+                  {onOuvrirDevis && (
+                    <button type="button" onClick={() => onOuvrirDevis(d.id)} className="shrink-0 min-h-[36px] px-3 rounded-lg text-[12.5px] font-medium border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">Ouvrir</button>
+                  )}
+                </div>
+              ))}
               {candidats.map(({ devis: d, deLaVisite }) => (
                 <label key={d.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 cursor-pointer">
                   <input type="radio" name="devis-cible" className="w-4 h-4 shrink-0" checked={cibleEffective === d.id} onChange={() => setCible(d.id)} disabled={busy} />
@@ -317,7 +354,10 @@ export default function PreparerDevisDepuisConstat({ garageId, vehicule, client,
               ))}
               <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 cursor-pointer">
                 <input type="radio" name="devis-cible" className="w-4 h-4 shrink-0" checked={cibleEffective === "nouveau"} onChange={() => setCible("nouveau")} disabled={busy} />
-                <span className="text-[13px] font-medium text-slate-900">Nouveau devis{rdv ? " pour cette visite" : ""}</span>
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-medium text-slate-900">{complement ? "Nouveau devis complémentaire pour cette visite" : `Nouveau devis${rdv ? " pour cette visite" : ""}`}</span>
+                  {complement && <span className="block text-[12px] text-slate-500">Pour un travail en plus de ce que le client a déjà accepté.</span>}
+                </span>
               </label>
             </div>
             <div className="text-[11.5px] text-slate-400 mt-2">Rien n'est envoyé au client par ce geste. Le devis reste à chiffrer, puis à relire avant tout envoi.</div>

@@ -14,6 +14,8 @@ import {
   lignesDevisVersOR,
   traduireErreurDevisLignes,
   formatEuro,
+  designationDevis,
+  montantPrincipalDevis,
 } from './calculs.js'
 
 // --- Arrondi : identique à round(numeric, 2) de PostgreSQL ---------------
@@ -232,4 +234,33 @@ test('formatEuro : virgule française, deux décimales', () => {
   assert.equal(formatEuro(184.76), '184,76 €')
   assert.equal(formatEuro(0), '0,00 €')
   assert.equal(formatEuro('x'), '0,00 €')
+})
+
+test('formatEuro : les milliers se séparent (1 500,00 €), les négatifs gardent leur signe', () => {
+  assert.equal(formatEuro(1500), '1 500,00 €')
+  assert.equal(formatEuro(1234567.891), '1 234 567,89 €')
+  assert.equal(formatEuro(999.999), '1 000,00 €')
+  assert.equal(formatEuro(-42.5), '-42,50 €')
+})
+
+test('designationDevis : prestation, sinon première ligne par position, jamais « Prestation »', () => {
+  assert.equal(designationDevis({ prestations: { nom: 'Révision complète' }, devis_lignes: [{ libelle: 'Huile', position: 0 }] }), 'Révision complète')
+  assert.equal(designationDevis({ prestations: null, devis_lignes: [{ libelle: 'Kit agrafes', position: 2 }, { libelle: 'RECETTE UX — Réparation du pare-chocs', position: 0 }] }), 'RECETTE UX — Réparation du pare-chocs')
+  assert.equal(designationDevis({ prestations: { nom: '  ' }, devis_lignes: [] }), null)
+  assert.equal(designationDevis(null), null)
+})
+
+test('montantPrincipalDevis : « À chiffrer » en tête tant qu\'une ligne attend son prix', () => {
+  const incomplet = { montant_ht: 172, montant_ttc: 206.4, devis_lignes: [
+    { quantite: 1, prix_unitaire_ht: 100, taux_tva: 20 },
+    { quantite: 1, prix_unitaire_ht: 0, taux_tva: 20, prix_a_renseigner: true },
+  ] }
+  const r = montantPrincipalDevis(incomplet)
+  assert.equal(r.aChiffrer, true)
+  assert.equal(r.principal, 'À chiffrer')
+  assert.equal(r.secondaire, 'partiel : 120,00 € TTC')
+  // Rien de chiffré : pas de « partiel : 0,00 € », qui ne dit rien.
+  assert.equal(montantPrincipalDevis({ devis_lignes: [{ quantite: 1, prix_unitaire_ht: 0, taux_tva: 20, prix_a_renseigner: true }] }).secondaire, 'aucune ligne chiffrée')
+  const complet = montantPrincipalDevis({ montant_ht: 172, montant_ttc: 206.4, devis_lignes: [{ quantite: 1, prix_unitaire_ht: 172, taux_tva: 20 }] })
+  assert.deepEqual(complet, { aChiffrer: false, principal: '206,40 € TTC', secondaire: '172,00 € HT' })
 })

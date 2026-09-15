@@ -1,4 +1,5 @@
 import { SECTION_FIXE, SEUILS, SOURCES_REACTIVATION_AUTO, sourceJournal } from "./cockpitConstants.js";
+import { designationDevis } from "../devis-lignes/calculs.js";
 
 // Cockpit Opportunités V1 — dérivation pure des opportunités à partir des
 // données déjà existantes. Aucune donnée n'est stockée ici : uniquement
@@ -93,7 +94,8 @@ export function construireCandidats(ctx) {
       stripe: "#B45309",
       urgent: false,
       titre: `Devis sans réponse depuis ${jours} jour${jours > 1 ? "s" : ""}`,
-      meta: `${d.client} · ${d.prestation || "—"}`,
+      // Même désignation que les réponses : jamais « Prestation » ni « — » seuls.
+      meta: [d.client, designationDevis(d)].filter(Boolean).join(" · "),
       amount: Number(d.montant_ttc || 0),
       action: "Ouvrir le devis",
       onAction: () => setView && setView("devis"),
@@ -123,7 +125,7 @@ export function construireCandidats(ctx) {
       // Le nom de la prestation s'il existe, sinon la première ligne du devis.
       // `d.prestation` vaut « Prestation » quand il n'y en a pas : un devis
       // préparé depuis un constat affichait ce mot seul (recette du 15 septembre 2026).
-      meta: [depuisLabel(d.date_validation, now), d.prestations?.nom || [...(d.devis_lignes || [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0]?.libelle || null].filter(Boolean).join(" · "),
+      meta: [depuisLabel(d.date_validation, now), designationDevis(d)].filter(Boolean).join(" · "),
       amount: accepte ? Number(d.montant_ttc || 0) : 0,
       action: "Voir la réponse",
       onAction: () => setView && setView("devis"),
