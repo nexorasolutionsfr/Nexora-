@@ -75,11 +75,15 @@ Règles :
   redevient valable que par un geste du garage, sur le devis tel qu'il est.
 - **Relevé frais juste avant** (point d'arrêt n° 2) :
   ```sql
-  select n.id, n.devis_id, d.garage_id, n.type, n.statut, n.autorise_le, n.tentatives
+  select n.id, n.devis_id, d.garage_id, n.type, n.statut, n.tentatives,
+         n.destinataire_valide, n.empreinte_document, n.created_at
     from notifications_devis n join devis d on d.id = n.devis_id
-   where n.statut in ('en_attente', 'envoi_en_cours')
+   where n.statut <> 'envoye'
    order by n.created_at;
   ```
+  (Corrigé le 15 septembre : `autorise_le` n'existe pas en Production — la
+  requête d'origine échouait. Les lignes `bloque` sont relevées aussi, avec
+  leur empreinte, pour prouver qu'aucune n'est réarmée.)
   Même requête pour `notifications_factures` (non concernée par le changement,
   relevée pour comparer). Conserver la sortie dans le dossier de sauvegarde.
   S'il y a des lignes `envoi_en_cours` : attendre qu'elles soient closes, ou
