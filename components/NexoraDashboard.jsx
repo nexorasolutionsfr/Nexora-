@@ -6741,6 +6741,21 @@ if (updateError) {
       .single();
 
     if (error) {
+      // Refus posé par la base (20260920000100) : une autre demande — autre
+      // onglet, autre poste — a facturé cette fiche au même instant. On relit
+      // la facture qui existe, on ne dit pas « impossible ».
+      if (/a deja sa facture/i.test(error.message || "")) {
+        const { data: gagnante } = await supabase
+          .from("factures")
+          .select("*, clients (nom, telephone, email), vehicules (marque, modele, immatriculation)")
+          .eq("garage_id", garageId)
+          .eq("ordre_reparation_id", ordre.id)
+          .limit(1);
+        const existante = gagnante?.[0] || null;
+        if (existante) setFactures((prev) => (prev.some((f) => f.id === existante.id) ? prev : [existante, ...prev]));
+        flashToast(`Cette fiche atelier a déjà sa facture${existante?.numero ? ` (${existante.numero})` : ""} : rien n'a été créé.`, "error");
+        return existante;
+      }
       console.error("Erreur génération facture :", JSON.stringify(error, null, 2));
       flashToast("Impossible de générer la facture", "error");
       return;
