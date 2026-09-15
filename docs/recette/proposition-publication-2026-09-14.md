@@ -14,7 +14,8 @@ PR [#101](https://github.com/nexorasolutionsfr/Nexora-/pull/101), branche
 dans la PR et dans `docs/recette/POINT-DE-REPRISE-2026-09-14.md` ; publier
 **cette tête-là**, pas une autre.
 
-Migrations, **dans cet ordre, d'un seul passage** :
+Migrations, **dans cet ordre**, par un seul `supabase db push` — qui n'est
+**pas** une transaction unique (voir §5 bis) :
 
 | # | Migration | Effet |
 |---|---|---|
@@ -89,25 +90,88 @@ Règles :
   refaire. Toute autre différence : s'arrêter et analyser.
 - **Changements pendant la bascule** : un devis autorisé entre le relevé et
   l'application tombe dans le même cas — c'est pour cela qu'on refait le relevé
-  après. Appliquer les 10 migrations d'un seul passage, hors heures
+  après. Appliquer les 10 migrations par un seul `db push`, hors heures
   d'ouverture. Ne pas suspendre « Nouveau devis » : une ligne qui part avant
   l'application part avec l'ancienne empreinte, valide.
 
 ## 5. Ordre de publication
 
+Chaque étape s'arrête sur toute divergence. Aucune réparation improvisée
+(`migration repair`), jamais `--include-all`.
+
+0. **Cible et tête reconfirmées.**
+   - Production = projet `omphppsmhmyllapdqevn` (Test = `slawilafseganlbghgwx`) ;
+     le miroir affiche ce ref après `supabase link`, et rien d'autre.
+   - PR #101 ouverte, `headRefOid` = le SHA contrôlé (tests, build, recette) ;
+     `origin/main` = la base attendue, sans commit inattendu depuis ;
+     checks de la tête au vert (Vercel).
 1. Sauvegarde du schéma de Production dans
-   `~/Nexora_backups/production_<date>_avant-constat-devis/`.
+   `~/Nexora_backups/production_<date>_avant-constat-devis/`, et la liste
+   distante des migrations (`supabase migration list --linked`).
 2. Répétition sur export du jour (§3) — **point d'arrêt n° 1**.
-3. Relevé des files (§4) — **point d'arrêt n° 2**.
-4. Appliquer `000100` → `001000` depuis un miroir jetable lié à la Production,
-   puis supprimer le dossier `supabase/migrations` du miroir.
-5. Relevé après (§4) — **point d'arrêt n° 3** : écart inexpliqué = on
-   n'ouvre pas le nouveau code, on analyse (l'ancien code fonctionne, §6).
-6. Fusionner la PR #101 ; Vercel déploie.
-7. Contrôle du code servi sur `nexora-garage.vercel.app` : textes « Préparer le
+3. **Miroir** : dossier jetable hors dépôt, rempli par
+   `git archive <SHA contrôlé> supabase/migrations` — **l'historique complet**
+   des migrations de ce SHA, pas seulement les dix nouvelles (sinon le CLI
+   voit des migrations distantes absentes en local et refuse, ou pousse à
+   l'aveugle). Vérifier `git rev-parse` du SHA archivé.
+4. **Comparaison des historiques** : `supabase migration list --linked`. Toute
+   version distante doit exister en local, et toute version locale antérieure
+   à `20260919000100` doit être déjà appliquée. Seules manquent les dix.
+5. **Dry-run** : `supabase db push --linked --dry-run` doit proposer
+   **exactement** `20260919000100` → `20260919001000`, dans cet ordre, rien
+   d'autre. Une ligne de plus ou de moins = arrêt.
+6. Relevé des files (§4) — **point d'arrêt n° 2**.
+7. `supabase db push --linked` (sans `--include-all`), puis supprimer le
+   dossier `supabase/migrations` du miroir.
+8. Relevé après (§4) et `migration list` : les dix enregistrées — **point
+   d'arrêt n° 3** : écart inexpliqué = on n'ouvre pas le nouveau code, on
+   analyse (l'ancien code fonctionne, §6).
+9. Contrôles de base (fonctions, droits, politiques de stockage) ; **aucune
+   réautorisation** des notifications mises de côté par la nouvelle empreinte.
+10. Fusionner **la tête contrôlée** de la PR #101 ; Vercel déploie.
+11. Contrôle du code servi sur `nexora-garage.vercel.app` : textes « Préparer le
    devis depuis le constat », « Prix à renseigner », « Constats du véhicule »,
-   « Constat du garage ».
-8. Ne **rien** importer dans n8n (§7).
+   « Constat du garage », « L'envoi de ces relances n'est pas encore
+   disponible ».
+12. Ne **rien** importer dans n8n (§7).
+
+## 5 bis. Si l'application des migrations s'interrompt
+
+**Ce que fait réellement `db push`** — vérifié le 15 septembre 2026, CLI
+2.116.0, base Postgres jetable de la même image, trois migrations dont la
+deuxième échoue à sa troisième instruction :
+
+| | Résultat |
+|---|---|
+| migration 1 | appliquée **et** enregistrée dans `supabase_migrations.schema_migrations` |
+| migration 2 (en échec) | **entièrement annulée** : ses deux premières instructions n'ont rien laissé, version non enregistrée |
+| migration 3 | non tentée |
+| `db push --dry-run` ensuite | propose 2 et 3, pas 1 |
+
+Donc : **une transaction par fichier, pas pour les dix.** Aucune des dix ne
+contient d'instruction qui casserait cette transaction (`COMMIT`,
+`CONCURRENTLY`, `VACUUM`, `ALTER TYPE … ADD VALUE` : recherche vide). Une
+coupure réseau au milieu d'un fichier relève du même cas (transaction non
+validée = annulée), mais n'a pas été provoquée.
+
+**Conduite en cas d'échec ou de coupure :**
+
+1. Ne rien relancer. Noter le message exact et l'heure.
+2. **Relever ce qui a réellement été appliqué** : `supabase migration list
+   --linked` et
+   `select version from supabase_migrations.schema_migrations where version >= '20260919000100' order by 1;`
+   plus la présence des objets de la migration en échec (ex. `\df` de ses
+   fonctions) pour confirmer qu'elle n'a rien laissé.
+3. Relevé des files (§4) : les migrations appliquées peuvent déjà avoir changé
+   l'empreinte (`000100`) — même règle, aucune réautorisation.
+4. **Ne pas fusionner.** Le code servi reste l'ancien. Sa compatibilité a été
+   établie sur une base portant **les dix** migrations (§6) ; un état
+   intermédiaire n'a **pas** été rejoué — le vérifier sur base jetable avant
+   toute reprise, et surveiller les erreurs du dashboard en attendant.
+5. **Ne retirer aucune protection** (pas de `drop`, pas de `revoke`
+   inverse, pas de `migration repair`) pour « revenir propre ».
+6. Analyser la cause sur une base jetable chargée de l'état réel relevé ; ne
+   reprendre qu'avec un dry-run qui propose exactement les migrations restantes.
 
 ## 6. Suspension et retour arrière — sans perte, sans retirer de protection
 
@@ -126,7 +190,10 @@ faire.** Les migrations sont gardées ; le retour se fait côté application.
 **Retour applicatif** : redéployer sur Vercel le déploiement précédent
 (`main` actuel), sans toucher à la base. Vérifié sur la base jetable avec des
 données créées par les nouvelles fonctions (`compat-retour-arriere-2026-09-15.sql`,
-jeu synthétique, sous le rôle `authenticated`, avec le vrai schéma `storage`) :
+jeu synthétique, sous le rôle `authenticated`, avec le vrai schéma `storage`).
+**Nature de la preuve** : ce sont les appels de l'ancien code (requêtes et
+fonctions de `main`) rejoués en SQL sur la base ; ce n'est **pas** une recette
+de l'ancienne interface au navigateur.
 
 | Geste de l'ancien code | Résultat |
 |---|---|
