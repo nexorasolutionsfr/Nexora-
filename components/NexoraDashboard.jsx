@@ -2041,7 +2041,10 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, or
           peutVoirLesEnvois={peutFacturer(monRole)}
           onOuvrirDossierVehicule={onOuvrirDossierVehicule}
           onOuvrirAgenda={() => setView("agenda")}
-          onOuvrirClients={() => setView("clients")}
+          // Le formulaire s'ouvre en arrivant, comme depuis la mise en route :
+          // « Ajouter un client » menait à une page qui redemandait le même clic
+          // (garage neuf, relevé du 15 septembre 2026).
+          onOuvrirClients={() => (onAllerConfigurer ? onAllerConfigurer("clients", null, "client") : setView("clients"))}
           onOuvrirImport={peutVoir(monRole, "parametres") ? () => onAllerConfigurer?.("parametres", "import") : null}
           onOuvrirAtelier={() => setView("atelier")}
           onPrevenirClient={onPrevenirClient}
@@ -4941,7 +4944,7 @@ function ParametresView({ garageId, garageData, onGarageChange, onSave, prestati
     setNewPrestation({ nom: "", categorie: "entretien", duree_minutes: 60 });
   };
   return <div className="space-y-5">
-    <div className="flex items-center justify-between flex-wrap gap-3"><div><div className="text-lg font-semibold text-slate-900">Paramètres du garage</div><div className="text-[13px] text-slate-500">Vos changements alimentent directement le dashboard et les automatisations.</div></div><button onClick={onSave} disabled={saving} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: ACCENT }}><Save size={15} />{saving ? "Enregistrement…" : "Enregistrer"}</button></div>
+    <div className="flex items-center justify-between flex-wrap gap-3"><div><div className="text-lg font-semibold text-slate-900">Paramètres du garage</div><div className="text-[13px] text-slate-500">Vos réglages s&apos;appliquent au tableau de bord, à l&apos;agenda et à vos documents. Ce qui n&apos;est pas encore automatique est indiqué dans Notifications.</div></div><button onClick={onSave} disabled={saving} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: ACCENT }}><Save size={15} />{saving ? "Enregistrement…" : "Enregistrer"}</button></div>
 
     <div className="flex flex-wrap gap-1.5 bg-slate-100 rounded-[10px] p-[3px] w-fit">
       {PARAMETRES_ONGLETS.filter(([key]) => key !== "acces" || peutGererLesAcces(monRole)).map(([key, label]) => (
