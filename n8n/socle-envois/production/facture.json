@@ -1,0 +1,803 @@
+{
+  "id": "9IG1g2ZmHQzhnsMS",
+  "name": "Facture (socle)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/5 * * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -6600,
+        -400
+      ],
+      "id": "9779a969-84a4-4f21-8bdd-3a54f24781da",
+      "name": "Toutes les 5 minutes"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/reserver_notifications",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"p_file\": \"factures\", \"p_limite\": 1, \"p_garages\": null}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "Réserver la file",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -6340,
+        -400
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      },
+      "alwaysOutputData": true,
+      "id": "cfbace19-585f-4c29-994d-b3018249b92d"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Une seule ligne réservée par tour : une panne ne laisse qu'une ligne incertaine.\n// File vide : aucun élément, le passage s'arrête ici.\nreturn $input.all().filter((i) => i.json && i.json.id).slice(0, 1).map((i) => ({ json: i.json, pairedItem: { item: 0 } }));"
+      },
+      "name": "Une notification à la fois",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6080,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "notifications_factures",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Une notification à la fois').item.json.id }}"
+            }
+          ]
+        }
+      },
+      "name": "Relire la notification",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -5820,
+        -400
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "factures",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Une notification à la fois').item.json.doc_id }}"
+            }
+          ]
+        }
+      },
+      "id": "43522382-391c-458d-b8e5-c75fa9afcf21",
+      "name": "Récupérer la facture",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -5560,
+        -400
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "clients",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Récupérer la facture').item.json.client_id }}"
+            }
+          ]
+        }
+      },
+      "id": "03a47bc3-de41-4ded-831f-e4861a199c2c",
+      "name": "Récupérer le client",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -5300,
+        -400
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "vehicules",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Récupérer la facture').item.json.vehicule_id }}"
+            }
+          ]
+        }
+      },
+      "id": "6111aeb7-a225-4df7-bba4-8efc4ed12cc9",
+      "name": "Récupérer le véhicule",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -5040,
+        -400
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "garages",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Récupérer la facture').item.json.garage_id }}"
+            }
+          ]
+        }
+      },
+      "id": "6cfab700-ea21-45c5-922d-3619b1ff9e89",
+      "name": "Récupérer le garage",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -4780,
+        -400
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const notif = $('Une notification à la fois').item.json;\nconst facture = $('Récupérer la facture').item.json;\nconst client = $('Récupérer le client').item.json;\nconst vehicule = $('Récupérer le véhicule').item.json;\nconst garage = $('Récupérer le garage').item.json;\nconst reserve = $('Une notification à la fois').item.json;\nconst nomAffiche = (garage && garage.nom_garage ? garage.nom_garage : 'Votre garage').replace(/[\"\\\\]/g, ' ').trim();\nconst nomVehicule = `${vehicule.marque || ''} ${vehicule.modele || ''}`.trim();\nconst immat = (vehicule && vehicule.immatriculation) ? ' (' + vehicule.immatriculation + ')' : '';\nconst lien = `${reserve.url_publique}/facture/${reserve.jeton}`;\nlet texte, sujet;\nif (notif.type === 'payee') {\n  sujet = 'Confirmation de paiement';\n  texte = `Bonjour ${client.nom || ''},\\n\\nNous confirmons la bonne réception de votre paiement pour la facture ${facture.numero} — votre ${nomVehicule}${immat} — d'un montant de ${facture.montant_ttc} € TTC.\\n\\nMerci de votre confiance,\\nL'équipe ${garage.nom_garage || 'du garage'}`;\n} else {\n  sujet = `Votre facture ${facture.numero}`;\n  texte = `Bonjour ${client.nom || ''},\\n\\n${garage.nom_garage || 'Votre garage'} vous transmet la facture ${facture.numero} pour votre ${nomVehicule}${immat} : ${facture.montant_ttc} € TTC.\\n\\nConsultez le détail ici : ${lien}\\n\\nÀ bientôt,\\n${nomAffiche}`;\n}\n\nconst expediteur = `\"${nomAffiche}\" <nexorasolutions.france@gmail.com>`;\nconst repondreA = (garage && garage.email) ? garage.email : '';\n\nreturn [{ json: { expediteur, repondreA, notif_id: reserve.id, id: notif.id, client_email: client.email || '', texte, sujet } }];"
+      },
+      "id": "a6683c75-5494-41ab-9238-b481d44664d0",
+      "name": "Construire le message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4520,
+        -400
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Rien n'est encore parti. Lecture en panne (à reprendre), document introuvable ou\n// adresse inutilisable (bloqué) : on le dit maintenant, au lieu de laisser le\n// fournisseur échouer en « incertain ».\nconst LECTURES = [\"Relire la notification\",\"Récupérer la facture\",\"Récupérer le client\",\"Récupérer le véhicule\",\"Récupérer le garage\"];\nconst lu = (n) => { try { return $(n).item.json || {}; } catch (e) { return { error: 'lecture non faite : ' + n }; } };\nconst texteErreur = (e) => (typeof e === 'string' ? e : (e && (e.message || e.description)) || 'erreur inconnue');\nconst pannes = LECTURES.map((n) => [n, lu(n)]).filter(([, j]) => j.error);\nif ($json.error) pannes.push(['Construire le message', $json]);\nif (pannes.length) {\n  const [n, j] = pannes[0];\n  return [{ json: { pret: false, panne: true, noeud_panne: n, motif_verification: 'lecture ou préparation impossible (' + n + '), rien n\\'est parti : ' + String(texteErreur(j.error)).slice(0, 200) } }];\n}\nconst doc = lu(\"Récupérer la facture\");\nconst m = $json;\nconst adresse = String(m.client_email || '');\nlet motif = null;\nif (!doc.id) motif = 'document introuvable à la lecture, rien n\\'est parti';\nelse if (!/^[^\\s@<>\"]+@[^\\s@<>\"]+\\.[^\\s@<>\"]+$/.test(adresse)) motif = 'adresse du client absente ou invalide, rien n\\'est parti';\nelse if (!String(m.texte || '').trim()) motif = 'message vide, rien n\\'est parti';\nreturn [{ json: { ...m, pret: motif === null, panne: false, motif_verification: motif } }];"
+      },
+      "name": "Vérifier avant envoi",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4260,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "Prêt à envoyer ?",
+              "leftValue": "={{ $json.pret === true ? 'oui' : 'non' }}",
+              "rightValue": "oui",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Prêt à envoyer ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -4000,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.expediteur }}",
+        "toEmail": "={{ $json.client_email }}",
+        "subject": "={{ $json.sujet }}",
+        "emailFormat": "text",
+        "text": "={{ $json.texte }}",
+        "options": {
+          "appendAttribution": false,
+          "replyTo": "={{ $json.repondreA }}"
+        }
+      },
+      "id": "df4e00b0-4622-4add-8633-0903007e4e7e",
+      "name": "Notifier facture (email)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -3740,
+        -500
+      ],
+      "webhookId": "983bb795-874b-4489-8006-4196735b5710",
+      "credentials": {
+        "smtp": {
+          "id": "6opiCKNWBLDnvYKJ",
+          "name": "SMTP Brevo — envois métier"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { resultat: 'envoye', motif: null, categorie: null, noeud: \"Notifier facture (email)\" } }];"
+      },
+      "name": "Accepté par le fournisseur",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3480,
+        -600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Classement d'un échec d'envoi SMTP (nœud « Envoyer la relance (email) »).\n//\n// Source unique : `construire.mjs` recopie cette fonction dans le nœud Code\n// « Classer l'échec » ; `classerEchec.test.js` la vérifie.\n//\n// RÈGLE : on ne déduit la nature d'un échec QUE de ce qu'on sait situer dans\n// l'échange SMTP. Un nombre à trois chiffres trouvé n'importe où dans un\n// message (« 550 € », un numéro de rue, un identifiant) ne veut rien dire.\n//\n//   - Aucune connexion établie (refus, nom introuvable)      → a_reprendre\n//   - Authentification refusée                                → a_reprendre\n//   - Réponse du serveur à MAIL FROM, RCPT TO ou à la\n//     commande DATA, AVANT la transmission du message :\n//       4xx → a_reprendre            5xx → bloque\n//   - Réponse du serveur APRÈS la transmission du message\n//     (« Message failed ») : le serveur dit explicitement\n//     qu'il n'a pas pris le message :\n//       4xx → a_reprendre            5xx → bloque\n//   - Tout le reste — connexion coupée, délai dépassé, erreur\n//     inconnue — peut survenir après que le fournisseur a\n//     accepté le message                                      → incertain\n//\n// `incertain` n'est jamais clos ni repris : la relance reste `envoi_en_cours`\n// et l'écran dit « envoi à vérifier ».\n\nfunction classerEchec(erreur) {\n  const e = erreur && typeof erreur === \"object\" ? erreur : { message: erreur };\n  const message = String(e.message || e.description || \"\").trim();\n  const code = String(e.code || \"\").toUpperCase();\n  const commande = String(e.command || \"\").toUpperCase();\n  const reponse = Number.isInteger(e.responseCode) ? e.responseCode : null;\n  const extrait = message.slice(0, 200);\n  const issue = (resultat, motif) => ({ resultat, motif: `${motif}${extrait ? \" : \" + extrait : \"\"}` });\n\n  // 1. Pas de connexion : rien n'a pu partir.\n  if ([\"ECONNREFUSED\", \"ENOTFOUND\", \"EAI_AGAIN\", \"EDNS\"].includes(code)\n      || /^(?:connect ECONNREFUSED|getaddrinfo (?:ENOTFOUND|EAI_AGAIN))\\b/.test(message)) {\n    return issue(\"a_reprendre\", \"connexion au fournisseur impossible, rien n'est parti\");\n  }\n  // 2. Authentification refusée : rien n'a pu partir.\n  if (code === \"EAUTH\" || /^(?:Invalid login|Authentication (?:failed|not supported))\\b/i.test(message)) {\n    return issue(\"a_reprendre\", \"authentification refusée par le fournisseur, rien n'est parti\");\n  }\n\n  // 3. Réponse SMTP située dans l'échange : champs structurés d'abord…\n  let etape = null;\n  let classe = null;\n  if (reponse !== null && reponse >= 400 && reponse < 600) {\n    classe = Math.floor(reponse / 100);\n    if ([\"MAIL FROM\", \"RCPT TO\", \"DATA\"].includes(commande)) etape = \"avant\";\n    else if (commande === \"DATA END\" || commande === \".\") etape = \"apres\";\n  }\n  // … sinon les formulations exactes de nodemailer, ancrées en début de message.\n  if (etape === null) {\n    const avant = message.match(/^(?:Can't send mail - all recipients were rejected|Mail command failed|Recipient command failed|Data command failed):\\s*([45])\\d\\d\\b/);\n    const apres = message.match(/^Message failed:\\s*([45])\\d\\d\\b/);\n    if (avant) { etape = \"avant\"; classe = Number(avant[1]); }\n    else if (apres) { etape = \"apres\"; classe = Number(apres[1]); }\n  }\n  if (etape === \"avant\") {\n    return classe === 5\n      ? issue(\"bloque\", \"refus définitif du fournisseur avant le message\")\n      : issue(\"a_reprendre\", \"refus temporaire du fournisseur avant le message\");\n  }\n  if (etape === \"apres\") {\n    return classe === 5\n      ? issue(\"bloque\", \"refus définitif du fournisseur après le message\")\n      : issue(\"a_reprendre\", \"refus temporaire du fournisseur après le message, non accepté\");\n  }\n\n  // 4. Tout le reste : le message a pu être accepté. On ne rejoue pas.\n  return issue(\"incertain\", \"issue inconnue, le message a pu être accepté\");\n}\n\n\nconst brut = $json.error && typeof $json.error === 'object' ? $json.error : { message: $json.error || $json.message || '' };\nconst c = classerEchec({ message: brut.message || $json.message || '', description: brut.description, code: brut.code || $json.code, responseCode: brut.responseCode ?? $json.responseCode, command: brut.command || $json.command });\nconst categorie = { a_reprendre: 'refus_temporaire', bloque: 'refus_definitif', incertain: 'envoi_incertain' }[c.resultat];\nreturn [{ json: { resultat: c.resultat, motif: c.motif, categorie, noeud: \"Notifier facture (email)\" } }];"
+      },
+      "name": "Classer l'échec",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3480,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Vérification refusée : panne de lecture ou de préparation (à reprendre, plafonné)\n// ou données manquantes (bloqué, un humain corrige).\nif ($json.panne === true) {\n  return [{ json: { resultat: 'a_reprendre', motif: $json.motif_verification, categorie: 'echec_avant_envoi', noeud: $json.noeud_panne } }];\n}\nreturn [{ json: { resultat: 'bloque', motif: $json.motif_verification, categorie: 'donnees_invalides', noeud: 'Vérifier avant envoi' } }];"
+      },
+      "name": "Échec avant envoi",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3480,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Expurgation d'un texte d'erreur avant de le journaliser.\n//\n// Source unique : `construire.mjs` recopie cette fonction dans les nœuds Code\n// du socle et du journaliseur ; `expurger.test.js` la vérifie.\n//\n// Le journal des incidents est lu par des humains et survit aux lignes de\n// file : il ne doit contenir ni adresse e-mail, ni lien (un lien public porte\n// un jeton), ni clé, ni en-tête d'autorisation. On garde ce qui aide à\n// comprendre : le code SMTP, le code réseau, le nom de l'étape.\n\nfunction expurger(texte, longueur) {\n  const max = Number.isInteger(longueur) ? longueur : 300;\n  let t = texte === null || texte === undefined ? \"\" : String(texte);\n  t = t\n    .replace(/\\b(?:https?|wss?):\\/\\/\\S+/gi, \"<lien>\")\n    .replace(/\\b(?:Bearer|Basic)\\s+[A-Za-z0-9._~+\\/=-]+/gi, \"<autorisation>\")\n    .replace(/\\b(apikey|api_key|authorization|password|pass|token|jeton|secret)([\"']?\\s*[:=]\\s*[\"']?)[^\\s\"',;}]+/gi, \"$1$2<masqué>\")\n    .replace(/\\beyJ[A-Za-z0-9_-]{8,}(?:\\.[A-Za-z0-9_-]+){1,2}/g, \"<jeton>\")\n    .replace(/\\b(?:xkeysib|xsmtpsib|sk_live|sk_test|sb_secret)[-_][A-Za-z0-9_-]+/gi, \"<clé>\")\n    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/g, \"<e-mail>\")\n    .replace(/\\b[0-9a-f]{32,}\\b/gi, \"<empreinte>\")\n    .replace(/\\s+/g, \" \")\n    .trim();\n  return t.length > max ? t.slice(0, max - 1) + \"…\" : t;\n}\n\n\nconst MAX_TENTATIVES = 3;\nconst notif = $('Une notification à la fois').item.json;\nlet tentatives = null;\ntry { tentatives = Number($('Relire la notification').item.json.tentatives); } catch (e) { tentatives = null; }\nlet { resultat, motif, categorie, noeud } = $json;\nif (resultat === 'a_reprendre' && Number.isFinite(tentatives) && tentatives >= MAX_TENTATIVES) {\n  resultat = 'bloque';\n  categorie = categorie === 'refus_temporaire' ? 'refus_temporaire_repete' : categorie;\n  motif = `échec temporaire répété (${tentatives} tentatives), mis de côté : ${motif}`;\n}\nconst intervention = ['bloque', 'incertain'].includes(resultat);\nreturn [{ json: {\n  id: notif.id, file: \"factures\", resultat, categorie, noeud, tentatives,\n  motif: motif === null ? null : expurger(motif, 300),\n  intervention,\n} }];"
+      },
+      "name": "Décider l'issue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3220,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "Issue connue ?",
+              "leftValue": "={{ $json.resultat }}",
+              "rightValue": "incertain",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Issue connue ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2960,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/terminer_notification",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_file\": \"factures\", \"p_id\": \"{{ $json.id }}\", \"p_resultat\": \"{{ $json.resultat }}\", \"p_motif\": {{ $json.motif === null ? 'null' : JSON.stringify($json.motif) }}}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "Clore la notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2700,
+        -500
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "Incident à journaliser ?",
+              "leftValue": "={{ $('Décider l\\'issue').item.json.resultat }}",
+              "rightValue": "envoye",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Incident à journaliser ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2440,
+        -500
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/journaliser_incident",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_incident: { categorie: $('Décider l\\'issue').item.json.categorie, workflow_id: $workflow.id, workflow_nom: $workflow.name, execution_id: $execution.id, noeud: $('Décider l\\'issue').item.json.noeud, notification_file: $('Décider l\\'issue').item.json.file, notification_id: $('Décider l\\'issue').item.json.id, intervention_requise: $('Décider l\\'issue').item.json.intervention, message: $('Décider l\\'issue').item.json.resultat === 'incertain' ? 'issue incertaine, rien n\\'est clos, vérification humaine : ' + $('Décider l\\'issue').item.json.motif : $('Décider l\\'issue').item.json.motif } }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "Journaliser l'incident",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2180,
+        -300
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "Encore une ?",
+              "leftValue": "={{ $runIndex < 2 && $('Décider l\\'issue').item.json.resultat !== 'a_reprendre' ? 'oui' : 'non' }}",
+              "rightValue": "oui",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Encore une ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1920,
+        -400
+      ]
+    }
+  ],
+  "connections": {
+    "Toutes les 5 minutes": {
+      "main": [
+        [
+          {
+            "node": "Réserver la file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Réserver la file": {
+      "main": [
+        [
+          {
+            "node": "Une notification à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Une notification à la fois": {
+      "main": [
+        [
+          {
+            "node": "Relire la notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Relire la notification": {
+      "main": [
+        [
+          {
+            "node": "Récupérer la facture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer la facture": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le client": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le véhicule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le véhicule": {
+      "main": [
+        [
+          {
+            "node": "Récupérer le garage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer le garage": {
+      "main": [
+        [
+          {
+            "node": "Construire le message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construire le message": {
+      "main": [
+        [
+          {
+            "node": "Vérifier avant envoi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vérifier avant envoi": {
+      "main": [
+        [
+          {
+            "node": "Prêt à envoyer ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prêt à envoyer ?": {
+      "main": [
+        [
+          {
+            "node": "Notifier facture (email)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Échec avant envoi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notifier facture (email)": {
+      "main": [
+        [
+          {
+            "node": "Accepté par le fournisseur",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Classer l'échec",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accepté par le fournisseur": {
+      "main": [
+        [
+          {
+            "node": "Décider l'issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classer l'échec": {
+      "main": [
+        [
+          {
+            "node": "Décider l'issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Échec avant envoi": {
+      "main": [
+        [
+          {
+            "node": "Décider l'issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Décider l'issue": {
+      "main": [
+        [
+          {
+            "node": "Issue connue ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Issue connue ?": {
+      "main": [
+        [
+          {
+            "node": "Clore la notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Journaliser l'incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clore la notification": {
+      "main": [
+        [
+          {
+            "node": "Incident à journaliser ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Incident à journaliser ?": {
+      "main": [
+        [
+          {
+            "node": "Journaliser l'incident",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Encore une ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Journaliser l'incident": {
+      "main": [
+        [
+          {
+            "node": "Encore une ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Encore une ?": {
+      "main": [
+        [
+          {
+            "node": "Réserver la file",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "errorWorkflow": "erroralerts000000000000000001",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "tags": []
+}
