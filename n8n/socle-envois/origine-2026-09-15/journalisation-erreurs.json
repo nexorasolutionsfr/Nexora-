@@ -1,0 +1,111 @@
+{
+  "updatedAt": "2026-08-23T23:46:00.002Z",
+  "createdAt": "2026-08-20T01:19:03.000Z",
+  "id": "erroralerts000000000000000001",
+  "name": "3 - Journalisation erreurs",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "09b2a6c4-0bc8-4ae4-88a8-3044d19ee35e",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const src = $json || {};\nconst exec = src.execution || {};\nconst wf = src.workflow || {};\n\nfunction safeString(v) {\n    if (v === null || v === undefined) return null;\n    if (typeof v === 'string') return v.trim() || null;\n    if (typeof v !== 'object') return String(v);\n    const seen = new WeakSet();\n    let out = null;\n    try {\n          out = JSON.stringify(v, (k, val) => {\n                  if (typeof val === 'object' && val !== null) {\n                            if (seen.has(val)) return '[circulaire]';\n                            seen.add(val);\n                  }\n                  return val;\n          });\n    } catch (e) {\n          out = null;\n    }\n    if (out && out !== '{}' && out !== 'null') return out;_\n    const parts = [];\n    for (const k of Object.keys(v)) {\n          const val = v[k];\n          if (val === null || val === undefined) continue;\n          if (typeof val === 'object') continue;\n          parts.push(k + '=' + String(val));\n    }\n    return parts.length ? parts.join(' | ') : null;\n}\n\nconst err = exec.error || src.error || null;\n\nlet nodeName =\n    (err && err.node && err.node.name) ||\n    (err && typeof err.node === 'string' ? err.node : null) ||\n    (src.node && src.node.name) ||\n    exec.lastNodeExecuted ||\n    src.lastNodeExecuted ||\n    null;\n\nlet message = null;\nif (err) {\n    message =\n          safeString(err.message) ||\n          safeString(err.description) ||\n          safeString(err.reason) ||\n          safeString(err.stack) ||\n          safeString(err);\n}\nif (!message) {\n    message = safeString(src.message) || safeString(src);\n}\n\nconst mode = exec.mode || src.mode || null;\nconst execId = exec.id || src.id || null;\nconst contexte = [];\nif (execId) contexte.push('execution ' + execId);\nif (mode) contexte.push('mode ' + mode);\nif (contexte.length) {\n    message = (message || 'Erreur sans message') + ' (' + contexte.join(', ') + ')';\n}\n\nreturn [{\n    json: {\n          garage_id: 'bcd7f692-1c28-435c-87d1-92f84aa0e6bb',\n          workflow_nom: wf.name || 'Nexora - Assistant Garage Avancé',\n          noeud: nodeName || 'Inconnu',\n          message: message || 'Erreur inconnue',\n    }\n}];"
+      },
+      "id": "e9077853-a0f7-475e-a741-99ebb026c681",
+      "name": "Extraire les infos d'erreur",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "erreurs_automatisation",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "garage_id",
+              "fieldValue": "={{ $json.garage_id }}"
+            },
+            {
+              "fieldId": "workflow_nom",
+              "fieldValue": "={{ $json.workflow_nom }}"
+            },
+            {
+              "fieldId": "noeud",
+              "fieldValue": "={{ $json.noeud }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.message }}"
+            }
+          ]
+        }
+      },
+      "id": "11573fd3-cbb3-48a2-998f-48b02a8b3f27",
+      "name": "Journaliser l'erreur",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        400,
+        304
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "C90K7jXD8RR1HJKP",
+          "name": "Supabase account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extraire les infos d'erreur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraire les infos d'erreur": {
+      "main": [
+        [
+          {
+            "node": "Journaliser l'erreur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "versionId": "3a7cef0f-602e-43a2-918a-abb193bf2f51",
+  "activeVersionId": "3a7cef0f-602e-43a2-918a-abb193bf2f51",
+  "versionCounter": 20,
+  "sourceWorkflowId": null,
+  "versionMetadata": {
+    "name": "Fix logs erreur illisibles",
+    "description": "Corrige noeud=\"Inconnu\" et message=\"[object Object]\" observes plusieurs fois le 22/08. Cause : quand execution.error est absent, l'ancien code retombait sur $json entier (contient des refs circulaires) -> JSON.stringify plantait -> String() -> \"[object Object]\". Nouveau safeString gere les refs circulaires proprement, et ajoute exec.lastNodeExecuted comme repli pour le nom du noeud."
+  }
+}

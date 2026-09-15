@@ -1,0 +1,100 @@
+{
+  "id": "erroralerts000000000000000001",
+  "name": "3 - Journalisation erreurs",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "09b2a6c4-0bc8-4ae4-88a8-3044d19ee35e",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Workflow d'erreur des workflows du socle. N'envoie rien à personne.\n// Classe l'échec d'une exécution et le journalise par journaliser_incident\n// (regroupement en base). S'il échoue lui-même, son exécution reste en\n// erreur dans n8n : n8n ne déclenche pas un workflow d'erreur pour lui-même.\n// Expurgation d'un texte d'erreur avant de le journaliser.\n//\n// Source unique : `construire.mjs` recopie cette fonction dans les nœuds Code\n// du socle et du journaliseur ; `expurger.test.js` la vérifie.\n//\n// Le journal des incidents est lu par des humains et survit aux lignes de\n// file : il ne doit contenir ni adresse e-mail, ni lien (un lien public porte\n// un jeton), ni clé, ni en-tête d'autorisation. On garde ce qui aide à\n// comprendre : le code SMTP, le code réseau, le nom de l'étape.\n\nfunction expurger(texte, longueur) {\n  const max = Number.isInteger(longueur) ? longueur : 300;\n  let t = texte === null || texte === undefined ? \"\" : String(texte);\n  t = t\n    .replace(/\\b(?:https?|wss?):\\/\\/\\S+/gi, \"<lien>\")\n    .replace(/\\b(?:Bearer|Basic)\\s+[A-Za-z0-9._~+\\/=-]+/gi, \"<autorisation>\")\n    .replace(/\\b(apikey|api_key|authorization|password|pass|token|jeton|secret)([\"']?\\s*[:=]\\s*[\"']?)[^\\s\"',;}]+/gi, \"$1$2<masqué>\")\n    .replace(/\\beyJ[A-Za-z0-9_-]{8,}(?:\\.[A-Za-z0-9_-]+){1,2}/g, \"<jeton>\")\n    .replace(/\\b(?:xkeysib|xsmtpsib|sk_live|sk_test|sb_secret)[-_][A-Za-z0-9_-]+/gi, \"<clé>\")\n    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/g, \"<e-mail>\")\n    .replace(/\\b[0-9a-f]{32,}\\b/gi, \"<empreinte>\")\n    .replace(/\\s+/g, \" \")\n    .trim();\n  return t.length > max ? t.slice(0, max - 1) + \"…\" : t;\n}\n\n\nconst src = $json || {};\nconst exec = src.execution || {};\nconst wf = src.workflow || {};\nconst err = exec.error || src.error || {};\nconst noeud = (err.node && (err.node.name || err.node)) || exec.lastNodeExecuted || 'inconnu';\nconst brut = [err.message, err.description].filter((x) => typeof x === 'string' && x.trim()).join(' | ') || 'erreur sans message';\nconst RESEAU_AVANT = /cannot be established|refused the connection|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|getaddrinfo/i;\nlet categorie = 'echec_workflow';\nlet intervention = true;\nlet conseil = '';\nif (noeud === 'Réserver la file') {\n  if (RESEAU_AVANT.test(brut)) { categorie = 'reseau_avant_reservation'; intervention = false; conseil = 'aucune ligne réservée'; }\n  else { categorie = 'reservation_sans_reponse'; conseil = 'la base a pu réserver : vérifier les lignes envoi_en_cours de cette file'; }\n} else if (/^Notifier .*\\(email\\)$/.test(String(noeud))) {\n  categorie = 'envoi_incertain'; conseil = 'exécution interrompue pendant l\\'envoi : le message a pu partir, la ligne reste envoi_en_cours, vérification humaine';\n} else if (String(noeud).startsWith('Clore')) {\n  categorie = 'cloture_echouee'; conseil = 'issue de l\\'envoi non enregistrée : la ligne reste envoi_en_cours, vérification humaine avant tout renvoi';\n}\nconst file = { 'Nouveau devis (socle)': 'devis', 'Facture (socle)': 'factures', 'Proposition RDV (socle)': 'proposition', 'Véhicule prêt (socle)': 'atelier' }[String(wf.name || '').replace(/ — RECETTE fiabilisation$/, '')] || null;\nreturn [{ json: { p_incident: {\n  categorie, intervention_requise: intervention,\n  workflow_id: wf.id || null, workflow_nom: wf.name || null,\n  execution_id: exec.id ? String(exec.id) : null,\n  noeud: String(noeud), notification_file: file, notification_id: null,\n  message: expurger((conseil ? conseil + ' — ' : '') + brut, 300),\n} } }];"
+      },
+      "id": "e9077853-a0f7-475e-a741-99ebb026c681",
+      "name": "Extraire les infos d'erreur",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/journaliser_incident",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_incident: $json.p_incident }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "Journaliser l'erreur",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        304
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      },
+      "id": "11573fd3-cbb3-48a2-998f-48b02a8b3f27"
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extraire les infos d'erreur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraire les infos d'erreur": {
+      "main": [
+        [
+          {
+            "node": "Journaliser l'erreur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {},
+  "tags": []
+}
