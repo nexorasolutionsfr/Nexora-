@@ -2,7 +2,9 @@
 
 Branche `lot2/coherence-documents` (depuis `main` `32f52fe`, **indépendante du
 lot 1**). Supabase **Test**, garage fictif « PROTO Atelier 2026-09-14-19h23 ».
-Règle suivie : ne corriger que ce qui est reproduit. **Aucune migration.**
+Règle suivie : ne corriger que ce qui est reproduit. **Deux migrations, appliquées
+sur Test uniquement** (`20260920000100`, `20260920000200`), ajoutées le 15 sept.
+après revue — voir « Garanties en base » ci-dessous.
 
 ## Périmètre audité et verdicts
 
@@ -39,28 +41,74 @@ garde, bouton toujours actif ; en base, ni contrainte d'unicité sur
 fiche `d49281a9`), **trois clics** rapides → **une seule facture**, F-2026-0005
 (`apres-une-seule-facture.png`, comptage en base).
 
-## Décision attendue — verrou en base
+## Garanties en base (ajoutées après revue)
 
-Les gardes de l'écran ne couvrent pas deux onglets ou deux postes au même
-instant. Le verrou complet serait un index unique partiel
-`factures (rendez_vous_id) where rendez_vous_id is not null`, ou un trigger
-avec verrou consultatif. Relevé **en lecture** sur la Production le 15 sept. :
-aucune facture n'y est encore rattachée à une visite, donc aucun doublon qui
-empêcherait l'index. Sur Test, les deux factures de la reproduction le
-bloqueraient (pas de suppression de donnée sans décision). Avoirs ou factures
-rectificatives par visite : aucun statut de ce type n'existe aujourd'hui.
-**Non fait** : c'est une migration, à décider.
+### 1. Une facture par fiche atelier — `20260920000100_facture_une_par_ordre`
+
+**Règles métier vérifiées d'abord** : une fiche atelier par visite
+(`ordres_reparation_rendez_vous_unique`) ; génération de facture depuis la fiche
+terminée, par un seul chemin dans le code ; aucun avoir, acompte ni facture
+rectificative dans le schéma (statuts `emise`, `en_attente`, `payee`) ; une
+facture se corrige elle-même avant encaissement ; des factures **sans** fiche
+existent (Test 22, Production 1). La clé retenue est donc **la fiche atelier**,
+pas la visite ; les factures sans fiche restent libres.
+
+**Mécanisme** : trigger `BEFORE INSERT` (SECURITY DEFINER), verrou consultatif
+de transaction sur la fiche, puis refus si une facture existe déjà pour elle
+(« cet ordre de reparation a deja sa facture »). Aucune ligne existante lue pour
+validation ni modifiée ; le trigger passe avant la numérotation, aucun numéro
+n'est consommé par un refus. L'écran relit la facture existante et le dit.
+
+### 2. Cohérence client / véhicule d'un contrôle — `20260920000200_inspections_client_vehicule_coherents`
+
+Constat **distinct** du « modification sans effet » (non reproduit) : sous la
+session du dirigeant, un contrôle non verrouillé acceptait le véhicule d'un
+**autre client** et gardait son client d'origine — **reproduit sur Test avant
+migration** (`c13c2f2c` → BE-505-EE : enregistré, client conservé ; remis en
+état). Trigger `BEFORE INSERT OR UPDATE OF client_id, vehicule_id, garage_id` :
+refuse un véhicule d'un autre garage ou d'un autre client ; ne corrige, ne
+réaffecte ni ne valide aucune ligne existante ; s'exécute après
+`inspections_verrou_contenu`, dont le refus reste inchangé pour un contrôle
+verrouillé. Relevé préalable : 0 contrôle incohérent sur Test et en Production.
+L'écran nomme les deux refus.
+
+### Preuves
+
+**Base jetable, schéma frais de Production** (`base-jetable-lot2-2026-09-15.sh`,
+avant/après) : AVANT, deux sessions concurrentes → **2 factures** pour la même
+fiche, contrôle incohérent accepté ; APRÈS → **16 OK, 0 KO** : une facture et un
+refus explicite en concurrence, compteur de numérotation +1 seulement, doublon
+antérieur préservé et refusant une troisième facture, factures sans fiche
+libres, facture existante toujours marquable payée ; changement et création
+incohérents refusés sans modification, autre véhicule du même client et saisie
+libre acceptés, véhicule d'un autre garage refusé, contrôle verrouillé intact
+avec son propre refus, fonctions non exécutables par `anon`/`authenticated`.
+
+**Test, après application** (dry-run exact des deux migrations, miroir des 118
+migrations de `b239bd7`) :
+
+| Preuve | Résultat |
+|---|---|
+| Deux **sessions distinctes** du dirigeant insèrent au même instant la facture de la fiche de BD-404-DD | session 1 : **F-2026-0006** ; session 2 : refus « cet ordre de reparation a deja sa facture » ; 1 facture pour la fiche ; compteur 5 → 6 |
+| Factures existantes | F-2026-0001 à 0005 inchangées, doublon F-2026-0003/0004 préservé |
+| Contrôle `c13c2f2c` → véhicule d'un autre client | refusé, contrôle inchangé |
+| Création d'un contrôle incohérent | refusée |
+| Modification ordinaire (kilométrage) | acceptée |
+| Navigateur (intégration) : trois clics sur « Générer la facture » (BH-808-HH) | une facture, F-2026-0007 ; compteur 7 |
 
 ## Données laissées sur Test (preuves)
 
 BB-202-BB : fiches atelier `17d9cd7f` (31 juillet) et `d49281a9` (18 mars),
-terminées ; factures F-2026-0003, F-2026-0004 (doublon de la reproduction),
-F-2026-0005. Contrôle synthétique `c13c2f2c` (BA-101-AA, brouillon). Aucun envoi
-autorisé.
+terminées ; factures F-2026-0003, F-2026-0004 (doublon de la reproduction,
+conservé), F-2026-0005. BD-404-DD : fiche atelier terminée, F-2026-0006.
+BH-808-HH : visite passée « restitué », fiche `9828a1cb`, F-2026-0007. Contrôle
+synthétique `c13c2f2c` (BA-101-AA, brouillon). Aucun envoi autorisé.
 
 ## Limites
 
 - Fenêtre de facture : montants au format « 50.00 € » et désignation longue
   collée au montant — défauts antérieurs, non traités ici.
-- Cas « relecture avant insertion » (autre poste qui facture entre-temps) :
-  code en place, non rejoué au navigateur.
+- Cas « un autre poste a facturé entre-temps » : couvert en base (deux sessions
+  prouvées) ; le message de l'écran dans ce cas n'a pas été rejoué au navigateur.
+- Si des avoirs ou acomptes sont introduits un jour, la règle « une facture par
+  fiche » devra porter un type de document.
