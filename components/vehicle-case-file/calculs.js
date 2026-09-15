@@ -139,22 +139,45 @@ export function selectionnerInterventionCourante(
   // Sans rendez-vous, il n'y a pas de visite à reconstituer. Un devis seul est
   // une intervention en devenir ; lui adjoindre une facture ancienne
   // fabriquerait une visite qui n'a jamais eu lieu.
+  //
+  // Et un devis seul ne se choisit pas « le plus récent » : s'il y en a un,
+  // c'est lui ; s'il y en a plusieurs, aucun n'est mis en avant — ils sont
+  // tous dans « Devis sans intervention associée », avec date, référence et
+  // montant, et le garage choisit. (`devisCandidats` reste vide ici : cette
+  // liste-là ne sert qu'aux devis préparés pour une visite précise.)
   if (!rdv) {
+    const seuls = trierParDate(devis, "created_at", "desc");
     return {
       rdv: null,
-      devis: trierParDate(devis, "created_at", "desc")[0] || null,
+      devis: seuls.length === 1 ? seuls[0] : null,
+      devisCandidats: [],
       ordre: null,
       facture: null,
     };
   }
 
   const ordre = ordresReparation.find((o) => o.rendez_vous_id === rdv.id) || null;
-  // Le devis vient de l'ordre. Sans ordre, rien ne relie un devis à ce
-  // rendez-vous : le modèle ne porte pas cette relation, on ne l'invente pas.
-  const devisRetenu = (ordre?.devis_id && devis.find((d) => d.id === ordre.devis_id)) || null;
   const facture = factures.find((f) => f.rendez_vous_id === rdv.id) || null;
+  return { rdv, ordre, facture, ...devisDeLaVisite({ rdv, ordre, devis }) };
+}
 
-  return { rdv, devis: devisRetenu, ordre, facture };
+/**
+ * Le devis d'une visite, par relation explicite seulement.
+ *
+ * Deux relations existent depuis le 2026-09-19 : l'ordre (`ordre.devis_id`,
+ * exécution) et la préparation (`devis.rendez_vous_id`). L'ordre gagne : un
+ * devis accepté et lancé est LE devis de la visite. Sinon, les devis préparés
+ * pour cette visite : un seul, il est retenu ; plusieurs, AUCUN n'est choisi
+ * à la place du garage — ils sont rendus dans `devisCandidats` et l'écran
+ * demande lequel. Jamais « le plus récent du véhicule ».
+ */
+export function devisDeLaVisite({ rdv = null, ordre = null, devis = [] } = {}) {
+  const parOrdre = (ordre?.devis_id && devis.find((d) => d.id === ordre.devis_id)) || null;
+  if (parOrdre) return { devis: parOrdre, devisCandidats: [] };
+  if (!rdv) return { devis: null, devisCandidats: [] };
+  const prepares = trierParDate(devis.filter((d) => d.rendez_vous_id === rdv.id), "created_at", "desc");
+  if (prepares.length === 1) return { devis: prepares[0], devisCandidats: [] };
+  return { devis: null, devisCandidats: prepares };
 }
 
 /**
@@ -172,8 +195,13 @@ export function selectionnerInterventionCourante(
  * est ce que le garage a de plus urgent. Ils sont donc rendus à part, sous un
  * libellé qui ne prétend pas qu'ils appartiennent à l'intervention en cours.
  */
-export function devisSansRattachement({ devis = [], ordresReparation = [] }, devisCourantId = null) {
+export function devisSansRattachement({ devis = [], ordresReparation = [], rendezVous = [] }, devisCourantId = null) {
   const rattaches = new Set(ordresReparation.map((o) => o.devis_id).filter(Boolean));
+  // Un devis PRÉPARÉ pour une visite de cette voiture (`rendez_vous_id`) a
+  // une intervention : il se lit dans l'intervention en cours ou dans les
+  // précédentes, pas ici.
+  const visites = new Set(rendezVous.map((r) => r.id));
+  for (const d of devis) if (d.rendez_vous_id && visites.has(d.rendez_vous_id)) rattaches.add(d.id);
   // Le devis qui sert déjà de document principal n'est pas « sans
   // intervention » : il est sous les yeux, en haut du dossier. L'afficher une
   // seconde fois plus bas donnait deux devis là où il n'y en a qu'un.
@@ -212,10 +240,12 @@ export function interventionsPrecedentes(
     "desc",
   ).map((rdv) => {
     const ordre = ordresReparation.find((o) => o.rendez_vous_id === rdv.id) || null;
+    const { devis: devisVisite, devisCandidats } = devisDeLaVisite({ rdv, ordre, devis });
     return {
       rdv,
       ordre,
-      devis: (ordre?.devis_id && devis.find((d) => d.id === ordre.devis_id)) || null,
+      devis: devisVisite,
+      devisCandidats,
       facture: factures.find((f) => f.rendez_vous_id === rdv.id) || null,
     };
   });
@@ -251,14 +281,15 @@ export function construireDossierVehicule(
   maintenant = new Date(),
 ) {
   const intervention = selectionnerInterventionCourante({ rendezVous, devis, ordresReparation, factures }, maintenant);
-  const sansRattachement = devisSansRattachement({ devis, ordresReparation }, intervention.devis?.id || null);
+  const sansRattachement = devisSansRattachement({ devis, ordresReparation, rendezVous }, intervention.devis?.id || null);
   const fil = filVehicule({
     ...intervention,
     etatEnvoiDevis,
     etatEnvoiFacture,
-    // Le fil doit savoir qu'il existe des devis orphelins : sans cela il
-    // conseille d'en établir un de plus.
-    devisSansIntervention: sansRattachement.length,
+    // Le fil doit savoir qu'il existe des devis orphelins — ou plusieurs
+    // devis préparés pour cette visite, entre lesquels on n'a pas tranché :
+    // sans cela il conseille d'en établir un de plus.
+    devisSansIntervention: sansRattachement.length + (intervention.devisCandidats?.length || 0),
   });
 
   return {

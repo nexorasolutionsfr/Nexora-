@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Car, Phone, Mail, ArrowRight, AlertTriangle, ChevronDown } from "lucide-react";
+import { X, Car, Phone, Mail, ArrowRight, AlertTriangle, ChevronDown, ClipboardList } from "lucide-react";
 import { ACCENT, ACCENT_SOFT, NAVY } from "../garage-os/tokens";
 import { construireDossierVehicule, selectionnerInterventionCourante } from "./calculs";
 import { supabase } from "@/lib/supabase";
 import { DOCUMENTS } from "../envoi/etatsEnvoi";
 import { libelleQuiAgit } from "../atelier/filVehicule";
+import PreparerDevisDepuisConstat from "../devis-lignes/PreparerDevisDepuisConstat";
 import {
   DEVIS_STATUT_LABEL,
   DEVIS_STATUT_TONE,
@@ -74,9 +75,17 @@ export default function VehicleCaseFileView({
   // Le document par lequel on est arrivé, quand on a cherché sa référence
   // plutôt que la voiture. `{ type: "facture", id }` ou `null`.
   documentCible = null,
+  // « Préparer le devis » depuis un constat : réservé aux rôles qui chiffrent.
+  // `onDevisPrepare(devisId)` relit le devis côté dashboard ; `onOuvrirDevis(id)`
+  // ouvre l'écran Devis sur lui.
+  garageId = null,
+  peutChiffrer = false,
+  onDevisPrepare = null,
+  onToast = null,
 }) {
   const fermerRef = useRef(null);
   const [historiqueOuvert, setHistoriqueOuvert] = useState(false);
+  const [preparerOuvert, setPreparerOuvert] = useState(false);
   const ligneViseeRef = useRef(null);
   const factureViseeId = documentCible?.type === "facture" ? documentCible.id : null;
   // Le fil peut renvoyer vers la liste des devis orphelins : il n'y a pas
@@ -120,14 +129,27 @@ export default function VehicleCaseFileView({
   }, [devisCourantId, factureCouranteId]);
 
 
+  // LE FOCUS SE POSE À L'OUVERTURE, PAS À CHAQUE RENDU
+  //
+  // Cet effet dépendait de `onClose`, que le tableau de bord recrée à chaque
+  // rendu : à chaque rechargement de données, le focus revenait sur « Fermer ».
+  // Mesuré au clavier CDP le 14 septembre 2026 : Entrée sur « Préparer le devis
+  // depuis le constat » a fermé le dossier, parce que le focus avait déjà été
+  // repris. Focus initial au montage seulement ; Échap lit la version courante
+  // par référence.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const preparerOuvertRef = useRef(false);
+  preparerOuvertRef.current = preparerOuvert;
   useEffect(() => {
     fermerRef.current?.focus();
     function handleKeyDown(event) {
-      if (event.key === "Escape") onClose?.();
+      // La fenêtre « Préparer le devis » gère sa propre touche Échap.
+      if (event.key === "Escape" && !preparerOuvertRef.current) onCloseRef.current?.();
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, []);
 
   if (!vehicule) return null;
 
@@ -144,7 +166,10 @@ export default function VehicleCaseFileView({
   // sous « Intervention en cours », et une facture payée l'an dernier rendait
   // la ligne « Facture : payée » pour un rendez-vous de demain.
   // Le passé appartient à « Interventions précédentes ».
-  const { rdv: rdvCourant, devis: devisCourant, ordre: ordreCourant, facture: factureCourante } = dossier.intervention;
+  const { rdv: rdvCourant, devis: devisCourant, ordre: ordreCourant, facture: factureCourante, devisCandidats = [] } = dossier.intervention;
+  // « Préparer le devis » a sa place tant que la visite n'est ni facturée ni
+  // close : c'est le geste de l'accueil pendant que la voiture est là.
+  const peutPreparer = peutChiffrer && inspectionsDisponibles && garageId && !factureCourante && ordreCourant?.statut !== "termine";
 
   // ARRIVER PAR LA RÉFÉRENCE D'UN DOCUMENT
   //
@@ -279,7 +304,7 @@ export default function VehicleCaseFileView({
                     type="button"
                     onClick={() => {
                       if (dossier.prochaineAction.cible === "atelier") onOuvrirAtelier?.();
-                      if (dossier.prochaineAction.cible === "devis") onOuvrirDevis?.();
+                      if (dossier.prochaineAction.cible === "devis") onOuvrirDevis?.(devisCourant?.id || null);
                       if (dossier.prochaineAction.cible === "agenda") onOuvrirAgenda?.();
                       if (dossier.prochaineAction.cible === "factures") onOuvrirFactures?.();
                       if (dossier.prochaineAction.cible === "ordres_reparation") onOuvrirOrdresReparation?.(vehicule?.id);
@@ -318,10 +343,39 @@ export default function VehicleCaseFileView({
               />
               <LigneEtat
                 libelle="Devis"
-                valeur={devisCourant ? (DEVIS_STATUT_LABEL[devisCourant.statut] || "Devis") : "Aucun devis"}
-                tone={devisCourant ? DEVIS_STATUT_TONE[devisCourant.statut] : null}
-                onClick={devisCourant ? () => onOuvrirDevis?.() : null}
+                valeur={devisCourant
+                  ? (DEVIS_STATUT_LABEL[devisCourant.statut] || "Devis")
+                  : devisCandidats.length > 0 ? `${devisCandidats.length} devis — à choisir`
+                    : (!rdvCourant && dossier.devisSansRattachement.length > 1) ? `${dossier.devisSansRattachement.length} devis — à choisir ci-dessous`
+                      : "Aucun devis"}
+                tone={devisCourant ? DEVIS_STATUT_TONE[devisCourant.statut] : (devisCandidats.length > 0 || (!rdvCourant && dossier.devisSansRattachement.length > 1)) ? "amber" : null}
+                onClick={devisCourant ? () => onOuvrirDevis?.(devisCourant.id) : null}
               />
+              {/* PLUSIEURS DEVIS POUR LA MÊME VISITE : ON MONTRE, ON NE CHOISIT PAS
+                  Référence, date, montant et statut de chacun — assez pour
+                  les départager sans les ouvrir un par un. */}
+              {!devisCourant && devisCandidats.length > 0 && (
+                <div className="px-4 py-2 bg-amber-50/60 divide-y divide-amber-100">
+                  {devisCandidats.map((d) => (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => onOuvrirDevis?.(d.id)}
+                      className="w-full py-2 flex items-center justify-between gap-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-[13px] font-medium text-slate-900 tabular-nums">{referenceDevis(d)}</span>
+                        <span className="block text-[12px] text-slate-500">{formatDateHeure(d.created_at)}</span>
+                      </span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        <span className="text-[13px] font-medium text-slate-800 tabular-nums">{montantTTC(d)}</span>
+                        <Badge tone={DEVIS_STATUT_TONE[d.statut] || "slate"}>{DEVIS_STATUT_LABEL[d.statut] || "Devis"}</Badge>
+                        <ArrowRight size={13} className="text-slate-300" />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <LigneEtat
                 libelle="Fiche atelier (OR)"
                 valeur={ordreCourant ? (ordreCourant.statut === "termine" ? "Travaux terminés" : "Ouverte") : "Aucune"}
@@ -347,6 +401,21 @@ export default function VehicleCaseFileView({
                 onClick={rdvCourant ? () => onOuvrirRendezVous?.(rdvCourant) : null}
               />
             </div>
+            {/* LE GESTE DE L'ACCUEIL : PRÉPARER LE DEVIS SANS RETAPER LE CONSTAT
+                Le véhicule, le client et la visite sont déjà sous les yeux ;
+                la fenêtre ne les redemande pas. Elle reprend les points du
+                contrôle en lignes « Prix à renseigner », dans le devis de
+                cette visite ou dans un nouveau — au choix du garage. */}
+            {peutPreparer && (
+              <button
+                type="button"
+                onClick={() => setPreparerOuvert(true)}
+                className="mt-3 w-full inline-flex items-center justify-center gap-2 text-[13.5px] font-semibold rounded-xl px-4 min-h-[44px] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
+                style={{ backgroundColor: ACCENT_SOFT, color: ACCENT }}
+              >
+                <ClipboardList size={16} /> Préparer le devis depuis le constat
+              </button>
+            )}
           </div>
 
           {/* La chronologie plate a été retirée le 13 septembre 2026 : sur un
@@ -383,7 +452,7 @@ export default function VehicleCaseFileView({
                   <button
                     key={d.id}
                     type="button"
-                    onClick={() => onOuvrirDevis?.()}
+                    onClick={() => onOuvrirDevis?.(d.id)}
                     className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
                   >
                     <span className="min-w-0">
@@ -471,6 +540,23 @@ export default function VehicleCaseFileView({
           )}
         </div>
       </div>
+
+      {preparerOuvert && (
+        <PreparerDevisDepuisConstat
+          garageId={garageId}
+          vehicule={vehicule}
+          client={client}
+          rdv={rdvCourant}
+          devis={devis}
+          onToast={onToast}
+          onFermer={() => setPreparerOuvert(false)}
+          onPrepare={async (devisId) => {
+            setPreparerOuvert(false);
+            await onDevisPrepare?.(devisId);
+            onOuvrirDevis?.(devisId);
+          }}
+        />
+      )}
     </div>
   );
 }

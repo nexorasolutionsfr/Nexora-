@@ -18,6 +18,7 @@ import {
   SUGGESTIONS_PAR_CATEGORIE,
 } from "./inspectionsConstants";
 import { compterASignaler } from "./controleStandard";
+import Portail from "../garage-os/Portail";
 
 const ETATS = ["ok", "a_surveiller", "a_valider_client", "dommage"];
 
@@ -27,10 +28,12 @@ function EtatTone({ tone }) {
   return { color: tones[tone], backgroundColor: bg[tone] };
 }
 
-function EtatPicker({ value, onChange }) {
+// Exporté pour l'écran du mécanicien : même sélecteur, même vocabulaire. Il
+// n'y propose pas « OK » — un constat est ce qui cloche.
+export function EtatPicker({ value, onChange, etats = ETATS }) {
   return (
     <div className="grid grid-cols-2 gap-2 mt-2">
-      {ETATS.map((etat) => (
+      {etats.map((etat) => (
         <button
           key={etat}
           type="button"
@@ -326,7 +329,10 @@ export default function InspectionCaptureFlow({ inspection, points, photos, gara
     setFinalizing(false);
   };
 
+  // Rendue dans le body (voir garage-os/Portail.jsx) : sinon, sur téléphone,
+  // l'en-tête de page recouvre le titre et la barre de progression.
   return (
+    <Portail>
     <div className="fixed inset-0 bg-black/40 z-50 flex items-stretch sm:items-center sm:justify-center">
       <div className="bg-white w-full sm:max-w-lg sm:rounded-2xl sm:max-h-[92vh] h-full sm:h-auto flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
@@ -450,5 +456,6 @@ export default function InspectionCaptureFlow({ inspection, points, photos, gara
         </div>
       </div>
     </div>
+    </Portail>
   );
 }

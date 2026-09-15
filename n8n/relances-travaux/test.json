@@ -1,0 +1,348 @@
+{
+  "name": "Relances travaux différés (TEST — transport simulé)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        }
+      },
+      "name": "Toutes les 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slawilafseganlbghgwx.supabase.co/rest/v1/rpc/preparer_relances_travaux",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"p_garages\": [\"31578a46-deba-4dd6-9487-7f2d876ec00f\"]}",
+        "options": {}
+      },
+      "name": "Préparer les relances",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        300
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "BmVzKJSWPhAJ5V3Z",
+          "name": "RPC Supabase RECETTE (Test)"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slawilafseganlbghgwx.supabase.co/rest/v1/rpc/reserver_relances_travaux",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"p_limite\": 10, \"p_garages\": [\"31578a46-deba-4dd6-9487-7f2d876ec00f\"]}",
+        "options": {}
+      },
+      "name": "Réserver les relances autorisées",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "BmVzKJSWPhAJ5V3Z",
+          "name": "RPC Supabase RECETTE (Test)"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().filter((i) => i.json && i.json.id);"
+      },
+      "name": "Garder les lignes réservées",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Une relance à la fois",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "name": "Lancer à la main (recette)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// FAUX FOURNISSEUR — recette. N'envoie rien, ne contacte rien.\n// L'issue est pilotée par le destinataire, uniquement sur des boîtes .invalid :\n//   echec.transport@…     → échec CERTAIN avant envoi → à reprendre\n//   incertain.transport@… → issue INCERTAINE (accepté peut-être) → on ne clôt rien\n//   autre @….invalid      → accepté (simulé)\n// Tout destinataire hors .invalid est refusé : une erreur de jeu ne part jamais.\nconst r = $('Une relance à la fois').item.json;\nconst dest = String(r.destinataire || '').toLowerCase();\nif (!/@[a-z0-9.-]+\\.invalid$/.test(dest)) return [{ json: { id: r.id, resultat: 'bloque', motif: 'destinataire hors des boîtes de recette autorisées' } }];\nif (dest.startsWith('echec.transport@')) return [{ json: { id: r.id, resultat: 'a_reprendre', motif: 'échec certain avant envoi (simulé)' } }];\nif (dest.startsWith('incertain.transport@')) return [{ json: { id: r.id, resultat: 'incertain', motif: 'délai dépassé après acceptation possible (simulé)' } }];\nreturn [{ json: { id: r.id, resultat: 'envoye', motif: 'transport simulé (recette) : aucun message réel n\\'est parti' } }];"
+      },
+      "name": "Transport simulé (recette)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "issue-connue",
+              "leftValue": "={{ $json.resultat }}",
+              "rightValue": "incertain",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Issue connue ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slawilafseganlbghgwx.supabase.co/rest/v1/rpc/terminer_relance_travail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_id\": \"{{ $json.id }}\", \"p_resultat\": \"{{ $json.resultat }}\", \"p_motif\": {{ $json.motif === null || $json.motif === undefined ? 'null' : JSON.stringify($json.motif) }}}",
+        "options": {}
+      },
+      "name": "Clore la relance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        220
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "BmVzKJSWPhAJ5V3Z",
+          "name": "RPC Supabase RECETTE (Test)"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {},
+      "name": "Issue incertaine : rien n'est clos",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        420
+      ]
+    }
+  ],
+  "connections": {
+    "Toutes les 15 minutes": {
+      "main": [
+        [
+          {
+            "node": "Préparer les relances",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Préparer les relances": {
+      "main": [
+        [
+          {
+            "node": "Réserver les relances autorisées",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Réserver les relances autorisées": {
+      "main": [
+        [
+          {
+            "node": "Garder les lignes réservées",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Garder les lignes réservées": {
+      "main": [
+        [
+          {
+            "node": "Une relance à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Issue connue ?": {
+      "main": [
+        [
+          {
+            "node": "Clore la relance",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Issue incertaine : rien n'est clos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clore la relance": {
+      "main": [
+        [
+          {
+            "node": "Une relance à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Issue incertaine : rien n'est clos": {
+      "main": [
+        [
+          {
+            "node": "Une relance à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lancer à la main (recette)": {
+      "main": [
+        [
+          {
+            "node": "Préparer les relances",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Une relance à la fois": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Transport simulé (recette)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transport simulé (recette)": {
+      "main": [
+        [
+          {
+            "node": "Issue connue ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "id": "relancestravauxtest0000001",
+  "meta": {
+    "instanceId": ""
+  },
+  "tags": []
+}

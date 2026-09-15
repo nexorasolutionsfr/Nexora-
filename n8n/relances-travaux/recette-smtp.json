@@ -1,0 +1,439 @@
+{
+  "name": "Relances travaux différés (RECETTE — vraie variante, SMTP contrôlé)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        }
+      },
+      "name": "Toutes les 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slawilafseganlbghgwx.supabase.co/rest/v1/rpc/preparer_relances_travaux",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"p_garages\": [\"fb53c8ce-f7c5-476c-8c37-ce65b9f1bda0\"]}",
+        "options": {}
+      },
+      "name": "Préparer les relances",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        300
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "BmVzKJSWPhAJ5V3Z",
+          "name": "RPC Supabase RECETTE (Test)"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slawilafseganlbghgwx.supabase.co/rest/v1/rpc/reserver_relances_travaux",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"p_limite\": 10, \"p_garages\": [\"fb53c8ce-f7c5-476c-8c37-ce65b9f1bda0\"]}",
+        "options": {}
+      },
+      "name": "Réserver les relances autorisées",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "BmVzKJSWPhAJ5V3Z",
+          "name": "RPC Supabase RECETTE (Test)"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().filter((i) => i.json && i.json.id);"
+      },
+      "name": "Garder les lignes réservées",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Une relance à la fois",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "name": "Lancer à la main (recette)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Même identité que le socle des envois : adresse Nexora vérifiée chez Brevo,\n// nom du garage affiché, adresse du garage en Reply-To (jamais inventée).\nconst ADRESSE = \"nexorasolutions.france@gmail.com\";\nconst r = $json;\nconst nom = String(r.expediteur_nom || '').replace(/[\"\\\\<>\\r\\n]/g, ' ').replace(/\\s+/g, ' ').trim() || 'Votre garage';\nconst repondreA = /^[^\\s@<>\"]+@[^\\s@<>\"]+\\.[^\\s@<>\"]+$/.test(String(r.repondre_a || '')) ? String(r.repondre_a) : '';\nreturn [{ json: { ...r, expediteur: `\"${nom}\" <${ADRESSE}>`, repondreA } }];"
+      },
+      "name": "Composer l'expéditeur",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.expediteur }}",
+        "toEmail": "={{ $json.destinataire }}",
+        "subject": "={{ $json.sujet }}",
+        "emailFormat": "text",
+        "text": "={{ $json.texte }}",
+        "options": {
+          "appendAttribution": false,
+          "replyTo": "={{ $json.repondreA }}"
+        }
+      },
+      "name": "Envoyer la relance (email)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        960,
+        300
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "SmtpRecetteCtrl01",
+          "name": "SMTP recette contrôlé (aucun relais)"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $('Une relance à la fois').item.json;\nreturn [{ json: { id: r.id, resultat: 'envoye', motif: null } }];"
+      },
+      "name": "Accepté par le fournisseur",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Classement d'un échec d'envoi SMTP (nœud « Envoyer la relance (email) »).\n//\n// Source unique : `construire.mjs` recopie cette fonction dans le nœud Code\n// « Classer l'échec » ; `classerEchec.test.js` la vérifie.\n//\n// RÈGLE : on ne déduit la nature d'un échec QUE de ce qu'on sait situer dans\n// l'échange SMTP. Un nombre à trois chiffres trouvé n'importe où dans un\n// message (« 550 € », un numéro de rue, un identifiant) ne veut rien dire.\n//\n//   - Aucune connexion établie (refus, nom introuvable)      → a_reprendre\n//   - Authentification refusée                                → a_reprendre\n//   - Réponse du serveur à MAIL FROM, RCPT TO ou à la\n//     commande DATA, AVANT la transmission du message :\n//       4xx → a_reprendre            5xx → bloque\n//   - Réponse du serveur APRÈS la transmission du message\n//     (« Message failed ») : le serveur dit explicitement\n//     qu'il n'a pas pris le message :\n//       4xx → a_reprendre            5xx → bloque\n//   - Tout le reste — connexion coupée, délai dépassé, erreur\n//     inconnue — peut survenir après que le fournisseur a\n//     accepté le message                                      → incertain\n//\n// `incertain` n'est jamais clos ni repris : la relance reste `envoi_en_cours`\n// et l'écran dit « envoi à vérifier ».\n\nfunction classerEchec(erreur) {\n  const e = erreur && typeof erreur === \"object\" ? erreur : { message: erreur };\n  const message = String(e.message || e.description || \"\").trim();\n  const code = String(e.code || \"\").toUpperCase();\n  const commande = String(e.command || \"\").toUpperCase();\n  const reponse = Number.isInteger(e.responseCode) ? e.responseCode : null;\n  const extrait = message.slice(0, 200);\n  const issue = (resultat, motif) => ({ resultat, motif: `${motif}${extrait ? \" : \" + extrait : \"\"}` });\n\n  // 1. Pas de connexion : rien n'a pu partir.\n  if ([\"ECONNREFUSED\", \"ENOTFOUND\", \"EAI_AGAIN\", \"EDNS\"].includes(code)\n      || /^(?:connect ECONNREFUSED|getaddrinfo (?:ENOTFOUND|EAI_AGAIN))\\b/.test(message)) {\n    return issue(\"a_reprendre\", \"connexion au fournisseur impossible, rien n'est parti\");\n  }\n  // 2. Authentification refusée : rien n'a pu partir.\n  if (code === \"EAUTH\" || /^(?:Invalid login|Authentication (?:failed|not supported))\\b/i.test(message)) {\n    return issue(\"a_reprendre\", \"authentification refusée par le fournisseur, rien n'est parti\");\n  }\n\n  // 3. Réponse SMTP située dans l'échange : champs structurés d'abord…\n  let etape = null;\n  let classe = null;\n  if (reponse !== null && reponse >= 400 && reponse < 600) {\n    classe = Math.floor(reponse / 100);\n    if ([\"MAIL FROM\", \"RCPT TO\", \"DATA\"].includes(commande)) etape = \"avant\";\n    else if (commande === \"DATA END\" || commande === \".\") etape = \"apres\";\n  }\n  // … sinon les formulations exactes de nodemailer, ancrées en début de message.\n  if (etape === null) {\n    const avant = message.match(/^(?:Can't send mail - all recipients were rejected|Mail command failed|Recipient command failed|Data command failed):\\s*([45])\\d\\d\\b/);\n    const apres = message.match(/^Message failed:\\s*([45])\\d\\d\\b/);\n    if (avant) { etape = \"avant\"; classe = Number(avant[1]); }\n    else if (apres) { etape = \"apres\"; classe = Number(apres[1]); }\n  }\n  if (etape === \"avant\") {\n    return classe === 5\n      ? issue(\"bloque\", \"refus définitif du fournisseur avant le message\")\n      : issue(\"a_reprendre\", \"refus temporaire du fournisseur avant le message\");\n  }\n  if (etape === \"apres\") {\n    return classe === 5\n      ? issue(\"bloque\", \"refus définitif du fournisseur après le message\")\n      : issue(\"a_reprendre\", \"refus temporaire du fournisseur après le message, non accepté\");\n  }\n\n  // 4. Tout le reste : le message a pu être accepté. On ne rejoue pas.\n  return issue(\"incertain\", \"issue inconnue, le message a pu être accepté\");\n}\n\n\nconst r = $('Une relance à la fois').item.json;\nconst brut = $json.error && typeof $json.error === 'object' ? $json.error : { message: $json.error || $json.message || '' };\nconst c = classerEchec({ message: brut.message || $json.message || '', description: brut.description, code: brut.code || $json.code, responseCode: brut.responseCode ?? $json.responseCode, command: brut.command || $json.command });\nreturn [{ json: { id: r.id, resultat: c.resultat, motif: c.motif, erreur_brute: JSON.stringify($json).slice(0, 600) } }];"
+      },
+      "name": "Classer l'échec",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "issue-connue",
+              "leftValue": "={{ $json.resultat }}",
+              "rightValue": "incertain",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Issue connue ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slawilafseganlbghgwx.supabase.co/rest/v1/rpc/terminer_relance_travail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_id\": \"{{ $json.id }}\", \"p_resultat\": \"{{ $json.resultat }}\", \"p_motif\": {{ $json.motif === null || $json.motif === undefined ? 'null' : JSON.stringify($json.motif) }}}",
+        "options": {}
+      },
+      "name": "Clore la relance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        220
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "BmVzKJSWPhAJ5V3Z",
+          "name": "RPC Supabase RECETTE (Test)"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {},
+      "name": "Issue incertaine : rien n'est clos",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        420
+      ]
+    }
+  ],
+  "connections": {
+    "Toutes les 15 minutes": {
+      "main": [
+        [
+          {
+            "node": "Préparer les relances",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Préparer les relances": {
+      "main": [
+        [
+          {
+            "node": "Réserver les relances autorisées",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Réserver les relances autorisées": {
+      "main": [
+        [
+          {
+            "node": "Garder les lignes réservées",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Garder les lignes réservées": {
+      "main": [
+        [
+          {
+            "node": "Une relance à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Issue connue ?": {
+      "main": [
+        [
+          {
+            "node": "Clore la relance",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Issue incertaine : rien n'est clos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clore la relance": {
+      "main": [
+        [
+          {
+            "node": "Une relance à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Issue incertaine : rien n'est clos": {
+      "main": [
+        [
+          {
+            "node": "Une relance à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lancer à la main (recette)": {
+      "main": [
+        [
+          {
+            "node": "Préparer les relances",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Une relance à la fois": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Composer l'expéditeur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Composer l'expéditeur": {
+      "main": [
+        [
+          {
+            "node": "Envoyer la relance (email)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Envoyer la relance (email)": {
+      "main": [
+        [
+          {
+            "node": "Accepté par le fournisseur",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Classer l'échec",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accepté par le fournisseur": {
+      "main": [
+        [
+          {
+            "node": "Issue connue ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classer l'échec": {
+      "main": [
+        [
+          {
+            "node": "Issue connue ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "id": "relancestravauxsmtp0000001",
+  "meta": {
+    "instanceId": ""
+  },
+  "tags": []
+}

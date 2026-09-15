@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import ConstatsMecanicien from "./ConstatsMecanicien";
 
 import {
   ajouterNote,
@@ -275,10 +276,17 @@ export default function AtelierMecanicienScreen() {
             )}
           </section>
 
+          {/* Le constat qui ira au devis : état, précision, photo. Distinct des
+              notes techniques ci-dessous, qui restent un fil de travail. */}
+          <section className="bg-white border border-slate-200 rounded-xl p-4 mb-4">
+            <h2 className="text-[14px] font-semibold text-slate-900 mb-2">Constats du véhicule</h2>
+            <ConstatsMecanicien supabase={supabase} ordreId={ordreOuvert.ordre_id} />
+          </section>
+
           <section className="bg-white border border-slate-200 rounded-xl p-4">
-            <h2 className="text-[14px] font-semibold text-slate-900 mb-2">Vos constats</h2>
+            <h2 className="text-[14px] font-semibold text-slate-900 mb-2">Notes techniques</h2>
             {notes.length === 0 ? (
-              <p className="text-sm text-slate-500 mb-3">Aucun constat pour l'instant.</p>
+              <p className="text-sm text-slate-500 mb-3">Aucune note pour l'instant.</p>
             ) : (
               <ul className="divide-y divide-slate-100 mb-3">
                 {notes.map((n) => (
@@ -293,7 +301,7 @@ export default function AtelierMecanicienScreen() {
             )}
             <form onSubmit={envoyerNote} className="grid gap-2">
               <label className="text-[13px] font-medium text-slate-700" htmlFor="nx-note">
-                Ajouter un constat
+                Ajouter une note
               </label>
               <textarea
                 id="nx-note"
@@ -301,7 +309,7 @@ export default function AtelierMecanicienScreen() {
                 onChange={(e) => setNouvelleNote(e.target.value)}
                 rows={3}
                 required
-                placeholder="Ce que vous avez constaté sur le véhicule."
+                placeholder="Pour l'équipe : pièce à commander, réglage fait, point à revoir."
                 className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
               />
               <div>
@@ -334,7 +342,15 @@ export default function AtelierMecanicienScreen() {
           </p>
         ) : (
           <ul className="grid gap-3">
-            {ordres.map((o) => {
+            {/* Les fiches en cours d'abord, la visite la plus récente en tête ;
+                les fiches terminées ensuite. La base les rend par date croissante :
+                la voiture du jour arrivait sous les visites de l'an dernier. */}
+            {[...ordres].sort((a, b) => {
+              const closA = a.statut === "termine" ? 1 : 0;
+              const closB = b.statut === "termine" ? 1 : 0;
+              if (closA !== closB) return closA - closB;
+              return new Date(b.date_debut || 0) - new Date(a.date_debut || 0);
+            }).map((o) => {
               const vehicule = [o.marque, o.modele].filter(Boolean).join(" ");
               const total = Number(o.nb_lignes || 0);
               const faites = Number(o.nb_lignes_faites || 0);
@@ -350,11 +366,16 @@ export default function AtelierMecanicienScreen() {
                         {vehicule || "Véhicule"}
                       </span>
                       {o.immatriculation && <Puce>{o.immatriculation}</Puce>}
-                      <span className="ml-auto">
-                        <Puce ton={total > 0 && faites === total ? "vert" : "ambre"}>
-                          {faites}/{total} fait{faites > 1 ? "s" : ""}
-                        </Puce>
-                      </span>
+                      {/* « 0/0 fait » ne disait rien : sans ligne, pas de compteur. */}
+                      {o.statut === "termine" ? (
+                        <span className="ml-auto"><Puce>Terminée</Puce></span>
+                      ) : total > 0 ? (
+                        <span className="ml-auto">
+                          <Puce ton={faites === total ? "vert" : "ambre"}>
+                            {faites}/{total} fait{faites > 1 ? "s" : ""}
+                          </Puce>
+                        </span>
+                      ) : null}
                     </div>
                     <p className="text-[13px] text-slate-500 mt-1">
                       {o.client_nom}

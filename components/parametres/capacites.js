@@ -47,6 +47,18 @@ export const CAPACITES = {
     resume: "La demande d'avis n'est pas envoyée automatiquement.",
     utilisable: "Le lien est conservé ici : collez-le dans vos échanges avec le client.",
   },
+  // La relance par e-mail d'un travail différé (20260919000400 et suivantes).
+  // La base sait la préparer et la réserver ; le workflow n8n a été éprouvé contre un serveur
+  // SMTP de recette (15 septembre 2026). Elle reste indisponible : aucun écran n'enregistre
+  // l'opposition du client ni ne lui offre un moyen de s'opposer dans le message, l'activation
+  // n'est pas bornée à un garage volontaire, et aucune réception réelle via Brevo n'est prouvée.
+  // Tant que c'est `false`, « Aujourd'hui » ne propose pas « Autoriser l'envoi » : le travail
+  // différé se suit à la main, comme avant.
+  relanceTravauxDifferes: {
+    disponible: false,
+    resume: "L'envoi de ces relances n'est pas encore disponible.",
+    utilisable: "Relancez le client vous-même, puis marquez le travail traité ou reporté.",
+  },
 };
 
 // Les canaux d'envoi. Seul l'e-mail part réellement aujourd'hui : SMS et

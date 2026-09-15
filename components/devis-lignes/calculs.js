@@ -66,7 +66,22 @@ export function calculerTotaux(lignes) {
     total_ht = arrondir2(total_ht + montant_ht);
     total_tva = arrondir2(total_tva + montant_tva);
   }
-  return { total_ht, total_tva, total_ttc: arrondir2(total_ht + total_tva), nb_lignes: liste.length };
+  // Une ligne « Prix à renseigner » pèse 0 dans la somme, et ce 0 n'est pas
+  // un prix : le total est alors PARTIEL, et l'écran doit le dire.
+  const lignes_a_chiffrer = liste.filter((l) => l?.prix_a_renseigner === true).length;
+  return {
+    total_ht,
+    total_tva,
+    total_ttc: arrondir2(total_ht + total_tva),
+    nb_lignes: liste.length,
+    lignes_a_chiffrer,
+    incomplet: lignes_a_chiffrer > 0,
+  };
+}
+
+/** Le devis a-t-il encore des lignes sans prix ? Miroir de devis_chiffrage_incomplet(). */
+export function devisChiffrageIncomplet(lignes) {
+  return (Array.isArray(lignes) ? lignes : []).some((l) => l?.prix_a_renseigner === true);
 }
 
 /**
@@ -89,7 +104,7 @@ export function devisALignes(devis) {
  * ligne de devis engage un montant, elle ne peut pas rester une estimation
  * vide.
  */
-export function validerLigneDevisForm({ type, libelle, quantite, prix_unitaire_ht, taux_tva }) {
+export function validerLigneDevisForm({ type, libelle, quantite, prix_unitaire_ht, taux_tva, prix_a_renseigner = false }) {
   const erreurs = {};
 
   if (type !== "main_oeuvre" && type !== "piece") {
@@ -102,8 +117,12 @@ export function validerLigneDevisForm({ type, libelle, quantite, prix_unitaire_h
   if (quantite === "" || quantite == null || !Number.isFinite(q) || q <= 0) {
     erreurs.quantite = "La quantité doit être un nombre strictement positif.";
   }
+  // Une ligne reprise d'un constat peut rester « Prix à renseigner » : le
+  // champ vide est alors un état, pas une faute. Dès qu'un prix est tapé —
+  // 0 compris — il devient le prix, et l'état tombe.
   const p = Number(prix_unitaire_ht);
-  if (prix_unitaire_ht === "" || prix_unitaire_ht == null || !Number.isFinite(p) || p < 0) {
+  const prixAbsent = prix_unitaire_ht === "" || prix_unitaire_ht == null;
+  if ((prixAbsent && !prix_a_renseigner) || (!prixAbsent && (!Number.isFinite(p) || p < 0))) {
     erreurs.prix_unitaire_ht = "Le prix unitaire HT est obligatoire et doit être nul ou positif.";
   }
   const t = Number(taux_tva);
@@ -115,15 +134,22 @@ export function validerLigneDevisForm({ type, libelle, quantite, prix_unitaire_h
 }
 
 /** Charge utile typée pour insert/update, à partir des champs d'un formulaire validé. */
-export function normaliserLigneDevis({ type, libelle, quantite, prix_unitaire_ht, taux_tva, prestation_id }) {
-  return {
+export function normaliserLigneDevis({ type, libelle, quantite, prix_unitaire_ht, taux_tva, prestation_id, prix_a_renseigner = false, inspection_point_id }) {
+  const prixAbsent = prix_unitaire_ht === "" || prix_unitaire_ht == null;
+  // Prix absent ET état « à renseigner » : on garde l'état, et le 0 de la
+  // contrainte. Prix présent : c'est un prix, l'état tombe.
+  const resteARenseigner = Boolean(prix_a_renseigner) && prixAbsent;
+  const charge = {
     type,
     libelle: String(libelle).trim(),
     quantite: Number(quantite),
-    prix_unitaire_ht: arrondir2(prix_unitaire_ht),
+    prix_unitaire_ht: resteARenseigner ? 0 : arrondir2(prix_unitaire_ht),
     taux_tva: Number(taux_tva),
     prestation_id: prestation_id || null,
+    prix_a_renseigner: resteARenseigner,
   };
+  if (inspection_point_id !== undefined) charge.inspection_point_id = inspection_point_id || null;
+  return charge;
 }
 
 /** Ordre d'affichage : position, puis date de création (stabilité). */
@@ -217,7 +243,18 @@ export function traduireErreurDevisLignes(error) {
     if (message.includes("devis_lignes_taux_tva_borne")) return "Le taux de TVA doit être compris entre 0 et 100.";
     if (message.includes("devis_lignes_libelle_non_vide")) return "Le libellé est obligatoire.";
     if (message.includes("devis_lignes_type_valide")) return "Type de ligne invalide.";
+    if (message.includes("devis_lignes_prix_a_renseigner_zero")) return "Une ligne « Prix à renseigner » ne porte pas de prix : saisissez le prix pour la chiffrer.";
     return "Cette ligne ne respecte pas les règles de saisie.";
+  }
+  // Messages de 20260919000100_constat_vers_devis.sql, mot pour mot.
+  if (message.includes("constat hors garage")) {
+    return "Ce constat n'appartient pas à ce garage.";
+  }
+  if (message.includes("constat d'un autre vehicule")) {
+    return "Ce constat concerne un autre véhicule que celui du devis.";
+  }
+  if (message.includes("Devis incomplet")) {
+    return "Des lignes attendent encore leur prix : chiffrez-les avant de partager ce devis.";
   }
   if (error.code === "42501") {
     return "Cette action n'est pas autorisée sur ce devis.";

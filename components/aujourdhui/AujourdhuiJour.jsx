@@ -25,8 +25,14 @@ import { AlertTriangle, ArrowRight, Calendar, ChevronDown, ChevronRight, Clock, 
 
 import { supabase } from "@/lib/supabase";
 import { filVehicule } from "../atelier/filVehicule";
+import { devisDeLaVisite } from "../vehicle-case-file/calculs";
 import { classerPriorites, compterLeGarage } from "./priorites";
 import { compterATraiter, construireATraiter, decouper } from "./aTraiter";
+import RelanceTravailModal, { useRelancesTravaux } from "./RelanceTravail";
+import { decorerLigneRelance, ouvreLaRelance } from "./relanceLigne";
+import { CAPACITES } from "../parametres/capacites";
+
+const RELANCES_DISPONIBLES = CAPACITES.relanceTravauxDifferes.disponible;
 
 const ACCENT = "#3D6BE0";
 const LIMITE = 6;
@@ -182,12 +188,27 @@ export default function AujourdhuiJour({
   inspections = [],
   // Le badge « Aujourd'hui » reçoit le nombre d'actions de CETTE liste.
   onCompte,
+  // Les relances préparées pour les travaux différés (20260919000400).
+  garageId = null,
+  onToast,
 }) {
   const maintenant = new Date();
+  // Une relance préparée ne crée pas de ligne de plus : elle devient le GESTE
+  // de la ligne « travail différé » qui existe déjà. Même source, même
+  // identité, une seule tâche.
+  const { parTravail: relancesParTravail, recharger: rechargerRelances } = useRelancesTravaux(garageId, Boolean(garageId && journalDisponible));
+  const [relanceOuverte, setRelanceOuverte] = useState(null);
 
+  // LE DEVIS D'UNE VISITE NE SE DEVINE PAS
+  // La première version prenait « le premier devis non refusé du véhicule » :
+  // faux dès la deuxième visite, et une relance de devis se collait à un
+  // rendez-vous qui n'avait rien à voir. Depuis le 2026-09-19, seules deux
+  // relations explicites comptent — l'ordre (`ordre.devis_id`) et la
+  // préparation (`devis.rendez_vous_id`) — et `devisDeLaVisite` ne choisit
+  // rien quand plusieurs devis sont préparés pour la même visite.
   const dossiers = useMemo(() => rendezVous.map((r) => {
-    const devis = devisList.find((d) => d.vehicule_id === r.vehicule_id && d.statut !== "refuse") || null;
     const ordre = ordresReparation.find((o) => o.rendez_vous_id === r.id) || null;
+    const { devis } = devisDeLaVisite({ rdv: r, ordre, devis: devisList });
     const facture = factures.find((f) => f.rendez_vous_id === r.id) || null;
     return {
       id: r.id, rdv: r, vehicule: r.vehicule, immatriculation: r.immatriculation, client: r.client,
@@ -307,6 +328,14 @@ export default function AujourdhuiJour({
     })), [travauxDifferes]);
 
   const agir = (l) => {
+    // Un travail différé dont la relance est prête à relire : on ouvre la
+    // relance, avec la voiture et le client. Sans relance, ou tant que l'envoi
+    // des relances n'est pas disponible, rien ne change : suivi manuel.
+    const relance = l.sourceType === "travail_differe" ? relancesParTravail.get(l.sourceId) : null;
+    if (ouvreLaRelance(relance, RELANCES_DISPONIBLES)) {
+      setRelanceOuverte({ relance, travail: lignesParSource.travail_differe.get(l.sourceId) || null });
+      return;
+    }
     if (l.origine === "cockpit") {
       // Seules les lignes de devis mènent au dossier du véhicule, comme avant :
       // connaître la voiture d'une inspection ou d'une demande ne change pas
@@ -433,7 +462,7 @@ export default function AujourdhuiJour({
           {visibles.map((l) => (
             <LigneATraiter
               key={l.cle}
-              ligne={l}
+              ligne={decorerLigneRelance(l, l.sourceType === "travail_differe" ? relancesParTravail.get(l.sourceId) : null, RELANCES_DISPONIBLES)}
               onAction={agir}
               onTraiter={onTraiter}
               onReporter={onReporter}
@@ -483,6 +512,16 @@ export default function AujourdhuiJour({
           </button>
         )}
       </div>
+
+      {relanceOuverte && (
+        <RelanceTravailModal
+          relance={relanceOuverte.relance}
+          travail={relanceOuverte.travail}
+          onToast={onToast}
+          onChange={rechargerRelances}
+          onFermer={() => setRelanceOuverte(null)}
+        />
+      )}
     </div>
   );
 }
@@ -511,7 +550,7 @@ function SuiviReporte({ masquees, relancesAVenir = [], onReactiver, journalDispo
           ))}
           {!journalDisponible && (
             <div className="px-3 py-2.5 text-[11.5px] text-slate-500">
-              Le suivi traité/reporté est réservé au propriétaire du garage.
+              Le suivi traité/reporté est réservé au dirigeant et à l'accueil.
             </div>
           )}
           {total === 0 ? (

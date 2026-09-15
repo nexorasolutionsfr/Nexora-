@@ -577,7 +577,29 @@ test('aucun devis ne disparaît : chacun est soit dans une visite, soit à part'
 // atelier qui n'existait pas.
 // ---------------------------------------------------------------------------
 
-test('sans rendez-vous, dernier devis accepté : un seul devis affiché, action possible', () => {
+// Depuis le 2026-09-19 (lot 0 du cap produit), « le plus récent » n'est plus
+// une relation : sans rendez-vous, un devis seul est retenu, plusieurs sont
+// listés — date, référence, montant — et le garage choisit.
+test('sans rendez-vous, un seul devis : il est retenu, et il n est pas répété plus bas', () => {
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [], ordresReparation: [], factures: [],
+      devis: [{ id: 'd-seul', statut: 'accepte', montant_ttc: 300, created_at: '2026-09-11T00:00:00Z' }],
+    },
+    MAINTENANT
+  )
+  assert.equal(dossier.intervention.devis.id, 'd-seul')
+  assert.deepEqual(dossier.devisSansRattachement, [])
+  assert.equal(dossier.aUneIntervention, false)
+  // Sans rendez-vous, l'ordre de réparation ne peut pas exister
+  // (`rendez_vous_id` est NOT NULL) : le geste est de planifier.
+  assert.equal(dossier.fil.etat, 'Devis accepté')
+  assert.equal(dossier.fil.cible, 'agenda')
+  assert.equal(dossier.fil.libelleAction, 'Planifier le rendez-vous')
+})
+
+test('sans rendez-vous, plusieurs devis : aucun n est choisi à la place du garage', () => {
   const dossier = construireDossierVehicule(
     {
       vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
@@ -590,51 +612,51 @@ test('sans rendez-vous, dernier devis accepté : un seul devis affiché, action 
     },
     MAINTENANT
   )
-
-  // Le devis principal est le plus récent, et il n'est plus répété plus bas.
-  assert.equal(dossier.intervention.devis.id, 'd-recent')
-  assert.ok(
-    !dossier.devisSansRattachement.some((d) => d.id === 'd-recent'),
-    'le devis principal ne doit pas réapparaître dans les devis sans intervention'
-  )
-  assert.deepEqual(dossier.devisSansRattachement.map((d) => d.id), ['d-vieux-1', 'd-vieux-2'])
-
-  // Il n'y a ni rendez-vous ni ordre : ce n'est pas une intervention.
+  // Pas de devis principal : le plus récent n'est pas une relation.
+  assert.equal(dossier.intervention.devis, null)
+  assert.deepEqual(dossier.intervention.devisCandidats, [])
+  // Les trois sont listés, du plus récent au plus ancien, pour être choisis.
+  assert.deepEqual(dossier.devisSansRattachement.map((d) => d.id), ['d-recent', 'd-vieux-1', 'd-vieux-2'])
   assert.equal(dossier.aUneIntervention, false)
-
-  // Le bouton ne promet ni un document absent, ni un écran où rien n'est
-  // possible : sans rendez-vous, l'ordre de réparation ne peut pas exister
-  // (`rendez_vous_id` est NOT NULL), donc le geste est de le planifier.
-  assert.equal(dossier.fil.etat, 'Devis accepté')
-  assert.equal(dossier.fil.cible, 'agenda')
-  assert.equal(dossier.fil.libelleAction, 'Planifier le rendez-vous')
 })
 
-test('sans rendez-vous, dernier devis refusé : on dit le refus, sans doublon', () => {
+test('avec rendez-vous, un seul devis préparé pour cette visite : il est retenu', () => {
   const dossier = construireDossierVehicule(
     {
       vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
-      rendezVous: [], ordresReparation: [], factures: [],
+      rendezVous: [{ id: 'r-1', date_debut: '2026-09-10T08:00:00Z', statut: 'Confirmé', statut_atelier: 'diagnostic' }],
+      ordresReparation: [], factures: [],
       devis: [
-        { id: 'd-refuse', statut: 'refuse', montant_ttc: 240, created_at: '2026-08-24T00:00:00Z' },
-        { id: 'd-accepte', statut: 'accepte', montant_ttc: 180, created_at: '2026-08-22T00:00:00Z' },
+        { id: 'd-visite', statut: 'en_attente', rendez_vous_id: 'r-1', created_at: '2026-09-10T09:00:00Z' },
+        { id: 'd-libre', statut: 'en_attente', rendez_vous_id: null, created_at: '2026-09-11T09:00:00Z' },
       ],
     },
     MAINTENANT
   )
+  assert.equal(dossier.intervention.devis.id, 'd-visite')
+  // Le devis sans visite reste visible à part, pas absorbé.
+  assert.deepEqual(dossier.devisSansRattachement.map((d) => d.id), ['d-libre'])
+})
 
-  assert.equal(dossier.intervention.devis.id, 'd-refuse')
-  assert.equal(dossier.fil.etat, 'Devis refusé')
-  // Un refus enregistré n'est pas un silence.
-  assert.equal(dossier.fil.prochaineAction, 'Le client a refusé ce devis.')
-  assert.ok(!/n'a pas donné suite/.test(dossier.fil.prochaineAction))
-  assert.equal(dossier.fil.quiAgit, 'personne')
-  // Rien à faire : aucune destination, donc aucun libellé de bouton.
-  assert.equal(dossier.fil.cible, null)
-  assert.equal(dossier.fil.libelleAction, null)
-
-  assert.deepEqual(dossier.devisSansRattachement.map((d) => d.id), ['d-accepte'])
-  assert.equal(dossier.aUneIntervention, false)
+test('avec rendez-vous, deux devis préparés pour la même visite : on liste, on ne choisit pas', () => {
+  const dossier = construireDossierVehicule(
+    {
+      vehicule: VEHICULE_FIXTURE, client: CLIENT_FIXTURE,
+      rendezVous: [{ id: 'r-1', date_debut: '2026-09-12T08:00:00Z', statut: 'Confirmé', statut_atelier: 'a_venir' }],
+      ordresReparation: [], factures: [],
+      devis: [
+        { id: 'd-a', statut: 'en_attente', rendez_vous_id: 'r-1', created_at: '2026-09-10T09:00:00Z' },
+        { id: 'd-b', statut: 'en_attente', rendez_vous_id: 'r-1', created_at: '2026-09-10T10:00:00Z' },
+      ],
+    },
+    MAINTENANT
+  )
+  assert.equal(dossier.intervention.devis, null)
+  assert.deepEqual(dossier.intervention.devisCandidats.map((d) => d.id), ['d-b', 'd-a'])
+  // Ils appartiennent à une visite : ils ne sont pas « sans intervention ».
+  assert.deepEqual(dossier.devisSansRattachement, [])
+  // Le fil sait qu'il existe des devis et demande de vérifier, pas de créer.
+  assert.match(dossier.fil.prochaineAction, /existe déjà/)
 })
 
 test('aucun devis du dossier n’est affiché deux fois, quelle que soit la situation', () => {

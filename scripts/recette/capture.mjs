@@ -56,7 +56,12 @@ if (!/^recette\.[a-z0-9.\-]+@nexora-recette\.invalid$/.test(email || "")) {
 }
 const largeur = Number(largeurArg || 1280);
 const hauteur = Number(hauteurArg || 900);
-const PORT_APP = process.env.PORT_APP || "3113";
+// Le serveur de dev de CE worktree (config `nexora-constat-devis`) écoute sur
+// 3000. L'ancien défaut, 3113, est celui d'un autre worktree
+// (`nexora-atelier-continuite`) : une capture lancée sans PORT_APP y mesurait
+// un autre code, sans erreur. Constaté le 15 septembre 2026.
+const PORT_APP = process.env.PORT_APP || "3000";
+console.log(`Application mesurée : http://localhost:${PORT_APP}`);
 const DOSSIER = process.env.DOSSIER_CAPTURES || resolve(RACINE, "docs/recette/captures");
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
@@ -143,7 +148,45 @@ try {
   // Les gestes demandés avant la prise de vue, s'il y en a : une expression
   // JavaScript par ligne dans GESTES, jouée dans l'ordre. Sert à capturer un
   // écran qui n'existe qu'après un clic (un panneau ouvert, un filtre posé).
+  //
+  // Une ligne `touche:Tab`, `touche:Enter`, `touche:Space`, `touche:Escape` ou
+  // `touche:Shift+Tab` envoie une VRAIE frappe par CDP (Input.dispatchKeyEvent,
+  // avec key, code et windowsVirtualKeyCode). Sans `code`, un <button> natif ne
+  // s'active pas : c'est ce qui avait fait croire, sur #100, qu'il fallait un
+  // gestionnaire clavier. On mesure le comportement natif, sans en ajouter.
+  const TOUCHES = {
+    Tab: { key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 },
+    Enter: { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" },
+    Space: { key: " ", code: "Space", windowsVirtualKeyCode: 32, text: " " },
+    Escape: { key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 },
+  };
   for (const geste of (process.env.GESTES || "").split("\n").filter(Boolean)) {
+    // `fichier:<sélecteur CSS>|<chemin absolu>` : choisit un fichier dans un
+    // <input type="file"> comme le sélecteur de fichiers du navigateur
+    // (DOM.setFileInputFiles), puis laisse l'application réagir à `change`.
+    if (geste.startsWith("fichier:")) {
+      const [selecteur, cheminFichier] = geste.slice(8).split("|");
+      const { root } = await cdp("DOM.getDocument", { depth: 0 });
+      const { nodeId } = await cdp("DOM.querySelector", { nodeId: root.nodeId, selector: selecteur.trim() });
+      if (!nodeId) { console.log(`  fichier : aucun élément « ${selecteur} »`); continue; }
+      await cdp("DOM.setFileInputFiles", { nodeId, files: [cheminFichier.trim()] });
+      console.log(`  fichier ${cheminFichier.trim().split("/").pop()} → ${selecteur}`);
+      await patienter(Number(process.env.ATTENTE_GESTE_MS || 1400));
+      continue;
+    }
+    if (geste.startsWith("touche:")) {
+      const nom = geste.slice(7).trim();
+      const maj = nom.startsWith("Shift+");
+      const t = TOUCHES[maj ? nom.slice(6) : nom];
+      if (!t) { console.log(`  touche inconnue : ${nom}`); continue; }
+      const modifiers = maj ? 8 : 0;
+      await cdp("Input.dispatchKeyEvent", { type: t.text ? "keyDown" : "rawKeyDown", modifiers, ...t });
+      await cdp("Input.dispatchKeyEvent", { type: "keyUp", modifiers, key: t.key, code: t.code, windowsVirtualKeyCode: t.windowsVirtualKeyCode });
+      const focus = await evaluer("(() => { const e = document.activeElement; return e ? (e.getAttribute('aria-label') || e.textContent || e.tagName).trim().replace(/\\s+/g, ' ').slice(0, 60) : null })()");
+      console.log(`  touche ${nom} → focus : ${JSON.stringify(focus)}`);
+      await patienter(Number(process.env.ATTENTE_TOUCHE_MS || 400));
+      continue;
+    }
     const retour = await evaluer(geste);
     console.log(`  geste → ${JSON.stringify(retour)}`);
     await patienter(Number(process.env.ATTENTE_GESTE_MS || 1400));
@@ -153,8 +196,9 @@ try {
     format: "png",
     captureBeyondViewport: process.env.PLEINE_PAGE === "1",
   });
-  mkdirSync(DOSSIER, { recursive: true });
   const sortie = resolve(DOSSIER, fichier);
+  // Le nom peut porter un sous-dossier (`parcours-2026-09-15/ecran.png`).
+  mkdirSync(dirname(sortie), { recursive: true });
   writeFileSync(sortie, Buffer.from(data, "base64"));
   console.log(sortie);
 } finally {

@@ -22,21 +22,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { deriveOpportunites } from "./deriveOpportunites";
+import { sourceJournal } from "./cockpitConstants";
 
-export function useOpportunites({ garageId, proprietaireUserId = null, donnees = {}, handlers = {}, onToast }) {
-  // Le journal n'est lisible et écrivable que par le PROPRIÉTAIRE du garage
-  // (policy `opportunites_actions_isolation`). On résout donc le compte
-  // courant ici plutôt que de proposer des commandes qui échoueraient en
-  // silence. Pour les autres comptes, rien n'est masqué : aucune tâche perdue.
-  const [estProprietaire, setEstProprietaire] = useState(false);
-  useEffect(() => {
-    let annule = false;
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!annule) setEstProprietaire(Boolean(proprietaireUserId && data?.user?.id === proprietaireUserId));
-    })();
-    return () => { annule = true; };
-  }, [proprietaireUserId]);
+export function useOpportunites({ garageId, peutSuivre = false, donnees = {}, handlers = {}, onToast }) {
+  // LE SUIVI EST CELUI DE L'ÉQUIPE
+  //
+  // Jusqu'au 2026-09-19, le journal n'était lisible que par le propriétaire :
+  // l'accueil voyait une ligne que le dirigeant avait marquée traitée, et ses
+  // propres gestes échouaient. La politique repose désormais sur
+  // `a_acces_garage(garage, 'dirigeant', 'accueil')` (migration
+  // 20260919000300) : adhésion active et rôle, vérifiés à chaque requête.
+  // `peutSuivre` n'est qu'un reflet d'affichage de ce rôle ; la base tranche.
+  const estProprietaire = Boolean(peutSuivre);
 
   const [inspections, setInspections] = useState([]);
   const [actions, setActions] = useState([]);
@@ -90,19 +87,20 @@ export function useOpportunites({ garageId, proprietaireUserId = null, donnees =
     return true;
   }, [garageId, chargerActions, onToast]);
 
+  // Le journal connaît le devis, pas la « réponse au devis » : voir sourceJournal.
   const traiter = useCallback(async (l) => {
-    const ok = await enregistrer({ source_type: l.sourceType, source_id: l.sourceId, action: "traite" });
+    const ok = await enregistrer({ source_type: sourceJournal(l.sourceType), source_id: l.sourceId, action: "traite" });
     if (ok) onToast?.("Marqué traité — rien n'a été envoyé ni facturé");
   }, [enregistrer, onToast]);
 
   const reporter = useCallback(async (l, motif, masquerJusquAu) => {
-    const ok = await enregistrer({ source_type: l.sourceType, source_id: l.sourceId, action: "reporte", motif, masquer_jusqu_au: masquerJusquAu });
+    const ok = await enregistrer({ source_type: sourceJournal(l.sourceType), source_id: l.sourceId, action: "reporte", motif, masquer_jusqu_au: masquerJusquAu });
     if (ok) onToast?.("Reporté");
     return ok;
   }, [enregistrer, onToast]);
 
   const reactiver = useCallback(async (l) => {
-    const ok = await enregistrer({ source_type: l.sourceType, source_id: l.sourceId, action: "reactiver" });
+    const ok = await enregistrer({ source_type: sourceJournal(l.sourceType), source_id: l.sourceId, action: "reactiver" });
     if (ok) onToast?.("Remise dans la liste");
   }, [enregistrer, onToast]);
 
