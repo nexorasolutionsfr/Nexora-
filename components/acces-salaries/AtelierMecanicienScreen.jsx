@@ -188,7 +188,7 @@ export default function AtelierMecanicienScreen() {
           <button
             type="button"
             onClick={() => { setOrdreOuvert(null); setErreur(""); }}
-            className="text-[13px] font-medium text-slate-600 hover:underline mb-4"
+            className="inline-flex items-center min-h-[40px] text-[13px] font-medium text-slate-600 hover:underline mb-3"
           >
             ← Revenir à mes fiches
           </button>
@@ -217,7 +217,9 @@ export default function AtelierMecanicienScreen() {
                     type="button"
                     disabled={enCours}
                     onClick={() => changerEtape(cle)}
-                    className="text-[13px] font-medium px-3 py-1.5 rounded-lg border disabled:opacity-60"
+                    // Le geste le plus fréquent du mécanicien, au téléphone et parfois
+                    // les mains sales : 40 px de haut au moins (32 px relevés le 15 sept.).
+                    className="text-[13px] font-medium px-3.5 min-h-[40px] rounded-lg border disabled:opacity-60"
                     style={
                       ordreOuvert.etape_atelier === cle
                         ? { backgroundColor: "#0F172A", color: "#fff", borderColor: "#0F172A" }

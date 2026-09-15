@@ -71,7 +71,7 @@ function PointCard({ point, photos, onUpdate, onDelete, onUploadPhoto, onDeleteP
           {point.libelle}
         </button>
         <span className="text-[11.5px] font-medium px-2 py-0.5 rounded-full shrink-0" style={{ backgroundColor: "#E7F6EC", color: "#15803D" }}>OK</span>
-        <button type="button" onClick={() => setOuvert(true)} className="text-[12px] font-medium px-2.5 py-1.5 rounded-lg text-slate-500 shrink-0">
+        <button type="button" onClick={() => setOuvert(true)} className="text-[12px] font-medium px-2.5 min-h-[40px] rounded-lg text-slate-500 shrink-0">
           Signaler
         </button>
       </div>
@@ -84,10 +84,12 @@ function PointCard({ point, photos, onUpdate, onDelete, onUploadPhoto, onDeleteP
         <div className="text-sm font-semibold text-slate-900">{point.libelle}</div>
         <div className="flex items-center gap-1 shrink-0">
           {conforme && (
-            <button onClick={() => setOuvert(false)} className="text-[12px] font-medium text-slate-400 px-2 py-1">Replier</button>
+            <button type="button" onClick={() => setOuvert(false)} className="text-[12px] font-medium text-slate-400 px-2 min-h-[40px]">Replier</button>
           )}
-          <button onClick={() => onDelete(point.id)} className="text-slate-400 hover:text-red-600 shrink-0" title="Retirer ce point">
-            <Trash2 size={15} />
+          {/* Au téléphone, une icône de 15 px sans nom se touche mal et ne se
+              lit pas au lecteur d'écran (relevé à 375 px le 15 septembre 2026). */}
+          <button type="button" onClick={() => onDelete(point.id)} className="w-10 h-10 -mr-2 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-600 shrink-0" title="Retirer ce point" aria-label={`Retirer le point ${point.libelle}`}>
+            <Trash2 size={16} />
           </button>
         </div>
       </div>
@@ -108,14 +110,16 @@ function PointCard({ point, photos, onUpdate, onDelete, onUploadPhoto, onDeleteP
       />
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {pointPhotos.map((photo) => (
-          <div key={photo.id} className="relative w-14 h-14 rounded-lg overflow-hidden border border-slate-200">
+          <div key={photo.id} className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200">
             <img src={photo.url} alt="" className="w-full h-full object-cover" />
             <button
+              type="button"
               onClick={() => onDeletePhoto(photo)}
-              className="absolute top-0 right-0 bg-black/60 text-white rounded-bl-lg p-0.5"
+              className="absolute top-0 right-0 w-7 h-7 flex items-center justify-center bg-black/60 text-white rounded-bl-lg"
               title="Supprimer la photo"
+              aria-label={`Supprimer la photo — ${point.libelle}`}
             >
-              <X size={11} />
+              <X size={14} />
             </button>
           </div>
         ))}
@@ -340,7 +344,7 @@ export default function InspectionCaptureFlow({ inspection, points, photos, gara
             <div className="text-sm font-semibold text-slate-900">Saisie du contrôle</div>
             <div className="text-[11.5px] text-slate-400">{inspection.vehiculeLabel || "Véhicule non renseigné"}</div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
+          <button type="button" onClick={onClose} aria-label="Fermer la saisie du contrôle" className="w-10 h-10 -mr-2 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700">
             <X size={18} />
           </button>
         </div>
