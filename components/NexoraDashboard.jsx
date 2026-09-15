@@ -2,7 +2,7 @@
 "use client"; import { supabase } from "@/lib/supabase";
 import DevisLignesEditor from "./devis-lignes/DevisLignesEditor";
 import ModelesTravauxSection from "./devis-lignes/ModelesTravauxSection";
-import { calculerLigne, calculerTotaux, devisALignes, devisChiffrageIncomplet, formatEuro, preremplirDepuisPrestation } from "./devis-lignes/calculs";
+import { calculerLigne, calculerTotaux, designationDevis, devisALignes, devisChiffrageIncomplet, formatEuro, montantPrincipalDevis, preremplirDepuisPrestation } from "./devis-lignes/calculs";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import QRCode from "qrcode";
@@ -1831,7 +1831,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
               <select value={devisId} onChange={(e) => setDevisId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500">
                 <option value="">—</option>
                 {devisDuClient.map((d) => (
-                  <option key={d.id} value={d.id}>{d.prestation} · {Number(d.montant_ttc || 0).toLocaleString("fr-FR")} € TTC</option>
+                  <option key={d.id} value={d.id}>{d.prestation || "Devis"} · {formatEuro(d.montant_ttc)} TTC</option>
                 ))}
               </select>
             </div>
@@ -2912,7 +2912,7 @@ function GenererDevisModal({ clients, prestations, clientPreselectionne, onClose
   );
 }
 
-function FacturationView({ monRole = ROLE_DIRIGEANT, view, setView, devisList, ordresReparation = [], clients, prestations, garageData, onAcceptDevis, onRefuseDevis, onUpdateMontant, onCreerDevis, onCreerClient, rendezVous, factures, onGenererFacture, onMarquerPayee, onSauvegarderFacture, garageId, devisLiens, devisBusyId, onGenererLienDevis, onRevoquerLienDevis, facturesLiens, facturesBusyId, onGenererLienFacture, onRevoquerLienFacture, onCreerOrdreReparation, onLignesChange, onToast, onCreerVehicule, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null }) {
+function FacturationView({ monRole = ROLE_DIRIGEANT, view, setView, devisList, ordresReparation = [], clients, prestations, garageData, onAcceptDevis, onRefuseDevis, onUpdateMontant, onCreerDevis, onCreerClient, rendezVous, factures, onGenererFacture, onMarquerPayee, onSauvegarderFacture, garageId, devisLiens, devisBusyId, onGenererLienDevis, onRevoquerLienDevis, facturesLiens, facturesBusyId, onGenererLienFacture, onRevoquerLienFacture, onCreerOrdreReparation, onLignesChange, onToast, onCreerVehicule, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null, onFermerDocumentDevis, onOuvrirDevis }) {
   // Les onglets suivent les droits : un compte accueil ne voit ni les
   // factures ni l'historique, qui ne lui sont pas ouverts.
   const tabs = [
@@ -2927,14 +2927,14 @@ function FacturationView({ monRole = ROLE_DIRIGEANT, view, setView, devisList, o
           <button key={key} onClick={() => setView(key)} className="text-[13px] font-medium px-4 py-1.5 rounded-lg" style={view === key ? { backgroundColor: "#fff", color: "#0F172A", boxShadow: "0 1px 2px rgba(15,23,42,0.08)", fontWeight: 600 } : { color: "#64748B" }}>{label}</button>
         ))}
       </div>
-      {view === "devis" && <DevisView devisList={devisList} ordresReparation={ordresReparation} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} onLignesChange={onLignesChange} onToast={onToast} onCreerVehicule={onCreerVehicule} ouvrirCreation={ouvrirCreation} onCreationOuverte={onCreationOuverte} devisOuvertId={devisOuvertId} onCreerOrdreReparation={onCreerOrdreReparation} historiqueAccessible={tabs.some(([cle]) => cle === "historique")} peutCreerModele={monRole === ROLE_DIRIGEANT} />}
+      {view === "devis" && <DevisView devisList={devisList} ordresReparation={ordresReparation} clients={clients} prestations={prestations} garageData={garageData} onAccept={onAcceptDevis} onRefuse={onRefuseDevis} onUpdateMontant={onUpdateMontant} onCreer={onCreerDevis} onCreerClient={onCreerClient} devisLiens={devisLiens} devisBusyId={devisBusyId} onGenererLien={onGenererLienDevis} onRevoquerLien={onRevoquerLienDevis} onLignesChange={onLignesChange} onToast={onToast} onCreerVehicule={onCreerVehicule} ouvrirCreation={ouvrirCreation} onCreationOuverte={onCreationOuverte} devisOuvertId={devisOuvertId} onFermerDocument={onFermerDocumentDevis} onCreerOrdreReparation={onCreerOrdreReparation} historiqueAccessible={tabs.some(([cle]) => cle === "historique")} peutCreerModele={monRole === ROLE_DIRIGEANT} />}
       {view === "factures" && <FacturesView rendezVous={rendezVous} factures={factures} prestations={prestations} garageData={garageData} onGenerer={onGenererFacture} onMarquerPayee={onMarquerPayee} onSauvegarder={onSauvegarderFacture} facturesLiens={facturesLiens} facturesBusyId={facturesBusyId} onGenererLien={onGenererLienFacture} onRevoquerLien={onRevoquerLienFacture} onToast={onToast} />}
-      {view === "historique" && <HistoriqueView devisList={devisList} ordresReparation={ordresReparation} garageId={garageId} onCreerOrdreReparation={onCreerOrdreReparation} prestations={prestations} peutCreerModele={monRole === ROLE_DIRIGEANT} onToast={onToast} />}
+      {view === "historique" && <HistoriqueView devisList={devisList} ordresReparation={ordresReparation} garageId={garageId} onCreerOrdreReparation={onCreerOrdreReparation} prestations={prestations} peutCreerModele={monRole === ROLE_DIRIGEANT} onToast={onToast} onOuvrirDevis={onOuvrirDevis} />}
     </div>
   );
 }
 
-function HistoriqueView({ devisList, ordresReparation = [], garageId, onCreerOrdreReparation, prestations = [], peutCreerModele = false, onToast }) {
+function HistoriqueView({ devisList, ordresReparation = [], garageId, onCreerOrdreReparation, prestations = [], peutCreerModele = false, onToast, onOuvrirDevis }) {
   const [rdvHistory, setRdvHistory] = useState([]);
   const [lignesOuvertes, setLignesOuvertes] = useState({});
   const [loading, setLoading] = useState(true);
@@ -3047,7 +3047,7 @@ function HistoriqueView({ devisList, ordresReparation = [], garageId, onCreerOrd
                 </div>
                 <div className="text-[13px] text-slate-500 mt-0.5">
                   {[it.detail, it.prestation].filter(Boolean).join(" · ")}
-                  {it.montant ? ` · ${Number(it.montant).toFixed(2)} €` : ""}
+                  {it.montant ? ` · ${formatEuro(it.montant)} TTC` : ""}
                 </div>
                 {it.type === "devis" && devisALignes(it.raw) && (
                   <div className="mt-1">
@@ -3059,6 +3059,11 @@ function HistoriqueView({ devisList, ordresReparation = [], garageId, onCreerOrd
                 )}
               </div>
               <div className="flex items-center gap-3">
+                {it.type === "devis" && onOuvrirDevis && (
+                  <button type="button" onClick={() => onOuvrirDevis(it.id)} className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 whitespace-nowrap">
+                    Ouvrir le devis
+                  </button>
+                )}
                 {/* Un devis déjà porté par une fiche atelier ne propose plus d'en
                     créer une (recette du 15 septembre 2026, BC-303-CC). */}
                 {it.type === "devis" && it.statut === "accepte" && ordresReparation.some((o) => o.devis_id === it.id || (it.raw?.rendez_vous_id && o.rendez_vous_id === it.raw.rendez_vous_id)) ? (
@@ -3084,86 +3089,203 @@ function HistoriqueView({ devisList, ordresReparation = [], garageId, onCreerOrd
 
 const dateHeureCourte = (d) => (d ? new Date(d).toLocaleString("fr-FR", { timeZone: APP_TIME_ZONE, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
 
-function DevisView({ devisList: devisListToutesSources, ordresReparation = [], clients, prestations, garageData, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient, onCreerVehicule, devisLiens = {}, devisBusyId, onGenererLien, onRevoquerLien, onLignesChange, onToast, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null, onCreerOrdreReparation, historiqueAccessible = true, peutCreerModele = false }) {
-  const devisList = devisListToutesSources.filter((d) => d.statut === "en_attente");
+// Une fiche atelier porte-t-elle déjà ce devis accepté ? Par le devis lui-même,
+// ou par la visite pour laquelle il a été préparé — jamais par la voiture seule.
+const ficheAtelierPourDevis = (d, ordresReparation = []) =>
+  ordresReparation.some((o) => o.devis_id === d.id || (d.rendez_vous_id && o.rendez_vous_id === d.rendez_vous_id));
+
+// L'étiquette et la prochaine action d'un devis, dans la liste.
+function etatDevisListe(d, ordresReparation) {
+  const montant = montantPrincipalDevis(d);
+  if (d.statut === "accepte") {
+    return { badge: "Accepté", tone: "green", action: ficheAtelierPourDevis(d, ordresReparation) ? "Fiche atelier existante" : "Créer l'ordre de réparation", montant };
+  }
+  if (d.statut === "refuse") return { badge: "Refusé", tone: "red", action: "Aucune action", montant };
+  if (montant.aChiffrer) return { badge: "À chiffrer", tone: "amber", action: "Chiffrer les lignes", montant };
+  return { badge: "En attente", tone: "amber", action: "Envoyer, ou noter la réponse", montant };
+}
+
+// UNE LIGNE PAR DEVIS, UN SEUL DOCUMENT OUVERT
+//
+// Recette du 15 septembre 2026 (BB-202-BB) : « Devis · Accepté » depuis le
+// dossier ouvrait cet écran sans ouvrir le devis — un accepté n'y figurait que
+// dans « Réponses des clients », sans ses lignes, pendant que la carte complète
+// d'un AUTRE devis, en attente, s'étalait dessous. Réponses, documents et
+// formulaires s'empilaient sur plusieurs écrans de hauteur.
+//
+// Désormais : une liste compacte (identité, statut, montant, prochaine action)
+// et, au-dessus, le document choisi — identifié par son id, quel que soit son
+// statut. Les gestes existants restent ceux de `DevisCard` pour un devis
+// modifiable, et la lecture seule de `DevisLignesEditor` pour un devis décidé.
+function DevisView({ devisList: devisListToutesSources, ordresReparation = [], clients, prestations, garageData, onAccept, onRefuse, onUpdateMontant, onCreer, onCreerClient, onCreerVehicule, devisLiens = {}, devisBusyId, onGenererLien, onRevoquerLien, onLignesChange, onToast, ouvrirCreation = false, onCreationOuverte, devisOuvertId = null, onFermerDocument, onCreerOrdreReparation, historiqueAccessible = true, peutCreerModele = false }) {
+  const enAttente = devisListToutesSources.filter((d) => d.statut === "en_attente");
   // Recette du 2026-09-11 : un devis accepté disparaissait d'ici sans laisser
   // de trace ; il ne restait que l'onglet Historique. Les réponses récentes
   // restent visibles là où le garagiste a créé le devis.
   const reponses = reponsesRecentes(devisListToutesSources);
   const [modalOuvert, setModalOuvert] = useState(Boolean(ouvrirCreation));
-  const [dernierCreeId, setDernierCreeId] = useState(devisOuvertId);
+  const [dernierCreeId, setDernierCreeId] = useState(null);
+  const [selectionId, setSelectionId] = useState(devisOuvertId);
+  const documentRef = useRef(null);
   useEffect(() => {
     if (ouvrirCreation && onCreationOuverte) onCreationOuverte();
     // Une seule fois, à l'arrivée depuis la mise en route.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Arrivée depuis le dossier alors que l'écran est déjà affiché : le devis
+  // demandé remplace celui qui était ouvert.
+  useEffect(() => {
+    if (devisOuvertId) setSelectionId(devisOuvertId);
+  }, [devisOuvertId]);
+  useEffect(() => {
+    if (selectionId && documentRef.current && typeof window !== "undefined") {
+      documentRef.current.scrollIntoView({ block: "start", behavior: "instant" });
+    }
+  }, [selectionId]);
+
+  const selection = selectionId ? devisListToutesSources.find((d) => d.id === selectionId) || null : null;
+  // Un devis décidé il y a plus de sept jours, ouvert depuis le dossier ou
+  // l'historique, figure quand même dans la liste : on voit ce qu'on a ouvert.
+  const liste = [...enAttente, ...reponses];
+  if (selection && !liste.some((d) => d.id === selection.id)) liste.unshift(selection);
+
+  const ouvrir = (id) => setSelectionId(id);
+  const fermer = () => { setSelectionId(null); onFermerDocument?.(); };
 
   const creer = async (champs) => {
     const cree = await onCreer(champs);
-    if (cree) setDernierCreeId(cree.id);
+    if (cree) { setDernierCreeId(cree.id); setSelectionId(cree.id); }
     return cree;
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-[13px] text-slate-500">
+          {enAttente.length === 0 ? "Aucun devis en attente" : `${enAttente.length} devis en attente`}
+          {reponses.length > 0 ? ` · ${reponses.length} réponse${reponses.length > 1 ? "s" : ""} ces sept derniers jours` : ""}
+          {historiqueAccessible && reponses.length > 0 ? " — le reste est dans Historique" : ""}
+        </div>
         <button onClick={() => setModalOuvert(true)} className="flex items-center gap-1.5 text-sm font-medium text-white px-4 py-2 rounded-xl" style={{ backgroundColor: ACCENT }}>
           <Plus size={15} /> Créer un devis
         </button>
       </div>
 
-      {reponses.length > 0 && (
-        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-5 pt-4 pb-2">
-            <div className="font-semibold text-slate-900 text-[14.5px]">Réponses des clients</div>
-            {/* Un compte accueil n'a pas d'onglet Historique : ne l'y envoyons pas. */}
-            <div className="text-[12.5px] text-slate-500">
-              Les sept derniers jours.{historiqueAccessible ? " Tout l'historique est dans l'onglet Historique." : ""}
-            </div>
+      {selectionId && (
+        <div ref={documentRef} className="scroll-mt-4">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <button type="button" onClick={fermer} className="inline-flex items-center gap-1.5 min-h-[40px] text-[13px] font-medium text-slate-600 hover:text-slate-900">
+              <ArrowLeft size={14} /> Fermer ce devis
+            </button>
           </div>
-          <div className="divide-y divide-slate-100">
-            {reponses.map((d) => (
-              <div key={d.id} className="px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-slate-900 text-[14px]">{d.client}</span>
-                    <Badge tone={d.statut === "accepte" ? "green" : "red"}>{libelleReponse(d)}</Badge>
-                  </div>
-                  <div className="text-[12.5px] text-slate-500 mt-0.5">
-                    {[[d.vehicule, d.immatriculation].filter(Boolean).join(" · "), d.prestations?.nom, `${formatEuro(d.montant_ttc)} TTC`, dateHeureCourte(d.date_validation), mentionOrigine(d)].filter(Boolean).join(" · ")}
-                  </div>
-                </div>
-                {/* Le bouton proposait de créer un ordre déjà existant (recette du
-                    15 septembre 2026) : devis porté par une fiche (BC-303-CC), ou
-                    devis de la visite dont la fiche était déjà ouverte (BB-202-BB) —
-                    le formulaire de création n'offrait alors aucun rendez-vous. */}
-                {d.statut === "accepte" && ordresReparation.some((o) => o.devis_id === d.id || (d.rendez_vous_id && o.rendez_vous_id === d.rendez_vous_id)) ? (
-                  <span className="text-[12.5px] text-slate-500 whitespace-nowrap">Fiche atelier existante</span>
-                ) : d.statut === "accepte" && onCreerOrdreReparation && (
-                  <button type="button" onClick={() => onCreerOrdreReparation(d)} className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 whitespace-nowrap">
-                    Créer l&apos;ordre de réparation
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
+          {!selection ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 text-[13px] text-slate-500">Ce devis n&apos;est plus disponible. Il a peut-être été supprimé.</div>
+          ) : selection.statut === "en_attente" || selection.statut === "brouillon" ? (
+            <DevisCard key={selection.id} d={selection} garageData={garageData} onAccept={onAccept} onRefuse={onRefuse} onUpdateMontant={onUpdateMontant} lien={devisLiens[selection.id]} busy={devisBusyId === selection.id} onGenererLien={onGenererLien} onRevoquerLien={onRevoquerLien} prestations={prestations} onLignesChange={onLignesChange} onToast={onToast} nouveau={selection.id === dernierCreeId} peutCreerModele={peutCreerModele} />
+          ) : (
+            <DevisDocumentDecide key={selection.id} d={selection} garageData={garageData} ordresReparation={ordresReparation} onCreerOrdreReparation={onCreerOrdreReparation} prestations={prestations} peutCreerModele={peutCreerModele} onToast={onToast} />
+          )}
+        </div>
       )}
 
-      {devisList.length === 0 ? (
+      {liste.length === 0 ? (
         <EmptyState
           icon={ReceiptText}
-          title={reponses.length > 0 ? "Aucun devis en attente de réponse" : "Aucun devis pour l'instant"}
+          title="Aucun devis pour l'instant"
           subtitle="Créez un devis : choisissez le client et sa voiture, puis ajoutez la main-d'œuvre et les pièces."
         />
       ) : (
-        devisList.map((d) => (
-          <DevisCard key={d.id} d={d} garageData={garageData} onAccept={onAccept} onRefuse={onRefuse} onUpdateMontant={onUpdateMontant} lien={devisLiens[d.id]} busy={devisBusyId === d.id} onGenererLien={onGenererLien} onRevoquerLien={onRevoquerLien} prestations={prestations} onLignesChange={onLignesChange} onToast={onToast} nouveau={d.id === dernierCreeId} peutCreerModele={peutCreerModele} />
-        ))
+        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-slate-100 text-[12px] font-semibold uppercase tracking-wide text-slate-400">
+            {selectionId ? "Autres devis" : "Devis"}
+          </div>
+          <ul className="divide-y divide-slate-100">
+            {liste.map((d) => {
+              const etat = etatDevisListe(d, ordresReparation);
+              const ouvert = d.id === selectionId;
+              const designation = designationDevis(d);
+              return (
+                <li key={d.id}>
+                  <button
+                    type="button"
+                    onClick={() => (ouvert ? fermer() : ouvrir(d.id))}
+                    aria-expanded={ouvert}
+                    className="w-full text-left px-4 py-3 flex items-start sm:items-center justify-between gap-3 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+                    style={ouvert ? { backgroundColor: "#F5F8FF", boxShadow: `inset 3px 0 0 ${ACCENT}` } : undefined}
+                  >
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[14px] font-semibold text-slate-900 tabular-nums">{d.immatriculation || "Sans immatriculation"}</span>
+                        <span className="text-[13px] text-slate-600">{[d.vehicule, d.client].filter(Boolean).join(" · ")}</span>
+                        <Badge tone={etat.tone}>{etat.badge}</Badge>
+                      </span>
+                      <span className="block text-[12.5px] text-slate-500 mt-0.5 truncate">
+                        {[designation, d.statut === "accepte" || d.statut === "refuse" ? `${libelleReponse(d).toLowerCase()} ${dateHeureCourte(d.date_validation)}` : `créé le ${d.date}`].filter(Boolean).join(" · ")}
+                      </span>
+                      <span className="block text-[12px] mt-0.5" style={{ color: d.statut === "refuse" ? "#94A3B8" : ACCENT }}>{ouvert ? "Ouvert ci-dessus" : etat.action}</span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className={`block text-[13.5px] font-semibold tabular-nums whitespace-nowrap ${etat.montant.aChiffrer ? "text-amber-700" : "text-slate-900"}`}>{etat.montant.principal}</span>
+                      <span className="block text-[11.5px] text-slate-400 tabular-nums whitespace-nowrap">{etat.montant.secondaire}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
       {modalOuvert && (
         <GenererDevisModal clients={clients} prestations={prestations} onClose={() => setModalOuvert(false)} onCreate={creer} onCreerClient={onCreerClient} onCreerVehicule={onCreerVehicule} />
       )}
+    </div>
+  );
+}
+
+// Un devis accepté ou refusé : verrouillé. On le lit — client, voiture,
+// réponse et origine, lignes, ce qu'a vu le client — et on agit sur la suite
+// (fiche atelier), sans aucun geste de modification.
+function DevisDocumentDecide({ d, garageData, ordresReparation = [], onCreerOrdreReparation, prestations = [], peutCreerModele = false, onToast }) {
+  const [apercuOuvert, setApercuOuvert] = useState(false);
+  const accepte = d.statut === "accepte";
+  const designation = designationDevis(d);
+  const montant = montantPrincipalDevis(d);
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <div className="font-semibold text-slate-900 text-[15px]">{d.client}</div>
+            <Badge tone={accepte ? "green" : "red"}>{libelleReponse(d)}</Badge>
+          </div>
+          <div className="text-[13px] text-slate-600 mt-1 flex items-center gap-1.5"><Car size={14} className="text-slate-400" /> {[d.vehicule, d.immatriculation].filter(Boolean).join(" · ") || "Véhicule non renseigné"}</div>
+          {designation && <div className="text-[13px] text-slate-600 mt-0.5">{designation}</div>}
+          <div className="text-[12.5px] text-slate-500 mt-1">{[`Réponse du ${dateHeureCourte(d.date_validation)}`, mentionOrigine(d), `créé le ${d.date}`].filter(Boolean).join(" · ")}</div>
+        </div>
+        <div className="sm:text-right">
+          <div className="text-[16px] font-semibold text-slate-900 tabular-nums">{montant.principal}</div>
+          <div className="text-[12px] text-slate-500 tabular-nums">{montant.secondaire}</div>
+        </div>
+      </div>
+
+      <div className="mt-3 bg-slate-50 rounded-xl p-3">
+        <DevisLignesEditor devis={d} lignes={d.devis_lignes || []} prestations={prestations} readOnly peutCreerModele={peutCreerModele} onToast={onToast} />
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+        <button type="button" onClick={() => setApercuOuvert(true)} className="flex items-center gap-1.5 text-[12.5px] font-medium text-slate-600 hover:text-slate-800 min-h-[36px]">
+          <Eye size={14} /> {GESTES_DEVIS.apercu}
+        </button>
+        {accepte && (ficheAtelierPourDevis(d, ordresReparation) ? (
+          <span className="text-[12.5px] text-slate-500">Fiche atelier existante</span>
+        ) : onCreerOrdreReparation && (
+          <button type="button" onClick={() => onCreerOrdreReparation(d)} className="text-[12.5px] font-semibold px-3 py-1.5 min-h-[36px] rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 whitespace-nowrap">
+            Créer l&apos;ordre de réparation
+          </button>
+        ))}
+      </div>
+
+      {apercuOuvert && <DevisApercuModal d={d} garageData={garageData} onClose={() => setApercuOuvert(false)} />}
     </div>
   );
 }
@@ -3250,9 +3372,11 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
         <div className="flex items-center gap-2 text-sm text-slate-700"><Car size={15} className="text-slate-400" /> {[d.vehicule, d.immatriculation].filter(Boolean).join(" · ") || "Véhicule non renseigné"}</div>
-        <div className="text-sm text-slate-700 flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(d.categorie).bar }} /> {d.prestation}
-        </div>
+        {d.prestation && (
+          <div className="text-sm text-slate-700 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor(d.categorie).bar }} /> {d.prestation}
+          </div>
+        )}
       </div>
 
       <div className="mt-3 bg-slate-50 rounded-xl p-3">
@@ -3272,8 +3396,10 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
               </div>
             ) : (
               <div>
-                <span className="font-semibold text-slate-900">{Number(d.montant_ttc || 0).toFixed(2)} € TTC</span>
-                <span className="text-slate-500 text-[12.5px]"> · {Number(d.montant_ht || 0).toFixed(2)} € HT</span>
+                {/* Tant qu'une ligne attend son prix, pas de total en tête : le
+                    partiel reste lisible, nommé comme tel. */}
+                <span className={`font-semibold ${chiffrageIncomplet ? "text-amber-700" : "text-slate-900"}`}>{montantPrincipalDevis(d).principal}</span>
+                <span className="text-slate-500 text-[12.5px]"> · {montantPrincipalDevis(d).secondaire}</span>
               </div>
             )}
           </div>
@@ -3320,7 +3446,7 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
       <div className="mt-4 pt-3 border-t border-slate-100">
         <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
           <div className="text-[12.5px] font-semibold text-slate-700">Envoyer au client</div>
-          <button type="button" onClick={() => setApercuOuvert(true)} className="flex items-center gap-1.5 text-[12.5px] font-medium text-slate-600 hover:text-slate-800">
+          <button type="button" onClick={() => setApercuOuvert(true)} className="flex items-center gap-1.5 min-h-[40px] text-[12.5px] font-medium text-slate-600 hover:text-slate-800">
             <Eye size={14} /> {GESTES_DEVIS.apercu}
           </button>
         </div>
@@ -3357,7 +3483,7 @@ function DevisCard({ d, garageData, onAccept, onRefuse, onUpdateMontant, lien, b
               type="button"
               disabled={busy}
               onClick={() => onGenererLien(d.id)}
-              className="flex items-center gap-1.5 text-[12.5px] font-medium text-slate-600 hover:text-slate-800 disabled:opacity-50"
+              className="flex items-center gap-1.5 min-h-[40px] text-[12.5px] font-medium text-slate-600 hover:text-slate-800 disabled:opacity-50"
             >
               <Link2 size={13} /> {busy ? "Génération…" : GESTES_DEVIS.lien}
             </button>
@@ -5924,7 +6050,8 @@ setPropositions(formattedPropositions);
         telephone: dv.clients?.telephone || "",
         vehicule: `${dv.vehicules?.marque || ""} ${dv.vehicules?.modele || ""}`.trim(),
         immatriculation: dv.vehicules?.immatriculation || "",
-        prestation: dv.prestations?.nom || "Prestation",
+        // La vraie désignation (prestation ou première ligne), jamais « Prestation ».
+        prestation: designationDevis(dv),
         categorie: dv.prestations?.categorie || "diagnostic",
         date: new Date(dv.created_at).toLocaleDateString("fr-FR", { timeZone: APP_TIME_ZONE }),
       }));
@@ -6522,7 +6649,7 @@ if (updateError) {
     telephone: devisBrut.clients?.telephone || "",
     vehicule: `${devisBrut.vehicules?.marque || ""} ${devisBrut.vehicules?.modele || ""}`.trim(),
     immatriculation: devisBrut.vehicules?.immatriculation || "",
-    prestation: devisBrut.prestations?.nom || "Prestation",
+    prestation: designationDevis(devisBrut),
     categorie: devisBrut.prestations?.categorie || "diagnostic",
     date: new Date(devisBrut.created_at).toLocaleDateString("fr-FR", { timeZone: APP_TIME_ZONE }),
     devis_lignes: devisBrut.devis_lignes || [],
@@ -6866,11 +6993,18 @@ if (updateError) {
     ouvrirDossierVehicule(vehiculeId);
   };
 
-  /** Le dossier renvoie vers un autre écran : on note d'où l'on part. */
+  /**
+   * Le dossier renvoie vers un autre écran : on note d'où l'on part — l'écran
+   * ET le dossier. Recette du 15 septembre 2026 : après « Devis · Accepté »,
+   * le seul retour proposé était « Revenir à Aujourd'hui », et il fallait
+   * rechercher la voiture pour retrouver son dossier.
+   */
   const quitterDossierVers = (nouvelleVue) => {
+    const immat = dossierVehicule?.immatriculation;
     setRetourVers({
       vue: view,
-      label: titles[view] || "l'écran précédent",
+      label: immat ? `au dossier ${immat}` : "au dossier du véhicule",
+      dossierVehiculeId,
       defilement: defilementAvantDossier.current,
     });
     defilementAvantDossier.current = null;
@@ -6881,9 +7015,15 @@ if (updateError) {
 
   const revenirEnArriere = () => {
     if (!retourVers) return;
-    const { vue, defilement } = retourVers;
+    const { vue, defilement, dossierVehiculeId: dossierARouvrir } = retourVers;
     setRetourVers(null);
     setView(vue);
+    if (dossierARouvrir) {
+      // L'écran d'origine derrière, et son dossier par-dessus, comme au départ.
+      defilementAvantDossier.current = defilement ?? null;
+      setDossierVehiculeId(dossierARouvrir);
+      return;
+    }
     if (defilement == null || typeof window === "undefined") return;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => window.scrollTo({ top: defilement, behavior: "instant" }));
@@ -7641,14 +7781,14 @@ if (updateError) {
         {/* Le chemin du retour, quand le dossier véhicule a fait changer
             d'écran. Il ne s'affiche que là où il sert, et disparaît dès qu'on
             l'emprunte ou qu'on repart ailleurs de soi-même. */}
-        {retourVers && retourVers.vue !== view && (
+        {retourVers && (retourVers.vue !== view || retourVers.dossierVehiculeId) && !dossierVehiculeId && (
           <div className="px-5 md:px-8 pt-4">
             <button
               type="button"
               onClick={revenirEnArriere}
               className="inline-flex items-center gap-2 min-h-[40px] rounded-xl border border-slate-200 bg-white px-3.5 text-[13px] font-semibold text-slate-700 hover:bg-slate-50"
             >
-              <ArrowLeft size={15} /> Revenir à {retourVers.label}
+              <ArrowLeft size={15} /> {retourVers.dossierVehiculeId ? `Revenir ${retourVers.label}` : `Revenir à ${retourVers.label}`}
             </button>
           </div>
         )}
@@ -7694,6 +7834,8 @@ if (updateError) {
               ouvrirCreation={creationDemandee === "devis"}
               onCreationOuverte={() => setCreationDemandee(null)}
               devisOuvertId={devisOuvertId}
+              onFermerDocumentDevis={() => setDevisOuvertId(null)}
+              onOuvrirDevis={(id) => { setDevisOuvertId(id); setView("devis"); }}
             />
           )}
           {view === "agenda" && <AgendaView onSelectAppt={setSelectedAppt} rendezVous={rendezVous} garageData={garageData} onConnectCalendar={connectGoogleCalendar} clients={clients} prestations={prestations} onCreerRdv={handleCreerRdvManuel} onCreerClient={handleCreerClient} onCreerVehicule={handleCreerVehicule} />}

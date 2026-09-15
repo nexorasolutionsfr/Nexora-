@@ -14,16 +14,51 @@ export function estUnConstat(point) {
 }
 
 /**
+ * Où chaque constat a déjà été repris, dans les AUTRES devis du véhicule.
+ *
+ * Recette du 15 septembre 2026 (BB-202-BB) : le dossier proposait de préparer
+ * un nouveau devis avec « Pare-chocs avant fendu » coché d'avance, alors que
+ * ce même point était déjà chiffré dans le devis accepté de la visite. Un
+ * second devis est né sans que rien ne le signale.
+ *
+ * Renvoie une `Map` point → devis qui le portent (hors devis réceptacle).
+ */
+export function couvertureDesPoints(devis = [], cibleId = null) {
+  const couverture = new Map();
+  for (const d of devis || []) {
+    if (!d?.id || d.id === cibleId) continue;
+    for (const ligne of d.devis_lignes || []) {
+      const pointId = ligne?.inspection_point_id;
+      if (!pointId) continue;
+      const liste = couverture.get(pointId) || [];
+      if (!liste.some((x) => x.id === d.id)) liste.push(d);
+      couverture.set(pointId, liste);
+    }
+  }
+  return couverture;
+}
+
+// Le devis le plus parlant pour un point déjà repris ailleurs : un accord du
+// client d'abord, puis un devis encore modifiable, puis un refus.
+const RANG_COUVERTURE = { accepte: 0, brouillon: 1, en_attente: 1, refuse: 2 };
+
+/**
  * Les points d'un contrôle, tels que la fenêtre les propose.
  *
  *  - un point refusé par le client est visible mais décoché, avec sa raison ;
  *  - un point déjà repris DANS CE DEVIS est visible mais décoché, avec sa raison ;
+ *    ces deux cas sont `bloquant` : la case ne se coche pas ;
+ *  - un point déjà repris dans UN AUTRE devis du véhicule (accepté, encore
+ *    modifiable, ou refusé) est décoché d'avance et le dit, avec le devis en
+ *    cause — mais il reste cochable : un complément est un choix légitime,
+ *    à condition d'être explicite ;
  *  - les autres sont cochés d'avance : c'est le cas courant, et décocher
  *    coûte un geste là où cocher vingt points en coûterait vingt.
  *
  * `lignesExistantes` : les lignes du devis réceptacle (vide pour un nouveau).
+ * `couverture` : `couvertureDesPoints(devisDuVehicule, cible)` ; facultative.
  */
-export function proposerPoints(points = [], lignesExistantes = []) {
+export function proposerPoints(points = [], lignesExistantes = [], couverture = null) {
   const dejaRepris = new Set(
     (lignesExistantes || []).map((l) => l?.inspection_point_id).filter(Boolean),
   );
@@ -31,11 +66,23 @@ export function proposerPoints(points = [], lignesExistantes = []) {
     .filter(estUnConstat)
     .map((point) => {
       let raison = null;
+      let devisLie = null;
       if (point.decision_client === "refuse") raison = "refuse";
       else if (dejaRepris.has(point.id)) raison = "deja";
+      else {
+        const ailleurs = [...(couverture?.get(point.id) || [])]
+          .filter((d) => d.statut in RANG_COUVERTURE)
+          .sort((a, b) => RANG_COUVERTURE[a.statut] - RANG_COUVERTURE[b.statut]);
+        devisLie = ailleurs[0] || null;
+        if (devisLie?.statut === "accepte") raison = "couvert_accepte";
+        else if (devisLie?.statut === "refuse") raison = "propose_refuse";
+        else if (devisLie) raison = "dans_autre_devis";
+      }
       return {
         point,
         raison,
+        devisLie,
+        bloquant: raison === "refuse" || raison === "deja",
         coche: raison === null,
         etatLabel: ETAT_POINT_LABEL[point.etat] || point.etat,
         valide: point.decision_client === "valide",
@@ -43,15 +90,27 @@ export function proposerPoints(points = [], lignesExistantes = []) {
     });
 }
 
-export function libelleRaison(raison) {
+export function libelleRaison(raison, devisLie = null) {
+  const ref = devisLie ? referenceDevis(devisLie) : "";
   switch (raison) {
     case "refuse":
       return "Refusé par le client — non repris. Une révision explicite est nécessaire pour le reproposer.";
     case "deja":
       return "Déjà dans ce devis.";
+    case "couvert_accepte":
+      return `Déjà chiffré dans le devis accepté ${ref}. Cochez seulement pour un travail complémentaire.`;
+    case "dans_autre_devis":
+      return `Déjà dans le devis ${ref}, encore modifiable. Complétez plutôt ce devis-là.`;
+    case "propose_refuse":
+      return `Déjà proposé dans le devis refusé ${ref}. Cochez pour le reproposer.`;
     default:
       return null;
   }
+}
+
+/** Un devis de cette visite a-t-il déjà été accepté ? Le nouveau est alors un complément. */
+export function visiteAUnDevisAccepte(devis = [], rdvId = null) {
+  return Boolean(rdvId) && (devis || []).some((d) => d?.rendez_vous_id === rdvId && d.statut === "accepte");
 }
 
 /**

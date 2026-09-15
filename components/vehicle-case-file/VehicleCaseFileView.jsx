@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { DOCUMENTS } from "../envoi/etatsEnvoi";
 import { libelleQuiAgit } from "../atelier/filVehicule";
 import PreparerDevisDepuisConstat from "../devis-lignes/PreparerDevisDepuisConstat";
+import { devisChiffrageIncomplet, formatEuro } from "../devis-lignes/calculs";
 import {
   DEVIS_STATUT_LABEL,
   DEVIS_STATUT_TONE,
@@ -22,8 +23,10 @@ function referenceDevis(devis) {
 }
 
 function montantTTC(document) {
+  // « À chiffrer » plutôt qu'un total qui laisserait croire à un montant définitif.
+  if (devisChiffrageIncomplet(document?.devis_lignes)) return "À chiffrer";
   const montant = Number(document?.montant_ttc);
-  return Number.isFinite(montant) ? `${montant.toFixed(2).replace(".", ",")} €` : "montant non renseigné";
+  return document?.montant_ttc != null && Number.isFinite(montant) ? formatEuro(montant) : "montant non renseigné";
 }
 
 const BADGE_TONES = {
@@ -550,6 +553,7 @@ export default function VehicleCaseFileView({
           devis={devis}
           onToast={onToast}
           onFermer={() => setPreparerOuvert(false)}
+          onOuvrirDevis={(devisId) => { setPreparerOuvert(false); onOuvrirDevis?.(devisId); }}
           onPrepare={async (devisId) => {
             setPreparerOuvert(false);
             await onDevisPrepare?.(devisId);

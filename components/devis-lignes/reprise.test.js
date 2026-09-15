@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   controleParDefaut,
+  couvertureDesPoints,
+  libelleRaison,
   proposerDevis,
   proposerPoints,
   resumerReprise,
+  visiteAUnDevisAccepte,
 } from "./reprise.js";
 
 const POINTS = [
@@ -34,6 +37,52 @@ test("un point déjà repris dans CE devis est décoché — pas dans un autre d
   assert.equal(proposes.find((p) => p.point.id === "p-dommage").coche, false);
   // Sans ces lignes (autre devis, révision), le même point redevient proposable.
   assert.equal(proposerPoints(POINTS, []).find((p) => p.point.id === "p-dommage").coche, true);
+});
+
+// Recette du 15 septembre 2026, BB-202-BB : « Pare-chocs avant fendu » était
+// coché d'avance pour un nouveau devis alors que le devis accepté de la visite
+// le chiffrait déjà.
+const DEVIS_VEHICULE = [
+  { id: "09b7869c-accepte", statut: "accepte", rendez_vous_id: "rdv-jour", devis_lignes: [{ inspection_point_id: "p-dommage" }, { inspection_point_id: "p-dommage" }] },
+  { id: "808293b4-attente", statut: "en_attente", rendez_vous_id: "rdv-jour", devis_lignes: [{ inspection_point_id: "p-surveiller" }] },
+  { id: "aaaaaaaa-refuse", statut: "refuse", rendez_vous_id: null, devis_lignes: [{ inspection_point_id: "p-valide" }] },
+];
+
+test("couvertureDesPoints : chaque constat avec les devis qui le portent, hors devis réceptacle, sans doublon", () => {
+  const c = couvertureDesPoints(DEVIS_VEHICULE, "808293b4-attente");
+  assert.deepEqual(c.get("p-dommage").map((d) => d.id), ["09b7869c-accepte"]);
+  assert.equal(c.has("p-surveiller"), false);
+  assert.deepEqual(c.get("p-valide").map((d) => d.id), ["aaaaaaaa-refuse"]);
+});
+
+test("un constat couvert ailleurs est décoché d'avance, dit par quel devis, mais reste cochable", () => {
+  const proposes = proposerPoints(POINTS, [], couvertureDesPoints(DEVIS_VEHICULE, "nouveau"));
+  const parId = Object.fromEntries(proposes.map((p) => [p.point.id, p]));
+  assert.equal(parId["p-dommage"].raison, "couvert_accepte");
+  assert.equal(parId["p-dommage"].devisLie.id, "09b7869c-accepte");
+  assert.equal(parId["p-dommage"].coche, false);
+  assert.equal(parId["p-dommage"].bloquant, false);
+  assert.equal(parId["p-surveiller"].raison, "dans_autre_devis");
+  // Un refus du client sur le POINT prime sur tout : il reste bloquant.
+  assert.equal(parId["p-refuse"].bloquant, true);
+  assert.equal(parId["p-valide"].raison, "propose_refuse");
+  assert.match(libelleRaison("couvert_accepte", parId["p-dommage"].devisLie), /devis accepté Réf\. 09B786/);
+  assert.match(libelleRaison("dans_autre_devis", parId["p-surveiller"].devisLie), /Réf\. 808293/);
+});
+
+test("un accord l'emporte sur un devis modifiable pour dire où un point est déjà chiffré", () => {
+  const devis = [
+    { id: "b-attente", statut: "en_attente", devis_lignes: [{ inspection_point_id: "p-dommage" }] },
+    { id: "a-accepte", statut: "accepte", devis_lignes: [{ inspection_point_id: "p-dommage" }] },
+  ];
+  const p = proposerPoints(POINTS, [], couvertureDesPoints(devis, null)).find((x) => x.point.id === "p-dommage");
+  assert.equal(p.devisLie.id, "a-accepte");
+});
+
+test("visiteAUnDevisAccepte : seulement pour CETTE visite", () => {
+  assert.equal(visiteAUnDevisAccepte(DEVIS_VEHICULE, "rdv-jour"), true);
+  assert.equal(visiteAUnDevisAccepte(DEVIS_VEHICULE, "rdv-autre"), false);
+  assert.equal(visiteAUnDevisAccepte(DEVIS_VEHICULE, null), false);
 });
 
 test("controleParDefaut : un seul contrôle, ou celui de la visite ; sinon un choix", () => {

@@ -223,9 +223,47 @@ export function lignesDevisVersOR(lignes) {
   }));
 }
 
+/**
+ * Montant en euros, à la française : virgule décimale, deux décimales, et
+ * espace fine insécable entre les milliers (« 1 500,00 € »). Écrit à la main
+ * plutôt que par `toLocaleString`, pour rendre la même chaîne partout (Node,
+ * navigateurs, serveur) et pouvoir la tester.
+ */
 export function formatEuro(valeur) {
   const n = Number(valeur);
-  return `${(Number.isFinite(n) ? n : 0).toFixed(2).replace(".", ",")} €`;
+  const [entier, decimales] = Math.abs(Number.isFinite(n) ? n : 0).toFixed(2).split(".");
+  const groupes = entier.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return `${n < 0 ? "-" : ""}${groupes},${decimales} €`;
+}
+
+/**
+ * Ce que dit un devis de lui-même, en quelques mots : le nom de sa prestation
+ * s'il en a une, sinon la désignation de sa première ligne. Jamais le mot
+ * générique « Prestation » (recette du 15 septembre 2026) : sans désignation,
+ * `null`, et l'écran n'affiche rien plutôt qu'un mot vide.
+ */
+export function designationDevis(devis) {
+  const nom = devis?.prestations?.nom;
+  if (nom && String(nom).trim()) return String(nom).trim();
+  const premiere = trierLignes(devis?.devis_lignes || []).find((l) => l?.libelle && String(l.libelle).trim());
+  return premiere ? String(premiere.libelle).trim() : null;
+}
+
+/**
+ * Le montant principal d'un devis, tel qu'il doit se lire en tête.
+ *
+ * Un devis dont une ligne attend son prix n'a pas de total : afficher
+ * « 0,00 € TTC » ou un total partiel en gros laisserait croire à un montant
+ * définitif. On dit « À chiffrer », et le total partiel reste disponible,
+ * nommé comme tel.
+ */
+export function montantPrincipalDevis(devis) {
+  if (devisChiffrageIncomplet(devis?.devis_lignes)) {
+    const totaux = calculerTotaux(devis?.devis_lignes || []);
+    const partiel = Number(totaux.total_ttc) > 0 ? `partiel : ${formatEuro(totaux.total_ttc)} TTC` : "aucune ligne chiffrée";
+    return { aChiffrer: true, principal: "À chiffrer", secondaire: partiel };
+  }
+  return { aChiffrer: false, principal: `${formatEuro(devis?.montant_ttc)} TTC`, secondaire: `${formatEuro(devis?.montant_ht)} HT` };
 }
 
 /**
