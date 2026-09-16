@@ -63,7 +63,7 @@ l'ouverture au public n'est pas décidée.
 | Lot | Contenu | État |
 | --- | --- | --- |
 | **A** | Accueil, compte, « Mon garage », fiche véhicule : kilométrage daté, historique, échéances du contrôle technique et de la révision | **Fait sur Test**, PR de revue (section D) |
-| **B** | Consolider « Mon garage » : plusieurs véhicules et véhicule principal, archivage, documents (factures, carnet, contrôle technique) rattachés aux interventions, historique qui distingue saisie et justificatif, dépenses par véhicule | à faire |
+| **B** | Consolider « Mon garage » : plusieurs véhicules et véhicule principal, archivage, documents (factures, carnet, contrôle technique) rattachés aux interventions, historique qui distingue saisie et justificatif, dépenses par véhicule | **Fait sur Test**, PR de revue (section E) |
 | **C** | « À prévoir » : contrôle technique et révision, rappels personnalisés, tâches personnelles (pneus, batterie, nettoyage), actions simples, et ce qui reste inconnu | à faire |
 | **D** | Univers des services, reliés au véhicule : entretien et réparation, pneus, lavage et esthétique, à domicile, collecte et restitution, assistance. Chaque fiche explique la prestation, les informations nécessaires et son intérêt ; statut « à découvrir » ou « réservable » | à faire |
 | **E et suivants** | Partenaires et offres, disponibilités, réservation (paiement au garage ou en ligne), côté garage « Commandes Nexora » et travaux supplémentaires, admin Nexora, suivi et notifications, assistant « décrivez le problème » | plus tard, sur ce socle |
@@ -165,3 +165,76 @@ affichée.
 Supprimer les tables `auto_historique`, `auto_releves_km`, `auto_vehicules` et
 les fonctions `auto_ajouter_vehicule`, `auto_refuser_date_future`,
 `auto_horodater`. Aucun objet existant n'est touché.
+
+---
+
+## E. Lot B — contrat
+
+### Ce que la personne peut faire
+
+- **Plusieurs voitures, une principale.** La première voiture ajoutée devient
+  principale ; « Définir comme principale » en change. La principale est en
+  tête de « Mon garage ».
+- **Archiver sans perdre.** Une voiture archivée quitte la liste courante,
+  garde tout son dossier, et se restaure. Si la principale part aux archives,
+  la plus ancienne voiture active prend sa place ; une voiture restaurée
+  alors qu'il n'y a plus de principale le devient. La suppression définitive
+  reste possible, avec un avertissement qui propose l'archivage.
+- **Documents.** Facture, procès-verbal de contrôle technique, carnet, carte
+  grise, assurance : PDF ou photo, 10 Mo au plus, privés. Un document peut
+  justifier une intervention de la même voiture (« Joindre un justificatif »
+  depuis l'historique).
+- **Historique lisible.** Chaque intervention dit si elle a été « Saisie par
+  vous » ou « Enregistrée par Nexora », et si un justificatif l'accompagne.
+- **Dépenses.** Total des 12 derniers mois, depuis la première dépense, par
+  année et par type, calculé à partir des montants saisis. Les interventions
+  sans montant ne sont pas comptées, et l'écran le dit.
+
+### Base (`20260922000300_auto_mon_garage_consolide.sql`)
+
+- `auto_vehicules.principal` (index unique partiel par personne, jamais
+  archivée) et `archive_le` ; reprise : la plus ancienne voiture active de
+  chaque personne devient principale.
+- `auto_definir_principal`, `auto_archiver_vehicule` : `security invoker`,
+  invariants tenus en base ; `auto_ajouter_vehicule` rend principale la
+  première voiture.
+- `auto_documents` : RLS par propriétaire ; déclencheur de cohérence (le
+  chemin est `<propriétaire>/<voiture>/<fichier>` de la voiture de la ligne,
+  l'intervention justifiée est de la même voiture) ; formats et taille bornés ;
+  date non future. Supprimer l'intervention garde le document, détaché.
+- Compartiment `auto-documents` **privé** (10 Mo, 6 formats) ; règles
+  `auto_documents_stockage_*` : lire et supprimer dans son dossier, déposer
+  seulement sous une de ses voitures. Ouverture par adresse signée de 5 min.
+- Côté écran : le fichier part d'abord, puis sa fiche ; si la fiche échoue,
+  le fichier est retiré. À la suppression, la fiche part d'abord, puis le
+  fichier (au pire un fichier orphelin invisible, jamais une fiche sans
+  fichier).
+
+### Recette jouée le 16 septembre 2026
+
+| Contrôle | Résultat |
+| --- | --- |
+| `node --test lib/auto components/auto` | 47 tests au vert (dépenses en centimes, documents, échéances…) |
+| `supabase/tests/auto_mon_garage_consolide_v1.sql` sur base jetable, migrations jouées deux fois | passé, aucun résidu |
+| Mutations volontaires (index de la principale retiré, cohérence des documents coupée) | le banc échoue bien |
+| `supabase/tests/auto_documents_stockage_base_jetable.sql` (maquette `prelude_stockage_base_jetable.sql`) | passé |
+| Migration sur **Test** ; bancs A et B rejoués sur Test | passés, aucun résidu |
+| `node scripts/recette/stockage-auto.mjs` : vraie API Storage de Test, deux comptes | 10 vérifications sur 10 : dépôt, isolation (dépôt, lecture, liste, signature, suppression), adresse signée, aucun accès public, format refusé ; comptes nettoyés |
+| Parcours navigateur sur Test | principale en tête ; dépenses « 189,90 € sur 12 mois, 1 intervention sans montant » ; justificatif déposé et rattaché à la révision ; 208 définie principale puis archivée, la Clio redevient principale |
+
+Sur le compte de recette, la Peugeot 208 archivée et la facture de révision
+restent en place pour la démonstration.
+
+### Ce que le lot ne fait pas
+
+- Pas de lecture du contenu des documents (aucune extraction automatique).
+- Pas de rappels ni de tâches : lot C « À prévoir ».
+- Pas de partage de documents avec un garage : viendra avec la réservation.
+
+### Retour arrière
+
+Vider le compartiment `auto-documents` puis le supprimer ; supprimer
+`auto_documents`, les politiques `auto_documents_stockage_*`,
+`auto_definir_principal`, `auto_archiver_vehicule`, les colonnes `principal`
+et `archive_le` ; recréer `auto_ajouter_vehicule` telle que dans
+`20260922000200`.

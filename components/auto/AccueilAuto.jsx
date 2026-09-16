@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { CalendarClock, Car, ChevronRight, Gauge, History, Plus } from "lucide-react";
+import { Archive, CalendarClock, Car, ChevronDown, ChevronRight, Gauge, History, Plus, Star } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { dernierKilometrage, prochainControleTechnique, prochainEntretien } from "@/lib/auto/echeances";
@@ -20,7 +20,7 @@ import {
   carte,
   useSessionAuto,
 } from "@/components/auto/elements";
-import { ENERGIES, formaterKm, libelleDe, resumeControle, resumeEntretien } from "@/components/auto/format";
+import { ENERGIES, formaterDate, formaterKm, libelleDe, resumeControle, resumeEntretien } from "@/components/auto/format";
 
 export default function AccueilAuto() {
   const session = useSessionAuto();
@@ -111,13 +111,14 @@ function Avantage({ icone: Icone, titre, texte }) {
 
 function MesVehicules() {
   const [etat, setEtat] = useState({ chargement: true, erreur: false, vehicules: [] });
+  const [voirArchives, setVoirArchives] = useState(false);
 
   const charger = useCallback(async () => {
     setEtat((e) => ({ ...e, chargement: true, erreur: false }));
     const [vehicules, releves, historique] = await Promise.all([
       supabase
         .from("auto_vehicules")
-        .select("id, immatriculation, marque, modele, annee, energie, date_mise_en_circulation, intervalle_entretien_km, intervalle_entretien_mois, created_at")
+        .select("id, immatriculation, marque, modele, annee, energie, date_mise_en_circulation, intervalle_entretien_km, intervalle_entretien_mois, principal, archive_le, created_at")
         .order("created_at", { ascending: true }),
       supabase.from("auto_releves_km").select("vehicule_id, kilometrage, releve_le"),
       supabase.from("auto_historique").select("vehicule_id, type, realise_le, kilometrage, resultat_controle, controle_valable_jusqu_au"),
@@ -143,11 +144,16 @@ function MesVehicules() {
     charger();
   }, [charger]);
 
+  // La voiture principale d'abord, puis l'ordre d'ajout. Les voitures
+  // archivées ont leur propre liste, repliée.
+  const actives = etat.vehicules.filter((v) => !v.archive_le).sort((a, b) => Number(b.principal) - Number(a.principal));
+  const archivees = etat.vehicules.filter((v) => v.archive_le);
+
   return (
     <>
       <div className="mb-5 flex items-end justify-between gap-3">
         <h1 className="font-display text-[28px] font-bold tracking-tight text-foreground">Mon garage</h1>
-        {etat.vehicules.length > 0 ? (
+        {actives.length > 0 ? (
           <Link href="/auto/vehicules/nouveau" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90">
             <Plus className="size-4" aria-hidden="true" />
             Ajouter
@@ -167,7 +173,7 @@ function MesVehicules() {
         >
           Impossible de charger vos véhicules. Vérifiez votre connexion.
         </Alerte>
-      ) : etat.vehicules.length === 0 ? (
+      ) : actives.length === 0 ? (
         <div className={`${carte} px-5 py-8 text-center`}>
           <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-secondary text-primary">
             <Car className="size-7" aria-hidden="true" />
@@ -183,13 +189,45 @@ function MesVehicules() {
         </div>
       ) : (
         <ul className="space-y-3">
-          {etat.vehicules.map((v) => (
+          {actives.map((v) => (
             <li key={v.id}>
               <CarteVehicule vehicule={v} />
             </li>
           ))}
         </ul>
       )}
+
+      {!etat.chargement && !etat.erreur && archivees.length > 0 ? (
+        <section className="mt-6">
+          <button
+            type="button"
+            onClick={() => setVoirArchives((v) => !v)}
+            aria-expanded={voirArchives}
+            className="-ml-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-2 text-sm font-semibold text-muted-foreground transition hover:text-foreground"
+          >
+            <Archive className="size-4" aria-hidden="true" />
+            {archivees.length > 1 ? `${archivees.length} voitures archivées` : "1 voiture archivée"}
+            <ChevronDown className={`size-4 transition ${voirArchives ? "rotate-180" : ""}`} aria-hidden="true" />
+          </button>
+          {voirArchives ? (
+            <ul className="mt-2 space-y-2">
+              {archivees.map((v) => (
+                <li key={v.id}>
+                  <Link href={`/auto/vehicules/${v.id}`} className={`${carte} flex items-center justify-between gap-3 py-3 opacity-80 transition hover:opacity-100`}>
+                    <span className="min-w-0">
+                      <span className="block truncate font-semibold text-foreground">
+                        {v.marque} {v.modele}
+                      </span>
+                      <span className="block text-sm text-muted-foreground">Archivée le {formaterDate(v.archive_le)}</span>
+                    </span>
+                    <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
     </>
   );
 }
@@ -209,6 +247,12 @@ function CarteVehicule({ vehicule }) {
     <Link href={`/auto/vehicules/${vehicule.id}`} className={`${carte} block transition hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
+          {vehicule.principal ? (
+            <p className="mb-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-primary">
+              <Star className="size-3 fill-current" aria-hidden="true" />
+              Principale
+            </p>
+          ) : null}
           <p className="font-display text-lg font-semibold leading-snug text-foreground">
             {vehicule.marque} {vehicule.modele}
           </p>

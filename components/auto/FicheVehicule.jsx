@@ -10,6 +10,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Archive,
+  ArchiveRestore,
   ArrowLeft,
   BatteryCharging,
   CalendarClock,
@@ -20,10 +22,12 @@ import {
   Gauge,
   History,
   LoaderCircle,
+  Paperclip,
   Pencil,
   Plus,
   Snowflake,
   Sparkles,
+  Star,
   Trash2,
   Wrench,
 } from "lucide-react";
@@ -46,6 +50,9 @@ import {
   useSessionAuto,
 } from "@/components/auto/elements";
 import FormulaireVehicule from "@/components/auto/FormulaireVehicule";
+import BlocDepenses from "@/components/auto/Depenses";
+import BlocDocuments, { ouvrirDocument } from "@/components/auto/Documents";
+import { COMPARTIMENT } from "@/lib/auto/documents";
 import {
   ENERGIES,
   INTERVALLES_COURANTS,
@@ -75,16 +82,18 @@ const ICONES = {
 export default function FicheVehicule({ vehiculeId }) {
   const session = useSessionAuto();
   const router = useRouter();
-  const [etat, setEtat] = useState({ chargement: true, erreur: false, introuvable: false, vehicule: null, releves: [], historique: [] });
+  const [etat, setEtat] = useState({ chargement: true, erreur: false, introuvable: false, vehicule: null, releves: [], historique: [], documents: [] });
   const [ouvert, setOuvert] = useState(null);
+  const [historiquePourDocument, setHistoriquePourDocument] = useState(null);
   const [message, setMessage] = useState("");
+  const [actionEnCours, setActionEnCours] = useState(false);
 
   useEffect(() => {
     if (session === null) router.replace(`/auto/connexion?suite=/auto/vehicules/${vehiculeId}`);
   }, [session, router, vehiculeId]);
 
   const charger = useCallback(async () => {
-    const [vehicule, releves, historique] = await Promise.all([
+    const [vehicule, releves, historique, documents] = await Promise.all([
       supabase.from("auto_vehicules").select("*").eq("id", vehiculeId).maybeSingle(),
       supabase.from("auto_releves_km").select("id, kilometrage, releve_le, source").eq("vehicule_id", vehiculeId).order("releve_le", { ascending: false }),
       supabase
@@ -93,13 +102,18 @@ export default function FicheVehicule({ vehiculeId }) {
         .eq("vehicule_id", vehiculeId)
         .order("realise_le", { ascending: false })
         .order("created_at", { ascending: false }),
+      supabase
+        .from("auto_documents")
+        .select("id, type, titre, date_document, chemin, nom_fichier, type_mime, taille_octets, historique_id, source, created_at")
+        .eq("vehicule_id", vehiculeId)
+        .order("created_at", { ascending: false }),
     ]);
     // Un identifiant qui n'est pas un uuid vaut « introuvable », pas « panne ».
     if (vehicule.error?.code === "22P02") {
       setEtat((e) => ({ ...e, chargement: false, erreur: false, introuvable: true }));
       return;
     }
-    if (vehicule.error || releves.error || historique.error) {
+    if (vehicule.error || releves.error || historique.error || documents.error) {
       setEtat((e) => ({ ...e, chargement: false, erreur: true }));
       return;
     }
@@ -107,7 +121,7 @@ export default function FicheVehicule({ vehiculeId }) {
       setEtat((e) => ({ ...e, chargement: false, erreur: false, introuvable: true }));
       return;
     }
-    setEtat({ chargement: false, erreur: false, introuvable: false, vehicule: vehicule.data, releves: releves.data, historique: historique.data });
+    setEtat({ chargement: false, erreur: false, introuvable: false, vehicule: vehicule.data, releves: releves.data, historique: historique.data, documents: documents.data });
   }, [vehiculeId]);
 
   useEffect(() => {
@@ -116,8 +130,32 @@ export default function FicheVehicule({ vehiculeId }) {
 
   async function apresEnregistrement(texte) {
     setOuvert(null);
+    setHistoriquePourDocument(null);
     setMessage(texte);
     await charger();
+  }
+
+  // Voiture principale, archivage, restauration : fonctions en base, qui
+  // gardent toujours une voiture principale cohérente.
+  async function agir(fonction, parametres, texte) {
+    setActionEnCours(true);
+    setMessage("");
+    const { error } = await supabase.rpc(fonction, parametres);
+    setActionEnCours(false);
+    if (error) {
+      setMessage("");
+      setEtat((e) => ({ ...e, erreurAction: messageErreurAuto(error) }));
+      return;
+    }
+    setEtat((e) => ({ ...e, erreurAction: "" }));
+    await apresEnregistrement(texte);
+  }
+
+  function joindreDocument(ligne) {
+    setMessage("");
+    setHistoriquePourDocument(ligne.id);
+    setOuvert("document");
+    requestAnimationFrame(() => document.getElementById("documents")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
   if (!session || etat.chargement) {
@@ -145,7 +183,8 @@ export default function FicheVehicule({ vehiculeId }) {
     );
   }
 
-  const { vehicule, releves, historique } = etat;
+  const { vehicule, releves, historique, documents } = etat;
+  const archive = Boolean(vehicule.archive_le);
   const km = dernierKilometrage({ releves, historique });
   const ct = prochainControleTechnique({ dateMiseEnCirculation: vehicule.date_mise_en_circulation, historique });
   const entretien = prochainEntretien({
@@ -194,6 +233,12 @@ export default function FicheVehicule({ vehiculeId }) {
         </section>
       ) : (
         <section className={`${carte} mt-3 p-5`}>
+          {vehicule.principal ? (
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+              <Star className="size-3.5 fill-current" aria-hidden="true" />
+              Voiture principale
+            </p>
+          ) : null}
           <h1 className="font-display text-2xl font-bold leading-tight tracking-tight text-foreground">
             {vehicule.marque} {vehicule.modele}
           </h1>
@@ -201,10 +246,48 @@ export default function FicheVehicule({ vehiculeId }) {
             <Plaque valeur={vehicule.immatriculation} taille="grande" />
             {details ? <p className="text-sm text-muted-foreground">{details}</p> : null}
           </div>
-          <button type="button" onClick={() => ouvrir("modifier")} className={`${boutonLien} -ml-2 mt-3`}>
-            <Pencil className="size-4" aria-hidden="true" />
-            Modifier
-          </button>
+          {archive ? (
+            <div className="mt-3 rounded-xl border border-border bg-muted px-3.5 py-3 text-sm text-foreground">
+              Archivée le {formaterDate(vehicule.archive_le)}. Son dossier est conservé.
+            </div>
+          ) : null}
+          <div className="-ml-2 mt-3 flex flex-wrap gap-x-1">
+            <button type="button" onClick={() => ouvrir("modifier")} className={boutonLien}>
+              <Pencil className="size-4" aria-hidden="true" />
+              Modifier
+            </button>
+            {!archive && !vehicule.principal ? (
+              <button type="button" disabled={actionEnCours} onClick={() => agir("auto_definir_principal", { p_vehicule_id: vehicule.id }, "C'est maintenant votre voiture principale.")} className={boutonLien}>
+                <Star className="size-4" aria-hidden="true" />
+                Définir comme principale
+              </button>
+            ) : null}
+            {archive ? (
+              <button type="button" disabled={actionEnCours} onClick={() => agir("auto_archiver_vehicule", { p_vehicule_id: vehicule.id, p_archiver: false }, "Voiture restaurée.")} className={boutonLien}>
+                <ArchiveRestore className="size-4" aria-hidden="true" />
+                Restaurer
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={actionEnCours}
+                onClick={() => {
+                  if (window.confirm(`Archiver ${vehicule.marque} ${vehicule.modele} ? Elle quitte votre garage, son dossier est conservé.`)) {
+                    agir("auto_archiver_vehicule", { p_vehicule_id: vehicule.id, p_archiver: true }, "Voiture archivée. Son dossier est conservé.");
+                  }
+                }}
+                className={boutonLien}
+              >
+                <Archive className="size-4" aria-hidden="true" />
+                Archiver
+              </button>
+            )}
+          </div>
+          {etat.erreurAction ? (
+            <div className="mt-2">
+              <Alerte>{etat.erreurAction}</Alerte>
+            </div>
+          ) : null}
         </section>
       )}
 
@@ -304,6 +387,10 @@ export default function FicheVehicule({ vehiculeId }) {
         </section>
       </div>
 
+      <div className="mt-3">
+        <BlocDepenses historique={historique} />
+      </div>
+
       {/* Historique */}
       <div className="mb-2 mt-7 flex items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Historique</h2>
@@ -320,9 +407,28 @@ export default function FicheVehicule({ vehiculeId }) {
           <FormulaireIntervention vehiculeId={vehicule.id} onAnnuler={() => setOuvert(null)} onEnregistre={() => apresEnregistrement("Intervention ajoutée.")} />
         </section>
       ) : null}
-      <ListeHistorique historique={historique} onSupprime={() => apresEnregistrement("Intervention supprimée.")} />
+      <ListeHistorique historique={historique} documents={documents} onJoindre={joindreDocument} onSupprime={() => apresEnregistrement("Intervention supprimée.")} />
 
-      <ZoneSuppression vehicule={vehicule} />
+      <BlocDocuments
+        vehiculeId={vehicule.id}
+        proprietaireId={session.user.id}
+        documents={documents}
+        historique={historique}
+        formulaireOuvert={ouvert === "document"}
+        historiquePrechoisi={historiquePourDocument}
+        onOuvrir={(historiqueId) => {
+          setMessage("");
+          setHistoriquePourDocument(historiqueId);
+          setOuvert("document");
+        }}
+        onFermer={() => {
+          setOuvert(null);
+          setHistoriquePourDocument(null);
+        }}
+        onChange={apresEnregistrement}
+      />
+
+      <ZoneSuppression vehicule={vehicule} documents={documents} />
     </PageAuto>
   );
 }
@@ -756,7 +862,7 @@ function FormulaireMiseEnCirculation({ vehiculeId, onAnnuler, onEnregistre }) {
   );
 }
 
-function ListeHistorique({ historique, onSupprime }) {
+function ListeHistorique({ historique, documents = [], onJoindre, onSupprime }) {
   const [suppression, setSuppression] = useState(null);
   const [erreur, setErreur] = useState("");
 
@@ -790,6 +896,7 @@ function ListeHistorique({ historique, onSupprime }) {
       <ol className={`${carte} divide-y divide-border p-0`}>
         {historique.map((ligne) => {
           const Icone = ICONES[ligne.type] ?? Wrench;
+          const justificatifs = documents.filter((d) => d.historique_id === ligne.id);
           const meta = [
             ligne.kilometrage != null ? formaterKm(ligne.kilometrage) : null,
             ligne.prestataire,
@@ -810,6 +917,20 @@ function ListeHistorique({ historique, onSupprime }) {
                 </div>
                 {meta.length ? <p className="mt-0.5 text-sm text-muted-foreground">{meta.join(" · ")}</p> : null}
                 {ligne.libelle ? <p className="mt-0.5 text-sm text-foreground/80">{ligne.libelle}</p> : null}
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
+                  <span className="text-muted-foreground">{ligne.source === "prestation" ? "Enregistrée par Nexora" : "Saisie par vous"}</span>
+                  {justificatifs.length ? (
+                    <button type="button" onClick={() => ouvrirDocument(justificatifs[0])} className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:underline">
+                      <Paperclip className="size-3.5" aria-hidden="true" />
+                      {justificatifs.length > 1 ? `${justificatifs.length} justificatifs` : "Justificatif"}
+                    </button>
+                  ) : onJoindre ? (
+                    <button type="button" onClick={() => onJoindre(ligne)} className="inline-flex items-center gap-1 font-semibold text-primary hover:underline">
+                      <Paperclip className="size-3.5" aria-hidden="true" />
+                      Joindre un justificatif
+                    </button>
+                  ) : null}
+                </div>
               </div>
               {ligne.source === "proprietaire" ? (
                 <button
@@ -830,19 +951,24 @@ function ListeHistorique({ historique, onSupprime }) {
   );
 }
 
-function ZoneSuppression({ vehicule }) {
+function ZoneSuppression({ vehicule, documents = [] }) {
   const router = useRouter();
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState("");
 
   async function supprimer() {
-    if (!window.confirm(`Supprimer ${vehicule.marque} ${vehicule.modele} et tout son historique ? Cette action est définitive.`)) return;
+    if (!window.confirm(`Supprimer définitivement ${vehicule.marque} ${vehicule.modele}, son historique et ses documents ? Pour la retirer en gardant son dossier, archivez-la plutôt.`)) return;
     setEnCours(true);
     setErreur("");
     const { data, error } = await supabase.from("auto_vehicules").delete().eq("id", vehicule.id).select("id");
     setEnCours(false);
-    if (error || !data?.length) setErreur("La suppression n'a pas abouti. Réessayez.");
-    else router.replace("/auto");
+    if (error || !data?.length) {
+      setErreur("La suppression n'a pas abouti. Réessayez.");
+      return;
+    }
+    // Les fiches sont parties avec la voiture : les fichiers suivent.
+    if (documents.length) await supabase.storage.from(COMPARTIMENT).remove(documents.map((d) => d.chemin));
+    router.replace("/auto");
   }
 
   return (
