@@ -8,8 +8,8 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { CircleAlert, LoaderCircle } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { CalendarCheck, Car, CircleAlert, LoaderCircle } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { afficherImmatriculation } from "@/lib/auto/immatriculation";
@@ -46,8 +46,15 @@ export function useSessionAuto() {
   return session;
 }
 
+// Les deux espaces de la personne connectée.
+const ONGLETS = [
+  { href: "/auto", libelle: "Mon garage", icone: Car, actif: (chemin) => chemin === "/auto" || chemin.startsWith("/auto/vehicules") },
+  { href: "/auto/a-prevoir", libelle: "À prévoir", icone: CalendarCheck, actif: (chemin) => chemin.startsWith("/auto/a-prevoir") },
+];
+
 export function EnteteAuto({ session }) {
   const router = useRouter();
+  const chemin = usePathname() ?? "";
   const [sortie, setSortie] = useState(false);
 
   async function seDeconnecter() {
@@ -74,6 +81,24 @@ export function EnteteAuto({ session }) {
           </Link>
         ) : null}
       </div>
+      {session ? (
+        <nav aria-label="Espaces" className="mx-auto flex w-full max-w-xl gap-1 px-3 pb-2">
+          {ONGLETS.map(({ href, libelle, icone: Icone, actif }) => {
+            const courant = actif(chemin);
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={courant ? "page" : undefined}
+                className={`inline-flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-semibold transition ${courant ? "bg-secondary text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+              >
+                <Icone className="size-4" aria-hidden="true" />
+                {libelle}
+              </Link>
+            );
+          })}
+        </nav>
+      ) : null}
     </header>
   );
 }

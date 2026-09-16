@@ -73,6 +73,7 @@ test("intervention : type et date obligatoires, montant à la française", () =>
     prestataire: "Garage Martin",
     libelle: null,
     resultatControle: null,
+    natureControle: null,
     controleValableJusquAu: null,
   });
 
@@ -103,12 +104,26 @@ test("contrôle technique : résultat et date du procès-verbal", () => {
   assert.equal(ok.donnees.resultatControle, "favorable");
   assert.equal(ok.donnees.controleValableJusquAu, "2028-03-02");
 
+  assert.equal(ok.donnees.natureControle, "periodique");
+
   const avant = validerIntervention({ type: "controle_technique", realiseLe: "2026-03-02", controleValableJusquAu: "2026-01-01" }, { aujourdhui: AUJOURDHUI });
-  assert.equal(avant.erreurs.controleValableJusquAu, "Cette date doit suivre celle du contrôle.");
+  assert.equal(avant.erreurs.controleValableJusquAu, "Cette date ne peut pas précéder celle du contrôle.");
+
+  // Défaillance critique : validité limitée au jour même, donc la même date est acceptée.
+  const critique = validerIntervention(
+    { type: "controle_technique", realiseLe: "2026-05-14", resultatControle: "defavorable_critique", controleValableJusquAu: "2026-05-14" },
+    { aujourdhui: AUJOURDHUI },
+  );
+  assert.equal(critique.valide, true);
+
+  const contreVisite = validerIntervention({ type: "controle_technique", realiseLe: "2026-06-20", natureControle: "contre_visite", resultatControle: "favorable" }, { aujourdhui: AUJOURDHUI });
+  assert.equal(contreVisite.donnees.natureControle, "contre_visite");
+  assert.equal(validerIntervention({ type: "controle_technique", realiseLe: "2026-06-20", resultatControle: "contre_visite" }, { aujourdhui: AUJOURDHUI }).erreurs.resultatControle, "Choisissez le résultat dans la liste.");
 
   // Sur une vidange, ces informations sont ignorées, jamais enregistrées.
   const vidange = validerIntervention({ type: "vidange", realiseLe: "2026-03-02", resultatControle: "favorable", controleValableJusquAu: "2028-03-02" }, { aujourdhui: AUJOURDHUI });
   assert.equal(vidange.donnees.resultatControle, null);
+  assert.equal(vidange.donnees.natureControle, null);
   assert.equal(vidange.donnees.controleValableJusquAu, null);
 
   const vehicule = validerVehicule({ marque: "Toyota", modele: "Yaris", controleValableJusquAu: "2028-03-02" }, { aujourdhui: AUJOURDHUI, creation: true });

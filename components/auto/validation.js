@@ -30,9 +30,20 @@ function dateLimite(valeur, { apres }) {
   const v = texte(valeur);
   if (!v) return { valeur: null };
   if (!DATE_ISO.test(v) || v < "1900-01-01") return { erreur: "Cette date n'est pas valide." };
-  if (apres && v <= apres) return { erreur: "Cette date doit suivre celle du contrôle." };
+  // Le jour même est possible : défaillance critique.
+  if (apres && v < apres) return { erreur: "Cette date ne peut pas précéder celle du contrôle." };
   return { valeur: v };
 }
+
+export const RESULTATS_CONTROLE = [
+  { valeur: "favorable", libelle: "Favorable" },
+  { valeur: "defavorable_majeure", libelle: "Défavorable : défaillance majeure" },
+  { valeur: "defavorable_critique", libelle: "Défavorable : défaillance critique" },
+];
+export const NATURES_CONTROLE = [
+  { valeur: "periodique", libelle: "Contrôle périodique" },
+  { valeur: "contre_visite", libelle: "Contre-visite" },
+];
 
 function resultat(erreurs, avertissements, donnees) {
   return { valide: Object.keys(erreurs).length === 0, erreurs, avertissements, donnees };
@@ -129,13 +140,18 @@ export function validerIntervention(saisie = {}, { aujourdhui }) {
   donnees.prestataire = texte(saisie.prestataire).slice(0, 120) || null;
   donnees.libelle = texte(saisie.libelle).slice(0, 300) || null;
 
-  // Résultat et date du procès-verbal : seulement pour un contrôle technique.
+  // Nature, résultat et date du procès-verbal : seulement pour un contrôle technique.
   donnees.resultatControle = null;
+  donnees.natureControle = null;
   donnees.controleValableJusquAu = null;
   if (donnees.type === "controle_technique") {
     const resultatControle = texte(saisie.resultatControle);
-    if (resultatControle && !["favorable", "contre_visite"].includes(resultatControle)) erreurs.resultatControle = "Choisissez le résultat dans la liste.";
+    if (resultatControle && !RESULTATS_CONTROLE.some((r) => r.valeur === resultatControle)) erreurs.resultatControle = "Choisissez le résultat dans la liste.";
     else donnees.resultatControle = resultatControle || null;
+
+    const nature = texte(saisie.natureControle) || "periodique";
+    if (!NATURES_CONTROLE.some((n) => n.valeur === nature)) erreurs.natureControle = "Choisissez la nature du contrôle.";
+    else donnees.natureControle = nature;
 
     const limite = dateLimite(saisie.controleValableJusquAu, { apres: donnees.realiseLe });
     if (limite.erreur) erreurs.controleValableJusquAu = limite.erreur;

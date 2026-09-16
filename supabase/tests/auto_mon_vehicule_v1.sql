@@ -471,8 +471,8 @@ begin
   end;
   perform pg_temp.assert_echec('PV : date officielle sans contrôle', v_state, v_msg, '22023', 'auto_controle_incomplet');
 
-  insert into public.auto_historique (vehicule_id, type, realise_le, resultat_controle)
-  values (v_id, 'controle_technique', current_date, 'contre_visite');
+  insert into public.auto_historique (vehicule_id, type, realise_le, resultat_controle, nature_controle, controle_valable_jusqu_au)
+  values (v_id, 'controle_technique', current_date, 'defavorable_critique', 'periodique', current_date);
 
   v_state := null;
   begin

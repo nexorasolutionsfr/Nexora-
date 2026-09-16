@@ -11,8 +11,6 @@ import {
   lireMontant,
   messageConnexion,
   messageErreurAuto,
-  resumeControle,
-  resumeEntretien,
 } from "./format.js";
 
 const F = " ";
@@ -83,34 +81,4 @@ test("messageConnexion : codes Supabase courants", () => {
   assert.match(messageConnexion({ message: "boom" }), /n'a pas abouti/);
 });
 
-test("resumeControle et resumeEntretien : une pastille courte, le plus urgent d'abord", () => {
-  assert.deepEqual(resumeControle({ etat: "a_renseigner" }), { ton: "neutre", texte: "CT à renseigner" });
-  assert.deepEqual(resumeControle({ etat: "calcule", niveau: "proche", joursRestants: 34 }), { ton: "proche", texte: "CT dans 34 jours" });
-  assert.deepEqual(resumeControle({ etat: "contre_visite", niveau: "proche", joursRestants: 46 }), { ton: "proche", texte: "Contre-visite dans 46 jours" });
 
-  assert.deepEqual(resumeEntretien({ etat: "intervalle_a_renseigner" }), { ton: "neutre", texte: "Révision à renseigner" });
-  assert.deepEqual(resumeEntretien({ etat: "calcule", parKm: { limite: 76000, restants: null, niveau: null } }), { ton: "neutre", texte: "Kilométrage à mettre à jour" });
-  assert.deepEqual(
-    resumeEntretien({ etat: "calcule", parKm: { restants: 600, niveau: "proche" }, parDate: { joursRestants: 200, niveau: "ok" } }),
-    { ton: "proche", texte: `Révision : encore 600${F}km` },
-  );
-  assert.deepEqual(
-    resumeEntretien({ etat: "calcule", parKm: { restants: 9000, niveau: "ok" }, parDate: { joursRestants: -12, niveau: "depasse" } }),
-    { ton: "depasse", texte: "Révision en retard de 12 jours" },
-  );
-  assert.deepEqual(
-    resumeEntretien({ etat: "calcule", parKm: { restants: -400, niveau: "depasse" } }),
-    { ton: "depasse", texte: `Révision en retard de 400${F}km` },
-  );
-});
-
-test("resumeEntretien sans sujet, quand l'écran dit déjà « Entretien »", () => {
-  assert.deepEqual(
-    resumeEntretien({ etat: "calcule", parKm: { restants: 600, niveau: "proche" } }, { avecSujet: false }),
-    { ton: "proche", texte: `Encore 600${F}km` },
-  );
-  assert.deepEqual(
-    resumeEntretien({ etat: "calcule", parDate: { joursRestants: 177, niveau: "ok" } }, { avecSujet: false }),
-    { ton: "ok", texte: "Dans 6 mois" },
-  );
-});

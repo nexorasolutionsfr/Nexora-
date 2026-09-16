@@ -5,10 +5,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Archive, CalendarClock, Car, ChevronDown, ChevronRight, Gauge, History, Plus, Star } from "lucide-react";
+import { Archive, CalendarCheck, CalendarClock, Car, ChevronDown, ChevronRight, Gauge, History, Plus, Star } from "lucide-react";
 
-import { supabase } from "@/lib/supabase";
-import { dernierKilometrage, prochainControleTechnique, prochainEntretien } from "@/lib/auto/echeances";
+import { aujourdhuiIso, dernierKilometrage } from "@/lib/auto/echeances";
+import { construireAPrevoir, elementControle, elementRevision, pastilleElement } from "@/components/auto/aPrevoir";
+import { chargerDossiers } from "@/components/auto/dossiers";
 import {
   Alerte,
   PageAuto,
@@ -20,7 +21,7 @@ import {
   carte,
   useSessionAuto,
 } from "@/components/auto/elements";
-import { ENERGIES, formaterDate, formaterKm, libelleDe, resumeControle, resumeEntretien } from "@/components/auto/format";
+import { ENERGIES, formaterDate, formaterKm, libelleDe } from "@/components/auto/format";
 
 export default function AccueilAuto() {
   const session = useSessionAuto();
@@ -110,34 +111,14 @@ function Avantage({ icone: Icone, titre, texte }) {
 }
 
 function MesVehicules() {
-  const [etat, setEtat] = useState({ chargement: true, erreur: false, vehicules: [] });
+  const [etat, setEtat] = useState({ chargement: true, erreur: false, vehicules: [], taches: [], reports: [], horizonJours: 60 });
   const [voirArchives, setVoirArchives] = useState(false);
 
   const charger = useCallback(async () => {
     setEtat((e) => ({ ...e, chargement: true, erreur: false }));
-    const [vehicules, releves, historique] = await Promise.all([
-      supabase
-        .from("auto_vehicules")
-        .select("id, immatriculation, marque, modele, annee, energie, date_mise_en_circulation, intervalle_entretien_km, intervalle_entretien_mois, principal, archive_le, created_at")
-        .order("created_at", { ascending: true }),
-      supabase.from("auto_releves_km").select("vehicule_id, kilometrage, releve_le"),
-      supabase.from("auto_historique").select("vehicule_id, type, realise_le, kilometrage, resultat_controle, controle_valable_jusqu_au"),
-    ]);
+    const dossiers = await chargerDossiers();
     // Une lecture en échec ne doit jamais ressembler à un garage vide.
-    if (vehicules.error || releves.error || historique.error) {
-      setEtat({ chargement: false, erreur: true, vehicules: [] });
-      return;
-    }
-    const parVehicule = (lignes, id) => lignes.filter((l) => l.vehicule_id === id);
-    setEtat({
-      chargement: false,
-      erreur: false,
-      vehicules: vehicules.data.map((v) => ({
-        ...v,
-        releves: parVehicule(releves.data, v.id),
-        historique: parVehicule(historique.data, v.id),
-      })),
-    });
+    setEtat(dossiers.erreur ? { chargement: false, erreur: true, vehicules: [], taches: [], reports: [], horizonJours: 60 } : { chargement: false, ...dossiers });
   }, []);
 
   useEffect(() => {
@@ -160,6 +141,8 @@ function MesVehicules() {
           </Link>
         ) : null}
       </div>
+
+      {!etat.chargement && !etat.erreur && actives.length > 0 ? <ProchainesActions etat={etat} /> : null}
 
       {etat.chargement ? (
         <SqueletteVehicules />
@@ -234,13 +217,8 @@ function MesVehicules() {
 
 function CarteVehicule({ vehicule }) {
   const km = dernierKilometrage({ releves: vehicule.releves, historique: vehicule.historique });
-  const ct = prochainControleTechnique({ dateMiseEnCirculation: vehicule.date_mise_en_circulation, historique: vehicule.historique });
-  const entretien = prochainEntretien({
-    intervalleKm: vehicule.intervalle_entretien_km,
-    intervalleMois: vehicule.intervalle_entretien_mois,
-    historique: vehicule.historique,
-    releves: vehicule.releves,
-  });
+  const ct = pastilleElement(elementControle(vehicule));
+  const revision = pastilleElement(elementRevision(vehicule));
   const details = [libelleDe(ENERGIES, vehicule.energie), vehicule.annee].filter(Boolean).join(" · ");
 
   return (
@@ -267,9 +245,54 @@ function CarteVehicule({ vehicule }) {
         <ChevronRight className="mt-1 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        <Pastille ton={resumeControle(ct).ton}>{resumeControle(ct).texte}</Pastille>
-        <Pastille ton={resumeEntretien(entretien).ton}>{resumeEntretien(entretien).texte}</Pastille>
+        <Pastille ton={ct.ton}>{ct.texte}</Pastille>
+        <Pastille ton={revision.ton}>{revision.texte}</Pastille>
       </div>
     </Link>
+  );
+}
+
+// Le rappel dans l'app : trois prochaines actions au plus, jamais celles que
+// la personne a reportées. Le détail est dans « À prévoir ».
+function ProchainesActions({ etat }) {
+  const { prochaines, groupes } = construireAPrevoir({ vehicules: etat.vehicules, taches: etat.taches, reports: etat.reports, horizonJours: etat.horizonJours, aujourdhui: aujourdhuiIso() });
+  const aCompleter = groupes.aCompleter.length;
+
+  return (
+    <section className={`${carte} mb-4`} aria-labelledby="titre-prochaines">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="titre-prochaines" className="flex items-center gap-2 font-semibold text-foreground">
+          <CalendarCheck className="size-5 text-primary" aria-hidden="true" />
+          À prévoir
+        </h2>
+        <Link href="/auto/a-prevoir" className="inline-flex items-center gap-0.5 text-sm font-semibold text-primary hover:underline">
+          Tout voir
+          <ChevronRight className="size-4" aria-hidden="true" />
+        </Link>
+      </div>
+      {prochaines.length === 0 ? (
+        <p className="mt-2 text-[15px] text-muted-foreground">
+          Rien d'urgent dans les {etat.horizonJours} prochains jours.
+          {aCompleter ? ` ${aCompleter > 1 ? `${aCompleter} informations` : "1 information"} à compléter.` : ""}
+        </p>
+      ) : (
+        <ul className="mt-2 divide-y divide-border">
+          {prochaines.map((el) => {
+            const pastille = pastilleElement(el, { avecSujet: false });
+            return (
+              <li key={el.cle}>
+                <Link href="/auto/a-prevoir" className="flex items-center justify-between gap-3 py-2.5">
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-foreground">{el.titre}</span>
+                    <span className="block truncate text-sm text-muted-foreground">{el.vehicule.nom}</span>
+                  </span>
+                  <Pastille ton={pastille.ton}>{pastille.texte}</Pastille>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }

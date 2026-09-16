@@ -144,29 +144,3 @@ export function messageConnexion(erreur) {
   if (code === "user_already_exists" || /already registered/i.test(brut)) return "Cette adresse a déjà un compte : connectez-vous.";
   return "La demande n'a pas abouti. Réessayez dans un instant.";
 }
-
-// Résumés courts d'une échéance, pour une pastille. Reçoivent les résultats
-// de lib/auto/echeances.js tels quels.
-const RANG_NIVEAU = { depasse: 2, proche: 1, ok: 0 };
-
-export function resumeControle(ct) {
-  if (ct?.etat === "contre_visite") return { ton: ct.niveau, texte: `Contre-visite ${delaiLisible(ct.joursRestants)}` };
-  if (!ct || ct.etat !== "calcule") return { ton: "neutre", texte: "CT à renseigner" };
-  return { ton: ct.niveau, texte: `CT ${delaiLisible(ct.joursRestants)}` };
-}
-
-// `avecSujet: false` retire le mot « Révision », quand l'écran le porte déjà.
-export function resumeEntretien(entretien, { avecSujet = true } = {}) {
-  const sujet = (texte, liaison = " ") => (avecSujet ? `Révision${liaison}${texte}` : texte.charAt(0).toUpperCase() + texte.slice(1));
-  if (!entretien || entretien.etat !== "calcule") return { ton: "neutre", texte: sujet("à renseigner") };
-  const parKm = entretien.parKm?.niveau ? entretien.parKm : null;
-  const parDate = entretien.parDate ?? null;
-  if (!parKm && !parDate) return { ton: "neutre", texte: "Kilométrage à mettre à jour" };
-  // Le plus urgent des deux ; à égalité, les kilomètres, plus parlants.
-  if (parKm && (!parDate || RANG_NIVEAU[parKm.niveau] >= RANG_NIVEAU[parDate.niveau])) {
-    return parKm.restants < 0
-      ? { ton: "depasse", texte: sujet(`en retard de ${formaterKm(-parKm.restants)}`) }
-      : { ton: parKm.niveau, texte: sujet(`encore ${formaterKm(parKm.restants)}`, " : ") };
-  }
-  return { ton: parDate.niveau, texte: sujet(delaiLisible(parDate.joursRestants)) };
-}

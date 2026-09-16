@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   BatteryCharging,
   CalendarClock,
+  ChevronRight,
   CircleDot,
   ClipboardCheck,
   Disc,
@@ -33,7 +34,9 @@ import {
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
-import { aujourdhuiIso, dernierKilometrage, prochainControleTechnique, prochainEntretien } from "@/lib/auto/echeances";
+import { RESULTATS_DEFAVORABLES, aujourdhuiIso, dernierKilometrage } from "@/lib/auto/echeances";
+import { estimerKilometrage } from "@/lib/auto/kilometrage";
+import { FONDEMENTS, elementControle, elementRevision, pastilleElement } from "@/components/auto/aPrevoir";
 import {
   Alerte,
   Chargement,
@@ -57,16 +60,26 @@ import {
   ENERGIES,
   INTERVALLES_COURANTS,
   TYPES_INTERVENTION,
-  delaiLisible,
   formaterDate,
   formaterEuros,
   formaterKm,
   formaterNombre,
   libelleDe,
   messageErreurAuto,
-  resumeEntretien,
 } from "@/components/auto/format";
-import { validerIntervalle, validerIntervention, validerReleve } from "@/components/auto/validation";
+import { NATURES_CONTROLE, RESULTATS_CONTROLE, validerIntervalle, validerIntervention, validerReleve } from "@/components/auto/validation";
+
+// Le geste proposé par une échéance → le petit formulaire qui l'accomplit.
+const FORMULAIRE_PAR_ACTION = {
+  releve: "releve",
+  revision: "entretien",
+  controle: "controle",
+  contre_visite: "contre_visite",
+  proces_verbal: "proces_verbal",
+  mise_en_circulation: "mise_en_circulation",
+  intervalle: "intervalle",
+};
+const SECTION_PAR_ACTION = { releve: "kilometrage", revision: "echeance-revision", intervalle: "echeance-revision" };
 
 const ICONES = {
   revision: Wrench,
@@ -79,7 +92,7 @@ const ICONES = {
   lavage: Sparkles,
 };
 
-export default function FicheVehicule({ vehiculeId }) {
+export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
   const session = useSessionAuto();
   const router = useRouter();
   const [etat, setEtat] = useState({ chargement: true, erreur: false, introuvable: false, vehicule: null, releves: [], historique: [], documents: [] });
@@ -98,7 +111,7 @@ export default function FicheVehicule({ vehiculeId }) {
       supabase.from("auto_releves_km").select("id, kilometrage, releve_le, source").eq("vehicule_id", vehiculeId).order("releve_le", { ascending: false }),
       supabase
         .from("auto_historique")
-        .select("id, type, realise_le, kilometrage, libelle, prestataire, montant_ttc, source, created_at, resultat_controle, controle_valable_jusqu_au")
+        .select("id, type, realise_le, kilometrage, libelle, prestataire, montant_ttc, source, created_at, resultat_controle, nature_controle, controle_valable_jusqu_au")
         .eq("vehicule_id", vehiculeId)
         .order("realise_le", { ascending: false })
         .order("created_at", { ascending: false }),
@@ -127,6 +140,26 @@ export default function FicheVehicule({ vehiculeId }) {
   useEffect(() => {
     if (session) charger();
   }, [session, charger]);
+
+  // Arrivée depuis « À prévoir » avec un geste à faire : le formulaire est
+  // déjà ouvert, au bon endroit. L'adresse est nettoyée pour qu'un
+  // rechargement ne le rouvre pas.
+  const [actionAppliquee, setActionAppliquee] = useState(false);
+  useEffect(() => {
+    if (actionAppliquee || etat.chargement || !etat.vehicule || !actionInitiale) return;
+    setActionAppliquee(true);
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+    if (!FORMULAIRE_PAR_ACTION[actionInitiale] || etat.vehicule.archive_le) return;
+    setOuvert(FORMULAIRE_PAR_ACTION[actionInitiale]);
+    requestAnimationFrame(() => document.getElementById(SECTION_PAR_ACTION[actionInitiale] ?? "echeance-ct")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, [actionAppliquee, etat.chargement, etat.vehicule, actionInitiale]);
+
+  function faireAction(code) {
+    setMessage("");
+    setOuvert(FORMULAIRE_PAR_ACTION[code]);
+    const section = SECTION_PAR_ACTION[code];
+    if (section === "kilometrage") requestAnimationFrame(() => document.getElementById(section)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
 
   async function apresEnregistrement(texte) {
     setOuvert(null);
@@ -186,13 +219,9 @@ export default function FicheVehicule({ vehiculeId }) {
   const { vehicule, releves, historique, documents } = etat;
   const archive = Boolean(vehicule.archive_le);
   const km = dernierKilometrage({ releves, historique });
-  const ct = prochainControleTechnique({ dateMiseEnCirculation: vehicule.date_mise_en_circulation, historique });
-  const entretien = prochainEntretien({
-    intervalleKm: vehicule.intervalle_entretien_km,
-    intervalleMois: vehicule.intervalle_entretien_mois,
-    historique,
-    releves,
-  });
+  const estimationKm = estimerKilometrage({ releves, historique });
+  const elementCt = elementControle({ ...vehicule, releves, historique });
+  const elementRev = elementRevision({ ...vehicule, releves, historique });
   const details = [libelleDe(ENERGIES, vehicule.energie), vehicule.annee].filter(Boolean).join(" · ");
   const dernierControle = historique
     .filter((h) => h.type === "controle_technique")
@@ -298,7 +327,7 @@ export default function FicheVehicule({ vehiculeId }) {
       ) : null}
 
       {/* Kilométrage */}
-      <section className={`${carte} mt-3`} aria-labelledby="titre-km">
+      <section id="kilometrage" className={`${carte} mt-3 scroll-mt-28`} aria-labelledby="titre-km">
         <div className="flex items-center gap-3">
           <IconeRonde icone={Gauge} />
           <div className="min-w-0 flex-1">
@@ -315,6 +344,13 @@ export default function FicheVehicule({ vehiculeId }) {
             ) : (
               <p className="text-[15px] text-foreground">Pas encore renseigné</p>
             )}
+            {estimationKm.estimation ? (
+              <p className={aide}>
+                <span className="font-semibold text-foreground/80">Estimation.</span> Environ {formaterKm(estimationKm.estimation.kilometrage)} aujourd'hui, d'après le
+                rythme de vos relevés. Ce n'est pas un relevé.
+              </p>
+            ) : null}
+            {estimationKm.ancien ? <p className={aide}>Dernier compteur connu il y a {estimationKm.joursDepuis} jours : pensez à l'actualiser.</p> : null}
           </div>
         </div>
         {ouvert === "releve" ? (
@@ -328,63 +364,42 @@ export default function FicheVehicule({ vehiculeId }) {
       </section>
 
       {/* Échéances */}
-      <h2 className="mb-2 mt-7 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Échéances</h2>
+      <div className="mb-2 mt-7 flex items-center justify-between gap-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Échéances</h2>
+        {!archive ? (
+          <Link href={`/auto/a-prevoir?vehicule=${vehicule.id}`} className="inline-flex items-center gap-0.5 text-sm font-semibold text-primary hover:underline">
+            À prévoir
+            <ChevronRight className="size-4" aria-hidden="true" />
+          </Link>
+        ) : null}
+      </div>
+      {archive ? <p className={`${aide} mb-2`}>Voiture archivée : ses échéances ne figurent plus dans « À prévoir ».</p> : null}
       <div className="space-y-3">
-        <section className={carte} aria-labelledby="titre-ct">
-          <div className="flex items-start gap-3">
-            <IconeRonde icone={CalendarClock} />
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 id="titre-ct" className="font-semibold text-foreground">
-                  Contrôle technique
-                </h3>
-                <Pastille ton={ct.etat === "a_renseigner" ? "neutre" : ct.niveau}>
-                  {ct.etat === "a_renseigner" ? "À renseigner" : ct.etat === "contre_visite" ? `Contre-visite ${delaiLisible(ct.joursRestants)}` : delaiLisible(ct.joursRestants)}
-                </Pastille>
-              </div>
-              <TexteControle ct={ct} vehicule={vehicule} />
-            </div>
-          </div>
+        <CarteEcheance
+          id="echeance-ct"
+          icone={CalendarClock}
+          element={elementCt}
+          onAction={faireAction}
+          actionPossible={(code) => code !== "proces_verbal" || dernierControle?.source === "proprietaire"}
+        >
           {ouvert === "mise_en_circulation" ? (
             <FormulaireMiseEnCirculation vehiculeId={vehicule.id} onAnnuler={() => setOuvert(null)} onEnregistre={() => apresEnregistrement("Date de mise en circulation enregistrée.")} />
           ) : ouvert === "controle" ? (
             <FormulaireIntervention vehiculeId={vehicule.id} typeFixe="controle_technique" onAnnuler={() => setOuvert(null)} onEnregistre={() => apresEnregistrement("Contrôle technique ajouté à l'historique.")} />
+          ) : ouvert === "contre_visite" ? (
+            <FormulaireIntervention vehiculeId={vehicule.id} typeFixe="controle_technique" natureInitiale="contre_visite" onAnnuler={() => setOuvert(null)} onEnregistre={() => apresEnregistrement("Contre-visite ajoutée à l'historique.")} />
           ) : ouvert === "proces_verbal" && dernierControle ? (
             <FormulaireProcesVerbal controle={dernierControle} onAnnuler={() => setOuvert(null)} onEnregistre={() => apresEnregistrement("Date du procès-verbal enregistrée.")} />
-          ) : (
-            <ActionControle ct={ct} dernierControle={dernierControle} ouvrir={ouvrir} />
-          )}
-        </section>
+          ) : null}
+        </CarteEcheance>
 
-        <section className={carte} aria-labelledby="titre-entretien">
-          <div className="flex items-start gap-3">
-            <IconeRonde icone={Wrench} />
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 id="titre-entretien" className="font-semibold text-foreground">
-                  Prochaine révision
-                </h3>
-                <Pastille ton={resumeEntretien(entretien, { avecSujet: false }).ton}>{resumeEntretien(entretien, { avecSujet: false }).texte}</Pastille>
-              </div>
-              <TexteEntretien entretien={entretien} vehicule={vehicule} />
-            </div>
-          </div>
+        <CarteEcheance id="echeance-revision" icone={Wrench} element={elementRev} onAction={faireAction}>
           {ouvert === "intervalle" ? (
             <FormulaireIntervalle vehicule={vehicule} onAnnuler={() => setOuvert(null)} onEnregistre={() => apresEnregistrement("Intervalle de révision enregistré.")} />
           ) : ouvert === "entretien" ? (
             <FormulaireIntervention vehiculeId={vehicule.id} typeFixe="revision" onAnnuler={() => setOuvert(null)} onEnregistre={() => apresEnregistrement("Révision ajoutée à l'historique.")} />
-          ) : entretien.etat === "dernier_entretien_a_renseigner" ? (
-            <button type="button" onClick={() => ouvrir("entretien")} className={`${boutonLien} -ml-2 mt-2`}>
-              <Plus className="size-4" aria-hidden="true" />
-              Ajouter la dernière révision
-            </button>
-          ) : (
-            <button type="button" onClick={() => ouvrir("intervalle")} className={`${boutonLien} -ml-2 mt-2`}>
-              {entretien.etat === "intervalle_a_renseigner" ? <Plus className="size-4" aria-hidden="true" /> : <Pencil className="size-4" aria-hidden="true" />}
-              {entretien.etat === "intervalle_a_renseigner" ? "Renseigner l'intervalle de révision" : "Modifier l'intervalle"}
-            </button>
-          )}
-        </section>
+          ) : null}
+        </CarteEcheance>
       </div>
 
       <div className="mt-3">
@@ -450,86 +465,41 @@ function IconeRonde({ icone: Icone }) {
   );
 }
 
-function Texte({ principal, aideTexte }) {
+// Une échéance, avec les phrases communes à « À prévoir » : quoi, pour quand,
+// sur quelles informations. Un petit formulaire remplace les gestes quand il
+// est ouvert.
+function CarteEcheance({ id, icone, element, onAction, actionPossible = () => true, children }) {
+  const pastille = pastilleElement(element, { avecSujet: false });
   return (
-    <>
-      {principal ? <p className="mt-1 text-[15px] leading-snug text-foreground">{principal}</p> : null}
-      {aideTexte ? <p className={aide}>{aideTexte}</p> : null}
-    </>
-  );
-}
-
-// Ce que l'écran dit du contrôle technique, avec la source de chaque date.
-function TexteControle({ ct, vehicule }) {
-  if (ct.etat === "contre_visite") {
-    return (
-      <Texte
-        principal={`Contre-visite avant le ${formaterDate(ct.date)}`}
-        aideTexte={`Délai de 2 mois après le contrôle du ${formaterDate(ct.dernierLe)}. Ajoutez la contre-visite une fois passée, avec la date de son procès-verbal.`}
-      />
-    );
-  }
-  if (ct.etat === "a_renseigner") {
-    const textes = {
-      mise_en_circulation: "Indiquez la date de première mise en circulation pour le calculer.",
-      dernier_controle: "La voiture a plus de 4 ans : indiquez la date de son dernier contrôle.",
-      date_proces_verbal: "Après une contre-visite, la date du prochain contrôle se lit sur le procès-verbal. Indiquez-la.",
-    };
-    return <Texte principal={textes[ct.manque]} />;
-  }
-  const aides = {
-    proces_verbal: `Date inscrite sur le procès-verbal du contrôle du ${formaterDate(ct.dernierLe)}.`,
-    dernier_controle: `Estimation : 2 ans après le contrôle du ${formaterDate(ct.dernierLe)}, règle d'une voiture particulière. La date du procès-verbal fait foi.`,
-    mise_en_circulation: `Premier contrôle d'une voiture particulière : dans les 6 mois avant ses 4 ans (mise en circulation le ${formaterDate(vehicule.date_mise_en_circulation)}), donc à partir du ${formaterDate(ct.fenetreOuverteLe)}.`,
-  };
-  return <Texte principal={`Avant le ${formaterDate(ct.date)}`} aideTexte={aides[ct.source]} />;
-}
-
-function ActionControle({ ct, dernierControle, ouvrir }) {
-  const bouton = (nom, libelle, Icone = Plus) => (
-    <button type="button" onClick={() => ouvrir(nom)} className={`${boutonLien} -ml-2 mt-2`}>
-      <Icone className="size-4" aria-hidden="true" />
-      {libelle}
-    </button>
-  );
-  const pvModifiable = dernierControle?.source === "proprietaire";
-  if (ct.etat === "a_renseigner" && ct.manque === "mise_en_circulation") return bouton("mise_en_circulation", "Renseigner la mise en circulation");
-  if (ct.etat === "a_renseigner" && ct.manque === "dernier_controle") return bouton("controle", "Ajouter le dernier contrôle");
-  if (ct.etat === "contre_visite") return bouton("controle", "Ajouter la contre-visite");
-  if (pvModifiable && (ct.manque === "date_proces_verbal" || ct.source === "dernier_controle")) {
-    return bouton("proces_verbal", "Indiquer la date du procès-verbal", Pencil);
-  }
-  if (ct.etat === "calcule" && ct.source === "proces_verbal") return bouton("controle", "Ajouter un contrôle passé");
-  return null;
-}
-
-function TexteEntretien({ entretien, vehicule }) {
-  if (entretien.etat === "intervalle_a_renseigner") {
-    return <Texte principal="Recopiez l'intervalle de révision indiqué dans votre carnet d'entretien." />;
-  }
-  if (entretien.etat === "dernier_entretien_a_renseigner") {
-    return <Texte principal="Ajoutez votre dernière révision, avec son kilométrage." aideTexte="Une vidange seule ne compte pas comme une révision." />;
-  }
-  const parties = [];
-  if (entretien.parKm) parties.push(`vers ${formaterKm(entretien.parKm.limite)}`);
-  if (entretien.parDate) parties.push(`avant le ${formaterDate(entretien.parDate.limite)}`);
-  const principal = parties.join(" ou ");
-  const intervalle = [
-    vehicule.intervalle_entretien_km ? formaterKm(vehicule.intervalle_entretien_km) : null,
-    vehicule.intervalle_entretien_mois ? `${vehicule.intervalle_entretien_mois} mois` : null,
-  ]
-    .filter(Boolean)
-    .join(" ou ");
-  const depuis = entretien.depuis;
-  return (
-    <>
-      <Texte
-        principal={principal ? principal.charAt(0).toUpperCase() + principal.slice(1) : ""}
-        aideTexte={`Selon l'intervalle que vous avez renseigné (tous les ${intervalle}), depuis la révision du ${formaterDate(depuis.date)}${depuis.kilometrage != null ? ` à ${formaterKm(depuis.kilometrage)}` : ""}.`}
-      />
-      {entretien.parKm && entretien.parKm.restants == null ? <p className={aide}>Mettez à jour le kilométrage pour savoir ce qu'il reste.</p> : null}
-      {vehicule.intervalle_entretien_km && depuis.kilometrage == null ? <p className={aide}>Ajoutez le kilométrage de cette révision pour suivre l'échéance en kilomètres.</p> : null}
-    </>
+    <section id={id} className={`${carte} scroll-mt-28`} aria-labelledby={`${id}-titre`}>
+      <div className="flex items-start gap-3">
+        <IconeRonde icone={icone} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 id={`${id}-titre`} className="font-semibold text-foreground">
+              {element.titre}
+            </h3>
+            <Pastille ton={pastille.ton}>{pastille.texte}</Pastille>
+          </div>
+          <p className="mt-1 text-[15px] leading-snug text-foreground">{element.quand}</p>
+          <p className={aide}>
+            <span className="font-semibold text-foreground/80">{FONDEMENTS[element.fondement]}.</span> {element.explication}
+          </p>
+        </div>
+      </div>
+      {children ?? (
+        <div className="-ml-2 mt-2 flex flex-wrap gap-x-1">
+          {element.actions
+            .filter((a) => actionPossible(a.code))
+            .map((a) => (
+              <button key={a.code} type="button" onClick={() => onAction(a.code)} className={boutonLien}>
+                <Plus className="size-4" aria-hidden="true" />
+                {a.libelle}
+              </button>
+            ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -638,9 +608,9 @@ function FormulaireReleve({ vehiculeId, dernier, onAnnuler, onEnregistre }) {
   );
 }
 
-function FormulaireIntervention({ vehiculeId, typeFixe, typeDefaut = "", onAnnuler, onEnregistre }) {
+function FormulaireIntervention({ vehiculeId, typeFixe, typeDefaut = "", natureInitiale = "periodique", onAnnuler, onEnregistre }) {
   const aujourdhui = aujourdhuiIso();
-  const [saisie, setSaisie] = useState({ type: typeFixe ?? typeDefaut, realiseLe: "", kilometrage: "", prestataire: "", montant: "", libelle: "", resultatControle: "", controleValableJusquAu: "" });
+  const [saisie, setSaisie] = useState({ type: typeFixe ?? typeDefaut, realiseLe: "", kilometrage: "", prestataire: "", montant: "", libelle: "", resultatControle: "", natureControle: natureInitiale, controleValableJusquAu: "" });
   const [erreurs, setErreurs] = useState({});
   const [erreurEnvoi, setErreurEnvoi] = useState("");
   const [enCours, setEnCours] = useState(false);
@@ -661,6 +631,7 @@ function FormulaireIntervention({ vehiculeId, typeFixe, typeDefaut = "", onAnnul
       montant_ttc: v.donnees.montantTtc,
       libelle: v.donnees.libelle,
       resultat_controle: v.donnees.resultatControle,
+      nature_controle: v.donnees.natureControle,
       controle_valable_jusqu_au: v.donnees.controleValableJusquAu,
     });
     setEnCours(false);
@@ -706,24 +677,37 @@ function FormulaireIntervention({ vehiculeId, typeFixe, typeDefaut = "", onAnnul
       <Erreur texte={erreurs.realiseLe || erreurs.kilometrage} />
       {saisie.type === "controle_technique" ? (
         <div className="grid grid-cols-2 gap-3">
-          <div>
+          <div className="col-span-2 sm:col-span-1">
+            <label htmlFor="intervention-nature" className={etiquette}>
+              Nature
+            </label>
+            <select id="intervention-nature" value={saisie.natureControle} onChange={changer("natureControle")} className={`${champ} appearance-none`}>
+              {NATURES_CONTROLE.map((n) => (
+                <option key={n.valeur} value={n.valeur}>
+                  {n.libelle}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="col-span-2 sm:col-span-1">
             <label htmlFor="intervention-resultat" className={etiquette}>
               Résultat
             </label>
             <select id="intervention-resultat" value={saisie.resultatControle} onChange={changer("resultatControle")} className={`${champ} appearance-none`}>
               <option value="">Non précisé</option>
-              <option value="favorable">Favorable</option>
-              <option value="contre_visite">Contre-visite</option>
+              {RESULTATS_CONTROLE.map((r) => (
+                <option key={r.valeur} value={r.valeur}>
+                  {r.libelle}
+                </option>
+              ))}
             </select>
           </div>
-          <div>
+          <div className="col-span-2">
             <label htmlFor="intervention-validite" className={etiquette}>
-              Prochain avant le <span className="font-normal text-muted-foreground">(PV)</span>
+              Date limite sur le procès-verbal <span className="font-normal text-muted-foreground">(facultatif)</span>
             </label>
             <input id="intervention-validite" type="date" value={saisie.controleValableJusquAu} onChange={changer("controleValableJusquAu")} className={champ} aria-invalid={erreurs.controleValableJusquAu ? true : undefined} />
-          </div>
-          <p className={`${aide} col-span-2 -mt-1`}>La date inscrite sur le procès-verbal prime sur tout calcul.</p>
-          <div className="col-span-2 -mt-2">
+            <p className={aide}>Favorable : date du prochain contrôle. Défavorable : fin de validité, le jour même pour une défaillance critique. Elle prime sur tout calcul.</p>
             <Erreur texte={erreurs.controleValableJusquAu} />
           </div>
         </div>
@@ -901,7 +885,11 @@ function ListeHistorique({ historique, documents = [], onJoindre, onSupprime }) 
             ligne.kilometrage != null ? formaterKm(ligne.kilometrage) : null,
             ligne.prestataire,
             ligne.montant_ttc != null ? formaterEuros(ligne.montant_ttc) : null,
-            ligne.controle_valable_jusqu_au ? `prochain avant le ${formaterDate(ligne.controle_valable_jusqu_au)}` : null,
+            ligne.controle_valable_jusqu_au
+              ? RESULTATS_DEFAVORABLES.includes(ligne.resultat_controle)
+                ? `valable jusqu'au ${formaterDate(ligne.controle_valable_jusqu_au)}`
+                : `prochain avant le ${formaterDate(ligne.controle_valable_jusqu_au)}`
+              : null,
           ].filter(Boolean);
           return (
             <li key={ligne.id} className="flex items-start gap-3 px-4 py-3.5">
@@ -912,7 +900,9 @@ function ListeHistorique({ historique, documents = [], onJoindre, onSupprime }) 
                 <div className="flex flex-wrap items-baseline gap-x-2">
                   <p className="font-semibold text-foreground">{libelleDe(TYPES_INTERVENTION, ligne.type)}</p>
                   <p className="text-sm text-muted-foreground">{formaterDate(ligne.realise_le)}</p>
-                  {ligne.resultat_controle === "contre_visite" ? <Pastille ton="proche">Contre-visite</Pastille> : null}
+                  {ligne.nature_controle === "contre_visite" ? <Pastille>Contre-visite</Pastille> : null}
+                  {ligne.resultat_controle === "defavorable_majeure" ? <Pastille ton="proche">Défaillance majeure</Pastille> : null}
+                  {ligne.resultat_controle === "defavorable_critique" ? <Pastille ton="depasse">Défaillance critique</Pastille> : null}
                   {ligne.source === "prestation" ? <Pastille ton="ok">Nexora</Pastille> : null}
                 </div>
                 {meta.length ? <p className="mt-0.5 text-sm text-muted-foreground">{meta.join(" · ")}</p> : null}

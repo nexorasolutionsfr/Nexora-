@@ -64,7 +64,7 @@ l'ouverture au public n'est pas décidée.
 | --- | --- | --- |
 | **A** | Accueil, compte, « Mon garage », fiche véhicule : kilométrage daté, historique, échéances du contrôle technique et de la révision | **Fait sur Test**, PR de revue (section D) |
 | **B** | Consolider « Mon garage » : plusieurs véhicules et véhicule principal, archivage, documents (factures, carnet, contrôle technique) rattachés aux interventions, historique qui distingue saisie et justificatif, dépenses par véhicule | **Fait sur Test**, PR de revue (section E) |
-| **C** | « À prévoir » : contrôle technique et révision, rappels personnalisés, tâches personnelles (pneus, batterie, nettoyage), actions simples, et ce qui reste inconnu | à faire |
+| **C** | « À prévoir » : contrôle technique et révision, rappels personnalisés, tâches personnelles (pneus, batterie, nettoyage), actions simples, et ce qui reste inconnu | **Fait sur Test**, PR de revue (section F) |
 | **D** | Univers des services, reliés au véhicule : entretien et réparation, pneus, lavage et esthétique, à domicile, collecte et restitution, assistance. Chaque fiche explique la prestation, les informations nécessaires et son intérêt ; statut « à découvrir » ou « réservable » | à faire |
 | **E et suivants** | Partenaires et offres, disponibilités, réservation (paiement au garage ou en ligne), côté garage « Commandes Nexora » et travaux supplémentaires, admin Nexora, suivi et notifications, assistant « décrivez le problème » | plus tard, sur ce socle |
 
@@ -93,18 +93,9 @@ l'ouverture au public n'est pas décidée.
 
 ### Règles de calcul (`lib/auto/echeances.js`, testées)
 
-**Contrôle technique** — calcul limité à la voiture particulière standard ;
-la date officielle est demandée dès que la règle ne suffit pas :
-
-1. Le dernier contrôle porte une date de procès-verbal : **elle fait foi**.
-2. Le dernier contrôle a donné lieu à une **contre-visite** : échéance de
-   contre-visite à 2 mois, jamais d'échéance à 2 ans.
-3. Un contrôle qui suit de près une contre-visite, sans procès-verbal : on
-   demande la date officielle.
-4. Sinon, **estimation** à 2 ans du dernier contrôle, présentée comme telle.
-5. Aucun contrôle : premier contrôle dans les 6 mois précédant le 4e
-   anniversaire de la mise en circulation. Voiture de plus de 4 ans sans
-   contrôle connu : on le demande.
+**Contrôle technique** — règles **corrigées au lot C** d'après service-public.fr
+(défaillances majeure et critique, contre-visite favorable, échéance à la
+veille) : voir la section F.
 
 **Révision** — uniquement avec l'intervalle recopié du carnet (km et/ou mois)
 et une **révision** passée ; une vidange seule ne la remplace pas. L'écran dit
@@ -238,3 +229,103 @@ Vider le compartiment `auto-documents` puis le supprimer ; supprimer
 `auto_definir_principal`, `auto_archiver_vehicule`, les colonnes `principal`
 et `archive_le` ; recréer `auto_ajouter_vehicule` telle que dans
 `20260922000200`.
+
+---
+
+## F. Lot C — « À prévoir »
+
+### Le principe
+
+Nexora se sert de ce qui est déjà enregistré : la personne ne recrée rien.
+Les échéances du contrôle technique et de la révision **ne sont pas stockées** :
+elles se calculent à chaque lecture depuis le dossier de chaque voiture
+active (`components/auto/aPrevoir.js`). Une intervention enregistrée les
+actualise donc d'elle-même, sans doublon, et ne ferme aucune tâche. Une
+voiture archivée ne produit plus rien.
+
+Chaque élément répond à trois questions : **quoi faire** (titre), **pour
+quand** (date, délai ou kilomètres) et **sur quelles informations**, avec un
+fondement affiché :
+
+| Fondement | Quand |
+| --- | --- |
+| Date officielle | date inscrite sur le procès-verbal |
+| Calcul selon la règle | règle du contrôle technique appliquée aux dates connues |
+| Selon l'intervalle renseigné | révision calculée avec l'intervalle du carnet et le dernier compteur |
+| Estimation | révision calculée avec un kilométrage estimé |
+| Votre tâche | tâche personnelle |
+| Information manquante | l'élément dit ce qu'il faut renseigner, sans date inventée |
+
+Chaque élément propose ses gestes (« Actualiser le kilométrage », « Enregistrer
+une révision », « Enregistrer la contre-visite », « Indiquer la date du
+procès-verbal »…), qui ouvrent directement le bon formulaire sur la fiche
+(`/auto/vehicules/[id]?action=…`). La fiche et « À prévoir » affichent les
+mêmes phrases.
+
+### Contrôle technique : règles relues le 16 septembre 2026
+
+Service-public.fr, F2878 (voiture particulière, 3,5 t au plus) :
+
+| Situation | Échéance |
+| --- | --- |
+| Premier contrôle | dans les 6 mois avant le 4e anniversaire : mise en circulation le 1er oct. 2022 → entre le 1er avril et le 30 sept. 2026 |
+| Favorable | valable 2 ans : contrôle du 14 mai 2025 → jusqu'au 13 mai 2027 |
+| Défavorable, défaillance majeure | valable 2 mois : 14 mai 2026 → 13 juillet 2026 |
+| Défavorable, défaillance critique | validité limitée au jour du contrôle |
+| Contre-visite (les deux cas) | au plus tard 2 mois après le contrôle : 13 juillet 2026 |
+| Contre-visite favorable | 2 ans à compter du contrôle défavorable initial : 5 juin 2026 → 4 juin 2028 |
+
+La date du procès-verbal prime toujours. Quand la règle ne permet pas de
+conclure (contre-visite sans contrôle initial retrouvé, contrôle « périodique »
+tombant dans le délai d'une contre-visite), l'écran demande la date officielle.
+Migration `20260922000400` : `resultat_controle` (favorable,
+defavorable_majeure, defavorable_critique), `nature_controle` (periodique,
+contre_visite), validité possible le jour même.
+
+### Kilométrage (`lib/auto/kilometrage.js`)
+
+Chaque relevé garde sa date et sa source. L'**estimation** reste distincte du
+compteur : rythme observé entre deux points espacés d'au moins 30 jours ;
+proposée seulement si le dernier relevé a entre 14 jours et un an. Au-delà de
+60 jours, l'écran propose d'actualiser le compteur quand il sert à une échéance.
+
+### Rappels
+
+- **Dans l'app** : « Mon garage » montre au plus trois prochaines actions (en
+  retard ou dans l'horizon choisi : 30, 60 ou 90 jours).
+- **« Me le rappeler plus tard »** (1 semaine, 1 mois) retire l'élément du
+  rappel sans le retirer de la liste. La clé du report porte la date de
+  l'échéance : une échéance actualisée n'est plus reportée.
+- **Envois externes : préparés, non branchés.** `auto_preferences.rappels_externes`
+  reste à faux et aucun écran ne le propose. `rappelsADeclencher` choisit les
+  paliers (30 jours, 7 jours, retard) et `auto_rappels_envois` interdit qu'un
+  palier parte deux fois pour la même échéance et le même canal (réservé à
+  `service_role`).
+
+### Ce que Nexora ne fait pas
+
+Aucun besoin de pneus, de freins ou de batterie n'est déduit sans information
+qui le justifie : ces besoins viennent de la personne (tâche) ou, plus tard,
+d'un constat professionnel.
+
+### Base (`20260922000500_auto_a_prevoir.sql`)
+
+`auto_taches` (titre, voiture, date éventuelle, note ; terminée datée),
+`auto_preferences` (horizon), `auto_rappels_reports`, `auto_rappels_envois`.
+RLS par propriétaire ; journal d'envois fermé aux personnes.
+
+### Recette jouée le 16 septembre 2026
+
+| Contrôle | Résultat |
+| --- | --- |
+| `node --test lib/auto components/auto` | 66 tests au vert, dont les exemples officiels du contrôle technique |
+| `supabase/tests/auto_a_prevoir_v1.sql` sur base jetable, migrations jouées deux fois ; bancs A et B rejoués | passés, aucun résidu |
+| Mutations volontaires (RLS des tâches coupée, journal d'envois ouvert) | le banc échoue bien |
+| Migrations sur **Test** ; bancs A, B, C rejoués sur Test | passés |
+| Parcours navigateur sur Test | « Mon garage » : trois prochaines actions ; « À prévoir » : révision (selon l'intervalle renseigné), contrôle technique (date officielle) ; tâche ajoutée ; rappel reporté (retiré de l'accueil, gardé dans la liste) ; gestes menant au formulaire ouvert ; défaillance majeure → contre-visite au plus tard le 9 nov. 2026 ; contre-visite favorable → avant le 9 sept. 2028 (contrôles de test supprimés ensuite) |
+
+### Retour arrière
+
+Supprimer `auto_rappels_envois`, `auto_rappels_reports`, `auto_preferences`,
+`auto_taches` ; pour `20260922000400`, supprimer `nature_controle` et recréer
+les contraintes de `20260922000200`.
