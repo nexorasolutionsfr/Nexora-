@@ -16,10 +16,13 @@
 -- en attente ET rend la tentative consommée par la réservation, sinon
 -- l'attente du débit finirait par bloquer la ligne (plafond de 3 tentatives).
 --
--- Les plafonds passés par n8n (60/h, 200/jour) sont des CHOIX PROVISOIRES de
--- Nexora, pas des limites Brevo vérifiées. Ils ne garantissent pas le quota
--- global du compte : les e-mails d'authentification Supabase consomment le
--- même quota Brevo sans passer par cette fonction. Voir plan-n8n §9.4.
+-- Les plafonds passés par n8n (40/heure, 120/jour) sont des LIMITES PRUDENTES
+-- de Nexora, pas des limites horaires annoncées par Brevo (offre Free relevée
+-- le 16 sept. 2026 : 300 e-mails/jour, marketing et transactionnels
+-- confondus). Ils ne garantissent pas le quota du compte : l'authentification
+-- Supabase et les autres envois le consomment sans passer par cette fonction,
+-- et une tentative comptée ici n'équivaut pas à un e-mail décompté par Brevo.
+-- Voir plan-n8n §9.4.
 
 create table if not exists public.envois_debit (
   id uuid primary key default gen_random_uuid(),
@@ -42,8 +45,8 @@ comment on table public.envois_debit is
 create or replace function public.prendre_jeton_envoi(
   p_file text,
   p_id uuid,
-  p_limite_heure integer default 60,
-  p_limite_jour integer default 200,
+  p_limite_heure integer default 40,
+  p_limite_jour integer default 120,
   p_workflow_id text default null)
 returns jsonb
 language plpgsql

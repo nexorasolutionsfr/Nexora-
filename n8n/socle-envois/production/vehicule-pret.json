@@ -296,7 +296,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\"p_file\": \"atelier\", \"p_id\": \"{{ $('Une notification à la fois').item.json.id }}\", \"p_limite_heure\": 60, \"p_limite_jour\": 200, \"p_workflow_id\": \"{{ $workflow.id }}\"}",
+        "jsonBody": "={\"p_file\": \"atelier\", \"p_id\": \"{{ $('Une notification à la fois').item.json.id }}\", \"p_limite_heure\": 40, \"p_limite_jour\": 120, \"p_workflow_id\": \"{{ $workflow.id }}\"}",
         "options": {
           "timeout": 20000
         }

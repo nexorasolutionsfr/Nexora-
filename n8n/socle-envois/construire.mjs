@@ -53,8 +53,13 @@ export const LIGNES_PAR_PASSAGE = 3;
 // séparés ne bornent rien : à */2 et */5, 4 workflows x 3 lignes donnent
 // jusqu'à 198 envois/heure cumulés. Le jeton se prend en base, juste avant
 // l'envoi, sous verrou : c'est le seul endroit où les quatre files se voient.
-export const DEBIT_HEURE = 60;
-export const DEBIT_JOUR = 200;
+// Relevé Brevo du 16 sept. 2026 (session de Baptiste, lecture seule) : offre
+// Free, 300 e-mails/jour marketing ET transactionnels confondus, 300/300
+// restants au contrôle ; 17 envois sur 7 jours. Plafonds prudents de Nexora,
+// très au-dessus du besoin réel et loin du quota : ce ne sont pas des limites
+// horaires annoncées par Brevo, et la marge n'est réservée à personne.
+export const DEBIT_HEURE = 40;
+export const DEBIT_JOUR = 120;
 
 // Cadence proposée (docs/architecture/plan-n8n-2026-09-14.md, §9).
 export const CADENCES = {

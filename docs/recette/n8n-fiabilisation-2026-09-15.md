@@ -227,6 +227,53 @@ exactement ce qu'ils vérifient (id, nom et type de chaque identifiant
 réellement sélectionné). Le script **n'affiche aucun secret** : `export:credentials`
 est appelé sans `--decrypted` et seuls id, nom et type sont lus.
 
+### Plafonds du débit — relevé Brevo du 16 septembre
+
+Relevé par Baptiste dans sa session Brevo (lecture seule, aucun réglage
+touché) : **offre Free**, **300 e-mails par jour** marketing *et*
+transactionnels confondus, **300/300 restants** au moment du contrôle,
+**17 envois sur les 7 derniers jours**, aucune restriction transactionnelle
+affichée hors ce quota.
+
+Plafonds portés de 60/200 à **40 tentatives par heure et 120 par jour**, communs
+aux quatre files. Valeurs présentes dans les huit exports générés et dans la
+définition publiée en recette (contrôlé), et valeurs par défaut de
+`prendre_jeton_envoi` alignées sur Test.
+
+Ce que ces plafonds **ne sont pas** :
+
+- ce ne sont **pas des limites horaires annoncées par Brevo** : Brevo ne publie
+  qu'un quota quotidien, le découpage horaire est notre choix ;
+- ils **ne réservent rien** : la marge (300 − 120) reste ouverte à tout autre
+  consommateur ;
+- **une tentative comptée par Nexora n'équivaut pas à un e-mail décompté par
+  Brevo** — l'équivalence n'est pas établie, les deux compteurs ne sont pas
+  interchangeables ;
+- **le plafond horaire seul ne protège pas une journée déjà épuisée** : 40/heure
+  autoriserait 960 remises en 24 h ; c'est le plafond quotidien qui borne la
+  journée, et c'est lui qu'il faut regarder en premier.
+
+Authentification Supabase et tout autre envoi restent **hors régulateur**.
+
+**Rejeu ciblé avec ces plafonds (lot I, 16 septembre)** — une seule ligne
+autorisée, suivie de bout en bout ; cadence réelle `*/2` :
+
+| Temps | Débit posé | File | Tentatives | Transport | Motif inscrit |
+|---|---|---|---|---|---|
+| I1 heure saturée | 40 jetons datés de l'heure en cours | `en_attente` | **0** | aucun échange SMTP | « report : plafond horaire atteint — rien n'est parti » |
+| I2 journée saturée, **heure libre** | 120 jetons vieux de 90 min | `en_attente` | **0** | aucun échange SMTP | « report : **plafond quotidien** atteint — rien n'est parti » |
+| I3 libération | jetons retirés | `envoye` | **1** | 1 message accepté | — |
+
+I2 est la preuve directe qu'un plafond horaire seul ne protégerait pas une
+journée déjà épuisée : l'heure était libre, et la ligne a quand même été
+reportée. La tentative de la réservation est rendue à chaque report — 0 après
+deux reports successifs — puis comptée une seule fois à l'envoi réel. Un seul
+jeton pris pour un seul message.
+
+Seuls ces contrôles ont été rejoués : les scénarios déjà réussis (pannes,
+concurrence, chevauchement, redémarrage, journalisation) n'ont pas été
+recommencés, le changement de plafond ne les affecte pas.
+
 ## 4. Non-régression
 
 | Preuve | Résultat |

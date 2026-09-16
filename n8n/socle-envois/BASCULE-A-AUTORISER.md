@@ -160,9 +160,16 @@ redémarrage.
   `select public.journaliser_incident('{"categorie":"inconnu","noeud":"contrôle de bascule","message":"contrôle de bascule"}');`
   puis `update erreurs_automatisation set resolu = true where noeud = 'contrôle de bascule';`
 - `bash $DEPOT/scripts/n8n/incidents-locaux.sh 1` : aucune nouvelle erreur ;
-- débit : `select count(*) from envois_debit where pris_le > now() - interval '1 hour';`
-  doit égaler le nombre de messages réellement remis à Brevo sur l'heure
-  (0 tant qu'aucun garage n'a autorisé d'envoi).
+- débit, les deux fenêtres (plafonds **40/heure** et **120/jour**) :
+  ```sql
+  select count(*) filter (where pris_le > now() - interval '1 hour')  as heure,
+         count(*) filter (where pris_le > now() - interval '24 hours') as jour
+    from envois_debit;
+  ```
+  0 tant qu'aucun garage n'a autorisé d'envoi. **Regarder le quotidien
+  d'abord** : c'est lui qui borne la journée. Ces compteurs mesurent les
+  **tentatives de remise**, pas les e-mails décomptés par Brevo — les deux ne
+  sont pas équivalents. Le quota du compte se lit dans Brevo, pas ici.
 
 Suivi courant (lecture) :
 ```sql
@@ -261,10 +268,13 @@ Production, elles, ne bougent pas.
   dans la limite des 10 000 dernières exécutions.
 - Les alertes : la requête de suivi existe ; **aucun destinataire n'est choisi,
   rien n'est envoyé**.
-- Le débit commun (60/h, 200/jour) est un **choix provisoire de Nexora**, pas
-  une limite Brevo vérifiée. Il borne ce que Nexora remet au fournisseur ; il
-  ne dit rien de ce que Brevo accepte, et **ne garantit pas le quota global du
-  compte** : les e-mails d'authentification Supabase consomment le même quota
-  **sans passer par ce régulateur**. Plan réel du compte à relever dans
-  l'interface Brevo (voir plan §9.4) ; les deux plafonds se règlent alors dans
-  `construire.mjs`.
+- Le débit commun (**40/heure, 120/jour**) est une **limite prudente de
+  Nexora**, pas une limite horaire annoncée par Brevo (relevé du 16 sept. :
+  offre Free, **300 e-mails/jour** marketing et transactionnels confondus,
+  300/300 restants, 17 envois sur 7 jours). Il borne ce que Nexora remet au
+  fournisseur et **ne garantit pas le quota du compte** : authentification et
+  autres consommateurs restent **hors régulateur**, et la marge laissée n'est
+  réservée à personne. **Une tentative comptée par Nexora n'équivaut pas à un
+  e-mail décompté par Brevo.** C'est le plafond **quotidien** qui borne la
+  journée : baisser le seul plafond horaire ne protégerait pas un quota déjà
+  épuisé. Les deux valeurs se règlent dans `construire.mjs` (voir plan §9.4).

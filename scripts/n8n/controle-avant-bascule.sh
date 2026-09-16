@@ -51,6 +51,10 @@ def v(libelle, cond, detail=""):
         ko += 1
         print(f"  KO {libelle}" + (f" — {detail}" if detail else ""))
 
+# Plafonds attendus dans les fichiers importés (construire.mjs). Relevé Brevo
+# du 16 sept. 2026 : offre Free, 300 e-mails/jour tous usages confondus.
+DEBIT_HEURE, DEBIT_JOUR = 40, 120
+
 ATTENDUS = {
     "erroralerts000000000000000001": {"nom": "3 - Journalisation erreurs", "noeuds": 3, "cron": None, "creds": {"RPC Supabase Production": "fk85N6k6Aea2u0fb"}},
     "jXsssqkdKFR3Hnf9": {"nom": "Véhicule prêt (socle)", "noeuds": 25, "cron": "*/5 * * * *"},
@@ -93,8 +97,14 @@ for wid, attendu in ATTENDUS.items():
         v(f"{etiquette} : workflow d'erreur rattaché", w.get("settings", {}).get("errorWorkflow") == "erroralerts000000000000000001", str(w.get("settings", {}).get("errorWorkflow")))
         reserve = next((n for n in w["nodes"] if n["name"] == "Réserver la file"), None)
         v(f"{etiquette} : une ligne par réservation, tous garages", reserve is not None and '"p_limite": 1' in reserve["parameters"]["jsonBody"] and '"p_garages": null' in reserve["parameters"]["jsonBody"])
+        # Valeurs EXACTES, pas seulement leur présence : un import resté sur
+        # d'anciens plafonds passerait sinon inaperçu.
         jeton = next((n for n in w["nodes"] if n["name"] == "Prendre un jeton d'envoi"), None)
-        v(f"{etiquette} : jeton de débit commun avant l'envoi", jeton is not None and '"p_limite_heure"' in jeton["parameters"]["jsonBody"])
+        v(f"{etiquette} : jeton de débit commun avant l'envoi, {DEBIT_HEURE}/heure et {DEBIT_JOUR}/jour",
+          jeton is not None and f'"p_limite_heure": {DEBIT_HEURE}, "p_limite_jour": {DEBIT_JOUR}' in jeton["parameters"]["jsonBody"],
+          "" if jeton is None else jeton["parameters"]["jsonBody"][-80:])
+        report = next((n for n in w["nodes"] if n["name"] == "Reporter : débit atteint"), None)
+        v(f"{etiquette} : report du débit rejoué s'il échoue", report is not None and report.get("retryOnFail") is True)
     else:
         v(f"{etiquette} : n'est pas son propre workflow d'erreur", not w.get("settings", {}).get("errorWorkflow"))
         v(f"{etiquette} : aucun nœud d'envoi", not any(t in n["type"] for n in w["nodes"] for t in ("emailSend", "gmail", "slack", "telegram", "twilio")))
