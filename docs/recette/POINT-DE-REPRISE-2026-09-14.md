@@ -95,3 +95,34 @@ et donner, ou non, le feu vert. Traces laissées sur Test : garage
 `PROTO Constat N8N 1789498034454` et ses notifications (dont des lignes
 `envoi_en_cours` volontairement laissées comme preuves), incidents
 « … — RECETTE fiabilisation » dans `erreurs_automatisation`.
+
+---
+
+## Bascule effectuée le 16 septembre 2026 — la fiabilisation n8n est ACTIVE
+
+PR [#108](https://github.com/nexorasolutionsfr/Nexora-/pull/108) fusionnée
+(`6522340`), tête basculée `1fdb0e5`. Déroulé suivi :
+`n8n/socle-envois/BASCULE-A-AUTORISER.md`.
+
+| Élément | État |
+|---|---|
+| Migrations `20260921000100` (journal) et `20260921000200` (débit commun) | **appliquées en Production** ; `journaliser_incident` rend `jsonb`, `prendre_jeton_envoi` avec défauts 40/120, droits au seul `service_role`, `envois_debit` vide et sous RLS |
+| Workflows du socle (`X39OgaEUulqhv1hO`, `9IG1g2ZmHQzhnsMS`, `HdO63GrT2WfopDQP`, `jXsssqkdKFR3Hnf9`) | **actifs**, 25/25/26/25 nœuds, `*/2` pour le devis, `*/5` pour les trois autres, workflow d'erreur rattaché |
+| Journaliseur `erroralerts000000000000000001` | **actif**, 3 nœuds, corrigé (plus de garage en dur, messages expurgés, regroupement) |
+| `3 - Détection no-show` | **inchangé**, hors périmètre |
+| Débit commun | 40 tentatives/heure, 120/jour — **limites prudentes de Nexora**, pas des limites Brevo |
+| Files avant/après | identiques : 0 ligne `en_attente` ou `envoi_en_cours` ; `bloque` conservées (2 devis, 3 atelier), **aucune réarmée** |
+| Envois pendant la bascule | **aucun** : 7 passages observés, tous à vide, 0 jeton de débit pris |
+
+Sauvegarde d'avant bascule (base n8n, 20 définitions, clé de chiffrement,
+schémas `public` et `storage` de Production, relevé des files) :
+`~/Nexora_backups/n8n_2026-09-16_1648_avant-fiabilisation/`.
+
+**Non prouvé à ce stade** : aucun envoi réel n'a eu lieu depuis la bascule —
+donc ni acceptation Brevo, ni réception client. Le premier envoi réel se
+produira quand un garage autorisera une notification.
+
+**Reste ouvert** : dépendance au Mac (endormi = rien ne part) ; le journal
+dépend de Supabase comme la réservation (recours
+`scripts/n8n/incidents-locaux.sh`) ; alertes préparées sans destinataire ;
+relances de travaux différés toujours **non importées**.
