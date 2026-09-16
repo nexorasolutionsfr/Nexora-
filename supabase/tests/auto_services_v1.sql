@@ -1,6 +1,6 @@
 -- Nexora Auto — lot D (univers des services) — banc AUTONOME et RÉVERSIBLE.
 --
--- Présuppose 20260922000100 → 20260922000600 appliquées. Jamais Production.
+-- Présuppose 20260922000100 → 20260922000800 appliquées. Jamais Production.
 -- Marqueur « recette-auto-d- ». Transaction jamais validée.
 
 begin;
@@ -203,24 +203,81 @@ reset role;
 do $$
 declare
   v_garage uuid;
+  v_partenaire uuid;
+  v_mobile uuid;
+  v_centre uuid;
   v_n integer;
   v_state text;
   v_msg text;
 begin
   perform pg_temp.assert((select count(*) from public.auto_offres) = 0, 'offres : la table est livrée vide');
 
+  -- Des partenaires de métiers différents ; seul le garage a un compte Nexora Pro.
   insert into public.garages (nom_garage) values ('recette-auto-d-garage') returning id into v_garage;
+  insert into public.auto_partenaires (metier, nom, garage_id) values ('garage', 'recette-auto-d Garage', v_garage) returning id into v_partenaire;
+  insert into public.auto_partenaires (metier, nom) values ('mecanicien_mobile', 'recette-auto-d Mécanicien') returning id into v_mobile;
+  insert into public.auto_partenaires (metier, nom, siren) values ('centre_controle_technique', 'recette-auto-d Centre CT', '123456789') returning id into v_centre;
+  insert into public.auto_partenaires (metier, nom) values ('lavage_detailing', 'recette-auto-d Detailing');
+  perform pg_temp.assert((select bool_and(not actif) from public.auto_partenaires where nom like 'recette-auto-d %'), 'partenaires : inactifs par défaut');
 
   v_state := null;
   begin
-    insert into public.auto_offres (garage_id, service_code, mode, codes_postaux) values (v_garage, 'controle_technique', 'a_domicile', array['75011']);
+    insert into public.auto_partenaires (metier, nom) values ('depanneur_fictif', 'X');
+  exception when others then v_state := sqlstate; v_msg := sqlerrm;
+  end;
+  perform pg_temp.assert_echec('partenaires : métier inconnu', v_state, v_msg, '23514', 'auto_partenaires_metier_valide');
+
+  v_state := null;
+  begin
+    insert into public.auto_partenaires (metier, nom, garage_id) values ('centre_pneus', 'Doublon', v_garage);
+  exception when others then v_state := sqlstate; v_msg := sqlerrm;
+  end;
+  perform pg_temp.assert_echec('partenaires : un compte Nexora Pro pour deux partenaires', v_state, v_msg, '23505', 'garage_id');
+
+  -- Règles entre métier et offre.
+  v_state := null;
+  begin
+    insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux) values (v_mobile, 'freinage', 'chez_un_professionnel', array['75011']);
+  exception when others then v_state := sqlstate; v_msg := sqlerrm;
+  end;
+  perform pg_temp.assert_echec('offres : mécanicien à domicile « chez un professionnel »', v_state, v_msg, '23514', 'auto_offre_incoherente');
+
+  v_state := null;
+  begin
+    insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux) values (v_centre, 'freinage', 'chez_un_professionnel', array['75011']);
+  exception when others then v_state := sqlstate; v_msg := sqlerrm;
+  end;
+  perform pg_temp.assert_echec('offres : réparation par un centre de contrôle technique', v_state, v_msg, '23514', 'auto_offre_incoherente');
+
+  v_state := null;
+  begin
+    insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux) values (v_partenaire, 'controle_technique', 'chez_un_professionnel', array['75011']);
+  exception when others then v_state := sqlstate; v_msg := sqlerrm;
+  end;
+  perform pg_temp.assert_echec('offres : contrôle technique par un garage', v_state, v_msg, '23514', 'auto_offre_incoherente');
+
+  insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux) values (v_centre, 'controle_technique', 'chez_un_professionnel', array['75011']);
+  insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux) values (v_partenaire, 'controle_technique', 'collecte', array['75011']);
+  insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux) values (v_mobile, 'batterie', 'a_domicile', array['75011']);
+
+  v_state := null;
+  begin
+    update public.auto_offres set service_code = 'vidange', mode = 'chez_un_professionnel' where partenaire_id = v_centre;
+  exception when others then v_state := sqlstate; v_msg := sqlerrm;
+  end;
+  perform pg_temp.assert_echec('offres : modification incohérente', v_state, v_msg, '23514', 'auto_offre_incoherente');
+  delete from public.auto_offres where partenaire_id in (v_centre, v_mobile) or mode = 'collecte';
+
+  v_state := null;
+  begin
+    insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux) values (v_partenaire, 'controle_technique', 'a_domicile', array['75011']);
   exception when others then v_state := sqlstate; v_msg := sqlerrm;
   end;
   perform pg_temp.assert_echec('offres : mode qui n''existe pas pour la prestation', v_state, v_msg, '23503', 'auto_offres_service_mode_existant');
 
   v_state := null;
   begin
-    insert into public.auto_offres (garage_id, service_code, mode, codes_postaux) values (v_garage, 'assistance_panne', 'collecte', array['75011']);
+    insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux) values (v_partenaire, 'assistance_panne', 'collecte', array['75011']);
   exception when others then v_state := sqlstate; v_msg := sqlerrm;
   end;
   perform pg_temp.assert_echec('offres : assistance', v_state, v_msg, '23503', 'auto_offres_service_mode_existant');
@@ -230,7 +287,7 @@ begin
     insert into public.auto_offres (service_code, mode, codes_postaux) values ('freinage', 'chez_un_professionnel', array['75011']);
   exception when others then v_state := sqlstate; v_msg := sqlerrm;
   end;
-  perform pg_temp.assert_echec('offres : sans professionnel', v_state, v_msg, '23502', 'garage_id');
+  perform pg_temp.assert_echec('offres : sans partenaire', v_state, v_msg, '23502', 'partenaire_id');
 
   foreach v_msg in array array['{}', '{7501}', '{75011,NULL}', '{75011,2A004}'] loop
     declare
@@ -239,7 +296,7 @@ begin
     begin
       v_state := null;
       begin
-        insert into public.auto_offres (garage_id, service_code, mode, codes_postaux) values (v_garage, 'freinage', 'chez_un_professionnel', v_zone);
+        insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux) values (v_partenaire, 'freinage', 'chez_un_professionnel', v_zone);
       exception when others then v_state := sqlstate; v_erreur := sqlerrm;
       end;
       perform pg_temp.assert_echec('offres : zone invalide ' || v_zone::text, v_state, v_erreur, '23514', 'auto_offres_zone_valide');
@@ -248,32 +305,41 @@ begin
 
   v_state := null;
   begin
-    insert into public.auto_offres (garage_id, service_code, mode, codes_postaux, energies) values (v_garage, 'freinage', 'chez_un_professionnel', array['75011'], array['nucleaire']);
+    insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux, energies) values (v_partenaire, 'freinage', 'chez_un_professionnel', array['75011'], array['nucleaire']);
   exception when others then v_state := sqlstate; v_msg := sqlerrm;
   end;
   perform pg_temp.assert_echec('offres : énergie inconnue', v_state, v_msg, '23514', 'auto_offres_energies_valides');
 
   v_state := null;
   begin
-    insert into public.auto_offres (garage_id, service_code, mode, codes_postaux, valable_du, valable_jusqu_au) values (v_garage, 'freinage', 'chez_un_professionnel', array['75011'], date '2026-10-01', date '2026-09-01');
+    insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux, valable_du, valable_jusqu_au) values (v_partenaire, 'freinage', 'chez_un_professionnel', array['75011'], date '2026-10-01', date '2026-09-01');
   exception when others then v_state := sqlstate; v_msg := sqlerrm;
   end;
   perform pg_temp.assert_echec('offres : période à l''envers', v_state, v_msg, '23514', 'auto_offres_periode_valide');
 
   -- Trois offres : inactive (par défaut), active et valable, active mais échue.
-  insert into public.auto_offres (garage_id, service_code, mode, codes_postaux) values (v_garage, 'freinage', 'chez_un_professionnel', array['75011']);
-  insert into public.auto_offres (garage_id, service_code, mode, codes_postaux, energies, actif) values (v_garage, 'revision', 'a_domicile', array['75011', '75012'], array['essence', 'diesel'], true);
-  insert into public.auto_offres (garage_id, service_code, mode, codes_postaux, valable_du, valable_jusqu_au, actif) values (v_garage, 'batterie', 'collecte', array['75011'], current_date - 60, current_date - 1, true);
+  insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux) values (v_partenaire, 'freinage', 'chez_un_professionnel', array['75011']);
+  insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux, energies, actif) values (v_partenaire, 'revision', 'a_domicile', array['75011', '75012'], array['essence', 'diesel'], true);
+  insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux, valable_du, valable_jusqu_au, actif) values (v_partenaire, 'batterie', 'collecte', array['75011'], current_date - 60, current_date - 1, true);
   perform pg_temp.assert((select bool_and(not actif) from public.auto_offres where service_code = 'freinage'), 'offres : inactive par défaut');
 
+  update public.auto_partenaires set actif = true where id = v_partenaire;
   perform pg_temp.connecter('alice');
+  select count(*) into v_n from public.auto_partenaires where nom like 'recette-auto-d %';
+  perform pg_temp.assert(v_n = 1, 'partenaires : seuls les actifs sont lisibles (' || v_n || ')');
+  v_state := null;
+  begin
+    update public.auto_partenaires set actif = true;
+  exception when others then v_state := sqlstate; v_msg := sqlerrm;
+  end;
+  perform pg_temp.assert_echec('partenaires : activation par une personne connectée', v_state, v_msg, '42501', 'permission denied');
   select count(*) into v_n from public.auto_offres;
   perform pg_temp.assert(v_n = 1, 'offres : seule l''offre active et valable est lisible (' || v_n || ')');
   perform pg_temp.assert((select service_code from public.auto_offres) = 'revision', 'offres : c''est la révision à domicile');
 
   v_state := null;
   begin
-    insert into public.auto_offres (garage_id, service_code, mode, codes_postaux, actif) values (v_garage, 'freinage', 'a_domicile', array['75011'], true);
+    insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux, actif) values (v_partenaire, 'freinage', 'a_domicile', array['75011'], true);
   exception when others then v_state := sqlstate; v_msg := sqlerrm;
   end;
   perform pg_temp.assert_echec('offres : création par une personne connectée', v_state, v_msg, '42501', 'permission denied');
@@ -296,7 +362,7 @@ begin
   reset role;
 
   perform set_config('role', 'service_role', true);
-  insert into public.auto_offres (garage_id, service_code, mode, codes_postaux) values (v_garage, 'pneus_saisonniers', 'a_domicile', array['75011']);
+  insert into public.auto_offres (partenaire_id, service_code, mode, codes_postaux) values (v_partenaire, 'pneus_saisonniers', 'a_domicile', array['75011']);
   reset role;
 end;
 $$;
@@ -350,6 +416,10 @@ begin
   select count(*) into v_n from public.garages where nom_garage = 'recette-auto-d-garage';
   if v_n > 0 then
     raise exception 'NETTOYAGE ECHOUE apres rollback — garage de recette encore present';
+  end if;
+  select count(*) into v_n from public.auto_partenaires where nom like 'recette-auto-d %';
+  if v_n > 0 then
+    raise exception 'NETTOYAGE ECHOUE apres rollback — partenaire de recette encore present';
   end if;
 end;
 $$;

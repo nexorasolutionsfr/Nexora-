@@ -6,7 +6,7 @@
 // calculée, l'écran demande l'information qui manque au lieu d'inventer une
 // valeur. Un seul petit formulaire ouvert à la fois.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -149,25 +149,25 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
   // Arrivée depuis « À prévoir » avec un geste à faire : le formulaire est
   // déjà ouvert, au bon endroit. L'adresse est nettoyée pour qu'un
   // rechargement ne le rouvre pas.
-  const [actionAppliquee, setActionAppliquee] = useState(false);
+  const actionAppliquee = useRef(false);
   useEffect(() => {
-    if (actionAppliquee || etat.chargement || !etat.vehicule || !actionInitiale) return;
-    setActionAppliquee(true);
+    if (actionAppliquee.current || etat.chargement || !etat.vehicule || !actionInitiale) return;
+    actionAppliquee.current = true;
     window.history.replaceState(window.history.state, "", window.location.pathname);
     if (!FORMULAIRE_PAR_ACTION[actionInitiale] || etat.vehicule.archive_le) return;
     setOuvert(FORMULAIRE_PAR_ACTION[actionInitiale]);
     requestAnimationFrame(() => document.getElementById(SECTION_PAR_ACTION[actionInitiale] ?? "echeance-ct")?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  }, [actionAppliquee, etat.chargement, etat.vehicule, actionInitiale]);
+  }, [etat.chargement, etat.vehicule, actionInitiale]);
 
   // Arrivée sur une section précise (#documents, depuis l'assistance) : le
   // dossier se charge après la navigation, le défilement attend l'affichage.
-  const [ancreAppliquee, setAncreAppliquee] = useState(false);
+  const ancreAppliquee = useRef(false);
   useEffect(() => {
-    if (ancreAppliquee || etat.chargement || !etat.vehicule) return;
-    setAncreAppliquee(true);
+    if (ancreAppliquee.current || etat.chargement || !etat.vehicule) return;
+    ancreAppliquee.current = true;
     const ancre = window.location.hash.slice(1);
     if (ancre) requestAnimationFrame(() => document.getElementById(ancre)?.scrollIntoView({ block: "start" }));
-  }, [ancreAppliquee, etat.chargement, etat.vehicule]);
+  }, [etat.chargement, etat.vehicule]);
 
   function faireAction(code) {
     setMessage("");

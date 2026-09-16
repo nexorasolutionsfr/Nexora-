@@ -346,7 +346,7 @@ Trois notions, jamais confondues :
 | --- | --- | --- |
 | **Service** (prestation) | `components/auto/services.js`, table `auto_services` | une seule fiche par prestation : révision, vidange, freinage, batterie 12 V, diagnostic, climatisation, pneus (remplacement, saisonniers, géométrie), lavage, detailing, contrôle technique, assistance |
 | **Mode** | `auto_services_modes` | façon habituelle de réaliser une prestation : chez un professionnel, à domicile ou au travail, collecte et restitution. Un filtre du catalogue, jamais une prestation de plus ; une possibilité, pas une disponibilité |
-| **Offre** | `auto_offres` (vide), `lib/auto/offres.js` | un professionnel inscrit (`garages`), une prestation, un mode existant de cette prestation, une zone (codes postaux), éventuellement des énergies, une période. Seule une offre active et valable pourra rendre « Réserver » possible |
+| **Offre** | `auto_offres` (vide), `lib/auto/offres.js` | un partenaire (`auto_partenaires`, tout métier), une prestation, un mode existant de cette prestation, une zone (codes postaux), éventuellement des énergies, une période. Seule une offre active et valable pourra rendre « Réserver » possible |
 
 Le test `services.test.js` vérifie que la base et les fiches décrivent les mêmes
 prestations et les mêmes modes.
@@ -396,11 +396,52 @@ prestation mène à sa fiche (« La prestation »). La fiche véhicule propose
 - Les droits par défaut du schéma donnent tout à `authenticated` sur une table
   nouvelle : ils sont retirés avant d'accorder la lecture.
 
+### Consolidation (`20260922000700`, `20260922000800`)
+
+**Partenaires de tout métier.** `garages` est le compte d'abonnement Nexora Pro ;
+un centre de contrôle technique ou un laveur n'en aura pas forcément. Une offre
+est donc portée par un **partenaire** (`auto_partenaires`) :
+
+| Métier | Règles sur ses offres |
+| --- | --- |
+| `garage` | — |
+| `mecanicien_mobile` | jamais « chez un professionnel » (pas de lieu d'accueil) |
+| `centre_controle_technique` | uniquement le contrôle technique ; seul métier à le proposer « chez un professionnel » |
+| `lavage_detailing`, `centre_pneus` | — |
+
+`garage_id` (facultatif, unique) relie un partenaire à son compte Nexora Pro,
+qui servira de back-office quel que soit le métier. Partenaires créés inactifs,
+lisibles seulement actifs, écriture `service_role`.
+
+**Droits exacts.** Les droits par défaut du schéma laissaient TRUNCATE,
+REFERENCES et TRIGGER à `authenticated` sur les tables des lots A à C, DELETE
+sur `auto_preferences`, et la séquence du journal d'envois à `anon` et
+`authenticated`. Tout est retiré puis seuls les droits voulus sont rendus.
+`supabase/tests/auto_droits_v1.sql` compare chaque table et séquence `auto_*` à
+la liste attendue et échoue sur toute table nouvelle non déclarée.
+
+**Erreurs 400.** Reproduites : une adresse `/auto/vehicules/<id>` dont l'id
+n'est pas un UUID (id tronqué pendant la recette) faisait envoyer quatre
+requêtes refusées par Supabase (« invalid input syntax for type uuid »).
+Désormais `lib/auto/identifiants.js` écarte l'adresse : 404, aucune requête ;
+les paramètres `?vehicule=` mal formés sont ignorés. Relevé des statuts de tous
+les appels Supabase sur chaque écran Auto : aucune 400.
+
+**Lint.** Le dépôt n'a ni ESLint ni configuration (jamais eus) : `npm run lint`
+échoue aussi sur `main`. Passe ponctuelle hors dépôt (ESLint 9, règles
+recommandées JS/TS, React, React Hooks, Next) sur le code Auto : 10 alertes ;
+4 corrigées (espaces insécables écrites en dur, plage de caractères de contrôle,
+deux drapeaux passés en `useRef`) ; 6 restantes de la règle
+`react-hooks/set-state-in-effect` (chargement des données au montage, ouverture
+du formulaire demandé par l'adresse), gardées. Un lint permanent concernerait
+tout Nexora Pro : décision séparée.
+
 ### Recette jouée le 16 septembre 2026
 
 | Contrôle | Résultat |
 | --- | --- |
-| `node --test lib/auto components/auto` | 79 tests au vert (catalogue, modes, compatibilité, informations, doublons, offres, concordance base/fiches) |
+| Consolidation : `auto_droits_v1.sql` avant les migrations (liste exacte des écarts), puis bancs droits, A, B, C, D sur base jetable et sur **Test** ; mutations (règle métier retirée, TRUNCATE rendu) | passés après migration ; mutations détectées |
+| `node --test lib/auto components/auto` | 80 tests au vert (catalogue, identifiants, modes, compatibilité, informations, doublons, offres, concordance base/fiches) |
 | `supabase/tests/auto_services_v1.sql` sur base jetable, migration jouée deux fois ; bancs A, B, C rejoués | passés, aucun résidu |
 | Mutations volontaires (index anti-doublon retiré, déclencheur retiré, offres inactives lisibles) | le banc échoue bien |
 | Migration sur **Test** ; banc D rejoué sur Test | passé ; 13 prestations, 32 modes, 0 offre, lecture seule |
@@ -419,3 +460,4 @@ Supprimer `auto_offres`, le déclencheur, l'index et la colonne `service_code`
 de `auto_taches`, `auto_services_modes`, `auto_services`, la fonction
 `auto_taches_service_ajoutable` et la contrainte
 `auto_vehicules_motorisation_courte`.
+Pour `20260922000800` et `20260922000700` : voir leur en-tête.

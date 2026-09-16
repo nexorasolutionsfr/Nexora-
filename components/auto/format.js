@@ -95,7 +95,7 @@ export function delaiLisible(jours) {
 export function lireEntier(saisie) {
   if (typeof saisie === "number") return Number.isInteger(saisie) ? saisie : null;
   if (typeof saisie !== "string") return null;
-  const brut = saisie.replace(/[\s  .]/g, "").replace(/km$/i, "");
+  const brut = saisie.replace(/[\s\u00A0\u202F.]/g, "").replace(/km$/i, "");
   if (!/^\d+$/.test(brut)) return null;
   return Number(brut);
 }
@@ -103,7 +103,7 @@ export function lireEntier(saisie) {
 // « 79,90 » ou « 79.90 » → 79.9 ; vide → null ; invalide → NaN.
 export function lireMontant(saisie) {
   if (typeof saisie !== "string" || saisie.trim() === "") return null;
-  const brut = saisie.replace(/[\s  €]/g, "").replace(",", ".");
+  const brut = saisie.replace(/[\s\u00A0\u202F€]/g, "").replace(",", ".");
   return /^\d+(\.\d{1,2})?$/.test(brut) ? Number(brut) : Number.NaN;
 }
 
