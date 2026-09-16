@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Archive, CalendarCheck, CalendarClock, Car, ChevronDown, ChevronRight, Gauge, History, Plus, Star } from "lucide-react";
+import { Archive, CalendarCheck, CalendarClock, Car, ChevronDown, ChevronRight, Gauge, History, Plus, ReceiptText, Star } from "lucide-react";
 
 import { aujourdhuiIso, dernierKilometrage } from "@/lib/auto/echeances";
 import { construireAPrevoir, elementControle, elementRevision, pastilleElement } from "@/components/auto/aPrevoir";
@@ -179,6 +179,19 @@ function MesVehicules() {
           ))}
         </ul>
       )}
+
+      {!etat.chargement && !etat.erreur && actives.length > 0 ? (
+        <Link href="/auto/factures/nouvelle" className={`${carte} mt-3 flex items-center gap-3 transition hover:border-primary/40`}>
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+            <ReceiptText className="size-5" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold text-foreground">Ajouter une facture</span>
+            <span className="block text-sm text-muted-foreground">Nexora la range et renseigne l'historique avec vous.</span>
+          </span>
+          <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </Link>
+      ) : null}
 
       {!etat.chargement && !etat.erreur && archivees.length > 0 ? (
         <section className="mt-6">

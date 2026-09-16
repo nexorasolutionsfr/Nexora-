@@ -66,7 +66,8 @@ l'ouverture au public n'est pas décidée.
 | **B** | Consolider « Mon garage » : plusieurs véhicules et véhicule principal, archivage, documents (factures, carnet, contrôle technique) rattachés aux interventions, historique qui distingue saisie et justificatif, dépenses par véhicule | **Fait sur Test**, PR de revue (section E) |
 | **C** | « À prévoir » : contrôle technique et révision, rappels personnalisés, tâches personnelles (pneus, batterie, nettoyage), actions simples, et ce qui reste inconnu | **Fait sur Test**, PR de revue (section F) |
 | **D** | Univers des services, reliés au véhicule : entretien et réparation, pneus, lavage et esthétique, contrôle technique, assistance ; modes (chez un professionnel, à domicile, collecte et restitution) distincts des prestations. Chaque fiche explique la prestation et ce qu'il faut pour une future offre ; ajout aux prochaines actions sans doublon ; consulter ≠ réserver | **Fait sur Test**, PR de revue (section G) |
-| **E et suivants** | Partenaires et offres, disponibilités, réservation (paiement au garage ou en ligne), côté garage « Commandes Nexora » et travaux supplémentaires, admin Nexora, suivi et notifications, assistant « décrivez le problème » | plus tard, sur ce socle |
+| **E** (« lot 5 ») | Ajouter une facture, enrichir le dossier : import privé, lecture automatique (Claude Haiku 4.5, remplaçable), proposition préremplie, confirmation unique, sans doublon ni écrasement | **Fait sur Test**, lecture payante **non activée** en attendant la clé et le budget d'essai (section H) |
+| **F et suivants** | Procès-verbaux de contrôle technique et photos du compteur, partenaires et offres, disponibilités, réservation (paiement au garage ou en ligne), côté garage « Commandes Nexora » et travaux supplémentaires, admin Nexora, suivi et notifications, assistant « décrivez le problème » | plus tard, sur ce socle |
 
 ---
 
@@ -461,3 +462,137 @@ de `auto_taches`, `auto_services_modes`, `auto_services`, la fonction
 `auto_taches_service_ajoutable` et la contrainte
 `auto_vehicules_motorisation_courte`.
 Pour `20260922000800` et `20260922000700` : voir leur en-tête.
+
+---
+
+## H. Lot E (« lot 5 ») — Ajouter une facture
+
+### Le parcours
+
+**Ajouter ma facture → lecture → proposition préremplie → confirmer.**
+
+1. La personne choisit la voiture et dépose un PDF ou une photo (depuis « Mon
+   garage » ou les documents de la voiture). Le fichier part dans le stockage
+   privé et devient un document **avant** toute lecture : il est conservé quoi
+   qu'il arrive.
+2. **Même fichier déjà déposé** (empreinte SHA-256) : « Cette facture est déjà
+   dans votre dossier », lien vers l'existant. Ni nouvel envoi, ni nouvelle
+   lecture.
+3. Lecture automatique si elle est activée ; sinon, même écran rempli à la
+   main (« Lecture automatique non activée »). Une proposition déjà obtenue est
+   réutilisée : un rechargement ne relance rien.
+4. **Un seul écran de confirmation** : voiture, date d'intervention, date de
+   facture, professionnel, opérations, type, kilométrage, montant TTC. Champs
+   incertains surlignés « À vérifier », absents vides (« Non lu sur la
+   facture »). Plaque lue différente de celle de la voiture : signalée.
+5. Enregistrer : une intervention (provenance **« D'après votre facture »**),
+   le document relié et titré « Facture <professionnel> ». « Plus tard » : la
+   facture reste dans les documents, marquée « À compléter ».
+
+### Les règles
+
+| Règle | Où elle est tenue |
+| --- | --- |
+| Rien d'inventé : absent = vide, douteux = « incertain » | `lib/auto/lecture/proposition.js` (normalisation), consignes du fournisseur |
+| Une vidange n'est jamais transformée en révision : « révision » seulement si le libellé le dit | garde `typeOperationSur`, indépendante du fournisseur ; type principal par priorité explicite |
+| Date d'intervention ≠ date de facture ; sans date d'intervention imprimée, la date de facture est proposée **à vérifier** | `lib/auto/factures.js` ; stockage : `auto_historique.realise_le` et `auto_documents.date_document` |
+| Plusieurs opérations → une intervention, un montant total compté une fois | `auto_historique.operations` (liste validée en base) + `montant_ttc` |
+| Intervention ressemblante (même voiture, même date, même montant — ou même type si un montant manque) : **doublon potentiel**, jamais une fusion. La personne choisit « Rattacher à cette intervention » (rien n'est modifié, aucune dépense en plus) ou « Créer une autre intervention » | écran + fonction `auto_enregistrer_facture`, qui refuse la création tant que le choix n'est pas fait |
+| Incohérence de kilométrage signalée, rien n'est écrasé ; une facture ancienne ajoute un point daté, le relevé récent reste le kilométrage actuel | `incoherencesKilometrage` ; aucun relevé créé ni modifié |
+| Provenance : la personne (`source` = proprietaire, `saisie` = document) ; jamais « vérifié par Nexora » | colonne `auto_historique.saisie` |
+
+### La lecture automatique
+
+- **Fournisseur** : Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) par l'API
+  Messages, sortie forcée par un outil au schéma fixe
+  (`lib/auto/lecture/anthropic.js`). Interface commune
+  (`compterJetons`, `lire`) : un autre fournisseur se branche sans toucher au
+  reste.
+- **Activation** (serveur seulement, `lib/auto/lecture/configuration.js`) :
+  `ANTHROPIC_API_KEY` **et** `AUTO_LECTURE_BUDGET_USD` > 0, modèle au tarif
+  connu, hors Production (déploiement de production Vercel ou projet Supabase de
+  Production refusés sauf `AUTO_LECTURE_PRODUCTION=oui`). La clé n'est jamais
+  dans le dépôt, le navigateur ni une variable `NEXT_PUBLIC_`.
+- **Limites** (`lib/auto/lecture/limites.js`) : PDF ou JPEG/PNG/WebP (HEIC
+  conservé, non lu), 5 Mo, 4 pages, 25 000 jetons en entrée (comptage gratuit
+  avant l'appel), 1 500 en sortie, 45 s, 2 tentatives par document, 10 lectures
+  par compte sur 24 h (`AUTO_LECTURE_QUOTA_24H`, 50 au plus), budget d'essai.
+  Aucune nouvelle tentative automatique.
+- **Budget** : `auto_lecture_reserver` réserve le pire coût (0,0325 $) sous
+  verrou avant chaque appel et refuse au-delà du budget ; la réserve est
+  remplacée par le coût estimé. Une lecture interrompue garde sa réserve.
+- **Coût** : **estimation** calculée sur l'usage renvoyé (1 $ / million de
+  jetons en entrée, 5 $ en sortie, tarifs du 16 sept. 2026 ; ex. 6 000 + 600
+  jetons ≈ 0,009 $). La facture du fournisseur fait foi : un échec ou une
+  coupure peut être facturé sans que Nexora le sache (`facturation` =
+  inconnue).
+- **Journal** `auto_lectures` : fournisseur, modèle, jetons, coût estimé,
+  facturation connue ou non, durée, erreur, puis confirmation et **champs
+  corrigés** (noms seulement). Aucune donnée du document. La personne voit ses
+  tentatives sans les coûts.
+
+### Base (`20260922000900_auto_factures.sql`)
+
+`auto_documents.empreinte_sha256` (unique par voiture) et `.lecture` ;
+`auto_historique.saisie` et `.operations` (validées par
+`auto_operations_valides`) ; `auto_lectures` ; `auto_lecture_reserver`
+(service_role) ; `auto_enregistrer_facture` (personne connectée, droits RLS).
+
+### Avant toute activation publique
+
+- Essai sur Test avec le corpus **fictif** (`scripts/recette/factures/`) :
+  résultats et coût réel présentés avant de décider.
+- Confidentialité : contrat de sous-traitance du fournisseur, durée de
+  conservation des documents envoyés, encadrement des transferts hors UE,
+  mention dans la politique de confidentialité et à l'écran d'import.
+- Plafond de dépense aussi réglé côté fournisseur (console), en plus du budget
+  Nexora.
+
+### Essai payant (quand la clé est configurée)
+
+```
+# .env.local du serveur local (jamais dans git) :
+ANTHROPIC_API_KEY=…
+AUTO_LECTURE_BUDGET_USD=5
+AUTO_LECTURE_QUOTA_24H=20
+```
+
+Puis redémarrer le serveur, et :
+
+```
+node scripts/recette/factures/corpus.mjs <dossier>
+node scripts/recette/factures/lecture-essai.mjs <dossier>
+```
+
+Le corpus compte 13 documents inventés, marqués « DOCUMENT FICTIF » :
+- 8 factures PDF, dont une de 2 pages avec une date d'ordre de réparation distincte, une sans kilométrage et une avec une plaque différente ;
+- 3 photos abîmées (inclinaison, perspective, bruit, JPEG) ;
+- 1 ticket ;
+- 1 attestation d'assurance, qui n'est pas une facture.
+
+Le script lit chaque document par la vraie route. Il mesure champ par champ :
+- les valeurs justes, fausses et manquantes ;
+- les valeurs **inventées** ;
+- les révisions inventées ;
+- le coût estimé et la durée.
+
+Il écrit ensuite `rapport-lecture.json`, puis supprime le compte d'essai. Le journal des coûts est conservé.
+
+### Recette jouée le 16 septembre 2026 (sans clé)
+
+| Contrôle | Résultat |
+| --- | --- |
+| `node --test lib/auto components/auto lib/auto/lecture` | 100 tests au vert (normalisation, garde révision, coûts, limites, configuration, fournisseur simulé, orchestration avec faux clients, doublons, kilométrage, empreinte) |
+| `auto_factures_v1.sql` et `auto_droits_v1.sql` sur base jetable (migration jouée deux fois), puis sur **Test** ; bancs A à D rejoués | passés ; mutations (règle de ressemblance, index d'empreinte, coût lisible) détectées |
+| Parcours navigateur sur Test, factures fictives | facture saisie à la main (« D'après votre facture », dépense comptée une fois, pas de kilométrage inventé) ; même fichier → renvoi vers l'existant ; intervention ressemblante → refus sans choix, rattachement sans dépense en plus ; ticket de 2024 : alerte de kilométrage, relevé actuel 61 400 km inchangé, échéance de révision inchangée ; proposition préremplie (écrite à la main pour la recette de l'écran) : « À vérifier » sur la date d'intervention, le professionnel et les opérations, vidange étiquetée révision ramenée à vidange ; aucun débordement à 320 et 375 px ; 0 lecture payante ; données de recette supprimées ensuite |
+| `next build` | réussi |
+
+### Ce que le lot ne fait pas
+
+Pas de procès-verbal de contrôle technique ni de photo de compteur (étapes
+suivantes), pas d'association automatique d'une facture à une intervention, pas
+de lecture en Production.
+
+### Retour arrière
+
+Voir l'en-tête de `20260922000900_auto_factures.sql`.

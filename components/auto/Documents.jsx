@@ -6,7 +6,8 @@
 // document s'ouvre par une adresse signée de cinq minutes.
 
 import { useState } from "react";
-import { ExternalLink, FileImage, FileText, LoaderCircle, Paperclip, Trash2, Upload } from "lucide-react";
+import Link from "next/link";
+import { ExternalLink, FileImage, FileText, LoaderCircle, Paperclip, ReceiptText, Trash2, Upload } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { aujourdhuiIso } from "@/lib/auto/echeances";
@@ -40,7 +41,7 @@ export function libelleIntervention(ligne) {
   return `${libelleDe(TYPES_INTERVENTION, ligne.type)} du ${formaterDate(ligne.realise_le)}`;
 }
 
-export default function BlocDocuments({ vehiculeId, proprietaireId, documents, historique, formulaireOuvert, historiquePrechoisi, onOuvrir, onFermer, onChange }) {
+export default function BlocDocuments({ vehiculeId, proprietaireId, documents, historique, formulaireOuvert, historiquePrechoisi, onOuvrir, onFermer, onChange, archive = false }) {
   const [erreur, setErreur] = useState("");
   const [enCours, setEnCours] = useState(null);
 
@@ -76,10 +77,18 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
           Documents
         </h2>
         {!formulaireOuvert ? (
-          <button type="button" onClick={() => onOuvrir(null)} className={boutonLien}>
-            <Upload className="size-4" aria-hidden="true" />
-            Ajouter
-          </button>
+          <div className="flex flex-wrap justify-end gap-x-1">
+            {!archive ? (
+              <Link href={`/auto/factures/nouvelle?vehicule=${vehiculeId}`} className={boutonLien}>
+                <ReceiptText className="size-4" aria-hidden="true" />
+                Ajouter une facture
+              </Link>
+            ) : null}
+            <button type="button" onClick={() => onOuvrir(null)} className={boutonLien}>
+              <Upload className="size-4" aria-hidden="true" />
+              Autre document
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -133,6 +142,11 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
                     </span>
                   ) : null}
                 </button>
+                {d.type === "facture" && !d.historique_id && d.source === "proprietaire" && !archive ? (
+                  <Link href={`/auto/factures/${d.id}`} className="shrink-0 self-center rounded-lg px-2 py-2 text-sm font-semibold text-primary hover:bg-secondary">
+                    À compléter
+                  </Link>
+                ) : null}
                 {d.source === "proprietaire" ? (
                   <button
                     type="button"

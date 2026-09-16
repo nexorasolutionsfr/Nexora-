@@ -1,6 +1,6 @@
 -- Nexora Auto — droits exacts sur tous les objets `auto_*` — banc en LECTURE SEULE.
 --
--- Présuppose 20260922000100 → 20260922000800 appliquées. N'écrit rien.
+-- Présuppose 20260922000100 → 20260922000900 appliquées. N'écrit rien.
 --
 -- Compare, pour `anon` et `authenticated`, les privilèges effectifs de chaque
 -- table et séquence `auto_*` à la liste attendue ci-dessous. Une table `auto_*`
@@ -24,7 +24,9 @@ insert into _droits_attendus (objet, anon, authenticated) values
   ('auto_services',              '', 'SELECT'),
   ('auto_services_modes',        '', 'SELECT'),
   ('auto_offres',                '', 'SELECT'),
-  ('auto_partenaires',           '', 'SELECT');
+  ('auto_partenaires',           '', 'SELECT'),
+  -- Droits par colonne seulement (contrôlés plus bas) : aucun droit de table.
+  ('auto_lectures',              '', '');
 
 create temporary view _droits_effectifs as
 select c.relname as objet,
@@ -69,8 +71,29 @@ begin
 end;
 $$;
 
+-- Journal des lectures : la personne lit statut et dates, jamais les coûts ;
+-- elle n'écrit que la confirmation.
+do $$
+declare
+  v_lecture text;
+  v_ecriture text;
+begin
+  select string_agg(column_name, ',' order by column_name) filter (where privilege_type = 'SELECT'),
+         string_agg(column_name, ',' order by column_name) filter (where privilege_type = 'UPDATE')
+  into v_lecture, v_ecriture
+  from information_schema.column_privileges
+  where table_schema = 'public' and table_name = 'auto_lectures' and grantee = 'authenticated';
+  if v_lecture is distinct from 'confirmee_le,created_at,document_id,erreur,id,statut' or v_ecriture is distinct from 'confirmee_le,corrections' then
+    raise exception 'ASSERTION FAILED: auto_lectures par colonne : lecture « % », écriture « % »', v_lecture, v_ecriture;
+  end if;
+  if has_any_column_privilege('anon', 'public.auto_lectures', 'SELECT') then
+    raise exception 'ASSERTION FAILED: auto_lectures lisible par anon';
+  end if;
+end;
+$$;
+
 -- Fonctions : les déclencheurs ne s'appellent pas directement ; les fonctions
--- métier sont réservées aux personnes connectées.
+-- métier sont réservées aux personnes connectées, sauf celles du serveur.
 do $$
 declare
   v_ecarts text;
@@ -84,7 +107,8 @@ begin
     and (
       has_function_privilege('anon', p.oid, 'EXECUTE')
       or (p.prorettype = 'trigger'::regtype and has_function_privilege('authenticated', p.oid, 'EXECUTE'))
-      or (p.prorettype <> 'trigger'::regtype and not has_function_privilege('authenticated', p.oid, 'EXECUTE'))
+      or (p.proname in ('auto_lecture_reserver') and has_function_privilege('authenticated', p.oid, 'EXECUTE'))
+      or (p.proname not in ('auto_lecture_reserver') and p.prorettype <> 'trigger'::regtype and not has_function_privilege('authenticated', p.oid, 'EXECUTE'))
     );
   if v_ecarts is not null then
     raise exception 'ASSERTION FAILED: droits d''exécution inattendus : %', v_ecarts;

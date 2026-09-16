@@ -116,7 +116,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
       supabase.from("auto_releves_km").select("id, kilometrage, releve_le, source").eq("vehicule_id", vehiculeId).order("releve_le", { ascending: false }),
       supabase
         .from("auto_historique")
-        .select("id, type, realise_le, kilometrage, libelle, prestataire, montant_ttc, source, created_at, resultat_controle, nature_controle, controle_valable_jusqu_au")
+        .select("id, type, realise_le, kilometrage, libelle, prestataire, montant_ttc, source, saisie, created_at, resultat_controle, nature_controle, controle_valable_jusqu_au")
         .eq("vehicule_id", vehiculeId)
         .order("realise_le", { ascending: false })
         .order("created_at", { ascending: false }),
@@ -454,6 +454,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
 
       <BlocDocuments
         vehiculeId={vehicule.id}
+        archive={archive}
         proprietaireId={session.user.id}
         documents={documents}
         historique={historique}
@@ -942,7 +943,7 @@ function ListeHistorique({ historique, documents = [], onJoindre, onSupprime }) 
                 {meta.length ? <p className="mt-0.5 text-sm text-muted-foreground">{meta.join(" · ")}</p> : null}
                 {ligne.libelle ? <p className="mt-0.5 text-sm text-foreground/80">{ligne.libelle}</p> : null}
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
-                  <span className="text-muted-foreground">{ligne.source === "prestation" ? "Enregistrée par Nexora" : "Saisie par vous"}</span>
+                  <span className="text-muted-foreground">{ligne.source === "prestation" ? "Enregistrée par Nexora" : ligne.saisie === "document" ? "D'après votre facture" : "Saisie par vous"}</span>
                   {justificatifs.length ? (
                     <button type="button" onClick={() => ouvrirDocument(justificatifs[0])} className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:underline">
                       <Paperclip className="size-3.5" aria-hidden="true" />
