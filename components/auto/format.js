@@ -120,6 +120,9 @@ export function messageErreurAuto(erreur) {
   if (!erreur) return "";
   const texte = `${erreur.message || ""} ${erreur.details || ""}`;
   if (texte.includes("auto_vehicules_plaque_par_proprietaire")) return "Cette plaque est déjà enregistrée dans votre garage.";
+  if (texte.includes("auto_taches_service_une_ouverte")) return "Cette prestation figure déjà dans vos prochaines actions pour cette voiture.";
+  if (texte.includes("auto_service_non_ajoutable")) return "Cette prestation est déjà suivie automatiquement dans « À prévoir ».";
+  if (texte.includes("motorisation")) return "La motorisation ne doit pas dépasser 80 caractères.";
   if (texte.includes("auto_date_future")) return "La date ne peut pas être dans le futur.";
   if (texte.includes("immatriculation")) return "Cette plaque n'est pas valide.";
   if (texte.includes("intervalle")) return "Cet intervalle d'entretien ne semble pas correct.";

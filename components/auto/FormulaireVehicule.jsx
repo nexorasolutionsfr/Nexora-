@@ -19,6 +19,7 @@ function valeursDepart(vehicule) {
     modele: vehicule?.modele ?? "",
     annee: vehicule?.annee ? String(vehicule.annee) : "",
     energie: vehicule?.energie ?? "",
+    motorisation: vehicule?.motorisation ?? "",
     immatriculation: vehicule?.immatriculation ? afficherImmatriculation(vehicule.immatriculation) : "",
     dateMiseEnCirculation: vehicule?.date_mise_en_circulation ?? "",
     kilometrage: "",
@@ -117,6 +118,16 @@ export default function FormulaireVehicule({ vehicule, creation = false, libelle
             {erreurDe("energie")}
           </div>
         </div>
+        {!creation ? (
+          <div>
+            <label htmlFor="auto-motorisation" className={etiquette}>
+              Motorisation <span className="font-normal text-muted-foreground">(facultatif)</span>
+            </label>
+            <input {...attributs("motorisation")} maxLength={80} autoComplete="off" className={champ} placeholder="1.2 PureTech 130" />
+            {erreurDe("motorisation")}
+            <p className={aide}>Telle qu'indiquée sur la carte grise ou le carnet. Elle précise les fiches de service.</p>
+          </div>
+        ) : null}
         <div>
           <label htmlFor="auto-immatriculation" className={etiquette}>
             Plaque d'immatriculation <span className="font-normal text-muted-foreground">(facultatif)</span>

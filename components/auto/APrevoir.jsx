@@ -8,18 +8,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BellOff, Calculator, CalendarCheck, Car, CircleAlert, CircleCheck, ChevronDown, ListTodo, LoaderCircle, Plus, RotateCcw, Ruler, ShieldCheck, Trash2, Waves } from "lucide-react";
+import { BellOff, Calculator, CalendarCheck, Car, ChevronRight, CircleAlert, CircleCheck, ChevronDown, ListTodo, LoaderCircle, Plus, RotateCcw, Ruler, ShieldCheck, Trash2, Waves } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { ajouterJours, aujourdhuiIso } from "@/lib/auto/echeances";
-import { Alerte, PageAuto, Pastille, Plaque, SqueletteVehicules, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, champ, etiquette, useSessionAuto } from "@/components/auto/elements";
+import { Alerte, PageAuto, Pastille, Plaque, SqueletteVehicules, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, etiquette, useSessionAuto } from "@/components/auto/elements";
 import { FONDEMENTS, HORIZONS_JOURS, construireAPrevoir, pastilleElement } from "@/components/auto/aPrevoir";
 import { chargerDossiers } from "@/components/auto/dossiers";
 import { formaterDate, messageErreurAuto } from "@/components/auto/format";
 
 const ICONES_FONDEMENT = { officiel: ShieldCheck, calcul: Calculator, intervalle: Ruler, estimation: Waves, tache: ListTodo, manquant: CircleAlert };
 
-export default function APrevoir({ vehiculeFiltre = null }) {
+export default function APrevoir({ vehiculeFiltre = null, elementCible = null }) {
   const session = useSessionAuto();
   const router = useRouter();
   const [dossiers, setDossiers] = useState(null);
@@ -41,6 +41,13 @@ export default function APrevoir({ vehiculeFiltre = null }) {
   useEffect(() => {
     if (session) charger();
   }, [session, charger]);
+
+  // Arrivée depuis une fiche de service (« Voir dans À prévoir ») : la carte
+  // concernée est amenée à l'écran et mise en évidence.
+  useEffect(() => {
+    if (!elementCible || !dossiers || dossiers.erreur) return;
+    requestAnimationFrame(() => document.getElementById(`element-${elementCible}`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  }, [elementCible, dossiers]);
 
   const resultat = useMemo(() => {
     if (!dossiers || dossiers.erreur) return null;
@@ -120,7 +127,7 @@ export default function APrevoir({ vehiculeFiltre = null }) {
 
   const { groupes, terminees } = resultat;
   const horizon = dossiers.horizonJours;
-  const actions = { reporterRappel, annulerReport, terminerTache, reporterTache, supprimerTache };
+  const actions = { reporterRappel, annulerReport, terminerTache, reporterTache, supprimerTache, elementCible };
   const rienDUrgent = groupes.enRetard.length === 0 && groupes.bientot.length === 0;
 
   return (
@@ -210,7 +217,7 @@ export default function APrevoir({ vehiculeFiltre = null }) {
             <ChevronDown className={`size-4 transition ${voirTerminees ? "rotate-180" : ""}`} aria-hidden="true" />
           </button>
           {voirTerminees ? (
-            <ul className={`${carte} mt-2 divide-y divide-border p-0`}>
+            <ul className={`${carteListe} mt-2`}>
               {terminees.map((t) => (
                 <li key={t.cle} className="flex items-center justify-between gap-3 px-4 py-3">
                   <span className="min-w-0">
@@ -245,7 +252,7 @@ function Groupe({ titre, sousTitre, elements, actions, aujourdhui }) {
       {sousTitre ? <p className="mt-0.5 text-sm text-muted-foreground">{sousTitre}</p> : null}
       <ul className="mt-2 space-y-3">
         {elements.map((element) => (
-          <li key={element.cle}>
+          <li key={element.cle} id={`element-${element.cle}`} className="scroll-mt-28">
             <CarteElement element={element} actions={actions} aujourdhui={aujourdhui} />
           </li>
         ))}
@@ -263,7 +270,7 @@ function CarteElement({ element, actions, aujourdhui }) {
   const lienFiche = (code) => `/auto/vehicules/${element.vehicule.id}?action=${code}`;
 
   return (
-    <article className={carte}>
+    <article className={`${carte} ${actions.elementCible === element.cle ? "ring-2 ring-primary/40" : ""}`}>
       <Link href={`/auto/vehicules/${element.vehicule.id}`} className="inline-flex max-w-full items-center gap-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground">
         <Car className="size-4 shrink-0" aria-hidden="true" />
         <span className="truncate">{element.vehicule.nom}</span>
@@ -322,6 +329,12 @@ function CarteElement({ element, actions, aujourdhui }) {
             ) : null}
           </>
         )}
+        {element.serviceCode ? (
+          <Link href={`/auto/services/${element.serviceCode}?vehicule=${element.vehicule.id}`} className="inline-flex items-center gap-1 rounded-lg px-2 py-2 text-sm font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground">
+            La prestation
+            <ChevronRight className="size-4" aria-hidden="true" />
+          </Link>
+        ) : null}
       </div>
 
       {reporter ? (

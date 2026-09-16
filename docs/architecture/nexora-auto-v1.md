@@ -65,7 +65,7 @@ l'ouverture au public n'est pas décidée.
 | **A** | Accueil, compte, « Mon garage », fiche véhicule : kilométrage daté, historique, échéances du contrôle technique et de la révision | **Fait sur Test**, PR de revue (section D) |
 | **B** | Consolider « Mon garage » : plusieurs véhicules et véhicule principal, archivage, documents (factures, carnet, contrôle technique) rattachés aux interventions, historique qui distingue saisie et justificatif, dépenses par véhicule | **Fait sur Test**, PR de revue (section E) |
 | **C** | « À prévoir » : contrôle technique et révision, rappels personnalisés, tâches personnelles (pneus, batterie, nettoyage), actions simples, et ce qui reste inconnu | **Fait sur Test**, PR de revue (section F) |
-| **D** | Univers des services, reliés au véhicule : entretien et réparation, pneus, lavage et esthétique, à domicile, collecte et restitution, assistance. Chaque fiche explique la prestation, les informations nécessaires et son intérêt ; statut « à découvrir » ou « réservable » | à faire |
+| **D** | Univers des services, reliés au véhicule : entretien et réparation, pneus, lavage et esthétique, contrôle technique, assistance ; modes (chez un professionnel, à domicile, collecte et restitution) distincts des prestations. Chaque fiche explique la prestation et ce qu'il faut pour une future offre ; ajout aux prochaines actions sans doublon ; consulter ≠ réserver | **Fait sur Test**, PR de revue (section G) |
 | **E et suivants** | Partenaires et offres, disponibilités, réservation (paiement au garage ou en ligne), côté garage « Commandes Nexora » et travaux supplémentaires, admin Nexora, suivi et notifications, assistant « décrivez le problème » | plus tard, sur ce socle |
 
 ---
@@ -329,3 +329,93 @@ RLS par propriétaire ; journal d'envois fermé aux personnes.
 Supprimer `auto_rappels_envois`, `auto_rappels_reports`, `auto_preferences`,
 `auto_taches` ; pour `20260922000400`, supprimer `nature_controle` et recréer
 les contraintes de `20260922000200`.
+
+---
+
+## G. Lot D — Services
+
+### Le principe
+
+Depuis sa voiture ou une échéance, la personne découvre une prestation, comprend
+ce qu'elle contient et la garde dans ses prochaines actions. Les partenariats ne
+sont pas un prérequis : rien n'est réservable aujourd'hui, et l'écran le dit.
+
+Trois notions, jamais confondues :
+
+| Notion | Où | Ce que c'est |
+| --- | --- | --- |
+| **Service** (prestation) | `components/auto/services.js`, table `auto_services` | une seule fiche par prestation : révision, vidange, freinage, batterie 12 V, diagnostic, climatisation, pneus (remplacement, saisonniers, géométrie), lavage, detailing, contrôle technique, assistance |
+| **Mode** | `auto_services_modes` | façon habituelle de réaliser une prestation : chez un professionnel, à domicile ou au travail, collecte et restitution. Un filtre du catalogue, jamais une prestation de plus ; une possibilité, pas une disponibilité |
+| **Offre** | `auto_offres` (vide), `lib/auto/offres.js` | un professionnel inscrit (`garages`), une prestation, un mode existant de cette prestation, une zone (codes postaux), éventuellement des énergies, une période. Seule une offre active et valable pourra rendre « Réserver » possible |
+
+Le test `services.test.js` vérifie que la base et les fiches décrivent les mêmes
+prestations et les mêmes modes.
+
+### Chaque fiche
+
+- **Reprend la voiture** choisie (`?vehicule=`, sinon la principale), changeable
+  d'un geste ; la navigation reste possible sans voiture, sans compte, ou avec
+  un dossier incomplet.
+- **S'adapte à ce qui est connu** : énergie (une vidange ne concerne pas une
+  électrique ; batterie 12 V de servitude sur une hybride), motorisation.
+  Énergie inconnue : « la compatibilité reste à vérifier », jamais présumée.
+  Aucune recommandation fondée sur l'âge ou le kilométrage, aucun diagnostic.
+- **Dit** à quoi sert la prestation, ce qu'elle comprend habituellement, ce qui
+  dépend du véhicule ou reste à vérifier, les informations d'une future offre
+  (déjà dans le dossier / à compléter, avec le lien vers le bon formulaire / à
+  préciser le moment venu), et les modes possibles.
+- **Aucun prix, aucun créneau, aucun professionnel** (vérifié par test).
+
+### Prochaines actions et réservation
+
+| Situation | Ce que montre la fiche |
+| --- | --- |
+| Révision, contrôle technique | « Déjà suivi dans « À prévoir » » avec l'échéance calculée, et « Voir dans À prévoir » (la carte est mise en évidence) |
+| Tâche ouverte pour cette prestation et cette voiture | « Dans vos prochaines actions », date ou « Sans date », « Voir dans À prévoir » |
+| Sinon | « Ajouter à mes prochaines actions » : date facultative, rien d'autre |
+| Prestation qui ne concerne pas la voiture | aucun ajout |
+| Toujours (hors assistance) | « Réservation non disponible actuellement », sans date de lancement ni formulaire |
+| Assistance | « Nexora ne déclenche pas de dépannage » : 112, assistance du contrat, lien vers les documents. Aucun bouton, aucun mode, aucune offre possible |
+
+Depuis « À prévoir » et la fiche véhicule, chaque échéance ou tâche issue d'une
+prestation mène à sa fiche (« La prestation »). La fiche véhicule propose
+« Services pour cette voiture ».
+
+### Base (`20260922000600_auto_services.sql`)
+
+- `auto_services` (13 lignes ; `suivi` : `echeance` pour révision et contrôle
+  technique, `tache`, `aucun` pour l'assistance) et `auto_services_modes`
+  (32 couples) : lecture seule pour `authenticated`.
+- `auto_taches.service_code` : index unique partiel (une tâche ouverte par
+  voiture et prestation) ; déclencheur `auto_taches_service_ajoutable` : seules
+  les prestations suivies en tâche s'ajoutent.
+- `auto_offres` : vide ; inactive par défaut ; mode obligatoirement existant
+  pour la prestation (clé étrangère) ; zone et énergies contrôlées ; écriture
+  réservée à `service_role` ; lecture des seules offres actives et valables.
+- `auto_vehicules.motorisation` : modifiable, 80 caractères au plus.
+- Les droits par défaut du schéma donnent tout à `authenticated` sur une table
+  nouvelle : ils sont retirés avant d'accorder la lecture.
+
+### Recette jouée le 16 septembre 2026
+
+| Contrôle | Résultat |
+| --- | --- |
+| `node --test lib/auto components/auto` | 79 tests au vert (catalogue, modes, compatibilité, informations, doublons, offres, concordance base/fiches) |
+| `supabase/tests/auto_services_v1.sql` sur base jetable, migration jouée deux fois ; bancs A, B, C rejoués | passés, aucun résidu |
+| Mutations volontaires (index anti-doublon retiré, déclencheur retiré, offres inactives lisibles) | le banc échoue bien |
+| Migration sur **Test** ; banc D rejoué sur Test | passé ; 13 prestations, 32 modes, 0 offre, lecture seule |
+| Parcours navigateur sur Test | catalogue par univers et filtre « à domicile » (sans contrôle technique, climatisation, géométrie ni assistance) ; freinage ajouté pour le 10 oct. puis « Dans vos prochaines actions » ; « Voir dans À prévoir » met la carte en évidence ; révision « déjà suivie » ; motorisation complétée depuis la fiche ; 208 sans énergie « à vérifier » puis bascule vers la Clio ; assistance sans bouton ; consultation sans compte ; code inconnu → 404 ; aucun débordement à 320 et 375 px (tâche de test supprimée ensuite) |
+| `next build` | réussi, routes `/auto/services` et `/auto/services/[code]` |
+
+### Ce que le lot ne fait pas
+
+Pas de prix, de créneau, de partenaire, de demande de devis ni de réservation.
+Une tâche libre existante (« Monter les pneus hiver ») n'est pas rattachée
+automatiquement à la prestation correspondante.
+
+### Retour arrière
+
+Supprimer `auto_offres`, le déclencheur, l'index et la colonne `service_code`
+de `auto_taches`, `auto_services_modes`, `auto_services`, la fonction
+`auto_taches_service_ajoutable` et la contrainte
+`auto_vehicules_motorisation_courte`.

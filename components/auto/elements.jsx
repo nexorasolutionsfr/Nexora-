@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarCheck, Car, CircleAlert, LoaderCircle } from "lucide-react";
+import { CalendarCheck, Car, CircleAlert, LayoutGrid, LoaderCircle } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { afficherImmatriculation } from "@/lib/auto/immatriculation";
@@ -25,6 +25,9 @@ export const boutonSecondaire =
 export const boutonLien =
   "inline-flex items-center gap-1.5 rounded-lg px-2 py-2 text-left text-sm font-semibold text-primary transition hover:bg-secondary disabled:opacity-60";
 export const carte = "rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,27,51,0.04)]";
+// Une carte qui contient une liste : chaque ligne porte sa propre marge.
+// (Ajouter « p-0 » à `carte` ne suffit pas : Tailwind range p-0 avant p-4.)
+export const carteListe = "divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_2px_rgba(15,27,51,0.04)]";
 
 // La session Supabase de la personne. `undefined` tant qu'on ne sait pas
 // encore, `null` si personne n'est connecté.
@@ -46,10 +49,11 @@ export function useSessionAuto() {
   return session;
 }
 
-// Les deux espaces de la personne connectée.
+// Les trois espaces de la personne connectée.
 const ONGLETS = [
   { href: "/auto", libelle: "Mon garage", icone: Car, actif: (chemin) => chemin === "/auto" || chemin.startsWith("/auto/vehicules") },
   { href: "/auto/a-prevoir", libelle: "À prévoir", icone: CalendarCheck, actif: (chemin) => chemin.startsWith("/auto/a-prevoir") },
+  { href: "/auto/services", libelle: "Services", icone: LayoutGrid, actif: (chemin) => chemin.startsWith("/auto/services") },
 ];
 
 export function EnteteAuto({ session }) {
@@ -82,7 +86,7 @@ export function EnteteAuto({ session }) {
         ) : null}
       </div>
       {session ? (
-        <nav aria-label="Espaces" className="mx-auto flex w-full max-w-xl gap-1 px-3 pb-2">
+        <nav aria-label="Espaces" className="mx-auto flex w-full max-w-xl gap-1 px-2 pb-2 min-[360px]:px-3">
           {ONGLETS.map(({ href, libelle, icone: Icone, actif }) => {
             const courant = actif(chemin);
             return (
@@ -90,9 +94,10 @@ export function EnteteAuto({ session }) {
                 key={href}
                 href={href}
                 aria-current={courant ? "page" : undefined}
-                className={`inline-flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-sm font-semibold transition ${courant ? "bg-secondary text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                className={`inline-flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-1.5 py-2 text-sm font-semibold transition min-[360px]:px-2 ${courant ? "bg-secondary text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
               >
-                <Icone className="size-4" aria-hidden="true" />
+                {/* Trois onglets sur un écran de 320 px : les icônes cèdent la place. */}
+                <Icone className="hidden size-4 min-[360px]:block" aria-hidden="true" />
                 {libelle}
               </Link>
             );

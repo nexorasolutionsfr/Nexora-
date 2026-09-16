@@ -70,6 +70,14 @@ test("messageErreurAuto : les contraintes de la base deviennent des phrases", ()
     messageErreurAuto({ code: "23514", message: "auto_historique : la date 2026-10-01 est dans le futur (auto_date_future)" }),
     "La date ne peut pas être dans le futur.",
   );
+  assert.equal(
+    messageErreurAuto({ code: "23505", message: 'duplicate key value violates unique constraint "auto_taches_service_une_ouverte"' }),
+    "Cette prestation figure déjà dans vos prochaines actions pour cette voiture.",
+  );
+  assert.equal(
+    messageErreurAuto({ code: "23514", message: "auto_taches : prestation suivie autrement qu'en tâche (auto_service_non_ajoutable)" }),
+    "Cette prestation est déjà suivie automatiquement dans « À prévoir ».",
+  );
   assert.equal(messageErreurAuto({ code: "42501", message: "permission denied" }), "Votre session a expiré. Reconnectez-vous.");
   assert.match(messageErreurAuto({ message: "Failed to fetch" }), /n'a pas abouti/);
 });

@@ -22,6 +22,7 @@ import {
   Droplet,
   Gauge,
   History,
+  LayoutGrid,
   LoaderCircle,
   Paperclip,
   Pencil,
@@ -48,6 +49,7 @@ import {
   boutonPrincipal,
   boutonSecondaire,
   carte,
+  carteListe,
   champ,
   etiquette,
   useSessionAuto,
@@ -78,8 +80,11 @@ const FORMULAIRE_PAR_ACTION = {
   proces_verbal: "proces_verbal",
   mise_en_circulation: "mise_en_circulation",
   intervalle: "intervalle",
+  // Depuis une fiche de service : compléter la voiture ou son historique.
+  modifier: "modifier",
+  intervention: "intervention",
 };
-const SECTION_PAR_ACTION = { releve: "kilometrage", revision: "echeance-revision", intervalle: "echeance-revision" };
+const SECTION_PAR_ACTION = { releve: "kilometrage", revision: "echeance-revision", intervalle: "echeance-revision", modifier: "haut-fiche", intervention: "historique" };
 
 const ICONES = {
   revision: Wrench,
@@ -154,6 +159,16 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
     requestAnimationFrame(() => document.getElementById(SECTION_PAR_ACTION[actionInitiale] ?? "echeance-ct")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }, [actionAppliquee, etat.chargement, etat.vehicule, actionInitiale]);
 
+  // Arrivée sur une section précise (#documents, depuis l'assistance) : le
+  // dossier se charge après la navigation, le défilement attend l'affichage.
+  const [ancreAppliquee, setAncreAppliquee] = useState(false);
+  useEffect(() => {
+    if (ancreAppliquee || etat.chargement || !etat.vehicule) return;
+    setAncreAppliquee(true);
+    const ancre = window.location.hash.slice(1);
+    if (ancre) requestAnimationFrame(() => document.getElementById(ancre)?.scrollIntoView({ block: "start" }));
+  }, [ancreAppliquee, etat.chargement, etat.vehicule]);
+
   function faireAction(code) {
     setMessage("");
     setOuvert(FORMULAIRE_PAR_ACTION[code]);
@@ -222,7 +237,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
   const estimationKm = estimerKilometrage({ releves, historique });
   const elementCt = elementControle({ ...vehicule, releves, historique });
   const elementRev = elementRevision({ ...vehicule, releves, historique });
-  const details = [libelleDe(ENERGIES, vehicule.energie), vehicule.annee].filter(Boolean).join(" · ");
+  const details = [libelleDe(ENERGIES, vehicule.energie), vehicule.motorisation, vehicule.annee].filter(Boolean).join(" · ");
   const dernierControle = historique
     .filter((h) => h.type === "controle_technique")
     .sort((a, b) => (a.realise_le < b.realise_le ? 1 : a.realise_le > b.realise_le ? -1 : 0))[0];
@@ -236,7 +251,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
       <RetourGarage />
 
       {ouvert === "modifier" ? (
-        <section className={`${carte} mt-3 p-5`}>
+        <section id="haut-fiche" className={`${carte} mt-3 scroll-mt-28 p-5`}>
           <h1 className="mb-5 font-display text-xl font-bold text-foreground">Modifier le véhicule</h1>
           <FormulaireVehicule
             vehicule={vehicule}
@@ -250,6 +265,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
                   modele: d.modele,
                   annee: d.annee,
                   energie: d.energie,
+                  motorisation: d.motorisation,
                   immatriculation: d.immatriculation,
                   date_mise_en_circulation: d.dateMiseEnCirculation,
                 })
@@ -379,6 +395,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
           id="echeance-ct"
           icone={CalendarClock}
           element={elementCt}
+          lienService={archive ? null : `/auto/services/controle_technique?vehicule=${vehicule.id}`}
           onAction={faireAction}
           actionPossible={(code) => code !== "proces_verbal" || dernierControle?.source === "proprietaire"}
         >
@@ -393,7 +410,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
           ) : null}
         </CarteEcheance>
 
-        <CarteEcheance id="echeance-revision" icone={Wrench} element={elementRev} onAction={faireAction}>
+        <CarteEcheance id="echeance-revision" icone={Wrench} element={elementRev} lienService={archive ? null : `/auto/services/revision?vehicule=${vehicule.id}`} onAction={faireAction}>
           {ouvert === "intervalle" ? (
             <FormulaireIntervalle vehicule={vehicule} onAnnuler={() => setOuvert(null)} onEnregistre={() => apresEnregistrement("Intervalle de révision enregistré.")} />
           ) : ouvert === "entretien" ? (
@@ -402,12 +419,23 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
         </CarteEcheance>
       </div>
 
+      {!archive ? (
+        <Link href={`/auto/services?vehicule=${vehicule.id}`} className={`${carte} mt-3 flex items-center gap-3 transition hover:border-primary/40`}>
+          <IconeRonde icone={LayoutGrid} />
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold text-foreground">Services pour cette voiture</span>
+            <span className="block text-sm text-muted-foreground">Entretien, pneus, lavage, contrôle technique, assistance</span>
+          </span>
+          <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </Link>
+      ) : null}
+
       <div className="mt-3">
         <BlocDepenses historique={historique} />
       </div>
 
       {/* Historique */}
-      <div className="mb-2 mt-7 flex items-center justify-between">
+      <div id="historique" className="mb-2 mt-7 flex scroll-mt-28 items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Historique</h2>
         {ouvert !== "intervention" ? (
           <button type="button" onClick={() => ouvrir("intervention")} className={boutonLien}>
@@ -468,7 +496,7 @@ function IconeRonde({ icone: Icone }) {
 // Une échéance, avec les phrases communes à « À prévoir » : quoi, pour quand,
 // sur quelles informations. Un petit formulaire remplace les gestes quand il
 // est ouvert.
-function CarteEcheance({ id, icone, element, onAction, actionPossible = () => true, children }) {
+function CarteEcheance({ id, icone, element, lienService = null, onAction, actionPossible = () => true, children }) {
   const pastille = pastilleElement(element, { avecSujet: false });
   return (
     <section id={id} className={`${carte} scroll-mt-28`} aria-labelledby={`${id}-titre`}>
@@ -497,6 +525,12 @@ function CarteEcheance({ id, icone, element, onAction, actionPossible = () => tr
                 {a.libelle}
               </button>
             ))}
+          {lienService ? (
+            <Link href={lienService} className="inline-flex items-center gap-1 rounded-lg px-2 py-2 text-sm font-semibold text-muted-foreground transition hover:bg-muted hover:text-foreground">
+              La prestation
+              <ChevronRight className="size-4" aria-hidden="true" />
+            </Link>
+          ) : null}
         </div>
       )}
     </section>
@@ -877,7 +911,7 @@ function ListeHistorique({ historique, documents = [], onJoindre, onSupprime }) 
           <Alerte>{erreur}</Alerte>
         </div>
       ) : null}
-      <ol className={`${carte} divide-y divide-border p-0`}>
+      <ol className={carteListe}>
         {historique.map((ligne) => {
           const Icone = ICONES[ligne.type] ?? Wrench;
           const justificatifs = documents.filter((d) => d.historique_id === ligne.id);

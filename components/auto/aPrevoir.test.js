@@ -111,6 +111,15 @@ test("Tâche : date, délai, actions terminer et reporter", () => {
   assert.equal(el.delai, "dans 29 jours");
   assert.equal(el.fondement, "tache");
   assert.deepEqual(el.actions.map((a) => a.code), ["terminer", "reporter"]);
+  assert.equal(el.serviceCode, null);
+});
+
+test("Chaque élément désigne la prestation à ouvrir depuis « À prévoir »", () => {
+  assert.equal(elementControle(clio, { aujourdhui: AUJOURDHUI }).serviceCode, "controle_technique");
+  assert.equal(elementRevision(clio, { aujourdhui: AUJOURDHUI }).serviceCode, "revision");
+  const tache = elementTache({ id: "t2", vehicule_id: "v-clio", service_code: "freinage", titre: "Freinage", echeance: null, statut: "a_faire" }, clio, { aujourdhui: AUJOURDHUI });
+  assert.equal(tache.serviceCode, "freinage");
+  assert.equal(tache.quand, "Sans date");
 });
 
 test("Ensemble : voitures archivées exclues, groupes, reports, trois prochaines actions", () => {

@@ -86,6 +86,14 @@ export function validerVehicule(saisie = {}, { aujourdhui, creation = false }) {
   if (miseEnCirculation.erreur) erreurs.dateMiseEnCirculation = miseEnCirculation.erreur;
   donnees.dateMiseEnCirculation = miseEnCirculation.valeur ?? null;
 
+  // En modification : la motorisation, telle qu'inscrite sur la carte grise
+  // ou le carnet (« 1.2 PureTech 130 »). Elle précise les fiches de service.
+  if (!creation) {
+    const motorisation = texte(saisie.motorisation).replace(/\s+/g, " ");
+    donnees.motorisation = motorisation || null;
+    if (motorisation.length > 80) erreurs.motorisation = "80 caractères au plus.";
+  }
+
   if (creation) {
     const km = texte(saisie.kilometrage);
     donnees.kilometrage = null;

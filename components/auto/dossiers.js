@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { HORIZON_PAR_DEFAUT } from "@/components/auto/aPrevoir";
 
 const COLONNES_VEHICULE =
-  "id, immatriculation, marque, modele, annee, energie, date_mise_en_circulation, intervalle_entretien_km, intervalle_entretien_mois, principal, archive_le, created_at";
+  "id, immatriculation, marque, modele, annee, energie, motorisation, date_mise_en_circulation, intervalle_entretien_km, intervalle_entretien_mois, principal, archive_le, created_at";
 const COLONNES_HISTORIQUE = "id, vehicule_id, type, realise_le, kilometrage, resultat_controle, nature_controle, controle_valable_jusqu_au";
 
 export async function chargerDossiers() {
@@ -15,7 +15,7 @@ export async function chargerDossiers() {
     supabase.from("auto_vehicules").select(COLONNES_VEHICULE).order("created_at", { ascending: true }),
     supabase.from("auto_releves_km").select("vehicule_id, kilometrage, releve_le, source"),
     supabase.from("auto_historique").select(COLONNES_HISTORIQUE),
-    supabase.from("auto_taches").select("id, vehicule_id, titre, note, echeance, statut, terminee_le, created_at"),
+    supabase.from("auto_taches").select("id, vehicule_id, service_code, titre, note, echeance, statut, terminee_le, created_at"),
     supabase.from("auto_rappels_reports").select("cle, reporte_jusqu_au"),
     supabase.from("auto_preferences").select("horizon_jours").maybeSingle(),
   ]);

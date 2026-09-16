@@ -31,6 +31,15 @@ test("véhicule : champs obligatoires et valeurs impossibles", () => {
   assert.equal(r.erreurs.dateMiseEnCirculation, "La date ne peut pas être dans le futur.");
 });
 
+test("véhicule : la motorisation se renseigne en modification, bornée", () => {
+  const r = validerVehicule({ marque: "Renault", modele: "Clio", motorisation: "  1.0   TCe 90 " }, { aujourdhui: AUJOURDHUI });
+  assert.equal(r.valide, true);
+  assert.equal(r.donnees.motorisation, "1.0 TCe 90");
+  assert.equal(validerVehicule({ marque: "Renault", modele: "Clio", motorisation: "" }, { aujourdhui: AUJOURDHUI }).donnees.motorisation, null);
+  assert.equal(validerVehicule({ marque: "Renault", modele: "Clio", motorisation: "x".repeat(81) }, { aujourdhui: AUJOURDHUI }).erreurs.motorisation, "80 caractères au plus.");
+  assert.equal("motorisation" in validerVehicule({ marque: "Renault", modele: "Clio" }, { aujourdhui: AUJOURDHUI, creation: true }).donnees, false);
+});
+
 test("véhicule : plaque normalisée, format inhabituel seulement signalé", () => {
   const siv = validerVehicule({ marque: "Renault", modele: "Clio", immatriculation: "gh-456-jk" }, { aujourdhui: AUJOURDHUI });
   assert.equal(siv.donnees.immatriculation, "GH456JK");

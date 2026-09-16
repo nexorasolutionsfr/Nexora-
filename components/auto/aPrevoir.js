@@ -41,7 +41,7 @@ const action = (code, libelle) => ({ code, libelle });
 export function elementControle(vehicule, { aujourdhui } = {}) {
   const jour = aujourdhui ?? aujourdhuiIso();
   const ct = prochainControleTechnique({ dateMiseEnCirculation: vehicule.date_mise_en_circulation, historique: vehicule.historique ?? [], aujourdhui: jour });
-  const base = { genre: "controle_technique", vehicule: identite(vehicule) };
+  const base = { genre: "controle_technique", serviceCode: "controle_technique", vehicule: identite(vehicule) };
 
   if (ct.etat === "a_renseigner") {
     const manques = {
@@ -139,7 +139,7 @@ export function elementRevision(vehicule, { aujourdhui } = {}) {
     releves,
     aujourdhui: jour,
   });
-  const base = { genre: "revision", vehicule: identite(vehicule), titre: "Révision" };
+  const base = { genre: "revision", serviceCode: "revision", vehicule: identite(vehicule), titre: "Révision" };
 
   if (e.etat !== "calcule") {
     const aCompleter =
@@ -247,6 +247,7 @@ export function elementTache(tache, vehicule, { aujourdhui } = {}) {
     genre: "tache",
     cle: `tache:${tache.id}`,
     tacheId: tache.id,
+    serviceCode: tache.service_code ?? null,
     vehicule: identite(vehicule),
     etat: tache.statut === "terminee" ? "terminee" : "a_faire",
     titre: tache.titre,

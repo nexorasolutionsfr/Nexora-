@@ -19,7 +19,7 @@ import {
   tailleLisible,
   verifierFichier,
 } from "@/lib/auto/documents";
-import { Alerte, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, champ, etiquette } from "@/components/auto/elements";
+import { Alerte, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, etiquette } from "@/components/auto/elements";
 import { TYPES_INTERVENTION, formaterDate, libelleDe, messageErreurAuto } from "@/components/auto/format";
 
 // Ouvre un document dans un nouvel onglet. L'onglet est ouvert AVANT l'appel
@@ -109,7 +109,7 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
           <p>Aucun document. Gardez ici vos factures, le procès-verbal du contrôle technique ou la carte grise.</p>
         </div>
       ) : (
-        <ul className={`${carte} divide-y divide-border p-0`}>
+        <ul className={carteListe}>
           {documents.map((d) => {
             const Icone = d.type_mime === "application/pdf" ? FileText : FileImage;
             const lie = d.historique_id ? parId.get(d.historique_id) : null;
