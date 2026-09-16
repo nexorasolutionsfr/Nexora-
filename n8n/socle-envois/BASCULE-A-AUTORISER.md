@@ -271,7 +271,8 @@ Production, elles, ne bougent pas.
 - Le débit commun (**40/heure, 120/jour**) est une **limite prudente de
   Nexora**, pas une limite horaire annoncée par Brevo (relevé du 16 sept. :
   offre Free, **300 e-mails/jour** marketing et transactionnels confondus,
-  300/300 restants, 17 envois sur 7 jours). Il borne ce que Nexora remet au
+  300/300 restants, 17 envois sur 7 jours ; d'éventuelles **autres**
+  restrictions n'ont pas été recherchées). Il borne ce que Nexora remet au
   fournisseur et **ne garantit pas le quota du compte** : authentification et
   autres consommateurs restent **hors régulateur**, et la marge laissée n'est
   réservée à personne. **Une tentative comptée par Nexora n'équivaut pas à un

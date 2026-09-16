@@ -232,8 +232,8 @@ est appelé sans `--decrypted` et seuls id, nom et type sont lus.
 Relevé par Baptiste dans sa session Brevo (lecture seule, aucun réglage
 touché) : **offre Free**, **300 e-mails par jour** marketing *et*
 transactionnels confondus, **300/300 restants** au moment du contrôle,
-**17 envois sur les 7 derniers jours**, aucune restriction transactionnelle
-affichée hors ce quota.
+**17 envois sur les 7 derniers jours**. **L'absence d'autres restrictions
+transactionnelles n'a pas été établie** : seul le quota a été vérifié.
 
 Plafonds portés de 60/200 à **40 tentatives par heure et 120 par jour**, communs
 aux quatre files. Valeurs présentes dans les huit exports générés et dans la
