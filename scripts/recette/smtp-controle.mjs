@@ -11,6 +11,8 @@
 //   accepte.…     → 250 après le message                       (accepté)
 //   temporaire.…  → 451 au RCPT TO, avant le message            (refus temporaire)
 //   definitif.…   → 550 au RCPT TO, avant le message            (refus définitif)
+//   unefois.…     → 451 au premier RCPT TO, 250 aux suivants          (reprise)
+//   lent.…        → message reçu, 250 après LENT_MS                   (coupure pendant l'attente)
 //   coupure.…     → message reçu en entier, puis connexion coupée SANS réponse
 //                   (le fournisseur a pu l'accepter : issue incertaine)
 //   autre @….invalid → 250 ; hors .invalid → 550 (relais refusé)
@@ -22,6 +24,10 @@ import net from "node:net";
 const PORT = Number(process.env.PORT || 2525);
 const HOTE = process.env.HOTE || "127.0.0.1";
 const JOURNAL = process.env.JOURNAL || "smtp-controle.jsonl";
+// lent.… → message reçu, 250 seulement après LENT_MS (sert à couper n8n pendant l'attente)
+const LENT_MS = Number(process.env.LENT_MS || 15000);
+// unefois.… → 451 au premier RCPT TO pour cette adresse, accepté ensuite (reprise réelle)
+const dejaRefuses = new Set();
 const noter = (o) => appendFileSync(JOURNAL, JSON.stringify({ quand: new Date().toISOString(), ...o }) + "\n");
 
 const serveur = net.createServer((s) => {
@@ -52,6 +58,15 @@ const serveur = net.createServer((s) => {
           s.destroy();
           return;
         }
+        if (dest.startsWith("lent.")) {
+          noter({ ...trace, issue: `message reçu, réponse retardée de ${LENT_MS} ms` });
+          setTimeout(() => {
+            if (s.destroyed) { noter({ ...trace, issue: "client parti avant la réponse (issue incertaine)" }); return; }
+            noter({ ...trace, issue: "accepté (250) après délai, non relayé" });
+            dire("250 2.0.0 accepté par le serveur de recette après délai (non relayé)");
+          }, LENT_MS);
+          continue;
+        }
         noter({ ...trace, issue: "accepté (250), non relayé" });
         dire("250 2.0.0 accepté par le serveur de recette (non relayé)");
         continue;
@@ -75,6 +90,7 @@ const serveur = net.createServer((s) => {
         if (!a.endsWith("@nexora-recette.invalid")) { noter({ de, pour: [a], issue: "550 relais refusé (hors recette)" }); dire("550 5.7.1 relais refusé : destinataire hors recette"); }
         else if (a.startsWith("temporaire.")) { noter({ de, pour: [a], issue: "451 au RCPT TO" }); dire("451 4.2.1 boîte temporairement indisponible, réessayez plus tard"); }
         else if (a.startsWith("definitif.")) { noter({ de, pour: [a], issue: "550 au RCPT TO" }); dire("550 5.1.1 boîte inexistante"); }
+        else if (a.startsWith("unefois.") && !dejaRefuses.has(a)) { dejaRefuses.add(a); noter({ de, pour: [a], issue: "451 au RCPT TO (première fois seulement)" }); dire("451 4.2.1 boîte temporairement indisponible, réessayez plus tard"); }
         else { pour.push(a); dire("250 2.1.5 ok"); }
       }
       else if (cmd === "DATA") {

@@ -42,6 +42,25 @@ test("coupure, délai, inconnu : incertain, jamais repris", () => {
   assert.equal(r("chaîne seule"), "incertain");
 });
 
+// Formulations relevées en recette le 16 septembre 2026 sur n8n 2.37.7 : elles
+// décrivent des échecs CERTAINS (rien n'est parti). Les classer « incertain »
+// laisserait la ligne immobilisée en envoi_en_cours sans raison.
+test("formulations de n8n : connexion impossible, rien n'est parti", () => {
+  assert.equal(r({ message: "The service refused the connection - perhaps it is offline" }), "a_reprendre");
+  assert.equal(r({ message: "The connection cannot be established, this usually occurs due to an incorrect host (domain) value" }), "a_reprendre");
+});
+
+test("nodemailer : aucun destinataire transmis, rien n'est parti", () => {
+  const { resultat, motif } = classerEchec({ message: "No recipients defined" });
+  assert.equal(resultat, "a_reprendre");
+  assert.match(motif, /aucun destinataire/);
+});
+
+test("une phrase qui cite un refus sans en être un reste incertaine", () => {
+  assert.equal(r({ message: "Le client dit que The service refused the connection" }), "incertain");
+  assert.equal(r({ message: "Aucun destinataire ? No recipients defined, dit-il" }), "incertain");
+});
+
 test("le motif garde un extrait borné du message", () => {
   const { motif } = classerEchec({ message: "Message failed: 554 " + "x".repeat(500) });
   assert.ok(motif.length < 300);

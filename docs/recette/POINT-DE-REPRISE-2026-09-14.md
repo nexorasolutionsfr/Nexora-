@@ -73,3 +73,25 @@ comme fait que ce qui est listé sous « Fait ».**
 ## Non commencé
 
 Lot 4 (import CSV). Saisie de l'opposition à l'écran. Avis Google, IMAP.
+
+---
+
+## Reprise du 15 septembre 2026 (soir) — fiabilisation n8n
+
+Branche `fiab/n8n-erreurs-reprise` (depuis `main` `569869c`). **Préparé et
+testé en recette isolée ; rien d'actif** : instance n8n vive et Production lues
+seulement.
+
+| Élément | Préparé | Testé | Actif |
+|---|---|---|---|
+| Workflows du socle corrigés (`n8n/socle-envois/production/`) | oui | instance isolée, Supabase Test, SMTP contrôlé (`docs/recette/n8n-fiabilisation-2026-09-15.md`) | **non** |
+| Journaliseur corrigé et rattaché | oui | idem | **non** |
+| Migration `20260921000100_journal_incidents_n8n.sql` | oui | base jetable (schéma Production) + **appliquée sur Test** | **non** (Production) |
+| Cadences `*/5` (facture, proposition, véhicule prêt), `*/2` gardé (devis) | oui | forme vérifiée ; la cadence réelle n'a tourné qu'en `* * * * *` de recette | **non** |
+| Recours `scripts/n8n/incidents-locaux.sh` | oui | lu sur l'instance vive (lecture seule) | — |
+
+À faire par Baptiste : lire la procédure `n8n/socle-envois/BASCULE-A-AUTORISER.md`
+et donner, ou non, le feu vert. Traces laissées sur Test : garage
+`PROTO Constat N8N 1789498034454` et ses notifications (dont des lignes
+`envoi_en_cours` volontairement laissées comme preuves), incidents
+« … — RECETTE fiabilisation » dans `erreurs_automatisation`.

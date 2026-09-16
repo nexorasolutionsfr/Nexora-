@@ -27,6 +27,12 @@ Complète `plan-n8n-2026-09-14.md` avec des mesures du jour.
 
 Historique d'exécution conservé depuis le **11 sept. 2026** (10 214 exécutions).
 
+> **Correction du 15 sept. (soir)** : ce n'est pas une date de conservation mais
+> le **plafond de 10 000 exécutions** de n8n (aucun réglage `EXECUTIONS_*` sur
+> l'instance vive) : l'historique glisse et couvre ≈ 4 jours. Les « 7 jours » et
+> « ≈ 18 000 exécutions » ci-dessous sont extrapolés, pas mesurés. Mesures et
+> causes : `plan-n8n-2026-09-14.md` §9.
+
 ### Erreurs sur 7 jours (revérifié, messages décodés)
 
 16 exécutions en erreur, toutes au nœud **« Réserver la file »**, toujours les
@@ -88,6 +94,10 @@ du garage**, jamais réautorisée automatiquement. (`client_oppose_relances` est
 réservée au service : jouer la requête avec le rôle de service.)
 
 ## 5. Dépendances restantes (non traitées, instance vive intouchée)
+
+> Mise à jour du 15 sept. (soir) : journalisation, reprise et fréquences sont
+> **préparées et testées en recette isolée, non actives** —
+> `n8n/socle-envois/BASCULE-A-AUTORISER.md`.
 
 - **Journalisation des erreurs** : rattacher `3 - Journalisation erreurs` comme
   workflow d'erreur des 4 workflows du socle — modification de l'instance vive,
