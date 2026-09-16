@@ -37,6 +37,18 @@ function classerEchec(erreur) {
       || /^(?:connect ECONNREFUSED|getaddrinfo (?:ENOTFOUND|EAI_AGAIN))\b/.test(message)) {
     return issue("a_reprendre", "connexion au fournisseur impossible, rien n'est parti");
   }
+  // 1 bis. Formulations de n8n lui-même (il réécrit les erreurs de connexion du
+  // nœud d'envoi) : la connexion n'a pas été établie, rien n'a pu partir.
+  // Vérifié le 16 sept. 2026 sur n8n 2.37.7.
+  if (/^(?:The service refused the connection|The connection (?:cannot be established|was refused))/i.test(message)) {
+    return issue("a_reprendre", "connexion au fournisseur impossible, rien n'est parti");
+  }
+  // 1 ter. Message incomplet refusé par nodemailer AVANT toute connexion :
+  // aucun destinataire transmis. Certain — et c'est un défaut à corriger, pas
+  // une panne passagère : la reprise est bornée par le plafond de tentatives.
+  if (/^(?:No recipients defined|Message has no recipients)/i.test(message)) {
+    return issue("a_reprendre", "aucun destinataire transmis au fournisseur, rien n'est parti");
+  }
   // 2. Authentification refusée : rien n'a pu partir.
   if (code === "EAUTH" || /^(?:Invalid login|Authentication (?:failed|not supported))\b/i.test(message)) {
     return issue("a_reprendre", "authentification refusée par le fournisseur, rien n'est parti");

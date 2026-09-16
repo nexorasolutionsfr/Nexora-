@@ -28,7 +28,10 @@
 //      encore, l'exécution échoue → workflow d'erreur → « clôture échouée ».
 //   7. Toute issue autre qu'« envoyé » est journalisée APRÈS la clôture ; un
 //      journal indisponible n'arrête pas la file.
-//   8. settings.errorWorkflow = le journaliseur ; cadence selon CADENCES.
+//   8. Débit COMMUN aux quatre files : un jeton pris en base juste avant
+//      l'envoi ; débit atteint = report (ligne remise en attente, tentative
+//      rendue, passage arrêté), jamais un échec.
+//   9. settings.errorWorkflow = le journaliseur ; cadence selon CADENCES.
 //
 // Usage : node n8n/socle-envois/construire.mjs
 //         RECETTE_GARAGE=<uuid> [RECETTE_URL=http://host.docker.internal:8787] \
@@ -46,6 +49,12 @@ const EXPURGER = sansExport(resolve(ICI, "expurger.js"));
 export const JOURNALISEUR_ID = "erroralerts000000000000000001";
 export const MAX_TENTATIVES = 3;
 export const LIGNES_PAR_PASSAGE = 3;
+// Débit COMMUN aux quatre files (migration 20260921000200). Quatre plafonds
+// séparés ne bornent rien : à */2 et */5, 4 workflows x 3 lignes donnent
+// jusqu'à 198 envois/heure cumulés. Le jeton se prend en base, juste avant
+// l'envoi, sous verrou : c'est le seul endroit où les quatre files se voient.
+export const DEBIT_HEURE = 60;
+export const DEBIT_JOUR = 200;
 
 // Cadence proposée (docs/architecture/plan-n8n-2026-09-14.md, §9).
 export const CADENCES = {
@@ -76,7 +85,9 @@ function recette() {
     supaCred: { id: "UcypEtKPfdzK32kR", name: "Supabase RECETTE (Test)" },
     smtpCred: { id: "SmtpRecetteCtrl01", name: "SMTP recette contrôlé (aucun relais)" },
     garages: [g],
-    cron: process.env.RECETTE_CRON || "* * * * *",
+    // RECETTE_CRON=reelles → les cadences de Production (*/2, */5), pour
+    // rejouer les intervalles proposés ; sinon la minute, plus rapide à jouer.
+    cron: process.env.RECETTE_CRON === "reelles" ? null : (process.env.RECETTE_CRON || "* * * * *"),
     journaliseur: "fiabrecjournal000001",
     // Recette seulement : le journaliseur peut viser un second relais, pour
     // couper la réservation sans couper le journal (regroupement d'erreurs
@@ -191,15 +202,34 @@ export function construireSocle(nom, v) {
   // Comparaison de texte : un test booléen strict avec valeur de droite vide
   // est refusé par n8n 2.37 (recette du 15 sept., exécution 14).
   nodes.push(si("Prêt à envoyer ?", "={{ $json.pret === true ? 'oui' : 'non' }}", "equals", "oui", [X(xc + 2), -400]));
-  nodes.push({ ...email, position: [X(xc + 3), -500], credentials: { smtp: v.smtpCred }, onError: "continueErrorOutput" });
-  nodes.push(code("Accepté par le fournisseur", "return [{ json: { resultat: 'envoye', motif: null, categorie: null, noeud: " + JSON.stringify(email.name) + " } }];", [X(xc + 4), -600]));
+  nodes.push(rpc("Prendre un jeton d'envoi", v, "prendre_jeton_envoi",
+    `={"p_file": "${pFile}", "p_id": "{{ $('Une notification à la fois').item.json.id }}", "p_limite_heure": ${DEBIT_HEURE}, "p_limite_jour": ${DEBIT_JOUR}, "p_workflow_id": "{{ $workflow.id }}"}`,
+    [X(xc + 3), -400], { onError: "continueRegularOutput", alwaysOutputData: true }));
+  // Une RPC remplace l'élément courant par sa réponse. Sans ce nœud, le nœud
+  // d'envoi lisait `{ok: true, …}` au lieu du message : aucun destinataire, et
+  // nodemailer refusait avec « No recipients defined » (recette du 16 sept.,
+  // lot G1 : 8 lignes immobilisées, 0 message). On remet le message composé et
+  // on garde la réponse du débit à côté.
+  nodes.push(code("Reprendre le message", [
+    "const m = $('Vérifier avant envoi').item.json;",
+    "const d = $json && typeof $json === 'object' ? $json : {};",
+    "return [{ json: { ...m, debit_ok: d.ok === true, debit_motif: d.motif || (d.error ? 'jeton de débit indisponible' : null) } }];",
+  ].join("\n"), [X(xc + 4), -400]));
+  nodes.push(si("Débit disponible ?", "={{ $json.debit_ok === true ? 'oui' : 'non' }}", "equals", "oui", [X(xc + 5), -400]));
+  nodes.push({ ...email, position: [X(xc + 6), -500], credentials: { smtp: v.smtpCred }, onError: "continueErrorOutput" });
+  // Débit atteint (ou jeton indisponible) : la ligne retourne en attente et la
+  // réservation ne compte pas comme une tentative. Le passage s'arrête là.
+  nodes.push(rpc("Reporter : débit atteint", v, "reporter_notification_debit",
+    `={"p_file": "${pFile}", "p_id": "{{ $('Une notification à la fois').item.json.id }}", "p_motif": {{ JSON.stringify('report : ' + ($json.debit_motif || 'débit d\\'envoi indisponible') + ' — rien n\\'est parti') }}}`,
+    [X(xc + 6), -100], { retryOnFail: true, maxTries: 3, waitBetweenTries: 5000, alwaysOutputData: true }));
+  nodes.push(code("Accepté par le fournisseur", "return [{ json: { resultat: 'envoye', motif: null, categorie: null, noeud: " + JSON.stringify(email.name) + " } }];", [X(xc + 6), -600]));
   nodes.push(code("Classer l'échec", [
     CLASSER_ECHEC,
     "const brut = $json.error && typeof $json.error === 'object' ? $json.error : { message: $json.error || $json.message || '' };",
     "const c = classerEchec({ message: brut.message || $json.message || '', description: brut.description, code: brut.code || $json.code, responseCode: brut.responseCode ?? $json.responseCode, command: brut.command || $json.command });",
     "const categorie = { a_reprendre: 'refus_temporaire', bloque: 'refus_definitif', incertain: 'envoi_incertain' }[c.resultat];",
     `return [{ json: { resultat: c.resultat, motif: c.motif, categorie, noeud: ${JSON.stringify(email.name)} } }];`,
-  ].join("\n"), [X(xc + 4), -400]));
+  ].join("\n"), [X(xc + 6), -400]));
   nodes.push(code("Échec avant envoi", [
     "// Vérification refusée : panne de lecture ou de préparation (à reprendre, plafonné)",
     "// ou données manquantes (bloqué, un humain corrige).",
@@ -207,7 +237,7 @@ export function construireSocle(nom, v) {
     "  return [{ json: { resultat: 'a_reprendre', motif: $json.motif_verification, categorie: 'echec_avant_envoi', noeud: $json.noeud_panne } }];",
     "}",
     "return [{ json: { resultat: 'bloque', motif: $json.motif_verification, categorie: 'donnees_invalides', noeud: 'Vérifier avant envoi' } }];",
-  ].join("\n"), [X(xc + 4), -200]));
+  ].join("\n"), [X(xc + 6), -200]));
   nodes.push(code("Décider l'issue", [
     EXPURGER,
     `const MAX_TENTATIVES = ${MAX_TENTATIVES};`,
@@ -226,21 +256,21 @@ export function construireSocle(nom, v) {
     "  motif: motif === null ? null : expurger(motif, 300),",
     "  intervention,",
     "} }];",
-  ].join("\n"), [X(xc + 5), -400]));
-  nodes.push(si("Issue connue ?", "={{ $json.resultat }}", "notEquals", "incertain", [X(xc + 6), -400]));
+  ].join("\n"), [X(xc + 7), -400]));
+  nodes.push(si("Issue connue ?", "={{ $json.resultat }}", "notEquals", "incertain", [X(xc + 8), -400]));
   nodes.push({
     ...rpc("Clore la notification", v, "terminer_notification",
       `={"p_file": "${pFile}", "p_id": "{{ $json.id }}", "p_resultat": "{{ $json.resultat }}", "p_motif": {{ $json.motif === null ? 'null' : JSON.stringify($json.motif) }}}`,
-      [X(xc + 7), -500], { retryOnFail: true, maxTries: 3, waitBetweenTries: 5000, alwaysOutputData: true }),
+      [X(xc + 9), -500], { retryOnFail: true, maxTries: 3, waitBetweenTries: 5000, alwaysOutputData: true }),
   });
-  nodes.push(si("Incident à journaliser ?", "={{ $('Décider l\\'issue').item.json.resultat }}", "notEquals", "envoye", [X(xc + 8), -500]));
+  nodes.push(si("Incident à journaliser ?", "={{ $('Décider l\\'issue').item.json.resultat }}", "notEquals", "envoye", [X(xc + 10), -500]));
   nodes.push(rpc("Journaliser l'incident", v, "journaliser_incident",
     "={{ JSON.stringify({ p_incident: { categorie: $('Décider l\\'issue').item.json.categorie, workflow_id: $workflow.id, workflow_nom: $workflow.name, execution_id: $execution.id, noeud: $('Décider l\\'issue').item.json.noeud, notification_file: $('Décider l\\'issue').item.json.file, notification_id: $('Décider l\\'issue').item.json.id, intervention_requise: $('Décider l\\'issue').item.json.intervention, message: $('Décider l\\'issue').item.json.resultat === 'incertain' ? 'issue incertaine, rien n\\'est clos, vérification humaine : ' + $('Décider l\\'issue').item.json.motif : $('Décider l\\'issue').item.json.motif } }) }}",
-    [X(xc + 9), -300], { onError: "continueRegularOutput", alwaysOutputData: true }));
+    [X(xc + 11), -300], { onError: "continueRegularOutput", alwaysOutputData: true }));
   // Après un refus temporaire, on s'arrête : sinon la ligne, remise en attente,
   // serait reprise dans la seconde (recette du 15 sept., exécution 25 : trois
   // tentatives en une minute). Une tentative au plus par ligne et par passage.
-  nodes.push(si("Encore une ?", `={{ $runIndex < ${LIGNES_PAR_PASSAGE - 1} && $('Décider l\\'issue').item.json.resultat !== 'a_reprendre' ? 'oui' : 'non' }}`, "equals", "oui", [X(xc + 10), -400]));
+  nodes.push(si("Encore une ?", `={{ $runIndex < ${LIGNES_PAR_PASSAGE - 1} && $('Décider l\\'issue').item.json.resultat !== 'a_reprendre' ? 'oui' : 'non' }}`, "equals", "oui", [X(xc + 12), -400]));
 
   const c = {};
   const relier = (de, ...sorties) => { c[de] = { main: sorties.map((s) => (s === null ? [] : [lien(s)])) }; };
@@ -251,7 +281,10 @@ export function construireSocle(nom, v) {
   ordre.forEach((n, i) => relier(n, ordre[i + 1] || construireMsg.name));
   relier(construireMsg.name, "Vérifier avant envoi");
   relier("Vérifier avant envoi", "Prêt à envoyer ?");
-  relier("Prêt à envoyer ?", email.name, "Échec avant envoi");
+  relier("Prêt à envoyer ?", "Prendre un jeton d'envoi", "Échec avant envoi");
+  relier("Prendre un jeton d'envoi", "Reprendre le message");
+  relier("Reprendre le message", "Débit disponible ?");
+  relier("Débit disponible ?", email.name, "Reporter : débit atteint");
   relier(email.name, "Accepté par le fournisseur", "Classer l'échec");
   relier("Accepté par le fournisseur", "Décider l'issue");
   relier("Classer l'échec", "Décider l'issue");
@@ -306,7 +339,10 @@ export function construireJournaliseur(v) {
       "} else if (String(noeud).startsWith('Clore')) {",
       "  categorie = 'cloture_echouee'; conseil = 'issue de l\\'envoi non enregistrée : la ligne reste envoi_en_cours, vérification humaine avant tout renvoi';",
       "}",
-      "const file = { 'Nouveau devis (socle)': 'devis', 'Facture (socle)': 'factures', 'Proposition RDV (socle)': 'proposition', 'Véhicule prêt (socle)': 'atelier' }[String(wf.name || '').replace(/ — RECETTE fiabilisation$/, '')] || null;",
+      // Nom du workflow → file. Découpe neutre : aucun littéral « RECETTE » ne
+      // doit se retrouver dans la version Production (trouvé par
+      // controle-avant-bascule.sh le 16 sept.).
+      "const file = { 'Nouveau devis (socle)': 'devis', 'Facture (socle)': 'factures', 'Proposition RDV (socle)': 'proposition', 'Véhicule prêt (socle)': 'atelier' }[String(wf.name || '').split(' — ')[0]] || null;",
       "return [{ json: { p_incident: {",
       "  categorie, intervention_requise: intervention,",
       "  workflow_id: wf.id || null, workflow_nom: wf.name || null,",

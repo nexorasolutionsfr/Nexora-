@@ -1,5 +1,5 @@
 #!/bin/bash
-# Éprouve 20260921000100_journal_incidents_n8n.sql sur une base jetable
+# Éprouve 20260921000100 (journal) et 20260921000200 (débit commun) sur une base jetable
 # construite à partir d'un export FRAIS du schéma de la PRODUCTION (lecture
 # seule), puis joue docs/recette/controles-journal-incidents.sql.
 #
@@ -19,7 +19,7 @@ TRAVAIL="${TRAVAIL:-/tmp/nexora-base-jetable-journal-$(date +%Y%m%d-%H%M%S)}"
 CONTENEUR="${CONTENEUR:-nexora-jetable-journal}"
 PORT="${PORT:-55434}"
 IMAGE=public.ecr.aws/supabase/postgres:17.6.1.166
-MIGRATION=20260921000100_journal_incidents_n8n.sql
+MIGRATIONS="20260921000100_journal_incidents_n8n.sql 20260921000200_debit_envois.sql"
 
 etape="préparation"
 trap 'echo; echo "ÉCHEC — étape : $etape (ligne $LINENO)"; exit 1' ERR
@@ -64,20 +64,25 @@ psql_admin -qc "revoke execute on all functions in schema public from anon, auth
 
 etape="5. migration, deux fois (rejouable)"
 echo "== $etape =="
-docker cp "$DEPOT/supabase/migrations/$MIGRATION" "$CONTENEUR:/tmp/$MIGRATION" >/dev/null
-psql_admin -q -f "/tmp/$MIGRATION" > "$TRAVAIL/migration-1.txt" 2>&1 || { tail -8 "$TRAVAIL/migration-1.txt"; false; }
-echo "   OK    $MIGRATION"
-psql_admin -q -f "/tmp/$MIGRATION" > "$TRAVAIL/migration-2.txt" 2>&1 || { tail -8 "$TRAVAIL/migration-2.txt"; false; }
-echo "   OK    $MIGRATION (second passage)"
+for passage in 1 2; do
+  for M in $MIGRATIONS; do
+    docker cp "$DEPOT/supabase/migrations/$M" "$CONTENEUR:/tmp/$M" >/dev/null
+    psql_admin -q -f "/tmp/$M" > "$TRAVAIL/migration-$passage-$M.txt" 2>&1 || { tail -8 "$TRAVAIL/migration-$passage-$M.txt"; false; }
+    echo "   OK    $M (passage $passage)"
+  done
+done
 
 etape="6. contrôles"
 echo "== $etape =="
 docker cp "$DEPOT/docs/recette/controles-journal-incidents.sql" "$CONTENEUR:/tmp/controles.sql" >/dev/null
+docker cp "$DEPOT/docs/recette/controles-debit-envois.sql" "$CONTENEUR:/tmp/controles-debit.sql" >/dev/null
+psql_admin -At -f /tmp/controles-debit.sql >> "$TRAVAIL/sortie-debit.txt" 2>&1 || bilan_debit=1
 if [ "${ECHEC_VOLONTAIRE:-}" = controle ]; then
   docker exec "$CONTENEUR" sh -c "printf '%s\n' \"select 'KO échec volontaire (barrière)';\" >> /tmp/controles.sql"
 fi
 bilan=0
 psql_admin -At -f /tmp/controles.sql > "$TRAVAIL/sortie.txt" 2>&1 || bilan=1
+cat "$TRAVAIL/sortie-debit.txt" >> "$TRAVAIL/sortie.txt" 2>/dev/null || true
 grep -oE '(^|NOTICE: +)(OK|KO) .*' "$TRAVAIL/sortie.txt" | sed -E 's/^NOTICE: +//; s/^/   /' || true
 nb_ok=$(grep -cE '(^|NOTICE: +)OK ' "$TRAVAIL/sortie.txt" || true)
 nb_ko=$(grep -cE '(^|NOTICE: +)KO ' "$TRAVAIL/sortie.txt" || true)
