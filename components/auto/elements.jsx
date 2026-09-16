@@ -1,0 +1,157 @@
+"use client";
+
+// Briques d'interface partagées par les écrans Nexora Auto : en-tête, cadre de
+// page, plaque, pastille d'échéance, alerte, squelette, et les classes des
+// champs et boutons. Mobile d'abord : champs en 16 px (pas de zoom forcé sur
+// iPhone), cibles tactiles de 48 px.
+
+import { useEffect, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { CircleAlert, LoaderCircle } from "lucide-react";
+
+import { supabase } from "@/lib/supabase";
+import { afficherImmatriculation } from "@/lib/auto/immatriculation";
+
+export const champ =
+  "block w-full rounded-xl border border-input bg-card px-3.5 py-3 text-base text-foreground outline-none transition placeholder:text-muted-foreground/60 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:opacity-60 aria-invalid:border-destructive";
+export const etiquette = "mb-1.5 block text-sm font-medium text-foreground";
+export const aide = "mt-1.5 text-[13px] leading-snug text-muted-foreground";
+export const boutonPrincipal =
+  "inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 text-base font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 active:translate-y-px disabled:pointer-events-none disabled:opacity-60";
+export const boutonSecondaire =
+  "inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-border bg-card px-5 text-base font-semibold text-foreground transition hover:bg-muted active:translate-y-px disabled:pointer-events-none disabled:opacity-60";
+export const boutonLien =
+  "inline-flex items-center gap-1.5 rounded-lg px-2 py-2 text-left text-sm font-semibold text-primary transition hover:bg-secondary disabled:opacity-60";
+export const carte = "rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,27,51,0.04)]";
+
+// La session Supabase de la personne. `undefined` tant qu'on ne sait pas
+// encore, `null` si personne n'est connecté.
+export function useSessionAuto() {
+  const [session, setSession] = useState(undefined);
+  useEffect(() => {
+    let actif = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (actif) setSession(data.session ?? null);
+    });
+    const { data } = supabase.auth.onAuthStateChange((_evenement, s) => {
+      if (actif) setSession(s ?? null);
+    });
+    return () => {
+      actif = false;
+      data.subscription.unsubscribe();
+    };
+  }, []);
+  return session;
+}
+
+export function EnteteAuto({ session }) {
+  const router = useRouter();
+  const [sortie, setSortie] = useState(false);
+
+  async function seDeconnecter() {
+    setSortie(true);
+    await supabase.auth.signOut();
+    router.replace("/auto");
+    setSortie(false);
+  }
+
+  return (
+    <header className="sticky top-0 z-20 border-b border-border/70 bg-background/85 backdrop-blur-md">
+      <div className="mx-auto flex h-14 w-full max-w-xl items-center justify-between px-4">
+        <Link href="/auto" className="flex items-center gap-2 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-primary/30">
+          <Image src="/logo-nexora.png" alt="" width={240} height={116} className="h-8 w-8 object-contain" priority />
+          <span className="font-display text-[17px] font-bold tracking-tight text-foreground">Nexora</span>
+        </Link>
+        {session ? (
+          <button type="button" onClick={seDeconnecter} disabled={sortie} className="rounded-lg px-2 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground">
+            Se déconnecter
+          </button>
+        ) : session === null ? (
+          <Link href="/auto/connexion" className={boutonLien}>
+            Se connecter
+          </Link>
+        ) : null}
+      </div>
+    </header>
+  );
+}
+
+export function PageAuto({ session, children, large = false }) {
+  return (
+    <>
+      <EnteteAuto session={session} />
+      <main className={`mx-auto w-full ${large ? "max-w-2xl" : "max-w-xl"} px-4 pb-24 pt-6`}>{children}</main>
+    </>
+  );
+}
+
+// Plaque française : bandeau bleu à gauche, caractères espacés.
+export function Plaque({ valeur, taille = "normale" }) {
+  if (!valeur) return null;
+  const grand = taille === "grande";
+  return (
+    <span className={`inline-flex shrink-0 items-stretch overflow-hidden whitespace-nowrap rounded-md border border-slate-300 bg-white font-mono font-semibold tracking-wider text-slate-900 shadow-[0_1px_0_rgba(15,27,51,0.06)] ${grand ? "text-[15px]" : "text-[12px]"}`}>
+      <span aria-hidden="true" className={`flex items-end justify-center bg-[#1E4FD8] font-sans font-bold text-white ${grand ? "w-4 pb-0.5 text-[10px]" : "w-3.5 pb-px text-[8px]"}`}>
+        F
+      </span>
+      <span className={grand ? "px-2 py-1" : "px-1.5 py-0.5"}>{afficherImmatriculation(valeur)}</span>
+    </span>
+  );
+}
+
+const TONS = {
+  ok: "bg-emerald-50 text-emerald-800 ring-emerald-600/20",
+  proche: "bg-amber-50 text-amber-900 ring-amber-600/25",
+  depasse: "bg-red-50 text-red-800 ring-red-600/20",
+  neutre: "bg-slate-100 text-slate-700 ring-slate-500/15",
+};
+
+export function Pastille({ ton = "neutre", children }) {
+  return (
+    <span className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${TONS[ton] ?? TONS.neutre}`}>
+      {children}
+    </span>
+  );
+}
+
+export function Alerte({ children, ton = "erreur", action }) {
+  const couleurs = ton === "erreur" ? "border-red-200 bg-red-50 text-red-900" : "border-emerald-200 bg-emerald-50 text-emerald-900";
+  return (
+    <div role={ton === "erreur" ? "alert" : "status"} className={`flex items-start gap-2.5 rounded-xl border px-3.5 py-3 text-sm ${couleurs}`}>
+      {ton === "erreur" ? <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" /> : null}
+      <div className="min-w-0 flex-1">
+        <p className="leading-snug">{children}</p>
+        {action ? <div className="mt-2">{action}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+export function Chargement({ texte = "Chargement…" }) {
+  return (
+    <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground" role="status">
+      <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
+      {texte}
+    </div>
+  );
+}
+
+// Un squelette qui a la forme de ce qu'il annonce : des cartes de voiture.
+export function SqueletteVehicules() {
+  return (
+    <div className="space-y-3" aria-hidden="true">
+      {[0, 1].map((i) => (
+        <div key={i} className={`${carte} animate-pulse`}>
+          <div className="h-5 w-40 rounded bg-muted" />
+          <div className="mt-3 h-4 w-24 rounded bg-muted" />
+          <div className="mt-4 flex gap-2">
+            <div className="h-6 w-28 rounded-full bg-muted" />
+            <div className="h-6 w-24 rounded-full bg-muted" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
