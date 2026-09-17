@@ -340,7 +340,7 @@ function Resume({ elements }) {
 // Les gestes, dits en toutes lettres — et seulement ceux qui servent.
 function Acces({ etat, vehicule, kmFrais }) {
   const gestes = [
-    { href: `/auto/factures/nouvelle?vehicule=${vehicule.id}`, icone: ReceiptText, titre: "Ajouter une facture", texte: "En PDF : Nexora propose l'intervention, vous vérifiez." },
+    { href: `/auto/factures/nouvelle?vehicule=${vehicule.id}`, icone: ReceiptText, titre: "Ajouter un document", texte: "Facture, procès-verbal, carte grise. Une facture PDF est lue automatiquement." },
     // Un compteur relevé cette semaine n'a pas à être redemandé.
     ...(kmFrais ? [] : [{ href: `/auto/vehicules/${vehicule.id}?action=releve`, icone: Gauge, titre: "Mettre à jour le kilométrage", texte: "Ce qui rend les échéances au compteur justes." }]),
     { href: `/auto/vehicules/${vehicule.id}?action=intervention`, icone: Wrench, titre: "Enregistrer une révision", texte: "Ou toute autre intervention déjà réalisée." },

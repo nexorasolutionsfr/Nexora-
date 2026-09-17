@@ -770,3 +770,54 @@ suivi d'entretien ? » — restait au second plan.
 Recette : 187 tests, `lint:auto` sans avertissement, `next build` réussi,
 audits d'écrans (320/375/390 px) et de texte agrandi (150 %/200 %) sans défaut
 sur l'accueil, « À prévoir » et la fiche.
+
+## Lot B — une entrée commune pour les documents (18 septembre 2026)
+
+**Trois défauts, un seul parcours.**
+
+**1. Deux portes pour la même chose.** « Ajouter une facture » et « Autre
+document » ouvraient deux écrans différents — et le second proposait
+« Facture » comme type par défaut. Il fallait deviner le classement interne
+avant même d'avoir ouvert le fichier. Il n'y a plus qu'une entrée,
+**« Ajouter un document »**, qui accepte tout et reconnaît ce qu'elle peut :
+une facture PDF est lue et préremplie, le reste est simplement rangé. Le
+formulaire direct ne subsiste que pour joindre un justificatif à une
+intervention précise, et pour une voiture archivée — deux cas où le contexte
+est déjà connu.
+
+**2. Deux limites qui ne se parlaient pas.** Le dépôt accepte **10 Mo** ; la
+lecture automatique s'arrête à **5 Mo et 4 pages** — et on ne l'apprenait
+qu'**après** avoir envoyé le fichier. `phraseLimites` construit désormais
+l'annonce à partir des constantes réelles, avant le dépôt :
+
+> PDF ou photo, 10 Mo au plus. Le fichier reste privé. Nexora lit les PDF de
+> moins de 5 Mo, 4 pages au plus ; au-delà, le document est conservé et vous
+> renseignez les informations.
+
+Si la lecture automatique est coupée, la phrase ne promet rien : elle s'arrête
+à la limite du dépôt.
+
+**3. Une confirmation qui n'annonçait pas ses effets.** L'écran de
+vérification demandait d'enregistrer sans dire ce que cela changerait.
+`effetsEnregistrement` (pur, testé) énonce les conséquences avant le clic :
+
+> **En enregistrant**
+> Une intervention « Révision » du 2 sept. 2026 entre dans l'historique de votre Opel Corsa.
+> 335,00 € s'ajoutent à vos dépenses, comptés une seule fois.
+> Le compteur est enregistré à 84 500 km, à la date de l'intervention.
+> Le document est rangé et rattaché à cette intervention : il en devient le justificatif.
+
+Rien n'est annoncé qui n'arrivera pas : sans montant ni compteur, ces deux
+lignes disparaissent ; en mode document, une seule phrase dit ce qui **ne** se
+passera pas.
+
+**Piège rencontré**, corrigé avant livraison : `typePrincipal` attend des
+opérations, pas la saisie entière. L'écran de vérification plantait
+(`operations.map is not a function`) — visible seulement au navigateur, pas au
+lint ni aux tests. Le récapitulatif nomme désormais le type retenu
+(`saisie.type`), avec repli sur le calcul depuis les opérations.
+
+Recette : 189 tests, `lint:auto` sans avertissement, `next build` réussi,
+parcours dégradés **32/32** (dépôt, doublons, lectures en échec, import
+abandonné), audits d'écrans et de texte agrandi sans défaut sur l'entrée et la
+vérification.
