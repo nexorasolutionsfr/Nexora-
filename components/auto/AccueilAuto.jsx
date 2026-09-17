@@ -3,9 +3,12 @@
 // Accueil de Nexora Auto. Sans session : ce que fait l'app, et une seule
 // action — ajouter sa voiture. Avec session : « Aujourd'hui ».
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CalendarClock, Car, History, LayoutGrid, Plus, ReceiptText, Gauge } from "lucide-react";
 
+import { adresseSansErreurAuth, decisionFragment } from "@/components/connexion/lienConfirmation";
 import Aujourdhui from "@/components/auto/Aujourdhui";
 import {
   PageAuto,
@@ -20,8 +23,27 @@ import { useModeAcces } from "@/components/auto/acces";
 
 export default function AccueilAuto() {
   const session = useSessionAuto();
+  useFragmentDeConfirmation(session);
   if (session === null) return <Bienvenue />;
   return <Aujourdhui session={session} />;
+}
+
+// Un lien de confirmation périmé ramène ici (c'est l'adresse de retour de
+// l'inscription), avec « #error=access_denied&error_code=otp_expired ».
+// Sans session, cet accueil dirait « Ajoutez votre voiture » sans expliquer
+// que le lien est mort : on renvoie vers l'écran de connexion, qui le dit et
+// propose un nouvel e-mail. Avec une session, on retire l'erreur périmée de
+// la barre d'adresse, sans rien dire. Décisions et cas limites :
+// components/connexion/lienConfirmation.js (pur et testé).
+function useFragmentDeConfirmation(session) {
+  const router = useRouter();
+  useEffect(() => {
+    if (session === undefined) return;
+    const fragment = window.location.hash;
+    const decision = decisionFragment({ fragment, session });
+    if (decision === "expliquer") router.replace(`/auto/connexion${fragment}`);
+    else if (decision === "nettoyer") window.history.replaceState(null, "", adresseSansErreurAuth(window.location.href));
+  }, [session, router]);
 }
 
 function Bienvenue() {
