@@ -579,7 +579,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
 function PremiersPas({ vehicule, kilometrageConnu, onAction, onMasquer }) {
   const gestes = [
     { cle: "facture", icone: ReceiptText, titre: "Ajouter une facture", texte: "En PDF, Nexora essaie de préremplir l'intervention, le kilométrage et la dépense.", href: `/auto/factures/nouvelle?vehicule=${vehicule.id}` },
-    kilometrageConnu ? null : { cle: "releve", icone: Gauge, titre: "Indiquer le kilométrage", texte: "Pour suivre l'entretien au compteur." },
+    kilometrageConnu ? null : { cle: "releve", icone: Gauge, titre: "Mettre à jour le kilométrage", texte: "Pour suivre l'entretien au compteur." },
     vehicule.date_mise_en_circulation ? null : { cle: "mise_en_circulation", icone: CalendarClock, titre: "Ajouter la mise en circulation", texte: "Case B de la carte grise : Nexora calcule le contrôle technique." },
   ].filter(Boolean);
   const classeGeste = "flex w-full items-center gap-3 rounded-xl px-2 py-2.5 text-left transition hover:bg-muted";

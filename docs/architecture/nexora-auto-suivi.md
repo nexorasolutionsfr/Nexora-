@@ -614,3 +614,33 @@ est en ligne en **mode bêta**, ouvert aux adresses invitées.
   Supabase a accepté l'envoi, et l'adresse de retour `/auto` est autorisée.
 
 Détail complet des contrôles : `nexora-auto-livraison.md`, section 6.
+
+## Parcours dégradés (nuit du 17 au 18 septembre 2026)
+
+Le produit est en ligne : il doit tenir debout quand tout ne se passe pas bien.
+Banc rejouable `scripts/recette/parcours-degrades.mjs` (Test seulement),
+**32 contrôles**, compte fictif et fichiers supprimés à la fin.
+
+**Ce qui est éprouvé, et qui tient :**
+
+| Famille | Contrôles |
+| --- | --- |
+| Voiture | création avec la marque et le modèle seulement ; modification ; voiture principale changée par `auto_definir_principal` ; **deux principales à la fois refusées par la base** ; archivage qui retire la qualité de principale ; restauration avec le dossier intact ; adresse d'une voiture supprimée : introuvable, sans erreur brute |
+| Stockage | fichier de plus de 10 Mo refusé ; type non prévu refusé ; **dépôt dans le dossier de quelqu'un d'autre refusé par les règles de la base** |
+| Lecture | PDF illisible : la lecture le dit, **le document et le fichier restent récupérables** ; document sans rapport : rien n'est inventé ; photo : la lecture ne la prétend pas lue, le document est gardé |
+| Doublons de fichier | même fichier redéposé sur la même voiture : refusé (index unique sur l'empreinte), et l'existant se retrouve par son empreinte — ce que fait l'écran ; le même fichier sur une **autre** voiture reste possible |
+| Facture | proposition rendue avec le montant et le kilométrage lus et les deux opérations ; import abandonné : le document reste, sans intervention ; facture à deux opérations : **montant compté une seule fois** ; correction après enregistrement : dépenses actualisées ; une facture ancienne ne remplace pas un relevé récent |
+
+**Cinq « échecs » du premier passage étaient des erreurs du banc, pas du
+produit** — et c'est instructif : un `update principal = true` direct heurte
+l'index unique, un `update archive_le` direct heurte la contrainte
+« une principale n'est pas archivée », et un fichier redéposé heurte l'index
+d'empreinte. Autrement dit, **la base refuse d'elle-même ce que seule la bonne
+fonction sait faire proprement**. Le banc a été corrigé pour passer par
+`auto_definir_principal` et `auto_archiver_vehicule`, et pour attendre ces
+refus.
+
+Rappel des règles déjà tenues par les tests unitaires, non redites ici : une
+vidange ne relance pas le suivi de la révision, le kilométrage retenu est le
+plus récent, et l'estimation est suspendue quand deux compteurs se
+contredisent.

@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Archive, Car, ChevronDown, ChevronRight, Plus, Star } from "lucide-react";
 
 import { dernierKilometrage } from "@/lib/auto/echeances";
@@ -14,6 +15,7 @@ import { chargerDossiers } from "@/components/auto/dossiers";
 import {
   Alerte,
   PageAuto,
+  deconnexionVolontaire,
   Pastille,
   Plaque,
   SqueletteVehicules,
@@ -26,6 +28,14 @@ import { ENERGIES, TYPES_INTERVENTION, formaterDate, formaterKm, libelleDe } fro
 
 export default function MonGarage() {
   const session = useSessionAuto();
+  const router = useRouter();
+
+  // Session expirée : on ramène à la connexion, qui reprendra ici. Départ
+  // voulu : on reste sur un écran qui invite à revenir, sans rien réclamer.
+  useEffect(() => {
+    if (session === null && !deconnexionVolontaire()) router.replace("/auto/connexion?suite=/auto/garage");
+  }, [session, router]);
+
   return (
     <PageAuto session={session}>
       {session === undefined ? <SqueletteVehicules /> : session === null ? <ARejoindre /> : <MesVehicules />}
@@ -74,7 +84,7 @@ function MesVehicules() {
       <div className="mb-5 flex items-end justify-between gap-3">
         <h1 className="font-display text-[28px] font-bold tracking-tight text-foreground">Mon garage</h1>
         {actives.length > 0 ? (
-          <Link href="/auto/vehicules/nouveau" aria-label="Ajouter une voiture" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90">
+          <Link href="/auto/vehicules/nouveau" aria-label="Ajouter ma voiture" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90">
             <Plus className="size-4" aria-hidden="true" />
             Voiture
           </Link>
@@ -91,7 +101,7 @@ function MesVehicules() {
             </button>
           }
         >
-          Impossible de charger vos véhicules. Vérifiez votre connexion.
+          Impossible de charger vos voitures. Vérifiez votre connexion.
         </Alerte>
       ) : actives.length === 0 ? (
         <VoitureAAjouter />

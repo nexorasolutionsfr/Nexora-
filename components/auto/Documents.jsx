@@ -173,7 +173,10 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
                     </span>
                   ) : null}
                 </button>
-                <div className="ml-auto flex shrink-0 items-center self-center">
+                {/* Texte agrandi : « Vérifier »/« Compléter » grandit avec lui.
+                    Le groupe d'actions passe alors à la ligne au lieu de sortir
+                    de la carte (qui masque ce qui dépasse). */}
+                <div className="ml-auto flex flex-wrap items-center gap-y-1 self-center">
                   {aConfirmer && !archive ? (
                     <Link href={`/auto/factures/${d.id}`} className="inline-flex min-h-10 items-center rounded-lg px-2 text-sm font-semibold text-primary hover:bg-secondary">
                       {d.proposition != null ? "Vérifier" : "Compléter"}
