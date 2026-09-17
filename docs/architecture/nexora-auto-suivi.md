@@ -33,7 +33,8 @@ Il est mis à jour à chaque lot. Le contrat détaillé de chaque lot reste dans
 | G — première utilisation | `auto/lot-g-premiere-utilisation` | `auto/lot-f-recette-globale` | [#116](https://github.com/nexorasolutionsfr/Nexora-/pull/116) | fait sur Test |
 | H — import plus fluide | `auto/lot-h-import-fluide` | `auto/lot-g-premiere-utilisation` | [#117](https://github.com/nexorasolutionsfr/Nexora-/pull/117) | fait sur Test, migration `20260922001000` appliquée sur Test |
 | I — mobile et accessibilité | `auto/lot-i-mobile-accessibilite` | `auto/lot-h-import-fluide` | [#118](https://github.com/nexorasolutionsfr/Nexora-/pull/118) | fait sur Test, sans migration |
-| J — kilométrage et rappels | `auto/lot-j-kilometrage-rappels` | `auto/lot-i-mobile-accessibilite` | à ouvrir | fait sur Test, sans migration |
+| J — kilométrage et rappels | `auto/lot-j-kilometrage-rappels` | `auto/lot-i-mobile-accessibilite` | [#119](https://github.com/nexorasolutionsfr/Nexora-/pull/119) | fait sur Test, sans migration |
+| K — maîtrise du dossier | `auto/lot-k-maitrise-dossier` | `auto/lot-j-kilometrage-rappels` | à ouvrir | fait sur Test, sans migration |
 
 ## Recette globale — constats
 
@@ -67,6 +68,11 @@ boutons sans nom, champs sans libellé, cibles tactiles), et situations limites.
 | R22 | Contrôle technique dépassé : « Me le rappeler plus tard » le retire de l'accueil | **corrigé** (lot J) : non reportable, en tête |
 | R23 | « Pensez à actualiser le kilométrage » affiché même quand il ne sert à rien | **corrigé** (lot J) |
 | R24 | Tâches terminées : seules les 10 dernières sont retrouvables | **corrigé** (lot J) |
+| R25 | Un document ne se renomme, ne se reclasse ni ne se détache : seulement supprimer et redéposer | **corrigé** (lot K) |
+| R26 | Suppressions : les conséquences (dépense, justificatifs, fichiers) ne sont pas dites | **corrigé** (lot K) |
+| R27 | Supprimer une voiture laisse les fichiers déposés depuis un autre appareil et ses rappels reportés | **corrigé** (lot K) |
+| R28 | Pas de moyen de garder ou transmettre le dossier d'une voiture | **corrigé** (lot K) : export imprimable et tableau |
+| R29 | Boutons « Enregistrer / Annuler » hors de l'écran en texte agrandi | **corrigé** (lot K) |
 
 Vérifié sans défaut : aucune page ne déborde à 320 px ; écrans sans voiture
 (chacun propose d'ajouter une voiture) ; session expirée au chargement
@@ -289,4 +295,69 @@ dérangent qu'à bon escient.
 - Le seuil de 1 500 km par jour est une borne de bon sens, pas une règle officielle.
 - La révision reste suivie selon l'intervalle recopié par la personne, jamais selon une préconisation constructeur.
 - Les rappels hors de l'application (e-mail, notification) restent préparés et non branchés.
+
+## Lot K — maîtrise du dossier personnel
+
+**Objectif.** La personne garde la main sur ce qu'elle a déposé : elle corrige,
+détache, comprend ce qu'une suppression emporte, et peut emporter son
+dossier.
+
+**Existant vérifié.**
+- Les droits de la base permettent déjà à la personne de modifier ses documents : la cohérence voiture, chemin et intervention est contrôlée par un déclencheur.
+- Une intervention supprimée laisse ses documents détachés (`on delete set null`).
+- Supprimer une voiture efface en cascade historique, relevés, documents et tâches, mais pas les rappels reportés (clé textuelle).
+- Archivage et voiture principale passent par des fonctions en base.
+
+**Fait.**
+- **Modifier un document** (crayon sur chaque document saisi par la personne) : titre, type, date, et intervention justifiée.
+  - Choisir « Aucune » détache le document : l'intervention reste, avec sa dépense, et le formulaire le dit avant d'enregistrer.
+  - Une facture détachée redevient « à vérifier » ; la reconfirmer propose de la rattacher (règle du lot E, rien n'est dupliqué).
+  - Un titre choisi n'est plus remplacé par le titre automatique.
+- **Conséquences dites avant de supprimer.**
+  - Document : fichier effacé ; l'intervention justifiée reste, avec sa dépense.
+  - Intervention : sa dépense ne compte plus ; ses justificatifs restent, et une facture redevient « à vérifier ».
+  - Voiture : nombre d'interventions, de relevés, de documents et de fichiers effacés, caractère irréversible, conseil d'exporter avant ou d'archiver.
+- **Pas de fichier orphelin.**
+  - Supprimer une voiture vide tout son dossier du stockage, y compris les fichiers qu'un autre appareil aurait ajoutés, puis retire ses rappels reportés.
+  - Supprimer un document réessaie une fois le retrait du fichier.
+  - Relevé de contrôle en lecture seule : `supabase/tests/auto_fichiers_orphelins.sql`.
+- **Exporter le dossier** (« Exporter » sur la fiche, page `/auto/vehicules/<id>/dossier`, `lib/auto/export.js`).
+  - Contenu : voiture, interventions avec provenance et opérations, kilométrages avec source, dépenses déclarées, liste des documents.
+  - En-tête : « ni un certificat, ni un historique vérifié ».
+  - « Imprimer ou enregistrer en PDF » : l'en-tête de l'application et les boutons ne s'impriment pas.
+  - « Tableau (CSV) » : séparateur « ; », marque UTF-8, formules neutralisées.
+  - Tout est préparé dans le navigateur ; aucun fichier ni lien de document n'est inclus.
+- **Texte agrandi** : les rangées « Enregistrer / Annuler » passent à la ligne.
+
+**Vérifié.**
+- 141 tests node (export : contenu, provenance, absence de chemins, CSV, nom de fichier).
+- Navigateur (compte fictif) :
+  - facture renommée et détachée : l'intervention reste, la facture passe « à vérifier » ;
+  - document reclassé en procès-verbal et rattaché au contrôle ; facture rattachée de nouveau ;
+  - textes de confirmation exacts pour l'intervention et le document ;
+  - export : page, tableau (formule neutralisée), impression en PDF contrôlée (2 pages, sans en-tête ni boutons) ;
+  - voiture jetable supprimée : 0 fichier restant, y compris un fichier non chargé à l'écran, et 0 rappel reporté ;
+  - archivage de la voiture principale : l'autre devient principale, plus rien dans « À prévoir » ; export d'une voiture archivée ; restauration puis « Définir comme principale ».
+- Audits 320/375/390 px et texte agrandi (export, fiche, modification de document, relevé) : aucun défaut.
+- Fichiers orphelins sur Test après recette : 0 dans un sens comme dans l'autre.
+- Données fictives retirées.
+
+**Suppression du compte : décisions à prendre (rien n'est supprimé aujourd'hui).**
+
+Nexora Auto n'a pas encore de suppression de compte. À trancher avant la
+production :
+
+1. **Parcours.** Demande depuis l'application, confirmation par le mot de passe ou par un lien e-mail, délai de rétractation (par exemple 7 jours) ou effet immédiat.
+2. **Ce qui est effacé.**
+   - Voitures, historique, relevés, documents, tâches, rappels reportés et préférences : cascade déjà en place.
+   - Fichiers du stockage : à vider par le serveur, dossier `<compte>/`.
+   - Compte d'authentification : API d'administration, côté serveur seulement.
+3. **Ce qui est conservé.** Le journal des lectures (`auto_lectures`) garde ses lignes sans lien personnel (`proprietaire_id` passe à null) pour le suivi des coûts. À confirmer, ou à effacer aussi.
+4. **Export proposé avant la suppression.** L'export du lot K suffit pour une voiture ; un export de toutes les voitures est à ajouter si besoin.
+5. **Obligations.** Durée de conservation annoncée dans la politique de confidentialité ; traces techniques (journaux Supabase, sauvegardes : effacement effectif à l'expiration des sauvegardes) ; réponse à une demande d'effacement dans le délai d'un mois (RGPD, articles 12 et 17).
+6. **Relation avec Nexora Pro.** Un même e-mail peut avoir un compte garage. La suppression du compte Auto ne doit pas toucher un espace garage : règle à écrire avant d'implémenter.
+
+**Limites.**
+- L'export ne couvre qu'une voiture à la fois et n'inclut pas les échéances calculées : elles changent avec le temps et seraient trompeuses une fois imprimées.
+- Les rappels hors application n'existent pas encore : rien à nettoyer de ce côté.
 

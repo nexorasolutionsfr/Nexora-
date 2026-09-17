@@ -21,6 +21,7 @@ import {
   ClipboardCheck,
   Disc,
   Droplet,
+  FileDown,
   Gauge,
   History,
   LayoutGrid,
@@ -369,6 +370,10 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
                 Archiver
               </button>
             )}
+            <Link href={`/auto/vehicules/${vehicule.id}/dossier`} className={boutonLien}>
+              <FileDown className="size-4" aria-hidden="true" />
+              Exporter
+            </Link>
           </div>
           {etat.erreurAction ? (
             <div className="mt-2">
@@ -562,7 +567,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
         onChange={apresEnregistrement}
       />
 
-      <ZoneSuppression vehicule={vehicule} documents={documents} />
+      <ZoneSuppression vehicule={vehicule} proprietaireId={session.user.id} historique={historique} releves={releves} documents={documents} />
     </PageAuto>
   );
 }
@@ -725,12 +730,12 @@ function FormulaireProcesVerbal({ controle, onAnnuler, onEnregistre }) {
 
 function BoutonsFormulaire({ enCours, libelle = "Enregistrer", onAnnuler }) {
   return (
-    <div className="flex gap-2 pt-1">
-      <button type="submit" disabled={enCours} className={`${boutonPrincipal} h-11 flex-1`}>
+    <div className="flex flex-wrap gap-2 pt-1">
+      <button type="submit" disabled={enCours} className={`${boutonPrincipal} h-11 min-w-[min(10rem,100%)] flex-1`}>
         {enCours ? <LoaderCircle className="size-5 animate-spin" aria-hidden="true" /> : null}
         {libelle}
       </button>
-      <button type="button" onClick={onAnnuler} disabled={enCours} className={`${boutonSecondaire} h-11 w-auto px-4`}>
+      <button type="button" onClick={onAnnuler} disabled={enCours} className={`${boutonSecondaire} h-11 w-auto flex-auto px-4`}>
         Annuler
       </button>
     </div>
@@ -1214,7 +1219,14 @@ function ListeHistorique({ vehiculeId, historique, releves = [], documents = [],
 
   async function supprimer(ligne) {
     const libelle = libelleDe(TYPES_INTERVENTION, ligne.type);
-    if (!window.confirm(`Supprimer « ${libelle} » du ${formaterDate(ligne.realise_le)} ?`)) return;
+    const justificatifs = documents.filter((d) => d.historique_id === ligne.id);
+    const consequences = [
+      ligne.montant_ttc != null ? "Sa dépense ne sera plus comptée." : null,
+      justificatifs.length
+        ? `${justificatifs.length > 1 ? `Ses ${justificatifs.length} justificatifs restent` : "Son justificatif reste"} dans les documents${justificatifs.some((d) => d.type === "facture") ? " ; une facture redevient « à vérifier »" : ""}.`
+        : null,
+    ].filter(Boolean);
+    if (!window.confirm(`Supprimer « ${libelle} » du ${formaterDate(ligne.realise_le)} ?${consequences.length ? ` ${consequences.join(" ")}` : ""}`)) return;
     setErreur("");
     setSuppression(ligne.id);
     const { data, error } = await supabase.from("auto_historique").delete().eq("id", ligne.id).select("id");
@@ -1347,23 +1359,41 @@ function ListeHistorique({ vehiculeId, historique, releves = [], documents = [],
   );
 }
 
-function ZoneSuppression({ vehicule, documents = [] }) {
+const compte = (n, singulier, pluriel) => `${n} ${n > 1 ? pluriel : singulier}`;
+
+function ZoneSuppression({ vehicule, proprietaireId, historique = [], releves = [], documents = [] }) {
   const router = useRouter();
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState("");
 
   async function supprimer() {
-    if (!window.confirm(`Supprimer définitivement ${vehicule.marque} ${vehicule.modele}, son historique et ses documents ? Pour la retirer en gardant son dossier, archivez-la plutôt.`)) return;
+    const contenu = [
+      historique.length ? compte(historique.length, "intervention", "interventions") : null,
+      releves.length ? compte(releves.length, "relevé de kilométrage", "relevés de kilométrage") : null,
+      documents.length ? `${compte(documents.length, "document", "documents")} et ${documents.length > 1 ? "leurs fichiers" : "son fichier"}` : null,
+    ].filter(Boolean);
+    const detail = contenu.length ? `Cela efface aussi ${contenu.join(", ")}, ainsi que ses tâches.` : "Son dossier est vide.";
+    if (!window.confirm(`Supprimer définitivement ${vehicule.marque} ${vehicule.modele} ? ${detail} C'est irréversible : exportez son dossier avant si besoin. Pour la retirer en gardant tout, archivez-la plutôt.`)) return;
     setEnCours(true);
     setErreur("");
     const { data, error } = await supabase.from("auto_vehicules").delete().eq("id", vehicule.id).select("id");
-    setEnCours(false);
     if (error || !data?.length) {
+      setEnCours(false);
       setErreur("La suppression n'a pas abouti. Réessayez.");
       return;
     }
-    // Les fiches sont parties avec la voiture : les fichiers suivent.
-    if (documents.length) await supabase.storage.from(COMPARTIMENT).remove(documents.map((d) => d.chemin));
+    // Les fiches sont parties avec la voiture : tous les fichiers de son
+    // dossier suivent, y compris ceux ajoutés depuis un autre appareil.
+    const dossier = `${proprietaireId}/${vehicule.id}`;
+    for (let essai = 0; essai < 20; essai += 1) {
+      const { data: fichiers, error: erreurListe } = await supabase.storage.from(COMPARTIMENT).list(dossier, { limit: 100 });
+      if (erreurListe || !fichiers?.length) break;
+      const { error: erreurRetrait } = await supabase.storage.from(COMPARTIMENT).remove(fichiers.map((f) => `${dossier}/${f.name}`));
+      if (erreurRetrait) break;
+    }
+    // Les rappels reportés de cette voiture n'ont plus d'objet.
+    await supabase.from("auto_rappels_reports").delete().like("cle", `%:${vehicule.id}:%`);
+    setEnCours(false);
     router.replace("/auto");
   }
 

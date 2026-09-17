@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ExternalLink, FileImage, FileText, LoaderCircle, Paperclip, ReceiptText, ScanText, Trash2, Upload } from "lucide-react";
+import { ExternalLink, FileImage, FileText, LoaderCircle, Paperclip, Pencil, ReceiptText, ScanText, Trash2, Upload } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { aujourdhuiIso } from "@/lib/auto/echeances";
@@ -47,6 +47,7 @@ export function libelleIntervention(ligne) {
 export default function BlocDocuments({ vehiculeId, proprietaireId, documents, historique, formulaireOuvert, historiquePrechoisi, onOuvrir, onFermer, onChange, archive = false }) {
   const [erreur, setErreur] = useState("");
   const [enCours, setEnCours] = useState(null);
+  const [edition, setEdition] = useState(null);
 
   async function ouvrir(document) {
     setErreur("");
@@ -55,7 +56,11 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
   }
 
   async function supprimer(document) {
-    if (!window.confirm(`Supprimer « ${document.titre || document.nom_fichier} » ?`)) return;
+    const lie = document.historique_id ? parId.get(document.historique_id) : null;
+    const consequence = lie
+      ? `Le fichier est effacé définitivement. L'intervention « ${libelleIntervention(lie)} » reste dans l'historique, avec sa dépense.`
+      : "Le fichier est effacé définitivement.";
+    if (!window.confirm(`Supprimer « ${document.titre || libelleDe(TYPES_DOCUMENT, document.type)} » ? ${consequence}`)) return;
     setErreur("");
     setEnCours(document.id);
     const { data, error } = await supabase.from("auto_documents").delete().eq("id", document.id).select("id");
@@ -64,9 +69,10 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
       setErreur("La suppression n'a pas abouti. Réessayez.");
       return;
     }
-    // La fiche est partie : le fichier suit. Un échec ici ne laisse qu'un
-    // fichier orphelin, invisible, jamais une fiche sans fichier.
-    await supabase.storage.from(COMPARTIMENT).remove([document.chemin]);
+    // La fiche est partie : le fichier suit (deux essais). Un échec ici ne
+    // laisse qu'un fichier orphelin, invisible, jamais une fiche sans fichier.
+    const retrait = await supabase.storage.from(COMPARTIMENT).remove([document.chemin]);
+    if (retrait.error) await supabase.storage.from(COMPARTIMENT).remove([document.chemin]);
     setEnCours(null);
     onChange("Document supprimé.");
   }
@@ -127,6 +133,21 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
             const lie = d.historique_id ? parId.get(d.historique_id) : null;
             // Une facture conservée dont l'intervention n'est pas encore confirmée.
             const aConfirmer = d.type === "facture" && !d.historique_id && d.source === "proprietaire";
+            if (edition === d.id) {
+              return (
+                <li key={d.id} className="px-4 py-3.5">
+                  <FormulaireModifierDocument
+                    document={d}
+                    historique={historique}
+                    onAnnuler={() => setEdition(null)}
+                    onEnregistre={(texte) => {
+                      setEdition(null);
+                      onChange(texte);
+                    }}
+                  />
+                </li>
+              );
+            }
             return (
               <li key={d.id} className="flex flex-wrap items-start gap-x-3 gap-y-1 px-4 py-3.5">
                 <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground/70 ${iconeLigne}`}>
@@ -161,6 +182,19 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
                   {d.source === "proprietaire" ? (
                     <button
                       type="button"
+                      onClick={() => {
+                        setErreur("");
+                        setEdition(d.id);
+                      }}
+                      className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                      aria-label={`Modifier ${d.titre || libelleDe(TYPES_DOCUMENT, d.type)}`}
+                    >
+                      <Pencil className="size-4" aria-hidden="true" />
+                    </button>
+                  ) : null}
+                  {d.source === "proprietaire" ? (
+                    <button
+                      type="button"
                       onClick={() => supprimer(d)}
                       disabled={enCours === d.id}
                       className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-red-50 hover:text-destructive"
@@ -176,6 +210,97 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
         </ul>
       )}
     </section>
+  );
+}
+
+// Renommer, reclasser, dater un document, et choisir l'intervention qu'il
+// justifie. Le détacher ne supprime jamais l'intervention : elle reste dans
+// l'historique, avec sa dépense.
+function FormulaireModifierDocument({ document, historique, onAnnuler, onEnregistre }) {
+  const aujourdhui = aujourdhuiIso();
+  const [saisie, setSaisie] = useState({ titre: document.titre ?? "", type: document.type, dateDocument: document.date_document?.slice(0, 10) ?? "", historiqueId: document.historique_id ?? "" });
+  const [erreur, setErreur] = useState("");
+  const [enCours, setEnCours] = useState(false);
+  const changer = (nom) => (e) => setSaisie((s) => ({ ...s, [nom]: e.target.value }));
+  const prefixe = `document-${document.id}`;
+  const lieAvant = historique.find((h) => h.id === document.historique_id);
+  const detache = Boolean(lieAvant) && saisie.historiqueId !== lieAvant.id;
+
+  async function soumettre(evenement) {
+    evenement.preventDefault();
+    setErreur("");
+    if (saisie.dateDocument && saisie.dateDocument > aujourdhui) return setErreur("La date ne peut pas être dans le futur.");
+    setEnCours(true);
+    const { data, error } = await supabase
+      .from("auto_documents")
+      .update({ titre: saisie.titre.trim().slice(0, 120) || null, type: saisie.type, date_document: saisie.dateDocument || null, historique_id: saisie.historiqueId || null })
+      .eq("id", document.id)
+      .select("id");
+    setEnCours(false);
+    if (error) return setErreur(messageErreurAuto(error));
+    if (!data?.length) return setErreur("Ce document n'a pas pu être modifié. Rechargez la page, puis réessayez.");
+    onEnregistre(detache && !saisie.historiqueId ? "Document détaché. L'intervention reste dans l'historique." : "Document modifié.");
+  }
+
+  return (
+    <form onSubmit={soumettre} noValidate className="space-y-3">
+      <p className="font-semibold text-foreground">Modifier le document</p>
+      <p className="-mt-2 break-words text-[13px] text-muted-foreground">Fichier : {document.nom_fichier}</p>
+      <div>
+        <label htmlFor={`${prefixe}-titre`} className={etiquette}>
+          Titre <span className="font-normal text-muted-foreground">(facultatif)</span>
+        </label>
+        <input id={`${prefixe}-titre`} value={saisie.titre} onChange={changer("titre")} maxLength={120} className={champ} placeholder={libelleDe(TYPES_DOCUMENT, saisie.type)} />
+      </div>
+      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
+        <div>
+          <label htmlFor={`${prefixe}-type`} className={etiquette}>
+            Type
+          </label>
+          <select id={`${prefixe}-type`} value={saisie.type} onChange={changer("type")} className={`${champ} appearance-none`}>
+            {TYPES_DOCUMENT.map((t) => (
+              <option key={t.valeur} value={t.valeur}>
+                {t.libelle}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor={`${prefixe}-date`} className={etiquette}>
+            Date <span className="font-normal text-muted-foreground">(facult.)</span>
+          </label>
+          <input id={`${prefixe}-date`} type="date" max={aujourdhui} value={saisie.dateDocument} onChange={changer("dateDocument")} className={champ} />
+        </div>
+      </div>
+      <div>
+        <label htmlFor={`${prefixe}-intervention`} className={etiquette}>
+          Justifie une intervention
+        </label>
+        <select id={`${prefixe}-intervention`} value={saisie.historiqueId} onChange={changer("historiqueId")} className={`${champ} appearance-none`}>
+          <option value="">Aucune</option>
+          {historique.map((h) => (
+            <option key={h.id} value={h.id}>
+              {libelleIntervention(h)}
+            </option>
+          ))}
+        </select>
+        {detache ? (
+          <p className="mt-1.5 text-[13px] text-amber-800">
+            {saisie.historiqueId ? "Le document justifiera une autre intervention." : "Le document ne justifiera plus d'intervention."} « {libelleIntervention(lieAvant)} » reste dans l'historique, avec sa dépense.
+          </p>
+        ) : null}
+      </div>
+      {erreur ? <Alerte>{erreur}</Alerte> : null}
+      <div className="flex flex-wrap gap-2 pt-1">
+        <button type="submit" disabled={enCours} className={`${boutonPrincipal} h-11 min-w-[min(10rem,100%)] flex-1`}>
+          {enCours ? <LoaderCircle className="size-5 animate-spin" aria-hidden="true" /> : null}
+          Enregistrer
+        </button>
+        <button type="button" onClick={onAnnuler} disabled={enCours} className={`${boutonSecondaire} h-11 w-auto flex-auto px-4`}>
+          Annuler
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -291,12 +416,12 @@ function FormulaireDocument({ vehiculeId, proprietaireId, historique, historique
         </div>
       ) : null}
       {erreur ? <Alerte>{erreur}</Alerte> : null}
-      <div className="flex gap-2 pt-1">
-        <button type="submit" disabled={enCours} className={`${boutonPrincipal} h-11 flex-1`}>
+      <div className="flex flex-wrap gap-2 pt-1">
+        <button type="submit" disabled={enCours} className={`${boutonPrincipal} h-11 min-w-[min(10rem,100%)] flex-1`}>
           {enCours ? <LoaderCircle className="size-5 animate-spin" aria-hidden="true" /> : null}
           Enregistrer
         </button>
-        <button type="button" onClick={onAnnuler} disabled={enCours} className={`${boutonSecondaire} h-11 w-auto px-4`}>
+        <button type="button" onClick={onAnnuler} disabled={enCours} className={`${boutonSecondaire} h-11 w-auto flex-auto px-4`}>
           Annuler
         </button>
       </div>

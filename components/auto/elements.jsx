@@ -114,7 +114,7 @@ export function EnteteAuto({ session }) {
   }
 
   return (
-    <header className="@container sticky top-0 z-20 border-b border-border/70 bg-background/85 backdrop-blur-md">
+    <header className="@container sticky top-0 z-20 print:hidden border-b border-border/70 bg-background/85 backdrop-blur-md">
       <div className="mx-auto flex min-h-14 w-full max-w-xl flex-wrap items-center justify-between gap-x-2 px-4">
         <Link href="/auto" className="flex shrink-0 items-center gap-2 rounded-lg">
           <Image src="/logo-nexora.png" alt="" width={240} height={116} className="h-8 w-8 object-contain" priority />

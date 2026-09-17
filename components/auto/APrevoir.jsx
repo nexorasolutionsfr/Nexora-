@@ -445,12 +445,12 @@ function FormulaireTache({ vehicules, vehiculeParDefaut, onAnnuler, onEnregistre
         <p className={aide}>Nexora n'ajoute jamais de tâche à votre place : pneus, freins ou batterie restent vos décisions.</p>
       </div>
       {erreur ? <Alerte>{erreur}</Alerte> : null}
-      <div className="flex gap-2 pt-1">
-        <button type="submit" disabled={enCours} className={`${boutonPrincipal} h-11 flex-1`}>
+      <div className="flex flex-wrap gap-2 pt-1">
+        <button type="submit" disabled={enCours} className={`${boutonPrincipal} h-11 min-w-[min(10rem,100%)] flex-1`}>
           {enCours ? <LoaderCircle className="size-5 animate-spin" aria-hidden="true" /> : null}
           Ajouter
         </button>
-        <button type="button" onClick={onAnnuler} disabled={enCours} className={`${boutonSecondaire} h-11 w-auto px-4`}>
+        <button type="button" onClick={onAnnuler} disabled={enCours} className={`${boutonSecondaire} h-11 w-auto flex-auto px-4`}>
           Annuler
         </button>
       </div>
