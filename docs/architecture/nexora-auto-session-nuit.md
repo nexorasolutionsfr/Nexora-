@@ -77,12 +77,16 @@ de Baptiste le prouvera en une fois.
 
 ## Checklist de la nuit
 
-- [x] **C — entretien accompagné** : les cinq situations (facture exploitable, dernière intervention connue, carnet, « je ne sais pas », « plus tard »), raccourcis génériques retirés.
-- [ ] **D — kilométrage** : relevés datés réutilisés, relevé réel ≠ estimation, règle de sollicitation explicable, saisie manuelle toujours accessible.
-- [ ] **E — services par besoin** : entrées « Entretenir ma voiture », « J'ai un problème », « Préparer mon contrôle technique », « Nettoyer ma voiture » ; boucles de navigation supprimées.
-- [ ] **F — qualité mobile** : hiérarchie, concision, détails progressifs, états de chargement et d'erreur.
-- [ ] **G — proactivité** : inventaire des rappels réels, déclencheur, report, annulation, recalcul, pas de promesse de canal externe.
-- [ ] **Recette finale** : les quatorze situations demandées, à 320 et 390 px, au clavier et en texte agrandi.
+- [x] **C — entretien accompagné** : les cinq situations, raccourcis génériques retirés.
+- [x] **D — kilométrage** : une seule règle de sollicitation, relevé ≠ estimation, saisie manuelle toujours accessible.
+- [x] **E — services par besoin** : quatre entrées, « J'ai un problème » guidé, boucle fiche→liste supprimée.
+- [x] **F — qualité mobile** : barre d'accès aux sections ; le reste vérifié plutôt que refait.
+- [x] **G — proactivité** : inventaire fait — Nexora n'envoie rien —, recalculs éprouvés.
+- [x] **Recette finale** : les quatorze situations, à 320/375/390 px et en texte agrandi.
+- [x] **Livraison** : PR #135 fusionnée, déployée, contrôlée en Production.
+
+**Point de reprise** : le chantier des lots A à G est terminé. Ce qui attend
+une décision figure ci-dessous, et rien d'autre n'est en cours.
 
 ## Ce qui reste hors de ma portée
 
