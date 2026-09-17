@@ -291,6 +291,13 @@ function CarteElement({ element, actions, aujourdhui }) {
         </span>
       </p>
 
+      {element.alerte ? (
+        <p className="mt-2 flex items-start gap-1.5 text-[13px] font-medium leading-snug text-red-800">
+          <CircleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+          {element.alerte}
+        </p>
+      ) : null}
+
       {element.reporteJusquau ? (
         <p className="mt-2 flex items-center gap-1.5 text-[13px] text-muted-foreground">
           <BellOff className="size-3.5" aria-hidden="true" />
@@ -322,7 +329,8 @@ function CarteElement({ element, actions, aujourdhui }) {
                 {a.libelle}
               </Link>
             ))}
-            {element.etat === "a_faire" && !element.reporteJusquau ? (
+            {/* Une échéance critique ne se reporte pas. */}
+            {element.etat === "a_faire" && !element.reporteJusquau && !element.critique ? (
               <button type="button" onClick={() => setReporter((v) => !v)} aria-expanded={reporter} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground">
                 Me le rappeler plus tard
               </button>

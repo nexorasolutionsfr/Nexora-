@@ -38,7 +38,8 @@ import {
 
 import { supabase } from "@/lib/supabase";
 import { RESULTATS_DEFAVORABLES, aujourdhuiIso, dernierKilometrage } from "@/lib/auto/echeances";
-import { estimerKilometrage } from "@/lib/auto/kilometrage";
+import { estimerKilometrage, lignesKilometrage } from "@/lib/auto/kilometrage";
+import { incoherencesKilometrage } from "@/lib/auto/factures";
 import { FONDEMENTS, elementControle, elementRevision, pastilleElement } from "@/components/auto/aPrevoir";
 import {
   Alerte,
@@ -90,11 +91,12 @@ const FORMULAIRE_PAR_ACTION = {
   proces_verbal: "proces_verbal",
   mise_en_circulation: "mise_en_circulation",
   intervalle: "intervalle",
+  verifier_kilometrage: "releves",
   // Depuis une fiche de service : compléter la voiture ou son historique.
   modifier: "modifier",
   intervention: "intervention",
 };
-const SECTION_PAR_ACTION = { releve: "kilometrage", revision: "echeance-revision", intervalle: "echeance-revision", modifier: "haut-fiche", intervention: "historique" };
+const SECTION_PAR_ACTION = { releve: "kilometrage", verifier_kilometrage: "kilometrage", revision: "echeance-revision", intervalle: "echeance-revision", modifier: "haut-fiche", intervention: "historique" };
 
 const ICONES = {
   revision: Wrench,
@@ -113,6 +115,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
   const [etat, setEtat] = useState({ chargement: true, erreur: false, introuvable: false, vehicule: null, releves: [], historique: [], documents: [] });
   const [ouvert, setOuvert] = useState(null);
   const [historiquePourDocument, setHistoriquePourDocument] = useState(null);
+  const [interventionEnCorrection, setInterventionEnCorrection] = useState(null);
   const [message, setMessage] = useState("");
   const [actionEnCours, setActionEnCours] = useState(false);
 
@@ -409,16 +412,50 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
                 rythme de vos relevés. Ce n'est pas un relevé.
               </p>
             ) : null}
-            {estimationKm.ancien ? <p className={aide}>Dernier compteur connu il y a {estimationKm.joursDepuis} jours : pensez à l'actualiser.</p> : null}
+            {/* Le compteur n'est demandé que s'il sert à suivre la révision. */}
+            {estimationKm.ancien && elementRev.demandeActualisation ? (
+              <p className={aide}>Dernier compteur connu il y a {estimationKm.joursDepuis} jours : actualisez-le pour suivre la révision.</p>
+            ) : null}
           </div>
         </div>
+        {estimationKm.aVerifier ? (
+          <div role="status" className="mt-3 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-3 text-[13px] text-amber-950">
+            <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <p>
+              <span className="font-semibold">Kilométrages à vérifier.</span> {estimationKm.incoherences.map((i) => phraseIncoherence(i)).join(" ")} Corrigez celui qui est faux : d'ici là, aucune estimation
+              n'est faite et la révision n'est pas suivie au compteur.
+            </p>
+          </div>
+        ) : null}
         {ouvert === "releve" ? (
-          <FormulaireReleve vehiculeId={vehicule.id} dernier={km} onAnnuler={() => setOuvert(null)} onEnregistre={() => apresEnregistrement("Kilométrage enregistré.")} />
+          <FormulaireReleve vehiculeId={vehicule.id} points={{ releves, historique }} onAnnuler={() => setOuvert(null)} onEnregistre={() => apresEnregistrement("Kilométrage enregistré.")} />
+        ) : ouvert === "releves" ? (
+          <ListeKilometrages
+            vehiculeId={vehicule.id}
+            releves={releves}
+            historique={historique}
+            incoherences={estimationKm.incoherences ?? []}
+            onFermer={() => setOuvert(null)}
+            onModifie={(texte) => apresEnregistrement(texte)}
+            onCorrigerIntervention={(historiqueId) => {
+              setOuvert(null);
+              setInterventionEnCorrection(historiqueId);
+              requestAnimationFrame(() => document.getElementById(`intervention-${historiqueId}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+            }}
+          />
         ) : (
-          <button type="button" onClick={() => ouvrir("releve")} className={`${boutonLien} -ml-2 mt-2`}>
-            <Plus className="size-4" aria-hidden="true" />
-            Mettre à jour le kilométrage
-          </button>
+          <div className="-ml-2 mt-2 flex flex-wrap gap-x-1">
+            <button type="button" onClick={() => ouvrir("releve")} className={boutonLien}>
+              <Plus className="size-4" aria-hidden="true" />
+              Mettre à jour le kilométrage
+            </button>
+            {lignesKilometrage({ releves, historique }).length ? (
+              <button type="button" onClick={() => ouvrir("releves")} className={boutonLien}>
+                <History className="size-4" aria-hidden="true" />
+                Kilométrages enregistrés
+              </button>
+            ) : null}
+          </div>
         )}
       </section>
 
@@ -494,6 +531,8 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
         </section>
       ) : null}
       <ListeHistorique
+        edition={interventionEnCorrection}
+        onEdition={setInterventionEnCorrection}
         vehiculeId={vehicule.id}
         historique={historique}
         releves={releves}
@@ -617,6 +656,12 @@ function CarteEcheance({ id, icone, element, lienService = null, onAction, actio
           <p className={aide}>
             <span className="font-semibold text-foreground/80">{FONDEMENTS[element.fondement]}.</span> {element.explication}
           </p>
+          {element.alerte ? (
+            <p className="mt-2 flex items-start gap-1.5 text-[13px] font-medium leading-snug text-red-800">
+              <CircleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+              {element.alerte}
+            </p>
+          ) : null}
         </div>
       </div>
       {children ?? (
@@ -709,54 +754,169 @@ function Erreur({ id, texte }) {
   ) : null;
 }
 
-function FormulaireReleve({ vehiculeId, dernier, onAnnuler, onEnregistre }) {
+// Un relevé : ajouté, ou corrigé (`ligne`). Un kilométrage qui contredit ceux
+// déjà enregistrés (compteur qui recule…) est presque toujours une faute de
+// frappe : on le montre, et on n'enregistre qu'après un second appui.
+function FormulaireReleve({ vehiculeId, ligne = null, points = {}, onAnnuler, onEnregistre }) {
   const aujourdhui = aujourdhuiIso();
-  const [saisie, setSaisie] = useState({ kilometrage: "", releveLe: aujourdhui });
+  const prefixe = ligne ? `releve-${ligne.releveId}` : "releve";
+  const [saisie, setSaisie] = useState(ligne ? { kilometrage: String(ligne.kilometrage), releveLe: ligne.date } : { kilometrage: "", releveLe: aujourdhui });
   const [erreurs, setErreurs] = useState({});
   const [erreurEnvoi, setErreurEnvoi] = useState("");
   const [enCours, setEnCours] = useState(false);
+  const [contradiction, setContradiction] = useState(null);
+  const changer = (nom) => (e) => {
+    setSaisie((s) => ({ ...s, [nom]: e.target.value }));
+    setContradiction(null);
+  };
 
   async function soumettre(evenement) {
     evenement.preventDefault();
+    setErreurEnvoi("");
     const v = validerReleve(saisie, { aujourdhui });
     setErreurs(v.erreurs);
     if (!v.valide) return focaliserPremiereErreur(evenement.currentTarget);
-    // Un compteur ne recule pas : une valeur plus basse que la dernière connue
-    // est presque toujours une faute de frappe. On demande, sans interdire.
-    if (dernier && v.donnees.kilometrage < dernier.kilometrage && v.donnees.releveLe >= dernier.date) {
-      const confirme = window.confirm(`Le dernier kilométrage connu est ${formaterNombre(dernier.kilometrage)} km. Enregistrer quand même ${formaterNombre(v.donnees.kilometrage)} km ?`);
-      if (!confirme) return;
+    const autres = { releves: (points.releves ?? []).filter((r) => r.id !== ligne?.releveId), historique: points.historique ?? [] };
+    const contredits = incoherencesKilometrage(autres, { date: v.donnees.releveLe, kilometrage: v.donnees.kilometrage });
+    if (contredits.length && !contradiction) {
+      return setContradiction(`Ce kilométrage contredit ${contredits.map((p) => `${formaterKm(p.kilometrage)} le ${formaterDate(p.date)}`).join(", ")}. Vérifiez le compteur : vous pouvez enregistrer quand même.`);
     }
     setEnCours(true);
-    const { error } = await supabase.from("auto_releves_km").insert({ vehicule_id: vehiculeId, kilometrage: v.donnees.kilometrage, releve_le: v.donnees.releveLe });
+    const valeurs = { kilometrage: v.donnees.kilometrage, releve_le: v.donnees.releveLe };
+    const { data, error } = ligne
+      ? await supabase.from("auto_releves_km").update(valeurs).eq("id", ligne.releveId).select("id")
+      : await supabase.from("auto_releves_km").insert({ vehicule_id: vehiculeId, ...valeurs }).select("id");
     setEnCours(false);
     if (error) setErreurEnvoi(messageErreurAuto(error));
+    else if (!data?.length) setErreurEnvoi("Ce relevé n'a pas pu être enregistré. Rechargez la page, puis réessayez.");
     else onEnregistre();
   }
 
   return (
-    <form onSubmit={soumettre} noValidate className="mt-4 space-y-3 border-t border-border pt-4">
-      <div className="grid grid-cols-2 gap-3">
+    <form onSubmit={soumettre} noValidate className={ligne ? "space-y-3" : "mt-4 space-y-3 border-t border-border pt-4"}>
+      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
         <div>
-          <label htmlFor="releve-km" className={etiquette}>
+          <label htmlFor={`${prefixe}-km`} className={etiquette}>
             Compteur
           </label>
           <div className="relative">
-            <input id="releve-km" inputMode="numeric" autoFocus value={saisie.kilometrage} onChange={(e) => setSaisie((s) => ({ ...s, kilometrage: e.target.value }))} className={`${champ} pr-10`} aria-invalid={erreurs.kilometrage ? true : undefined} aria-describedby={erreurs.kilometrage ? "releve-erreur" : undefined} />
+            <input id={`${prefixe}-km`} inputMode="numeric" autoFocus value={saisie.kilometrage} onChange={changer("kilometrage")} className={`${champ} pr-10`} aria-invalid={erreurs.kilometrage ? true : undefined} aria-describedby={erreurs.kilometrage ? `${prefixe}-erreur` : undefined} />
             <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">km</span>
           </div>
         </div>
         <div>
-          <label htmlFor="releve-date" className={etiquette}>
+          <label htmlFor={`${prefixe}-date`} className={etiquette}>
             Relevé le
           </label>
-          <input id="releve-date" type="date" max={aujourdhui} value={saisie.releveLe} onChange={(e) => setSaisie((s) => ({ ...s, releveLe: e.target.value }))} className={champ} aria-invalid={erreurs.releveLe ? true : undefined} aria-describedby={erreurs.releveLe ? "releve-erreur" : undefined} />
+          <input id={`${prefixe}-date`} type="date" max={aujourdhui} value={saisie.releveLe} onChange={changer("releveLe")} className={champ} aria-invalid={erreurs.releveLe ? true : undefined} aria-describedby={erreurs.releveLe ? `${prefixe}-erreur` : undefined} />
         </div>
       </div>
-      <Erreur id="releve-erreur" texte={erreurs.kilometrage || erreurs.releveLe} />
+      <Erreur id={`${prefixe}-erreur`} texte={erreurs.kilometrage || erreurs.releveLe} />
+      {contradiction ? <Signalement>{contradiction}</Signalement> : null}
       {erreurEnvoi ? <Alerte>{erreurEnvoi}</Alerte> : null}
-      <BoutonsFormulaire enCours={enCours} onAnnuler={onAnnuler} />
+      <BoutonsFormulaire enCours={enCours} libelle={contradiction ? "Enregistrer quand même" : "Enregistrer"} onAnnuler={onAnnuler} />
     </form>
+  );
+}
+
+const phraseIncoherence = (i) =>
+  i.motif === "meme_jour"
+    ? `${formaterKm(i.avant.kilometrage)} et ${formaterKm(i.apres.kilometrage)} le même jour (${formaterDate(i.apres.date)}).`
+    : i.motif === "recul"
+    ? `${formaterKm(i.apres.kilometrage)} le ${formaterDate(i.apres.date)} est inférieur à ${formaterKm(i.avant.kilometrage)} le ${formaterDate(i.avant.date)}.`
+    : `De ${formaterKm(i.avant.kilometrage)} le ${formaterDate(i.avant.date)} à ${formaterKm(i.apres.kilometrage)} le ${formaterDate(i.apres.date)} : trop de kilomètres pour le temps écoulé.`;
+
+const SOURCES_KILOMETRAGE = { releve: "Relevé saisi par vous", prestation: "Relevé enregistré par Nexora" };
+
+// Tous les kilométrages enregistrés, avec leur date et leur source. Un relevé
+// saisi se corrige ou se supprime ici ; celui d'une intervention se corrige
+// avec l'intervention. Rien n'est modifié sans la personne.
+function ListeKilometrages({ vehiculeId, releves, historique, incoherences, onFermer, onModifie, onCorrigerIntervention }) {
+  const lignes = lignesKilometrage({ releves, historique });
+  const aVerifier = new Set(incoherences.flatMap((i) => [i.avant.cle, i.apres.cle]));
+  const [edition, setEdition] = useState(null);
+  const [suppression, setSuppression] = useState(null);
+  const [erreur, setErreur] = useState("");
+
+  async function supprimer(l) {
+    if (!window.confirm(`Supprimer le relevé de ${formaterNombre(l.kilometrage)} km du ${formaterDate(l.date)} ?`)) return;
+    setErreur("");
+    setSuppression(l.cle);
+    const { data, error } = await supabase.from("auto_releves_km").delete().eq("id", l.releveId).select("id");
+    setSuppression(null);
+    if (error || !data?.length) setErreur("La suppression n'a pas abouti. Réessayez.");
+    else onModifie("Relevé supprimé.");
+  }
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-2">
+        <h3 className="font-semibold text-foreground">Kilométrages enregistrés</h3>
+        <button type="button" onClick={onFermer} className="-my-2 inline-flex min-h-10 items-center rounded-lg px-1 text-sm font-semibold text-muted-foreground hover:text-foreground">
+          Fermer
+        </button>
+      </div>
+      <p className={aide}>Vos relevés et les compteurs de vos interventions, du plus récent au plus ancien.</p>
+      {erreur ? (
+        <div className="mt-2">
+          <Alerte>{erreur}</Alerte>
+        </div>
+      ) : null}
+      <ul className="mt-2 divide-y divide-border">
+        {lignes.map((l) => (
+          <li key={l.cle} className="py-2.5">
+            {edition === l.cle ? (
+              <FormulaireReleve
+                vehiculeId={vehiculeId}
+                ligne={l}
+                points={{ releves, historique }}
+                onAnnuler={() => setEdition(null)}
+                onEnregistre={() => {
+                  setEdition(null);
+                  onModifie("Relevé corrigé.");
+                }}
+              />
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-semibold tabular-nums text-foreground">
+                    {formaterKm(l.kilometrage)}
+                    {aVerifier.has(l.cle) ? <Pastille ton="proche">À vérifier</Pastille> : null}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {formaterDate(l.date)} · {l.origine === "intervention" ? `Intervention : ${libelleDe(TYPES_INTERVENTION, l.type)}` : SOURCES_KILOMETRAGE[l.origine]}
+                  </p>
+                </div>
+                <div className="-mr-1 flex flex-wrap items-center">
+                  {l.origine === "releve" ? (
+                    <>
+                      <button type="button" onClick={() => setEdition(l.cle)} className={boutonLien} aria-label={`Corriger le relevé du ${formaterDate(l.date)}`}>
+                        <Pencil className="size-3.5" aria-hidden="true" />
+                        Corriger
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => supprimer(l)}
+                        disabled={suppression === l.cle}
+                        className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-red-50 hover:text-destructive"
+                        aria-label={`Supprimer le relevé du ${formaterDate(l.date)}`}
+                      >
+                        {suppression === l.cle ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
+                      </button>
+                    </>
+                  ) : l.origine === "intervention" ? (
+                    <button type="button" onClick={() => onCorrigerIntervention(l.historiqueId)} className={boutonLien}>
+                      <Pencil className="size-3.5" aria-hidden="true" />
+                      Corriger l'intervention
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -1047,9 +1207,9 @@ function FormulaireMiseEnCirculation({ vehiculeId, onAnnuler, onEnregistre }) {
 // Une intervention « d'après votre facture » corrigée ensuite par la personne.
 const corrigeeApres = (ligne) => Boolean(ligne.updated_at && ligne.created_at) && new Date(ligne.updated_at) - new Date(ligne.created_at) > 5000;
 
-function ListeHistorique({ vehiculeId, historique, releves = [], documents = [], onJoindre, onModifie, onSupprime }) {
+function ListeHistorique({ vehiculeId, historique, releves = [], documents = [], edition = null, onEdition, onJoindre, onModifie, onSupprime }) {
   const [suppression, setSuppression] = useState(null);
-  const [edition, setEdition] = useState(null);
+  const setEdition = onEdition;
   const [erreur, setErreur] = useState("");
 
   async function supprimer(ligne) {
@@ -1085,7 +1245,7 @@ function ListeHistorique({ vehiculeId, historique, releves = [], documents = [],
           const justificatifs = documents.filter((d) => d.historique_id === ligne.id);
           if (edition === ligne.id) {
             return (
-              <li key={ligne.id} className="px-4 py-3.5">
+              <li key={ligne.id} id={`intervention-${ligne.id}`} className="scroll-mt-28 px-4 py-3.5">
                 <p className="font-semibold text-foreground">Corriger : {libelleDe(TYPES_INTERVENTION, ligne.type)} du {formaterDate(ligne.realise_le)}</p>
                 {ligne.saisie === "document" ? (
                   <p className="mt-0.5 text-[13px] text-muted-foreground">
@@ -1116,7 +1276,7 @@ function ListeHistorique({ vehiculeId, historique, releves = [], documents = [],
               : null,
           ].filter(Boolean);
           return (
-            <li key={ligne.id} className="flex flex-wrap items-start gap-x-3 gap-y-1 px-4 py-3.5">
+            <li key={ligne.id} id={`intervention-${ligne.id}`} className="flex scroll-mt-28 flex-wrap items-start gap-x-3 gap-y-1 px-4 py-3.5">
               <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground/70 ${iconeLigne}`}>
                 <Icone className="size-4" aria-hidden="true" />
               </span>

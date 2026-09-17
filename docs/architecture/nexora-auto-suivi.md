@@ -32,7 +32,8 @@ Il est mis à jour à chaque lot. Le contrat détaillé de chaque lot reste dans
 | F — recette globale et corrections | `auto/lot-f-recette-globale` | `auto/lot-e-factures` | [#115](https://github.com/nexorasolutionsfr/Nexora-/pull/115) | fait sur Test |
 | G — première utilisation | `auto/lot-g-premiere-utilisation` | `auto/lot-f-recette-globale` | [#116](https://github.com/nexorasolutionsfr/Nexora-/pull/116) | fait sur Test |
 | H — import plus fluide | `auto/lot-h-import-fluide` | `auto/lot-g-premiere-utilisation` | [#117](https://github.com/nexorasolutionsfr/Nexora-/pull/117) | fait sur Test, migration `20260922001000` appliquée sur Test |
-| I — mobile et accessibilité | `auto/lot-i-mobile-accessibilite` | `auto/lot-h-import-fluide` | à ouvrir | fait sur Test, sans migration |
+| I — mobile et accessibilité | `auto/lot-i-mobile-accessibilite` | `auto/lot-h-import-fluide` | [#118](https://github.com/nexorasolutionsfr/Nexora-/pull/118) | fait sur Test, sans migration |
+| J — kilométrage et rappels | `auto/lot-j-kilometrage-rappels` | `auto/lot-i-mobile-accessibilite` | à ouvrir | fait sur Test, sans migration |
 
 ## Recette globale — constats
 
@@ -62,6 +63,10 @@ boutons sans nom, champs sans libellé, cibles tactiles), et situations limites.
 | R18 | Puces de choix de 30 px ; liens « Compléter » de 20 px | **corrigé** (lot I) : 36 et 40 px |
 | R19 | Formulaires de la fiche et de la facture : erreurs non reliées à leur champ, focus laissé sur le bouton | **corrigé** (lot I) |
 | R20 | Pas de prise de photo directe ; « Voir » la facture échoue sans rien dire | **corrigé** (lot I) |
+| R21 | Un kilométrage mal saisi (234 000 au lieu de 23 400) ne se corrige ni ne se supprime, et fausse la révision (« en retard » de milliers de km) | **corrigé** (lot J) |
+| R22 | Contrôle technique dépassé : « Me le rappeler plus tard » le retire de l'accueil | **corrigé** (lot J) : non reportable, en tête |
+| R23 | « Pensez à actualiser le kilométrage » affiché même quand il ne sert à rien | **corrigé** (lot J) |
+| R24 | Tâches terminées : seules les 10 dernières sont retrouvables | **corrigé** (lot J) |
 
 Vérifié sans défaut : aucune page ne déborde à 320 px ; écrans sans voiture
 (chacun propose d'ajouter une voiture) ; session expirée au chargement
@@ -227,4 +232,61 @@ Les deux s'appuient sur Chrome sans interface et un profil jetable effacé en fi
 - Pas d'essai sur de vrais téléphones ni avec un vrai lecteur d'écran (VoiceOver, TalkBack) : les contrôles sont automatiques et au clavier.
 - Le réglage « taille du texte » d'iOS n'agrandit pas les pages web ordinaires. L'agrandissement mesuré ici correspond au zoom du texte des navigateurs et au réglage d'Android pour les tailles exprimées en rem ; quelques tailles en pixels (15 px, 13 px) ne suivent que le zoom du navigateur.
 - Clavier virtuel ouvert : non mesurable sans appareil ; les champs restent de vrais champs natifs et l'en-tête fixe mesure environ 100 px.
+
+## Lot J — kilométrage et rappels sobres
+
+**Objectif.** Des kilométrages compréhensibles et corrigeables, une estimation
+qui ne s'appuie jamais sur des données fausses, et des rappels qui ne
+dérangent qu'à bon escient.
+
+**Existant vérifié.**
+- Relevé et compteur d'intervention gardent déjà leur date et leur source.
+- L'estimation est séparée du relevé, et une vidange seule ne relance pas la révision.
+- Une voiture archivée ne produit plus rien, pas même les envois préparés.
+- Un report masque le rappel sans changer l'échéance.
+- Une tâche de prestation rouverte alors qu'une autre est ouverte est refusée par la base (banc `auto_services_v1`, message clair).
+
+**Fait.**
+- **Kilométrages enregistrés** (fiche, « Kilométrages enregistrés »).
+  - Chaque relevé et chaque compteur d'intervention est listé avec sa date et sa source : saisi par vous, enregistré par Nexora, intervention.
+  - Un relevé saisi se corrige ou se supprime ; celui d'une intervention ouvre la correction de l'intervention.
+  - Les relevés Nexora ne sont pas modifiables.
+- **Incohérences** (`lib/auto/kilometrage.js`).
+  - Compteur qui recule, rythme de plus de 1 500 km par jour, ou deux compteurs très différents le même jour.
+  - Elles sont montrées en clair sur la fiche (« 23 400 km le 17 sept. 2026 est inférieur à 234 000 km le 1er juin 2026 ») et marquées « À vérifier » dans la liste. Rien n'est corrigé sans la personne.
+- **Estimation suspendue** tant qu'une incohérence demeure : ni rythme, ni kilométrage estimé.
+- **Révision au compteur « à vérifier ».**
+  - L'urgence ne vient que de la date, avec l'action « Vérifier les kilométrages ».
+  - Si l'intervalle n'est qu'en kilomètres, l'élément passe « à compléter » au lieu d'afficher un faux retard.
+- **Nouveau relevé qui contredit les autres.** Le message est affiché dans le formulaire et le bouton devient « Enregistrer quand même » ; ce remplacement de `window.confirm` fonctionne au lecteur d'écran.
+- **Moins de demandes.** « Actualisez le kilométrage » n'apparaît que si le compteur sert à suivre la révision.
+- **Échéance critique** (`aPrevoir.js`).
+  - Cas couverts : contrôle technique qui n'est plus valable (date dépassée, ou défaillance critique dont la validité se limitait au jour du contrôle).
+  - L'alerte est rouge sur la fiche et dans « À prévoir », sans « Me le rappeler plus tard ».
+  - Un ancien report est ignoré, et l'échéance passe en tête des prochaines actions de l'accueil.
+  - Règles relues le 17 septembre 2026 sur service-public.gouv.fr (fiche F2878, page vérifiée le 1er janvier 2026) : premier contrôle dans les 6 mois avant les 4 ans, puis tous les 2 ans ; défaillance majeure valable 2 mois ; défaillance critique limitée au jour ; contre-visite sous 2 mois ; circuler sans contrôle valide expose à une amende et à l'immobilisation.
+- **Tâches terminées** : toutes retrouvables, les plus récentes d'abord.
+
+**Vérifié.**
+- 138 tests node. Nouveaux cas :
+  - lignes et sources ;
+  - recul, rythme, même jour ;
+  - estimation suspendue ;
+  - révision sans faux retard ;
+  - CT critique non reportable et en tête ;
+  - report sans effet sur date, urgence et délai ;
+  - vidange contre révision ;
+  - 14 tâches terminées retrouvées.
+- Navigateur (375 px, compte fictif) :
+  - relevé fautif de 234 000 km : alerte sur la fiche, révision « Avant le 1er mars 2027 » sans retard au compteur, action « Vérifier les kilométrages » qui ouvre la liste ;
+  - correction à 22 800 km : alerte levée, révision « dans environ 12 600 km ou avant le 1er mars 2027 » ;
+  - nouveau relevé de 2 340 km : message puis « Enregistrer quand même », alerte « même jour », suppression depuis la liste ;
+  - CT dépassé avec un ancien report : alerte, pas de report proposé, premier des prochaines actions de l'accueil.
+- Audits 320/375/390 px et texte agrandi sur la fiche (liste ouverte) et « À prévoir » : aucun défaut. Lint ponctuel sans nouvelle alerte.
+- Jeu fictif retiré de Test (le relevé d'origine de la Yaris est rétabli).
+
+**Limites.**
+- Le seuil de 1 500 km par jour est une borne de bon sens, pas une règle officielle.
+- La révision reste suivie selon l'intervalle recopié par la personne, jamais selon une préconisation constructeur.
+- Les rappels hors de l'application (e-mail, notification) restent préparés et non branchés.
 

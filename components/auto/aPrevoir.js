@@ -6,6 +6,15 @@
 // questions — quoi faire, pour quand, sur quelles informations — et propose
 // les gestes utiles. Une voiture archivée ne produit plus rien.
 //
+// Rappels sobres :
+// - « Me le rappeler plus tard » masque le rappel, jamais l'échéance : sa date
+//   et son urgence restent affichées.
+// - Un contrôle technique qui n'est plus valable est « critique » : il ne se
+//   reporte pas et reste en tête des prochaines actions.
+// - Le kilométrage n'est demandé que s'il sert à une échéance, et une
+//   échéance au compteur n'est jamais calculée sur des kilométrages qui se
+//   contredisent.
+//
 // Pur et testé (aPrevoir.test.js) : la fiche véhicule et l'écran « À prévoir »
 // affichent les mêmes phrases.
 
@@ -72,6 +81,16 @@ export function elementControle(vehicule, { aujourdhui } = {}) {
     };
   }
 
+  // Plus de contrôle valable : défaillance critique (validité limitée au jour
+  // du contrôle), ou date de validité dépassée. Règles relues sur
+  // service-public.gouv.fr (F2878, page vérifiée le 1er janvier 2026) le
+  // 17 septembre 2026 : circuler sans contrôle valide expose à une amende et
+  // à l'immobilisation de la voiture.
+  const plusValable = (ct.etat === "contre_visite" && ct.valableJusquAu && ct.valableJusquAu < jour) || ct.niveau === "depasse";
+  const critique = plusValable
+    ? { critique: true, alerte: "Le contrôle technique n'est plus valable : circuler sans contrôle valide expose à une amende et à l'immobilisation de la voiture." }
+    : {};
+
   if (ct.etat === "contre_visite") {
     const origine = ct.dernierLe !== ct.initialLe
       ? `Contre-visite défavorable du ${formaterDate(ct.dernierLe)} : le délai court depuis le contrôle du ${formaterDate(ct.initialLe)}.`
@@ -92,6 +111,7 @@ export function elementControle(vehicule, { aujourdhui } = {}) {
       explication: `${origine} Contre-visite dans les 2 mois suivant le contrôle.`,
       actions: [action("contre_visite", "Enregistrer la contre-visite")],
       tri: ct.joursRestants,
+      ...critique,
     };
   }
 
@@ -121,6 +141,7 @@ export function elementControle(vehicule, { aujourdhui } = {}) {
     explication: explications[ct.source],
     actions: actions[ct.source],
     tri: ct.joursRestants,
+    ...critique,
   };
 }
 
@@ -187,7 +208,12 @@ export function elementRevision(vehicule, { aujourdhui } = {}) {
   let joursKm = Number.POSITIVE_INFINITY;
   let actualiser = false;
 
-  if (e.parKm) {
+  if (e.parKm && km.aVerifier) {
+    // Aucune échéance au compteur sur des kilométrages qui se contredisent :
+    // l'urgence ne se fonde que sur la date, s'il y en a une.
+    const [premiere] = km.incoherences;
+    kmDetail = ` Deux kilométrages se contredisent (${formaterKm(premiere.avant.kilometrage)} le ${formaterDate(premiere.avant.date)}, puis ${formaterKm(premiere.apres.kilometrage)} le ${formaterDate(premiere.apres.date)}) : corrigez celui qui est faux pour suivre l'échéance au compteur.`;
+  } else if (e.parKm) {
     if (e.parKm.restants == null) {
       kmTexte = `vers ${formaterKm(e.parKm.limite)}`;
       kmDetail = " Actualisez le kilométrage pour savoir ce qu'il reste.";
@@ -215,8 +241,28 @@ export function elementRevision(vehicule, { aujourdhui } = {}) {
   const quand = [kmTexte, dateTexte].filter(Boolean).join(" ou ");
   const niveau = plusUrgent(niveauKm, e.parDate?.niveau);
   const tri = Math.min(joursKm, e.parDate ? e.parDate.joursRestants : Number.POSITIVE_INFINITY);
-  const actions = [action("releve", "Actualiser le kilométrage"), action("revision", "Enregistrer une révision")];
+  const actions = [
+    km.aVerifier && e.parKm ? action("verifier_kilometrage", "Vérifier les kilométrages") : action("releve", "Actualiser le kilométrage"),
+    action("revision", "Enregistrer une révision"),
+  ];
   if (!e.parKm) actions.shift();
+
+  // Seule l'échéance au compteur à vérifier : rien à dater, à compléter.
+  if (e.parKm && km.aVerifier && !e.parDate) {
+    return {
+      ...base,
+      cle: `revision:${vehicule.id}:a_completer:kilometrage_a_verifier`,
+      etat: "a_completer",
+      quand: "Kilométrage à vérifier",
+      delai: null,
+      niveau: "neutre",
+      fondement: "intervalle",
+      explication: `Tous les ${intervalle} ; ${derniere}.${kmDetail}`,
+      actions,
+      demandeActualisation: false,
+      tri: Number.POSITIVE_INFINITY,
+    };
+  }
 
   return {
     ...base,
@@ -296,7 +342,7 @@ export function construireAPrevoir({ vehicules = [], taches = [], reports = [], 
   const elements = [
     ...actives.flatMap((v) => [elementControle(v, { aujourdhui: jour }), elementRevision(v, { aujourdhui: jour })]),
     ...taches.filter((t) => t.statut !== "terminee" && parId.has(t.vehicule_id)).map((t) => elementTache(t, parId.get(t.vehicule_id), { aujourdhui: jour })),
-  ].map((el) => (reportes.has(el.cle) ? { ...el, reporteJusquau: reportes.get(el.cle) } : el));
+  ].map((el) => (reportes.has(el.cle) && !el.critique ? { ...el, reporteJusquau: reportes.get(el.cle) } : el));
 
   const parUrgence = (a, b) => a.tri - b.tri || RANG[b.niveau] - RANG[a.niveau] || a.vehicule.nom.localeCompare(b.vehicule.nom);
   const groupes = { enRetard: [], bientot: [], plusTard: [], sansDate: [], aCompleter: [] };
@@ -312,11 +358,14 @@ export function construireAPrevoir({ vehicules = [], taches = [], reports = [], 
   const terminees = taches
     .filter((t) => t.statut === "terminee" && parId.has(t.vehicule_id))
     .map((t) => elementTache(t, parId.get(t.vehicule_id), { aujourdhui: jour }))
-    .sort((a, b) => (a.termineeLe < b.termineeLe ? 1 : -1))
-    .slice(0, 10);
+    .sort((a, b) => (a.termineeLe < b.termineeLe ? 1 : -1));
 
-  // Le rappel dans l'app : trois actions au plus, jamais celles reportées.
-  const prochaines = [...groupes.enRetard, ...groupes.bientot].filter((el) => !el.reporteJusquau).slice(0, 3);
+  // Le rappel dans l'app : trois actions au plus, jamais celles reportées ;
+  // une échéance critique passe en premier.
+  const prochaines = [...groupes.enRetard, ...groupes.bientot]
+    .filter((el) => !el.reporteJusquau)
+    .sort((a, b) => Number(Boolean(b.critique)) - Number(Boolean(a.critique)))
+    .slice(0, 3);
 
   return { elements, groupes, terminees, prochaines };
 }

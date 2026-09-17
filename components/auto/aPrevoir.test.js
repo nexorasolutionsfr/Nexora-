@@ -196,3 +196,81 @@ test("pastilleElement : le même libellé dans la liste, la fiche et À prévoir
   assert.equal(pastilleElement(contreVisite).texte, "Contre-visite dans 45 jours");
   assert.deepEqual(pastilleElement(elementControle({ ...clio, date_mise_en_circulation: null, historique: [] }, { aujourdhui: AUJOURDHUI })), { ton: "neutre", texte: "CT à compléter" });
 });
+
+// ---------------------------------------------------------------------------
+// Lot J : kilométrage et rappels sobres
+// ---------------------------------------------------------------------------
+
+test("CT critique : plus valable, ne se reporte pas et passe en tête des prochaines actions", () => {
+  const expire = { ...clio, historique: [{ type: "controle_technique", realise_le: "2024-05-02", resultat_controle: "favorable" }] };
+  const el = elementControle(expire, { aujourdhui: AUJOURDHUI });
+  assert.equal(el.niveau, "depasse");
+  assert.equal(el.critique, true);
+  assert.match(el.alerte, /n'est plus valable/);
+
+  // Défaillance critique : dès le lendemain du contrôle, plus de contrôle valable.
+  const critique = { ...clio, historique: [{ type: "controle_technique", realise_le: "2026-09-01", resultat_controle: "defavorable_critique" }] };
+  assert.equal(elementControle(critique, { aujourdhui: AUJOURDHUI }).critique, true);
+  // Défaillance majeure : valable 2 mois, pas encore critique.
+  const majeure = { ...clio, historique: [{ type: "controle_technique", realise_le: "2026-09-01", resultat_controle: "defavorable_majeure" }] };
+  assert.equal(elementControle(majeure, { aujourdhui: AUJOURDHUI }).critique, undefined);
+  assert.equal(elementControle(majeure, { aujourdhui: "2026-11-02" }).critique, true);
+
+  const r = construireAPrevoir({
+    vehicules: [expire],
+    taches: [
+      { id: "t1", vehicule_id: "v-clio", titre: "Pneus", echeance: "2026-09-01", statut: "a_faire" },
+      { id: "t2", vehicule_id: "v-clio", titre: "Lavage", echeance: "2026-08-01", statut: "a_faire" },
+      { id: "t3", vehicule_id: "v-clio", titre: "Balais", echeance: "2026-07-01", statut: "a_faire" },
+    ],
+    reports: [{ cle: el.cle, reporte_jusqu_au: "2026-10-01" }],
+    aujourdhui: AUJOURDHUI,
+  });
+  const ct = r.elements.find((x) => x.genre === "controle_technique");
+  assert.equal(ct.reporteJusquau, undefined, "un ancien report ne masque pas une échéance critique");
+  assert.equal(r.prochaines[0].cle, el.cle);
+  assert.equal(r.prochaines.length, 3);
+});
+
+test("Report : le rappel se tait, l'échéance réelle reste avec sa date et son urgence", () => {
+  const sans = construireAPrevoir({ vehicules: [clio], aujourdhui: AUJOURDHUI });
+  const avec = construireAPrevoir({ vehicules: [clio], reports: [{ cle: "revision:v-clio:2025-10-01", reporte_jusqu_au: "2026-10-16" }], aujourdhui: AUJOURDHUI });
+  const revision = (r) => r.elements.find((x) => x.genre === "revision");
+  assert.equal(revision(avec).reporteJusquau, "2026-10-16");
+  for (const champ of ["quand", "date", "niveau", "joursRestants", "delai"]) assert.deepEqual(revision(avec)[champ], revision(sans)[champ], champ);
+  assert.equal(avec.groupes.bientot.some((x) => x.cle === "revision:v-clio:2025-10-01"), sans.groupes.bientot.some((x) => x.cle === "revision:v-clio:2025-10-01"));
+  assert.equal(avec.prochaines.some((x) => x.genre === "revision"), false);
+});
+
+test("Révision : une vidange seule ne relance pas le suivi ; une révision, si", () => {
+  const vidange = elementRevision({ ...clio, historique: [...clio.historique, { type: "vidange", realise_le: "2026-09-10", kilometrage: 61300 }] }, { aujourdhui: AUJOURDHUI });
+  assert.equal(vidange.cle, "revision:v-clio:2025-10-01");
+  const revision = elementRevision({ ...clio, historique: [...clio.historique, { type: "revision", realise_le: "2026-09-10", kilometrage: 61300 }] }, { aujourdhui: AUJOURDHUI });
+  assert.equal(revision.cle, "revision:v-clio:2026-09-10");
+});
+
+test("Révision : kilométrages qui se contredisent, aucune alerte au compteur", () => {
+  // 614 000 saisi au lieu de 61 400 : sans vérification, « en retard de 552 000 km ».
+  const faute = { ...clio, releves: [{ id: "r1", releve_le: "2026-09-12", kilometrage: 614000 }], historique: [{ id: "h1", type: "revision", realise_le: "2025-10-01", kilometrage: 47000 }] };
+  const el = elementRevision(faute, { aujourdhui: AUJOURDHUI });
+  assert.equal(el.etat, "a_faire");
+  assert.equal(el.quand, "Avant le 1er oct. 2026");
+  assert.equal(el.niveau, "proche", "l'urgence ne vient que de la date");
+  assert.doesNotMatch(el.quand, /km/);
+  assert.match(el.explication, /Deux kilométrages se contredisent \(47\u202F000\u202Fkm le 1er oct\. 2025, puis 614\u202F000\u202Fkm le 12 sept\. 2026\)/);
+  assert.equal(el.demandeActualisation, false);
+  assert.deepEqual(el.actions.map((a) => a.code), ["verifier_kilometrage", "revision"]);
+
+  // Intervalle au compteur seulement : à compléter, jamais « en retard ».
+  const kmSeul = elementRevision({ ...faute, intervalle_entretien_mois: null }, { aujourdhui: AUJOURDHUI });
+  assert.equal(kmSeul.etat, "a_completer");
+  assert.equal(kmSeul.quand, "Kilométrage à vérifier");
+  assert.equal(kmSeul.niveau, "neutre");
+});
+
+test("Tâches terminées : toutes retrouvables, les plus récentes d'abord", () => {
+  const taches = Array.from({ length: 14 }, (_, i) => ({ id: `t${i}`, vehicule_id: "v-clio", titre: `Tâche ${i}`, statut: "terminee", terminee_le: `2026-08-${String(i + 1).padStart(2, "0")}T08:00:00Z` }));
+  const r = construireAPrevoir({ vehicules: [clio], taches, aujourdhui: AUJOURDHUI });
+  assert.equal(r.terminees.length, 14);
+  assert.equal(r.terminees[0].cle, "tache:t13");
+});
