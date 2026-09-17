@@ -20,6 +20,7 @@ import {
   carte,
   carteListe,
   deconnecterAuto,
+  deconnexionVolontaire,
   iconeLigne,
   puce,
   puceEtat,
@@ -32,8 +33,11 @@ export default function Compte() {
   const session = useSessionAuto();
   const router = useRouter();
 
+  // Session expirée : on ramène à la connexion, qui proposera de reprendre ici.
+  // Déconnexion demandée depuis cet écran : on ne dit pas « reprenez là où vous
+  // en étiez » à quelqu'un qui vient de partir — `sortir()` renvoie à l'accueil.
   useEffect(() => {
-    if (session === null) router.replace("/auto/connexion?suite=/auto/compte");
+    if (session === null && !deconnexionVolontaire()) router.replace("/auto/connexion?suite=/auto/compte");
   }, [session, router]);
 
   return (
