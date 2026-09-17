@@ -129,8 +129,8 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
                   <Icone className="size-4" aria-hidden="true" />
                 </span>
                 <button type="button" onClick={() => ouvrir(d)} className="min-w-0 flex-1 text-left">
-                  <span className="flex items-center gap-1.5 font-semibold text-foreground">
-                    <span className="truncate">{d.titre || libelleDe(TYPES_DOCUMENT, d.type)}</span>
+                  <span className="flex items-start gap-1.5 font-semibold text-foreground">
+                    <span className="line-clamp-2 min-w-0 break-words">{d.titre || libelleDe(TYPES_DOCUMENT, d.type)}</span>
                     <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                   </span>
                   <span className="mt-0.5 block text-sm text-muted-foreground">

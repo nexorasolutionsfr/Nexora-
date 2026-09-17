@@ -271,7 +271,7 @@ function CarteElement({ element, actions, aujourdhui }) {
 
   return (
     <article className={`${carte} ${actions.elementCible === element.cle ? "ring-2 ring-primary/40" : ""}`}>
-      <Link href={`/auto/vehicules/${element.vehicule.id}`} className="inline-flex max-w-full items-center gap-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground">
+      <Link href={`/auto/vehicules/${element.vehicule.id}`} className="-my-1 inline-flex min-h-8 max-w-full items-center gap-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground">
         <Car className="size-4 shrink-0" aria-hidden="true" />
         <span className="truncate">{element.vehicule.nom}</span>
         <Plaque valeur={element.vehicule.immatriculation} />
@@ -295,7 +295,7 @@ function CarteElement({ element, actions, aujourdhui }) {
         <p className="mt-2 flex items-center gap-1.5 text-[13px] text-muted-foreground">
           <BellOff className="size-3.5" aria-hidden="true" />
           Rappel reporté jusqu'au {formaterDate(element.reporteJusquau)}.
-          <button type="button" onClick={() => actions.annulerReport(element)} className="font-semibold text-primary hover:underline">
+          <button type="button" onClick={() => actions.annulerReport(element)} className="-my-2 inline-flex min-h-8 items-center rounded-lg px-1 font-semibold text-primary hover:underline">
             Annuler
           </button>
         </p>

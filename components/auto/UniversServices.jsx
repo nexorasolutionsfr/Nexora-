@@ -461,7 +461,7 @@ function EtatAction({ titre, detail, lien }) {
         <p className="font-semibold text-foreground">{titre}</p>
         <p className="text-sm text-muted-foreground">{detail}</p>
       </div>
-      <Link href={lien} className="inline-flex shrink-0 items-center gap-0.5 text-sm font-semibold text-primary hover:underline">
+      <Link href={lien} className="-my-2 inline-flex min-h-10 shrink-0 items-center gap-0.5 rounded-lg px-1 text-sm font-semibold text-primary hover:underline">
         Voir dans À prévoir
         <ChevronRight className="size-4" aria-hidden="true" />
       </Link>

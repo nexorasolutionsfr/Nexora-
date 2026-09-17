@@ -383,7 +383,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
       <div className="mb-2 mt-7 flex items-center justify-between gap-3">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Échéances</h2>
         {!archive ? (
-          <Link href={`/auto/a-prevoir?vehicule=${vehicule.id}`} className="inline-flex items-center gap-0.5 text-sm font-semibold text-primary hover:underline">
+          <Link href={`/auto/a-prevoir?vehicule=${vehicule.id}`} className="-my-2 inline-flex min-h-10 items-center gap-0.5 rounded-lg px-1 text-sm font-semibold text-primary hover:underline">
             À prévoir
             <ChevronRight className="size-4" aria-hidden="true" />
           </Link>
@@ -945,12 +945,12 @@ function ListeHistorique({ historique, documents = [], onJoindre, onSupprime }) 
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
                   <span className="text-muted-foreground">{ligne.source === "prestation" ? "Enregistrée par Nexora" : ligne.saisie === "document" ? "D'après votre facture" : "Saisie par vous"}</span>
                   {justificatifs.length ? (
-                    <button type="button" onClick={() => ouvrirDocument(justificatifs[0])} className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:underline">
+                    <button type="button" onClick={() => ouvrirDocument(justificatifs[0])} className="-my-1.5 inline-flex min-h-8 items-center gap-1 rounded-lg font-semibold text-emerald-700 hover:underline">
                       <Paperclip className="size-3.5" aria-hidden="true" />
                       {justificatifs.length > 1 ? `${justificatifs.length} justificatifs` : "Justificatif"}
                     </button>
                   ) : onJoindre ? (
-                    <button type="button" onClick={() => onJoindre(ligne)} className="inline-flex items-center gap-1 font-semibold text-primary hover:underline">
+                    <button type="button" onClick={() => onJoindre(ligne)} className="-my-1.5 inline-flex min-h-8 items-center gap-1 rounded-lg font-semibold text-primary hover:underline">
                       <Paperclip className="size-3.5" aria-hidden="true" />
                       Joindre un justificatif
                     </button>

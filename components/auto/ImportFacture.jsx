@@ -273,6 +273,7 @@ const MESSAGES_LECTURE = {
   echec: "La lecture n'a pas abouti : renseignez les informations, ou réessayez.",
   pdf_sans_texte: "Ce PDF est une image scannée : il n'est pas encore lu automatiquement. Renseignez les informations.",
   pdf_illisible: "Ce PDF n'a pas pu être lu : renseignez les informations.",
+  non_connecte: "Votre session a expiré : la lecture automatique n'a pas pu se faire. Reconnectez-vous, ou renseignez les informations.",
   vide: "Aucune information n'a pu être lue sur ce document : renseignez-les.",
 };
 
@@ -280,6 +281,7 @@ const MESSAGES_LECTURE = {
 const ECHECS_DEFINITIFS = new Set(["pdf_sans_texte", "pdf_illisible", "format_non_lu", "session"]);
 
 function messageLecture(lecture) {
+  if (lecture.etat === "non_connecte") return MESSAGES_LECTURE.non_connecte;
   if (lecture.etat === "echec" && MESSAGES_LECTURE[lecture.raison]) return MESSAGES_LECTURE[lecture.raison];
   if (lecture.etat === "proposee" && lecture.proposition && !Object.values(lecture.proposition.champs ?? {}).some((c) => c.valeur != null) && !(lecture.proposition.operations ?? []).length) {
     return MESSAGES_LECTURE.vide;

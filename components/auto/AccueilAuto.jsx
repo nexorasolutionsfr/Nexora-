@@ -86,10 +86,10 @@ function Bienvenue() {
 
 function LigneExemple({ icone: Icone, texte, pastille }) {
   return (
-    <div className="flex min-w-0 items-center justify-between gap-3">
-      <span className="flex min-w-0 items-center gap-2 text-foreground">
-        <Icone className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className="truncate">{texte}</span>
+    <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+      <span className="flex min-w-0 items-start gap-2 text-foreground">
+        <Icone className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="min-w-0">{texte}</span>
       </span>
       {pastille}
     </div>
@@ -135,9 +135,9 @@ function MesVehicules() {
       <div className="mb-5 flex items-end justify-between gap-3">
         <h1 className="font-display text-[28px] font-bold tracking-tight text-foreground">Mon garage</h1>
         {actives.length > 0 ? (
-          <Link href="/auto/vehicules/nouveau" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90">
+          <Link href="/auto/vehicules/nouveau" aria-label="Ajouter une voiture" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90">
             <Plus className="size-4" aria-hidden="true" />
-            Ajouter
+            Voiture
           </Link>
         ) : null}
       </div>
@@ -278,7 +278,7 @@ function ProchainesActions({ etat }) {
           <CalendarCheck className="size-5 text-primary" aria-hidden="true" />
           À prévoir
         </h2>
-        <Link href="/auto/a-prevoir" className="inline-flex items-center gap-0.5 text-sm font-semibold text-primary hover:underline">
+        <Link href="/auto/a-prevoir" className="-my-2 inline-flex min-h-10 items-center gap-0.5 rounded-lg px-1 text-sm font-semibold text-primary hover:underline">
           Tout voir
           <ChevronRight className="size-4" aria-hidden="true" />
         </Link>
@@ -296,7 +296,7 @@ function ProchainesActions({ etat }) {
               <li key={el.cle}>
                 <Link href="/auto/a-prevoir" className="flex items-center justify-between gap-3 py-2.5">
                   <span className="min-w-0">
-                    <span className="block truncate font-medium text-foreground">{el.titre}</span>
+                    <span className="line-clamp-2 block font-medium text-foreground">{el.titre}</span>
                     <span className="block truncate text-sm text-muted-foreground">{el.vehicule.nom}</span>
                   </span>
                   <Pastille ton={pastille.ton}>{pastille.texte}</Pastille>

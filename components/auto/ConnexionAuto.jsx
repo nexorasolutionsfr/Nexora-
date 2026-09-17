@@ -184,7 +184,9 @@ export default function ConnexionAuto() {
       ) : (
         <section className="mt-4">
           <h1 className="font-display text-[28px] font-bold tracking-tight text-foreground">{libelles.titre}</h1>
-          <p className="mt-1.5 text-[15px] leading-relaxed text-muted-foreground">{libelles.texte}</p>
+          <p className="mt-1.5 text-[15px] leading-relaxed text-muted-foreground">
+            {mode === "connexion" && suite !== "/auto" ? "Connectez-vous pour reprendre là où vous en étiez." : libelles.texte}
+          </p>
 
           <div className="mt-5 space-y-3">
             {erreurLien ? <Alerte>{messageLienEchoue(erreurLien)}</Alerte> : null}
@@ -232,6 +234,7 @@ export default function ConnexionAuto() {
                       onChange={(e) => setMotDePasse(e.target.value)}
                       className={`${champ} pr-12`}
                       minLength={mode === "connexion" ? undefined : 8}
+                      aria-describedby={mode === "connexion" ? undefined : "auto-mot-de-passe-aide"}
                     />
                     <button
                       type="button"
@@ -242,6 +245,11 @@ export default function ConnexionAuto() {
                       {voirMotDePasse ? <EyeOff className="size-5" aria-hidden="true" /> : <Eye className="size-5" aria-hidden="true" />}
                     </button>
                   </div>
+                  {mode !== "connexion" ? (
+                    <p id="auto-mot-de-passe-aide" className="mt-1.5 text-[13px] text-muted-foreground">
+                      Au moins 8 caractères.
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
 
