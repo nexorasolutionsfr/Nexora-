@@ -136,6 +136,23 @@ export default function ConfidentialiteAutoPage() {
             Ces prestataires agissent pour notre compte. Nous ne vendons ni ne cédons vos
             données, et nous ne les utilisons pas pour de la publicité.
           </p>
+          <p className="text-[15px] leading-relaxed text-muted-foreground">
+            Pour être exact : ce sont <strong className="font-semibold text-foreground">le
+            stockage et le traitement</strong> qui se font dans ces régions. Le réseau de
+            diffusion de nos hébergeurs et leurs propres journaux techniques peuvent, eux,
+            passer par d&rsquo;autres pays ; nous ne les paramétrons pas. Nous ne pouvons
+            donc pas affirmer que <em>tout</em> reste en Europe.
+          </p>
+        </Section>
+
+        <Section titre="Mesure d'audience">
+          <p className="text-[15px] leading-relaxed text-muted-foreground">
+            <strong className="font-semibold text-foreground">Aucune mesure d&rsquo;audience
+            sur Nexora Auto.</strong> Le site Nexora mesure la fréquentation de sa seule page
+            d&rsquo;accueil publique ; un filtre écarte toutes les autres adresses, y compris
+            chaque page de Nexora Auto. Vos écrans, vos voitures et vos documents ne sont
+            comptés nulle part.
+          </p>
         </Section>
 
         <Section titre="Qui peut voir votre dossier">

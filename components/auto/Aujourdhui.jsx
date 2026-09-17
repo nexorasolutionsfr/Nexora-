@@ -129,8 +129,43 @@ function MaJournee() {
         </Link>
       ) : null}
 
+      {etat.ailleurs.length > 0 ? <AilleursDansLeGarage elements={etat.ailleurs} onChoisir={changerVoiture} /> : null}
+
       <Raccourcis vehicule={vehicule} />
     </>
+  );
+}
+
+// Une échéance qui presse sur une autre voiture ne doit pas se perdre parce
+// qu'on regarde celle-ci. Une ligne, pas une carte : c'est un signal, pas
+// l'action du jour.
+function AilleursDansLeGarage({ elements, onChoisir }) {
+  return (
+    <section aria-labelledby="titre-ailleurs" className="mt-3">
+      <h2 id="titre-ailleurs" className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Vos autres voitures
+      </h2>
+      <ul className={carteListe}>
+        {elements.map((el) => {
+          const pastille = pastilleElement(el, { avecSujet: false });
+          return (
+            <li key={el.cle}>
+              <button
+                type="button"
+                onClick={() => onChoisir(el.vehicule.id)}
+                className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 text-left transition hover:bg-muted/50"
+              >
+                <span className="min-w-0">
+                  <span className="block break-words font-semibold text-foreground">{el.vehicule.nom}</span>
+                  <span className="block break-words text-sm text-muted-foreground">{el.titre}</span>
+                </span>
+                <Pastille ton={pastille.ton}>{pastille.texte}</Pastille>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

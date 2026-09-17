@@ -644,3 +644,18 @@ Rappel des règles déjà tenues par les tests unitaires, non redites ici : une
 vidange ne relance pas le suivi de la révision, le kilométrage retenu est le
 plus récent, et l'estimation est suspendue quand deux compteurs se
 contredisent.
+
+## « Aujourd'hui » répond aussi pour les autres voitures
+
+Défaut de conception relevé en relisant l'écran : « Aujourd'hui » ne montrait
+que les échéances de la voiture consultée. Une personne avec deux voitures
+pouvait donc ignorer un contrôle technique en retard sur l'autre, simplement
+parce qu'elle regardait la première. L'écran répond à « que dois-je savoir
+maintenant », pas à « pour cette voiture seulement ».
+
+Une section **« Vos autres voitures »** s'affiche désormais quand une autre
+voiture porte une échéance **en retard ou proche**, non reportée. Une ligne par
+voiture, avec l'échéance et son délai ; un geste pour basculer dessus. Ni les
+échéances lointaines, ni celles à compléter, ni les rappels que la personne a
+demandé de repousser : ce serait du bruit. Trois contrôles de plus dans
+`lib/auto/aujourdhui.test.js` (11 au total).
