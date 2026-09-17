@@ -1038,3 +1038,36 @@ elle est déjà atteinte au pouce sur un écran de cette taille. La déplacer au
 été un changement de forme sans gain mesuré — et aurait demandé de vérifier à
 nouveau clavier, focus et clavier virtuel sur tous les écrans. À rouvrir si
 l'usage réel montre le contraire.
+
+## Recette de la nuit du 18 au 19 septembre 2026
+
+Les quatorze situations demandées, sur Test, avec le jeu de recette
+(`scripts/recette/jeu-auto.mjs`) et les bancs.
+
+| # | Situation | Comment | Résultat |
+| --- | --- | --- | --- |
+| 1 | Voiture sans historique | Toyota Yaris du jeu | « Ajouter ma voiture » puis dossier vide honnête : trois « à compléter », aucune échéance inventée |
+| 2 | CT lointain, entretien inconnu | Opel Corsa | « Préparons la suite » sur l'entretien ; le CT en résumé, pas en action |
+| 3 | Échéance proche ou dépassée | Renault Clio (révision ~300 km), Citroën C3 (CT en retard de 30 jours) | mise en avant sur sa fiche, et signalée depuis une autre voiture sous « Vos autres voitures » |
+| 4 | Kilométrage mis à jour aujourd'hui | Corsa | « renseigné aujourd'hui » puis « renseigné hier » le lendemain ; aucun raccourci de saisie proposé |
+| 5 | Information reportée, retrouvée sur une autre session | « Plus tard » puis session effacée et rouverte, rechargement complet | le report tient ; la carte ne revient pas ; l'échéance reste listée comme **inconnue** |
+| 6 | PDF exploitable | banc + navigateur | proposition rendue avec montant, kilométrage et deux opérations |
+| 7 | Document non lisible automatiquement | banc (PDF abîmé, photo JPEG) | la lecture le dit, **le document et le fichier restent** |
+| 8 | Document associé à un autre véhicule | scénario plaque | « Cette facture porte la plaque AB-123-CD, celle de votre Peugeot 308 » |
+| 9 | Import ancien face à un relevé récent | banc | le relevé récent l'emporte |
+| 10 | Reprise d'un import, tentative de doublon | banc | refus par l'empreinte, l'existant est retrouvé ; le même fichier sur une autre voiture reste possible |
+| 11 | Correction d'une intervention, recalcul | banc | dépenses et compteur actualisés ; le report de l'ancienne situation ne muselle pas la nouvelle échéance |
+| 12 | Service → action, sans boucle | fiche Révision d'une voiture sans intervalle | **corrigé cette nuit** : le lien ouvrait « À prévoir » pour y recliquer ; il ouvre maintenant `?action=intervalle`, voiture sélectionnée |
+| 13 | Session expirée | jeton périmé, jeton de renouvellement révoqué | retour à la connexion **en gardant la destination** |
+| 14 | Dossier d'un autre utilisateur | `acces-croises.mjs` | 55/55 |
+
+**Largeurs et accessibilité** : audits d'écrans à 320, 375 et 390 px et de
+texte agrandi à 150 % et 200 % sur l'accueil, le garage, la fiche, « À
+prévoir », les services, les deux écrans de document, « Compte » et la
+confidentialité — sans défaut. Erreurs de formulaire vérifiées à l'écran :
+champs marqués `aria-invalid`, messages lus avec leur champ, et **le focus va
+au premier champ en erreur**.
+
+**Bancs** : 195 tests, `lint:auto` sans avertissement, `next build` réussi,
+10 bancs SQL à 0, parcours dégradés **40/40**, accès croisés **55/55**,
+fermeture **14/14**, simultanéité sans doublon involontaire.

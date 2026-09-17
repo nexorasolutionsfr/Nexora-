@@ -469,12 +469,19 @@ function BlocAction({ service, session, vehicule, existante, compat, disponibili
 
   if (session && vehicule && existante?.type === "echeance") {
     const { element } = existante;
-    action = (
+    // Une information qui manque s'ouvre ICI, sur le formulaire qui la
+    // débloque. Renvoyer vers « À prévoir » pour y cliquer ensuite sur le même
+    // bouton faisait une boucle : deux écrans pour un geste.
+    const aCompleter = element.etat === "a_completer" && element.actions?.[0];
+    action = aCompleter ? (
       <EtatAction
-        titre="Déjà suivi dans « À prévoir »"
-        detail={element.etat === "a_completer" ? "Une information manque pour calculer l'échéance." : element.quand}
-        lien={lienAPrevoir(element.cle)}
+        titre="Une information manque"
+        detail={element.explication || "Nexora ne peut pas encore calculer cette échéance."}
+        lien={`/auto/vehicules/${vehicule.id}?action=${element.actions[0].code}`}
+        libelleLien={element.actions[0].libelle}
       />
+    ) : (
+      <EtatAction titre="Déjà suivi dans « À prévoir »" detail={element.quand} lien={lienAPrevoir(element.cle)} />
     );
   } else if (session && vehicule && existante?.type === "tache") {
     const { tache } = existante;
@@ -500,7 +507,7 @@ function BlocAction({ service, session, vehicule, existante, compat, disponibili
   );
 }
 
-function EtatAction({ titre, detail, lien }) {
+function EtatAction({ titre, detail, lien, libelleLien = "Voir dans À prévoir" }) {
   return (
     <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
       <CalendarCheck className="mt-0.5 size-5 shrink-0 text-emerald-600" aria-hidden="true" />
@@ -509,7 +516,7 @@ function EtatAction({ titre, detail, lien }) {
         <p className="text-sm text-muted-foreground">{detail}</p>
       </div>
       <Link href={lien} className="-my-2 ml-auto inline-flex min-h-10 shrink-0 items-center gap-0.5 rounded-lg px-1 text-sm font-semibold text-primary hover:underline">
-        Voir dans À prévoir
+        {libelleLien}
         <ChevronRight className="size-4" aria-hidden="true" />
       </Link>
     </div>
