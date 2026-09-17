@@ -344,11 +344,25 @@ Baptiste le prouvera en une fois.
 Les commandes SQL se passent dans l'éditeur SQL du projet de Production.
 **Ajouter une adresse n'envoie aucun message.**
 
-**État au 17 septembre 2026, au soir** : mode `beta`, deux adresses invitées —
+**État au 18 septembre 2026** : mode `beta`, deux adresses invitées —
 `nexorasolutions.france@gmail.com` et `baptiste.papoul52@gmail.com`. Aucun
-message n'a été envoyé : il suffit de créer son compte depuis
-`https://nexora-garage.vercel.app/auto/connexion?mode=inscription` avec l'une
-des deux, et de confirmer l'e-mail reçu.
+message n'a été envoyé.
+
+**Les deux adresses n'entrent pas par la même porte**, et c'est important :
+
+| Adresse | Ce qu'il faut faire | Pourquoi |
+| --- | --- | --- |
+| `baptiste.papoul52@gmail.com` | **« J'ai déjà un compte » → Se connecter**, avec le mot de passe Nexora habituel | ce compte **existe déjà** en Production (c'est celui de Nexora Pro), confirmé et déjà utilisé. Vérifié sans s'y connecter, dans une transaction annulée : `auto_etat_acces()` rend `{"mode":"beta","autorise":true}`. Aucun e-mail n'est nécessaire, l'accès est immédiat |
+| `nexorasolutions.france@gmail.com` | **« Créer mon compte »**, puis confirmer l'e-mail reçu | aucun compte n'existe pour cette adresse |
+
+Passer par « Créer mon compte » avec une adresse qui a **déjà** un compte ne
+mène nulle part : par protection contre l'énumération, Supabase répond comme
+si tout allait bien et n'envoie pas de lien utilisable.
+
+**Conséquence à assumer :** avec la première adresse, le même compte ouvre
+Nexora Pro et Nexora Auto. Les données restent séparées (tables `auto_*`,
+règles par personne), mais c'est une seule connexion. Pour les séparer, il
+faudrait un second compte avec une autre adresse.
 
 **Bêta interne.**
 ```sql
