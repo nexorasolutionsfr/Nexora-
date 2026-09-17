@@ -39,7 +39,7 @@ recevoir une section dédiée avant toute ouverture à une personne extérieure.
 | Fichiers privés | servis derrière un cache d'une heure (`Cache-Control: public, max-age=3600`) : après un retrait d'accès, la **même session** peut encore recevoir un fichier déjà téléchargé pendant au plus une heure ; un autre compte est refusé, et un fichier jamais téléchargé aussi | mesuré le 17 sept. 2026, `scripts/recette/fermeture-beta.mjs` |
 | Prévisualisations Vercel | reliées à la base de **Production** | lu dans le code servi, voir `nexora-auto-suivi.md` |
 | E-mails de compte (confirmation, mot de passe) | Supabase Auth, via le SMTP Brevo déjà utilisé | configuration existante (mémoire « envoi des e-mails en Production ») |
-| Mesure d'audience | Vercel Analytics chargé en Production par la mise en page générale, `/auto` compris | `app/layout.tsx` |
+| Mesure d'audience | script chargé par la mise en page générale, mais **aucun événement émis depuis `/auto`** : le filtre `beforeSend` n'accepte que `/` | `lib/analytics/filter-analytics-event.ts`, appelé sur quatre adresses |
 
 ## 3. Traitements
 
@@ -106,7 +106,7 @@ Pour chaque traitement, la **base légale est une proposition** à valider.
 ### T7. Journaux techniques et mesure d'audience
 - **Journaux :** journaux Vercel des routes `/api/auto/*`. Le code n'y écrit ni adresse e-mail ni contenu de facture : seulement l'identifiant d'une tentative et la nature d'une erreur. Journaux Supabase (API, Auth).
 - **Durée des journaux :** **[À VÉRIFIER]** selon l'offre de chaque prestataire.
-- **Mesure d'audience :** Vercel Analytics, décrit dans la politique actuelle comme sans identifiant persistant. **[À VÉRIFIER]** que cela vaut aussi pour `/auto`.
+- **Mesure d'audience : AUCUNE sur Nexora Auto.** Vérifié le 17 sept. 2026 en appelant le filtre `lib/analytics/filter-analytics-event.ts` : il est fermé par défaut et ne laisse passer que la seule page d'accueil publique `/`. `/auto`, `/auto/compte`, `/auto/vehicules/<id>` sont **rejetés**. Le script Vercel Analytics est chargé par la mise en page générale, mais aucun événement n'est émis depuis Nexora Auto.
 
 ## 4. Sous-traitants
 
@@ -196,7 +196,7 @@ le mécanisme. Les durées ci-dessous sont des **propositions**, à valider
 | Journal des lectures (`auto_lectures`, sans donnée de facture) | suivre coûts, échecs et qualité | **12 mois** | un an couvre le suivi de qualité et des dépenses ; au-delà, aucune finalité | à créer : purge mensuelle ; le lien personnel est déjà coupé à la suppression du compte | avec la base |
 | Liste des adresses invitées (`auto_acces_beta`) | ouvrir l'accès pendant la bêta | jusqu'à la fin de la bêta, **3 mois** au plus après | la liste n'a plus d'objet une fois l'accès ouvert ou la bêta arrêtée | à la main, ou purge à la fin de la bêta | avec la base |
 | Journaux techniques (Vercel, Supabase) | exploitation, sécurité | durée du prestataire **[À VÉRIFIER]** selon l'offre | non paramétrable par nous ; ils ne contiennent ni adresse ni contenu de facture (vérifié) | automatique, chez le prestataire | sans objet |
-| Mesure d'audience | comprendre l'usage | selon Vercel Analytics **[À VÉRIFIER]** | à confirmer, sinon désactiver sur `/auto` (D7) | automatique | sans objet |
+| Mesure d'audience | sans objet pour Nexora Auto | **aucune donnée collectée** | le filtre rejette toutes les adresses `/auto` | sans objet | sans objet |
 | Données supprimées présentes dans les sauvegardes | pouvoir restaurer après incident | durée de rétention des sauvegardes Supabase **[À VÉRIFIER]** (dépend de l'offre) | une sauvegarde sans rétention ne protège de rien ; la suppression y devient effective à l'expiration | automatique, par rotation des sauvegardes | **à écrire dans la politique** : « une donnée supprimée disparaît des sauvegardes au plus tard au bout de N jours » |
 
 **Ce qui est déjà immédiat, sans mécanisme à créer :** suppression d'un
@@ -214,5 +214,5 @@ compte lui-même n'existe pas encore (décision D3).
 | D4 | Accès administrateur aux dossiers | aucun sans demande de la personne, ou accès d'exploitation tracé | aucun accès sans demande, écrit dans la politique |
 | D5 | Pièces d'identité (carte grise…) | **appliquée** : `/auto/confidentialite` conseille de ne pas déposer de pièce d'identité pendant la bêta | à confirmer, ou à durcir |
 | D6 | Conditions d'utilisation | à rédiger (service gratuit, bêta, pas de garantie sur les échéances calculées) | nécessaires avant la bêta externe |
-| D7 | Vercel Analytics sur `/auto` | garder ou désactiver pendant la bêta | vérifier sa nature, sinon désactiver sur `/auto` |
+| D7 | Vercel Analytics sur `/auto` | **sans objet** : vérifié le 17 sept. 2026, le filtre rejette déjà toutes les adresses `/auto`. Écrit dans la page de confidentialité | rien à faire |
 | D8 | Vraies factures sur la base Test | autorisé pour Baptiste seul (ses propres factures) ou non ; suppression après la recette | seulement les vôtres, supprimées après mesure. **Nexora Auto est désormais en ligne sur la Production** : ses propres factures y ont leur place, c'est son dossier |
