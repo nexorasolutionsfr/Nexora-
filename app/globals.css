@@ -134,6 +134,13 @@
   }
 }
 
+/* Nexora Auto : un focus clavier bien visible (bleu plein, contraste supérieur
+   à 3:1 sur les fonds clairs). Les champs de saisie gardent leur bordure bleue. */
+.espace-auto :where(a[href], button, summary, [tabindex]:not([tabindex="-1"]), input[type="file"], input[type="radio"], input[type="checkbox"]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 @keyframes flow-dash {
   to {
     stroke-dashoffset: -24;
