@@ -56,6 +56,10 @@ import {
   etiquette,
   memoriserVoitureCourante,
   deconnexionVolontaire,
+  focaliserPremiereErreur,
+  iconeLigne,
+  puce,
+  puceEtat,
   useSessionAuto,
 } from "@/components/auto/elements";
 import FormulaireVehicule from "@/components/auto/FormulaireVehicule";
@@ -390,7 +394,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
               Kilométrage
             </h2>
             {km ? (
-              <p className="font-display text-xl font-semibold text-foreground">
+              <p className="break-words font-display text-xl font-semibold text-foreground">
                 {formaterKm(km.kilometrage)}
                 <span className="ml-2 font-sans text-sm font-normal text-muted-foreground">
                   {km.origine === "releve" ? `relevé le ${formaterDate(km.date)}` : `à l'intervention du ${formaterDate(km.date)}`}
@@ -644,8 +648,13 @@ function FormulaireProcesVerbal({ controle, onAnnuler, onEnregistre }) {
 
   async function soumettre(evenement) {
     evenement.preventDefault();
-    if (!date) return setErreur("Indiquez la date.");
-    if (date <= controle.realise_le.slice(0, 10)) return setErreur("Cette date doit suivre celle du contrôle.");
+    const formulaire = evenement.currentTarget;
+    const refuser = (texte) => {
+      setErreur(texte);
+      focaliserPremiereErreur(formulaire);
+    };
+    if (!date) return refuser("Indiquez la date.");
+    if (date <= controle.realise_le.slice(0, 10)) return refuser("Cette date doit suivre celle du contrôle.");
     setEnCours(true);
     const { data, error } = await supabase.from("auto_historique").update({ controle_valable_jusqu_au: date }).eq("id", controle.id).select("id");
     setEnCours(false);
@@ -660,10 +669,10 @@ function FormulaireProcesVerbal({ controle, onAnnuler, onEnregistre }) {
         <label htmlFor="proces-verbal" className={etiquette}>
           Prochain contrôle avant le
         </label>
-        <input id="proces-verbal" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={champ} />
+        <input id="proces-verbal" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={champ} aria-invalid={erreur ? true : undefined} aria-describedby={erreur ? "proces-verbal-erreur" : undefined} />
         <p className={aide}>Inscrite sur le procès-verbal du contrôle du {formaterDate(controle.realise_le)}.</p>
       </div>
-      <Erreur texte={erreur} />
+      <Erreur id="proces-verbal-erreur" texte={erreur} />
       <BoutonsFormulaire enCours={enCours} onAnnuler={onAnnuler} />
     </form>
   );
@@ -711,7 +720,7 @@ function FormulaireReleve({ vehiculeId, dernier, onAnnuler, onEnregistre }) {
     evenement.preventDefault();
     const v = validerReleve(saisie, { aujourdhui });
     setErreurs(v.erreurs);
-    if (!v.valide) return;
+    if (!v.valide) return focaliserPremiereErreur(evenement.currentTarget);
     // Un compteur ne recule pas : une valeur plus basse que la dernière connue
     // est presque toujours une faute de frappe. On demande, sans interdire.
     if (dernier && v.donnees.kilometrage < dernier.kilometrage && v.donnees.releveLe >= dernier.date) {
@@ -733,7 +742,7 @@ function FormulaireReleve({ vehiculeId, dernier, onAnnuler, onEnregistre }) {
             Compteur
           </label>
           <div className="relative">
-            <input id="releve-km" inputMode="numeric" autoFocus value={saisie.kilometrage} onChange={(e) => setSaisie((s) => ({ ...s, kilometrage: e.target.value }))} className={`${champ} pr-10`} aria-invalid={erreurs.kilometrage ? true : undefined} />
+            <input id="releve-km" inputMode="numeric" autoFocus value={saisie.kilometrage} onChange={(e) => setSaisie((s) => ({ ...s, kilometrage: e.target.value }))} className={`${champ} pr-10`} aria-invalid={erreurs.kilometrage ? true : undefined} aria-describedby={erreurs.kilometrage ? "releve-erreur" : undefined} />
             <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">km</span>
           </div>
         </div>
@@ -741,10 +750,10 @@ function FormulaireReleve({ vehiculeId, dernier, onAnnuler, onEnregistre }) {
           <label htmlFor="releve-date" className={etiquette}>
             Relevé le
           </label>
-          <input id="releve-date" type="date" max={aujourdhui} value={saisie.releveLe} onChange={(e) => setSaisie((s) => ({ ...s, releveLe: e.target.value }))} className={champ} aria-invalid={erreurs.releveLe ? true : undefined} />
+          <input id="releve-date" type="date" max={aujourdhui} value={saisie.releveLe} onChange={(e) => setSaisie((s) => ({ ...s, releveLe: e.target.value }))} className={champ} aria-invalid={erreurs.releveLe ? true : undefined} aria-describedby={erreurs.releveLe ? "releve-erreur" : undefined} />
         </div>
       </div>
-      <Erreur texte={erreurs.kilometrage || erreurs.releveLe} />
+      <Erreur id="releve-erreur" texte={erreurs.kilometrage || erreurs.releveLe} />
       {erreurEnvoi ? <Alerte>{erreurEnvoi}</Alerte> : null}
       <BoutonsFormulaire enCours={enCours} onAnnuler={onAnnuler} />
     </form>
@@ -791,7 +800,7 @@ function FormulaireIntervention({ vehiculeId, typeFixe, typeDefaut = "", natureI
     setErreurEnvoi("");
     const v = validerIntervention(saisie, { aujourdhui });
     setErreurs(v.erreurs);
-    if (!v.valide) return;
+    if (!v.valide) return focaliserPremiereErreur(evenement.currentTarget);
     if (ligne) return corriger(v);
     setEnCours(true);
     const { error } = await supabase.from("auto_historique").insert({
@@ -818,7 +827,7 @@ function FormulaireIntervention({ vehiculeId, typeFixe, typeDefaut = "", natureI
           <label htmlFor={`${prefixe}-type`} className={etiquette}>
             Type
           </label>
-          <select id={`${prefixe}-type`} value={saisie.type} onChange={changer("type")} className={`${champ} appearance-none`} aria-invalid={erreurs.type ? true : undefined}>
+          <select id={`${prefixe}-type`} value={saisie.type} onChange={changer("type")} className={`${champ} appearance-none`} aria-invalid={erreurs.type ? true : undefined} aria-describedby={erreurs.type ? `${prefixe}-type-erreur` : undefined}>
             <option value="">Choisir…</option>
             {TYPES_INTERVENTION.map((t) => (
               <option key={t.valeur} value={t.valeur}>
@@ -826,7 +835,7 @@ function FormulaireIntervention({ vehiculeId, typeFixe, typeDefaut = "", natureI
               </option>
             ))}
           </select>
-          <Erreur texte={erreurs.type} />
+          <Erreur id={`${prefixe}-type-erreur`} texte={erreurs.type} />
         </div>
       )}
       <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
@@ -834,19 +843,19 @@ function FormulaireIntervention({ vehiculeId, typeFixe, typeDefaut = "", natureI
           <label htmlFor={`${prefixe}-date`} className={etiquette}>
             Date
           </label>
-          <input id={`${prefixe}-date`} type="date" max={aujourdhui} value={saisie.realiseLe} onChange={changer("realiseLe")} className={champ} aria-invalid={erreurs.realiseLe ? true : undefined} />
+          <input id={`${prefixe}-date`} type="date" max={aujourdhui} value={saisie.realiseLe} onChange={changer("realiseLe")} className={champ} aria-invalid={erreurs.realiseLe ? true : undefined} aria-describedby={erreurs.realiseLe ? `${prefixe}-date-erreur` : undefined} />
         </div>
         <div>
           <label htmlFor={`${prefixe}-km`} className={etiquette}>
             Compteur <span className="font-normal text-muted-foreground">(facult.)</span>
           </label>
           <div className="relative">
-            <input id={`${prefixe}-km`} inputMode="numeric" value={saisie.kilometrage} onChange={changer("kilometrage")} className={`${champ} pr-10`} aria-invalid={erreurs.kilometrage ? true : undefined} />
+            <input id={`${prefixe}-km`} inputMode="numeric" value={saisie.kilometrage} onChange={changer("kilometrage")} className={`${champ} pr-10`} aria-invalid={erreurs.kilometrage ? true : undefined} aria-describedby={erreurs.kilometrage ? `${prefixe}-date-erreur` : undefined} />
             <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">km</span>
           </div>
         </div>
       </div>
-      <Erreur texte={erreurs.realiseLe || erreurs.kilometrage} />
+      <Erreur id={`${prefixe}-date-erreur`} texte={erreurs.realiseLe || erreurs.kilometrage} />
       {saisie.type === "controle_technique" ? (
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2 sm:col-span-1">
@@ -878,9 +887,9 @@ function FormulaireIntervention({ vehiculeId, typeFixe, typeDefaut = "", natureI
             <label htmlFor={`${prefixe}-validite`} className={etiquette}>
               Date limite sur le procès-verbal <span className="font-normal text-muted-foreground">(facultatif)</span>
             </label>
-            <input id={`${prefixe}-validite`} type="date" value={saisie.controleValableJusquAu} onChange={changer("controleValableJusquAu")} className={champ} aria-invalid={erreurs.controleValableJusquAu ? true : undefined} />
+            <input id={`${prefixe}-validite`} type="date" value={saisie.controleValableJusquAu} onChange={changer("controleValableJusquAu")} className={champ} aria-invalid={erreurs.controleValableJusquAu ? true : undefined} aria-describedby={erreurs.controleValableJusquAu ? `${prefixe}-validite-erreur` : undefined} />
             <p className={aide}>Favorable : date du prochain contrôle. Défavorable : fin de validité, le jour même pour une défaillance critique. Elle prime sur tout calcul.</p>
-            <Erreur texte={erreurs.controleValableJusquAu} />
+            <Erreur id={`${prefixe}-validite-erreur`} texte={erreurs.controleValableJusquAu} />
           </div>
         </div>
       ) : null}
@@ -896,12 +905,12 @@ function FormulaireIntervention({ vehiculeId, typeFixe, typeDefaut = "", natureI
             Montant <span className="font-normal text-muted-foreground">(facult.)</span>
           </label>
           <div className="relative">
-            <input id={`${prefixe}-montant`} inputMode="decimal" value={saisie.montant} onChange={changer("montant")} className={`${champ} pr-8`} aria-invalid={erreurs.montant ? true : undefined} placeholder="0,00" />
+            <input id={`${prefixe}-montant`} inputMode="decimal" value={saisie.montant} onChange={changer("montant")} className={`${champ} pr-8`} aria-invalid={erreurs.montant ? true : undefined} aria-describedby={erreurs.montant ? `${prefixe}-montant-erreur` : undefined} placeholder="0,00" />
             <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">€</span>
           </div>
         </div>
       </div>
-      <Erreur texte={erreurs.montant} />
+      <Erreur id={`${prefixe}-montant-erreur`} texte={erreurs.montant} />
       {operationsModifiables ? (
         <EditeurOperations operations={saisie.operations} onChange={(operations) => setSaisie((s) => ({ ...s, operations }))} />
       ) : typeFixe ? null : (
@@ -941,7 +950,7 @@ function FormulaireIntervalle({ vehicule, onAnnuler, onEnregistre }) {
     evenement.preventDefault();
     const v = validerIntervalle(saisie);
     setErreurs(v.erreurs);
-    if (!v.valide) return;
+    if (!v.valide) return focaliserPremiereErreur(evenement.currentTarget);
     setEnCours(true);
     const { error } = await supabase
       .from("auto_vehicules")
@@ -963,7 +972,7 @@ function FormulaireIntervalle({ vehicule, onAnnuler, onEnregistre }) {
               key={`${i.km}-${i.mois}`}
               type="button"
               onClick={() => setSaisie({ km: String(i.km), mois: String(i.mois) })}
-              className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${actif ? "border-primary bg-secondary text-primary" : "border-border bg-card text-foreground hover:bg-muted"}`}
+              className={`${puce} ${puceEtat(actif)}`}
               aria-pressed={actif}
             >
               {formaterKm(i.km)} ou {i.mois === 12 ? "1 an" : `${i.mois / 12} ans`}
@@ -977,7 +986,7 @@ function FormulaireIntervalle({ vehicule, onAnnuler, onEnregistre }) {
             Tous les
           </label>
           <div className="relative">
-            <input id="intervalle-km" inputMode="numeric" value={saisie.km} onChange={(e) => setSaisie((s) => ({ ...s, km: e.target.value }))} className={`${champ} pr-10`} aria-invalid={erreurs.km ? true : undefined} />
+            <input id="intervalle-km" inputMode="numeric" value={saisie.km} onChange={(e) => setSaisie((s) => ({ ...s, km: e.target.value }))} className={`${champ} pr-10`} aria-invalid={erreurs.km ? true : undefined} aria-describedby={erreurs.km ? "intervalle-erreur" : undefined} />
             <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">km</span>
           </div>
         </div>
@@ -986,12 +995,12 @@ function FormulaireIntervalle({ vehicule, onAnnuler, onEnregistre }) {
             ou tous les
           </label>
           <div className="relative">
-            <input id="intervalle-mois" inputMode="numeric" value={saisie.mois} onChange={(e) => setSaisie((s) => ({ ...s, mois: e.target.value }))} className={`${champ} pr-14`} aria-invalid={erreurs.mois ? true : undefined} />
+            <input id="intervalle-mois" inputMode="numeric" value={saisie.mois} onChange={(e) => setSaisie((s) => ({ ...s, mois: e.target.value }))} className={`${champ} pr-14`} aria-invalid={erreurs.mois ? true : undefined} aria-describedby={erreurs.mois ? "intervalle-erreur" : undefined} />
             <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">mois</span>
           </div>
         </div>
       </div>
-      <Erreur texte={erreurs.km || erreurs.mois} />
+      <Erreur id="intervalle-erreur" texte={erreurs.km || erreurs.mois} />
       {erreurEnvoi ? <Alerte>{erreurEnvoi}</Alerte> : null}
       <BoutonsFormulaire enCours={enCours} onAnnuler={onAnnuler} />
     </form>
@@ -1006,8 +1015,13 @@ function FormulaireMiseEnCirculation({ vehiculeId, onAnnuler, onEnregistre }) {
 
   async function soumettre(evenement) {
     evenement.preventDefault();
-    if (!date) return setErreur("Indiquez la date.");
-    if (date > aujourdhui) return setErreur("La date ne peut pas être dans le futur.");
+    const formulaire = evenement.currentTarget;
+    const refuser = (texte) => {
+      setErreur(texte);
+      focaliserPremiereErreur(formulaire);
+    };
+    if (!date) return refuser("Indiquez la date.");
+    if (date > aujourdhui) return refuser("La date ne peut pas être dans le futur.");
     setEnCours(true);
     const { error } = await supabase.from("auto_vehicules").update({ date_mise_en_circulation: date }).eq("id", vehiculeId);
     setEnCours(false);
@@ -1021,10 +1035,10 @@ function FormulaireMiseEnCirculation({ vehiculeId, onAnnuler, onEnregistre }) {
         <label htmlFor="mise-en-circulation" className={etiquette}>
           Première mise en circulation
         </label>
-        <input id="mise-en-circulation" type="date" max={aujourdhui} value={date} onChange={(e) => setDate(e.target.value)} className={champ} />
+        <input id="mise-en-circulation" type="date" max={aujourdhui} value={date} onChange={(e) => setDate(e.target.value)} className={champ} aria-invalid={erreur ? true : undefined} aria-describedby={erreur ? "mise-en-circulation-erreur" : undefined} />
         <p className={aide}>Case B de la carte grise.</p>
       </div>
-      <Erreur texte={erreur} />
+      <Erreur id="mise-en-circulation-erreur" texte={erreur} />
       <BoutonsFormulaire enCours={enCours} onAnnuler={onAnnuler} />
     </form>
   );
@@ -1102,11 +1116,11 @@ function ListeHistorique({ vehiculeId, historique, releves = [], documents = [],
               : null,
           ].filter(Boolean);
           return (
-            <li key={ligne.id} className="flex items-start gap-3 px-4 py-3.5">
-              <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground/70">
+            <li key={ligne.id} className="flex flex-wrap items-start gap-x-3 gap-y-1 px-4 py-3.5">
+              <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground/70 ${iconeLigne}`}>
                 <Icone className="size-4" aria-hidden="true" />
               </span>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-[min(10rem,100%)] flex-1 break-words">
                 <div className="flex flex-wrap items-baseline gap-x-2">
                   <p className="font-semibold text-foreground">{libelleDe(TYPES_INTERVENTION, ligne.type)}</p>
                   <p className="text-sm text-muted-foreground">{formaterDate(ligne.realise_le)}</p>
@@ -1159,7 +1173,7 @@ function ListeHistorique({ vehiculeId, historique, releves = [], documents = [],
                   type="button"
                   onClick={() => supprimer(ligne)}
                   disabled={suppression === ligne.id}
-                  className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-red-50 hover:text-destructive"
+                  className="ml-auto flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-red-50 hover:text-destructive"
                   aria-label={`Supprimer ${libelleDe(TYPES_INTERVENTION, ligne.type)} du ${formaterDate(ligne.realise_le)}`}
                 >
                   {suppression === ligne.id ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}

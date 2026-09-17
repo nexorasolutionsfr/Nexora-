@@ -213,7 +213,7 @@ function MesVehicules() {
                 <li key={v.id}>
                   <Link href={`/auto/vehicules/${v.id}`} className={`${carte} flex items-center justify-between gap-3 py-3 opacity-80 transition hover:opacity-100`}>
                     <span className="min-w-0">
-                      <span className="block truncate font-semibold text-foreground">
+                      <span className="block break-words font-semibold text-foreground">
                         {v.marque} {v.modele}
                       </span>
                       <span className="block text-sm text-muted-foreground">Archivée le {formaterDate(v.archive_le)}</span>
@@ -302,10 +302,10 @@ function ProchainesActions({ etat }) {
             const pastille = pastilleElement(el, { avecSujet: false });
             return (
               <li key={el.cle}>
-                <Link href="/auto/a-prevoir" className="flex items-center justify-between gap-3 py-2.5">
+                <Link href="/auto/a-prevoir" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2.5">
                   <span className="min-w-0">
-                    <span className="line-clamp-2 block font-medium text-foreground">{el.titre}</span>
-                    <span className="block truncate text-sm text-muted-foreground">{el.vehicule.nom}</span>
+                    <span className="line-clamp-2 block break-words font-medium text-foreground">{el.titre}</span>
+                    <span className="line-clamp-2 block break-words text-sm text-muted-foreground">{el.vehicule.nom}</span>
                   </span>
                   <Pastille ton={pastille.ton}>{pastille.texte}</Pastille>
                 </Link>

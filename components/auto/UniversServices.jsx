@@ -42,7 +42,7 @@ import { aujourdhuiIso } from "@/lib/auto/echeances";
 import { LIBELLE_NON_DISPONIBLE, disponibiliteReservation } from "@/lib/auto/offres";
 import { construireAPrevoir } from "@/components/auto/aPrevoir";
 import { chargerDossiers } from "@/components/auto/dossiers";
-import { Alerte, PageAuto, Pastille, Plaque, SqueletteVehicules, aide, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, etiquette, memoriserVoitureCourante, useSessionAuto, voitureCourante } from "@/components/auto/elements";
+import { Alerte, PageAuto, Pastille, Plaque, SqueletteVehicules, aide, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, etiquette, iconeLigne, memoriserVoitureCourante, puce, puceEtat, useSessionAuto, voitureCourante } from "@/components/auto/elements";
 import { ENERGIES, formaterDate, libelleDe, messageErreurAuto } from "@/components/auto/format";
 import {
   MODES,
@@ -72,9 +72,6 @@ const ICONES = {
   assistance_panne: LifeBuoy,
 };
 
-const puce = "rounded-full border px-3 py-1 text-sm font-medium transition";
-const puceActive = "border-primary bg-secondary text-primary";
-const puceInactive = "border-border bg-card text-foreground hover:bg-muted";
 
 // Dossiers et offres lisibles. Sans session : rien à charger, le catalogue
 // reste consultable. Une lecture d'offres en échec n'invente rien : sans
@@ -150,7 +147,7 @@ export function CatalogueServices({ vehiculeId = null, mode = null }) {
 
       <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Façon de réaliser la prestation">
         {[{ code: null, libelle: "Toutes les façons" }, ...MODES].map((m) => (
-          <button key={m.code ?? "toutes"} type="button" onClick={() => aller({ mode: m.code })} aria-pressed={modeChoisi === m.code} className={`${puce} ${modeChoisi === m.code ? puceActive : puceInactive}`}>
+          <button key={m.code ?? "toutes"} type="button" onClick={() => aller({ mode: m.code })} aria-pressed={modeChoisi === m.code} className={`${puce} ${puceEtat(modeChoisi === m.code)}`}>
             {m.libelle}
           </button>
         ))}
@@ -173,10 +170,10 @@ export function CatalogueServices({ vehiculeId = null, mode = null }) {
                 return (
                   <li key={service.code}>
                     <Link href={adresse(`/auto/services/${service.code}`, { vehicule: vehicule?.id })} className="flex items-center gap-3 px-4 py-3.5 transition hover:bg-muted/60">
-                      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-primary">
+                      <span className={`flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-primary ${iconeLigne}`}>
                         <Icone className="size-[18px]" aria-hidden="true" />
                       </span>
-                      <span className="min-w-0 flex-1">
+                      <span className="min-w-0 flex-1 break-words">
                         <span className="block font-semibold leading-snug text-foreground">{service.nom}</span>
                         <span className="block text-sm leading-snug text-muted-foreground">{service.resume}</span>
                         {existante || compat.etat === "non_concerne" ? (
@@ -381,7 +378,7 @@ function ChoixVoiture({ session, actives, vehicule, suite, onChoisir, children }
       {actives.length > 1 ? (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Choisir la voiture">
           {actives.map((v) => (
-            <button key={v.id} type="button" onClick={() => v.id !== vehicule.id && onChoisir(v.id)} aria-pressed={v.id === vehicule.id} className={`${puce} ${v.id === vehicule.id ? puceActive : puceInactive}`}>
+            <button key={v.id} type="button" onClick={() => v.id !== vehicule.id && onChoisir(v.id)} aria-pressed={v.id === vehicule.id} className={`${puce} ${puceEtat(v.id === vehicule.id)}`}>
               {v.marque} {v.modele}
             </button>
           ))}
@@ -458,13 +455,13 @@ function BlocAction({ service, session, vehicule, existante, compat, disponibili
 
 function EtatAction({ titre, detail, lien }) {
   return (
-    <div className="flex items-start gap-3">
+    <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
       <CalendarCheck className="mt-0.5 size-5 shrink-0 text-emerald-600" aria-hidden="true" />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-[8rem] flex-1">
         <p className="font-semibold text-foreground">{titre}</p>
         <p className="text-sm text-muted-foreground">{detail}</p>
       </div>
-      <Link href={lien} className="-my-2 inline-flex min-h-10 shrink-0 items-center gap-0.5 rounded-lg px-1 text-sm font-semibold text-primary hover:underline">
+      <Link href={lien} className="-my-2 ml-auto inline-flex min-h-10 shrink-0 items-center gap-0.5 rounded-lg px-1 text-sm font-semibold text-primary hover:underline">
         Voir dans À prévoir
         <ChevronRight className="size-4" aria-hidden="true" />
       </Link>
@@ -571,10 +568,10 @@ function Informations({ service, vehicule }) {
           <p className="text-sm font-medium text-foreground">À compléter dans votre dossier</p>
           <ul className="mt-1.5 divide-y divide-border rounded-xl border border-border">
             {infos.aCompleter.map((i) => (
-              <li key={i.cle} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+              <li key={i.cle} className="flex flex-wrap items-center justify-between gap-x-3 px-3 py-2 text-sm">
                 <span className="min-w-0 text-foreground">{i.libelle}</span>
                 {i.action ? (
-                  <Link href={`/auto/vehicules/${vehicule.id}?action=${i.action}`} className="shrink-0 font-semibold text-primary hover:underline">
+                  <Link href={`/auto/vehicules/${vehicule.id}?action=${i.action}`} className="-my-2 inline-flex min-h-10 shrink-0 items-center rounded-lg px-1 font-semibold text-primary hover:underline">
                     Compléter
                   </Link>
                 ) : null}

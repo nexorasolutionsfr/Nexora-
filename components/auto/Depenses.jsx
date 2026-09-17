@@ -32,7 +32,7 @@ export default function BlocDepenses({ historique }) {
             </>
           ) : (
             <>
-              <p className="mt-1 font-display text-xl font-semibold text-foreground">
+              <p className="mt-1 break-words font-display text-xl font-semibold text-foreground">
                 {euros(r.douzeMoisCentimes)}
                 <span className="ml-2 font-sans text-sm font-normal text-muted-foreground">sur les 12 derniers mois</span>
               </p>
@@ -41,9 +41,9 @@ export default function BlocDepenses({ historique }) {
               </p>
 
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <ul className="space-y-1 text-sm" aria-label="Par année">
+                <ul className="min-w-0 space-y-1 text-sm" aria-label="Par année">
                   {r.parAnnee.slice(0, 4).map((a) => (
-                    <li key={a.annee} className="flex items-baseline justify-between gap-3">
+                    <li key={a.annee} className="flex flex-wrap items-baseline justify-between gap-x-3">
                       <span className="text-foreground">
                         {a.annee} <span className="text-muted-foreground">· {pluriel(a.nombre, "intervention")}</span>
                       </span>
@@ -51,10 +51,10 @@ export default function BlocDepenses({ historique }) {
                     </li>
                   ))}
                 </ul>
-                <ul className="space-y-1 text-sm" aria-label="Par type">
+                <ul className="min-w-0 space-y-1 text-sm" aria-label="Par type">
                   {r.parType.slice(0, 4).map((t) => (
-                    <li key={t.type} className="flex items-baseline justify-between gap-3">
-                      <span className="truncate text-foreground">{libelleDe(TYPES_INTERVENTION, t.type)}</span>
+                    <li key={t.type} className="flex flex-wrap items-baseline justify-between gap-x-3">
+                      <span className="min-w-0 break-words text-foreground">{libelleDe(TYPES_INTERVENTION, t.type)}</span>
                       <span className="font-medium tabular-nums text-foreground">{euros(t.totalCentimes)}</span>
                     </li>
                   ))}

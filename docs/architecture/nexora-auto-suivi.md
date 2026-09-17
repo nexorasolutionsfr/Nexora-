@@ -31,7 +31,8 @@ Il est mis à jour à chaque lot. Le contrat détaillé de chaque lot reste dans
 | --- | --- | --- | --- | --- |
 | F — recette globale et corrections | `auto/lot-f-recette-globale` | `auto/lot-e-factures` | [#115](https://github.com/nexorasolutionsfr/Nexora-/pull/115) | fait sur Test |
 | G — première utilisation | `auto/lot-g-premiere-utilisation` | `auto/lot-f-recette-globale` | [#116](https://github.com/nexorasolutionsfr/Nexora-/pull/116) | fait sur Test |
-| H — import plus fluide | `auto/lot-h-import-fluide` | `auto/lot-g-premiere-utilisation` | à ouvrir | fait sur Test, migration `20260922001000` appliquée sur Test |
+| H — import plus fluide | `auto/lot-h-import-fluide` | `auto/lot-g-premiere-utilisation` | [#117](https://github.com/nexorasolutionsfr/Nexora-/pull/117) | fait sur Test, migration `20260922001000` appliquée sur Test |
+| I — mobile et accessibilité | `auto/lot-i-mobile-accessibilite` | `auto/lot-h-import-fluide` | à ouvrir | fait sur Test, sans migration |
 
 ## Recette globale — constats
 
@@ -56,6 +57,11 @@ boutons sans nom, champs sans libellé, cibles tactiles), et situations limites.
 | R13 | Deux fichiers de la même facture confirmés au même moment : deux interventions, dépense comptée deux fois (16 cas sur 20 sur Test) | **corrigé** (lot H) : verrou par voiture, 0 sur 30 |
 | R14 | Déconnexion depuis un écran privé : renvoi vers « Connectez-vous pour reprendre là où vous en étiez » | **corrigé** (lot H) : retour à l'accueil |
 | R15 | Formulaire d'intervention à 320 px : date coupée, étiquettes décalées | **corrigé** (lot H) : champs empilés sous 360 px ; les autres formulaires sont revus au lot I |
+| R16 | Focus clavier des boutons et liens : contour bleu à 50 % d'opacité, peu visible | **corrigé** (lot I) : contour plein de 2 px |
+| R17 | Texte agrandi (150 %, 200 %) : onglets hors de l'écran, pastilles, montants, listes et fieldsets qui débordent ou se coupent | **corrigé** (lot I) : 0 débordement sur 9 écrans |
+| R18 | Puces de choix de 30 px ; liens « Compléter » de 20 px | **corrigé** (lot I) : 36 et 40 px |
+| R19 | Formulaires de la fiche et de la facture : erreurs non reliées à leur champ, focus laissé sur le bouton | **corrigé** (lot I) |
+| R20 | Pas de prise de photo directe ; « Voir » la facture échoue sans rien dire | **corrigé** (lot I) |
 
 Vérifié sans défaut : aucune page ne déborde à 320 px ; écrans sans voiture
 (chacun propose d'ajouter une voiture) ; session expirée au chargement
@@ -159,4 +165,66 @@ jamais de doublon, et une erreur se corrige après confirmation.
 - Le brouillon vit sur l'appareil : commencé sur le téléphone, il ne se reprend pas sur l'ordinateur (la facture et sa proposition, elles, sont en base).
 - Le contrôle du contenu à l'écran est un garde-fou, pas une barrière : un client modifié peut déposer directement dans le stockage. Le compartiment reste limité par type et par taille, les fichiers ne sont servis qu'à leur propriétaire par adresse signée, et la lecture serveur revérifie le contenu. À reprendre au lot L.
 - Pas de mesure sur de vraies factures : aucune n'a été fournie.
+
+## Lot I — mobile, documents et accessibilité
+
+**Objectif.** L'application reste utilisable sur un petit téléphone, avec le
+texte agrandi, au clavier et au lecteur d'écran, et un document se prend en
+photo sans détour.
+
+**Méthode.** Jeu de données fictif « extrême » sur le compte de recette :
+- kilométrage à 7 chiffres, montant à 5 chiffres ;
+- professionnel de 120 caractères, 12 opérations longues ;
+- nom de fichier de 100 caractères, facture à vérifier avec 9 opérations ;
+- contre-visite en retard, tâche au titre long.
+
+Deux audits sur 9 écrans, rejouables et versés au dépôt :
+- `scripts/recette/audit-ecrans.mjs` : 320, 375 et 390 px ; débordement, textes coupés, noms, libellés, cibles, focus visible, titres ;
+- `scripts/recette/audit-texte-agrandi.mjs` : texte à 150 % et 200 %.
+
+Les deux s'appuient sur Chrome sans interface et un profil jetable effacé en fin d'audit.
+
+**Fait.**
+- **Focus clavier (R16).**
+  - Contour plein de 2 px, couleur d'accent, pour les liens, boutons, puces et champs de fichier de Nexora Auto (`app/globals.css`, portée `.espace-auto` : le logiciel garage n'est pas touché).
+  - Lien « Aller au contenu » en premier arrêt de tabulation.
+- **Texte agrandi (R17).**
+  - Les onglets passent à la ligne.
+  - Les pastilles, montants, kilométrages, listes de dépenses et en-têtes de section se replient au lieu de déborder, et les fieldsets ne s'élargissent plus.
+  - Dans les listes (historique, documents, services), les icônes décoratives s'effacent quand la place mesurée en rem manque (requêtes de conteneur). Les actions passent sous le texte.
+  - À taille normale, 320 px compris, la mise en page ne change pas.
+- **Cibles (R18).** Style de puce commun (`puce`, `puceEtat`) de 36 px de haut ; « Compléter » et « Vérifier » à 40 px.
+- **Erreurs (R19).**
+  - Relevé, intervention, correction, intervalle, procès-verbal, mise en circulation et vérification de facture : chaque message est relié à son champ (`aria-describedby`).
+  - Après un envoi refusé, le focus va au premier champ à corriger (`focaliserPremiereErreur`). S'il faut trancher une ressemblance, il va au choix « Rattacher / Créer ».
+- **Documents et photos (R20).**
+  - « Choisir un fichier » et, sur écran tactile, « Prendre une photo » (appareil photo arrière, `capture="environment"`) : facture et « Autre document » (`components/auto/ChoixFichier.jsx`).
+  - Le nom et la taille du fichier choisi sont annoncés.
+  - Un échec d'ouverture de la facture (« Voir ») affiche un message.
+
+**HEIC : évaluation, sans dépense ni transfert.**
+- Une photo prise depuis le bouton « Prendre une photo » arrive en JPEG (comportement des navigateurs mobiles pour une capture directe) : elle s'ouvre partout. À confirmer sur un vrai iPhone lors de la recette téléphone.
+- Une photo HEIC choisie dans la photothèque d'un iPhone est acceptée et conservée telle quelle. Elle s'ouvre sur les appareils Apple ; ailleurs, le navigateur la télécharge au lieu de l'afficher.
+- Conversion gratuite possible dans le navigateur (bibliothèque libheif compilée en WebAssembly, par exemple heic2any ou heic-to) :
+  - rien ne sort de l'appareil, mais environ 1 à 3 Mo de code à charger à la demande et quelques secondes de calcul sur un téléphone ;
+  - la licence LGPL de libheif et le décodage HEVC (brevets) sont à examiner avant un usage commercial.
+- Côté serveur, les binaires habituels de traitement d'image (sharp/libvips précompilés) ne décodent pas le HEVC.
+- **Non retenu pour l'instant.** Piste gratuite à vérifier d'abord sur iPhone : un `accept` sans types HEIC pourrait amener Safari à convertir lui-même en JPEG au moment du choix.
+
+**Vérifié.**
+- Audits sur 9 écrans, avec session (accueil, fiche, « À prévoir », services, fiche de service, ajout et vérification de facture, ajout de voiture) et sans session (accueil, connexion) :
+  - 320, 375 et 390 px : aucun défaut relevé ;
+  - texte à 150 % et 200 % : aucun élément hors de l'écran, aucun contenu coupé (hors lien d'évitement masqué).
+- Captures contrôlées : sélecteur de fichier et « Autre document » à 320 et 375 px, historique à 320 px (mise en page d'origine) et à 200 %, focus d'une puce.
+- Navigateur :
+  - écran tactile : le bouton photo est présent, avec `accept="image/*"` et `capture="environment"`, et le nom du fichier choisi s'affiche ;
+  - envoi refusé d'une intervention : focus sur « Type », message relié ;
+  - tabulation : « Aller au contenu » d'abord, contour de 2 px, puis le focus arrive dans le contenu.
+- 130 tests node ; lint ponctuel sans nouvelle alerte.
+- Données fictives retirées de Test, profils Chrome temporaires effacés.
+
+**Limites.**
+- Pas d'essai sur de vrais téléphones ni avec un vrai lecteur d'écran (VoiceOver, TalkBack) : les contrôles sont automatiques et au clavier.
+- Le réglage « taille du texte » d'iOS n'agrandit pas les pages web ordinaires. L'agrandissement mesuré ici correspond au zoom du texte des navigateurs et au réglage d'Android pour les tailles exprimées en rem ; quelques tailles en pixels (15 px, 13 px) ne suivent que le zoom du navigateur.
+- Clavier virtuel ouvert : non mesurable sans appareil ; les champs restent de vrais champs natifs et l'en-tête fixe mesure environ 100 px.
 

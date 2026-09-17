@@ -13,5 +13,5 @@ export const viewport: Viewport = {
 }
 
 export default function AutoLayout({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-dvh bg-background text-foreground">{children}</div>
+  return <div className="espace-auto min-h-dvh bg-background text-foreground">{children}</div>
 }

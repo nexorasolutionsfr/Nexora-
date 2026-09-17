@@ -37,8 +37,9 @@ import {
   validerFacture,
 } from "@/lib/auto/factures";
 import { ouvrirDocument } from "@/components/auto/Documents";
+import ChoixFichier from "@/components/auto/ChoixFichier";
 import EditeurOperations from "@/components/auto/EditeurOperations";
-import { Alerte, PageAuto, Plaque, SqueletteVehicules, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, champ, deconnexionVolontaire, etiquette, useSessionAuto, voitureCourante } from "@/components/auto/elements";
+import { Alerte, PageAuto, Plaque, SqueletteVehicules, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, champ, deconnexionVolontaire, etiquette, focaliserPremiereErreur, puce, puceEtat, useSessionAuto, voitureCourante } from "@/components/auto/elements";
 import { TYPES_INTERVENTION, formaterDate, formaterEuros, formaterKm, libelleDe, messageErreurAuto } from "@/components/auto/format";
 
 const ACCEPTES = "application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif";
@@ -201,7 +202,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
       ) : (
         <form onSubmit={deposer} noValidate className={`${carte} mt-5 space-y-4 p-5`}>
           {vehicules.length > 1 ? (
-            <fieldset>
+            <fieldset className="min-w-0">
               <legend className={etiquette}>Voiture</legend>
               <div className="flex flex-wrap gap-2">
                 {vehicules.map((v) => (
@@ -210,7 +211,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
                     type="button"
                     onClick={() => setChoisi(v.id)}
                     aria-pressed={v.id === vehicule.id}
-                    className={`rounded-full border px-3 py-1 text-sm font-medium transition ${v.id === vehicule.id ? "border-primary bg-secondary text-primary" : "border-border bg-card text-foreground hover:bg-muted"}`}
+                    className={`${puce} ${puceEtat(v.id === vehicule.id)}`}
                   >
                     {v.marque} {v.modele}
                   </button>
@@ -224,21 +225,18 @@ export function NouvelleFacture({ vehiculeId = null }) {
           )}
 
           <div>
-            <label htmlFor="facture-fichier" className={etiquette}>
-              Facture
-            </label>
-            <input
+            <ChoixFichier
               id="facture-fichier"
-              type="file"
-              accept={ACCEPTES}
-              onChange={(e) => {
-                setFichier(e.target.files?.[0] ?? null);
+              libelle="Facture"
+              accepte={ACCEPTES}
+              fichier={fichier}
+              onChange={(f) => {
+                setFichier(f);
                 setExistant(null);
                 setErreur("");
               }}
-              className="block w-full text-sm text-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-secondary file:px-3 file:py-2.5 file:text-sm file:font-semibold file:text-primary"
+              aideTexte="PDF ou photo, 10 Mo au plus. Le fichier reste privé."
             />
-            <p className={aide}>PDF ou photo, 10 Mo au plus. Le fichier reste privé.</p>
             {lecture.externe ? (
               <p className={`${aide} text-amber-800`}>Lecture automatique en essai : utilisez des factures fictives ou anonymisées.</p>
             ) : null}
@@ -342,6 +340,7 @@ export function ConfirmerFacture({ documentId, lire = false }) {
   // Modifié par la personne : gardé en brouillon sur l'appareil (lib/auto/brouillon.js).
   const [modifie, setModifie] = useState(false);
   const [brouillonRepris, setBrouillonRepris] = useState(false);
+  const [ouvertureRatee, setOuvertureRatee] = useState(false);
   const lectureLancee = useRef(false);
   const aujourdhui = aujourdhuiIso();
 
@@ -549,11 +548,15 @@ export function ConfirmerFacture({ documentId, lire = false }) {
   async function enregistrer(evenement) {
     evenement.preventDefault();
     setErreurEnvoi("");
+    const formulaire = evenement.currentTarget;
     const rattacherA = choixValide && choixValide !== "creer" ? choixValide : null;
     if (!rattacherA) {
       setErreurs(verification.erreurs);
-      if (!verification.valide) return;
-      if (ressemblantes.length && !choixValide) return setErreurEnvoi("Une intervention ressemblante existe : choisissez de rattacher la facture ou d'en créer une autre.");
+      if (!verification.valide) return focaliserPremiereErreur(formulaire);
+      if (ressemblantes.length && !choixValide) {
+        setErreurEnvoi("Une intervention ressemblante existe : choisissez de rattacher la facture ou d'en créer une autre.");
+        return requestAnimationFrame(() => formulaire.querySelector('input[name="choix-doublon"]')?.focus());
+      }
     }
     const d = verification.donnees;
     const lectureId = lecture.etat === "proposee" ? lecture.proposition?.lectureId ?? lecture.lectureId ?? null : null;
@@ -600,6 +603,7 @@ export function ConfirmerFacture({ documentId, lire = false }) {
       : messageLecture(lecture);
   const propositionVide = message === MESSAGES_LECTURE.vide;
   const surligner = (nom) => marques.incertains.has(nom) && !touches.has(nom);
+  const invalide = (nom) => (erreurs[nom] ? { "aria-invalid": true, "aria-describedby": `facture-${nom}-erreur` } : {});
   const nonLu = (nom) => marques.nonLus.has(nom) && !touches.has(nom) && lecture.etat === "proposee";
   const rattachement = Boolean(choixValide && choixValide !== "creer");
 
@@ -611,7 +615,14 @@ export function ConfirmerFacture({ documentId, lire = false }) {
       </Link>
       <div className="mt-2 flex items-start justify-between gap-3">
         <h1 className="font-display text-[28px] font-bold leading-tight tracking-tight text-foreground">Vérifier la facture</h1>
-        <button type="button" onClick={() => ouvrirDocument(document)} className={`${boutonLien} shrink-0`}>
+        <button
+          type="button"
+          onClick={async () => {
+            setOuvertureRatee(false);
+            setOuvertureRatee(!(await ouvrirDocument(document)));
+          }}
+          className={`${boutonLien} shrink-0`}
+        >
           <FileText className="size-4" aria-hidden="true" />
           Voir
           <ExternalLink className="size-3.5" aria-hidden="true" />
@@ -622,6 +633,7 @@ export function ConfirmerFacture({ documentId, lire = false }) {
       </p>
 
       <div className="mt-4 space-y-3">
+        {ouvertureRatee ? <Alerte>La facture n'a pas pu être ouverte. Vérifiez votre connexion, puis réessayez.</Alerte> : null}
         {brouillonRepris ? (
           <div role="status" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-border bg-muted px-3.5 py-2 text-sm text-foreground">
             <p>Vos modifications non enregistrées ont été reprises.</p>
@@ -703,7 +715,7 @@ export function ConfirmerFacture({ documentId, lire = false }) {
       ) : (
       <form onSubmit={enregistrer} noValidate className={`${carte} mt-4 space-y-5 p-5`} aria-busy={lecture.etat === "en_cours"}>
         {ressemblantes.length ? (
-          <fieldset className="rounded-xl border border-amber-300 bg-amber-50 p-3.5">
+          <fieldset className="min-w-0 rounded-xl border border-amber-300 bg-amber-50 p-3.5">
             <legend className="px-1 text-sm font-semibold text-amber-950">Intervention ressemblante déjà enregistrée</legend>
             <p className="text-[13px] text-amber-950">Même date{ressemblantes.some((h) => h.montant_ttc != null) ? " et même montant" : " et même type"}. Nexora ne fusionne rien : à vous de choisir.</p>
             <div className="mt-2 space-y-2">
@@ -729,14 +741,14 @@ export function ConfirmerFacture({ documentId, lire = false }) {
 
         <div className="grid grid-cols-2 gap-3">
           <Champ nom="dateIntervention" label="Date de l'intervention" surligner={surligner} nonLu={nonLu} erreur={erreurs.dateIntervention} className="col-span-2 sm:col-span-1">
-            <input id="facture-dateIntervention" type="date" max={aujourdhui} value={saisie.dateIntervention} onChange={(e) => modifier("dateIntervention", e.target.value)} className={champ} disabled={rattachement} />
+            <input id="facture-dateIntervention" type="date" max={aujourdhui} value={saisie.dateIntervention} onChange={(e) => modifier("dateIntervention", e.target.value)} className={champ} disabled={rattachement} {...invalide("dateIntervention")} />
           </Champ>
           <Champ nom="dateFacture" label="Date de la facture" facultatif surligner={surligner} nonLu={nonLu} erreur={erreurs.dateFacture} avertissement={verification.avertissements.dateFacture} className="col-span-2 sm:col-span-1">
-            <input id="facture-dateFacture" type="date" max={aujourdhui} value={saisie.dateFacture} onChange={(e) => modifier("dateFacture", e.target.value)} className={champ} />
+            <input id="facture-dateFacture" type="date" max={aujourdhui} value={saisie.dateFacture} onChange={(e) => modifier("dateFacture", e.target.value)} className={champ} {...invalide("dateFacture")} />
           </Champ>
         </div>
 
-        <fieldset disabled={rattachement} className="space-y-5 disabled:opacity-50">
+        <fieldset disabled={rattachement} className="min-w-0 space-y-5 disabled:opacity-50">
           <Champ nom="professionnel" label="Professionnel" facultatif surligner={surligner} nonLu={nonLu}>
             <input id="facture-professionnel" value={saisie.professionnel} maxLength={120} onChange={(e) => modifier("professionnel", e.target.value)} className={champ} placeholder="Garage, centre auto…" />
           </Champ>
@@ -744,7 +756,7 @@ export function ConfirmerFacture({ documentId, lire = false }) {
           <EditeurOperations operations={saisie.operations} surligne={surligner("operations")} nonLue={nonLu("operations")} onChange={modifierOperations} />
 
           <Champ nom="type" label="Classée comme" surligner={surligner} nonLu={() => false} erreur={erreurs.type} aideTexte="Une vidange seule reste une vidange : « Révision » seulement si la facture le dit.">
-            <select id="facture-type" value={saisie.type} onChange={(e) => modifier("type", e.target.value)} className={`${champ} appearance-none`}>
+            <select id="facture-type" value={saisie.type} onChange={(e) => modifier("type", e.target.value)} className={`${champ} appearance-none`} {...invalide("type")}>
               <option value="">—</option>
               {TYPES_INTERVENTION.map((t) => (
                 <option key={t.valeur} value={t.valeur}>
@@ -757,13 +769,13 @@ export function ConfirmerFacture({ documentId, lire = false }) {
           <div className="grid grid-cols-2 gap-3">
             <Champ nom="kilometrage" label="Kilométrage" facultatif surligner={surligner} nonLu={nonLu} erreur={erreurs.kilometrage} className="col-span-2 sm:col-span-1">
               <div className="relative">
-                <input id="facture-kilometrage" inputMode="numeric" value={saisie.kilometrage} onChange={(e) => modifier("kilometrage", e.target.value)} className={`${champ} pr-10`} />
+                <input id="facture-kilometrage" inputMode="numeric" value={saisie.kilometrage} onChange={(e) => modifier("kilometrage", e.target.value)} className={`${champ} pr-10`} {...invalide("kilometrage")} />
                 <span className="pointer-events-none absolute inset-y-0 right-3.5 flex items-center text-sm text-muted-foreground">km</span>
               </div>
             </Champ>
             <Champ nom="montant" label="Montant TTC" facultatif surligner={surligner} nonLu={nonLu} erreur={erreurs.montant} aideTexte="Le total de la facture, compté une fois." className="col-span-2 sm:col-span-1">
               <div className="relative">
-                <input id="facture-montant" inputMode="decimal" value={saisie.montant} onChange={(e) => modifier("montant", e.target.value)} className={`${champ} pr-8`} placeholder="0,00" />
+                <input id="facture-montant" inputMode="decimal" value={saisie.montant} onChange={(e) => modifier("montant", e.target.value)} className={`${champ} pr-8`} placeholder="0,00" {...invalide("montant")} />
                 <span className="pointer-events-none absolute inset-y-0 right-3.5 flex items-center text-sm text-muted-foreground">€</span>
               </div>
             </Champ>
@@ -810,7 +822,11 @@ function Champ({ nom, label, facultatif = false, surligner, nonLu, erreur, avert
         {aVerifier ? <span className="rounded bg-amber-100 px-1.5 text-xs font-semibold text-amber-900">À vérifier</span> : null}
       </label>
       {children}
-      {erreur ? <p className="mt-1.5 text-[13px] font-medium text-destructive">{erreur}</p> : null}
+      {erreur ? (
+        <p id={`facture-${nom}-erreur`} className="mt-1.5 text-[13px] font-medium text-destructive">
+          {erreur}
+        </p>
+      ) : null}
       {!erreur && avertissement ? <p className="mt-1.5 text-[13px] text-amber-800">{avertissement}</p> : null}
       {!erreur && nonLu(nom) ? <p className={aide}>Non lu sur la facture.</p> : null}
       {aideTexte ? <p className={aide}>{aideTexte}</p> : null}

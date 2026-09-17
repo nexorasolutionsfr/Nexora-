@@ -12,7 +12,7 @@ import { BellOff, Calculator, CalendarCheck, Car, ChevronRight, CircleAlert, Cir
 
 import { supabase } from "@/lib/supabase";
 import { ajouterJours, aujourdhuiIso } from "@/lib/auto/echeances";
-import { Alerte, PageAuto, Pastille, Plaque, SqueletteVehicules, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, deconnexionVolontaire, etiquette, useSessionAuto } from "@/components/auto/elements";
+import { Alerte, PageAuto, Pastille, Plaque, SqueletteVehicules, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, deconnexionVolontaire, etiquette, puce, puceEtat, useSessionAuto } from "@/components/auto/elements";
 import { FONDEMENTS, HORIZONS_JOURS, construireAPrevoir, pastilleElement } from "@/components/auto/aPrevoir";
 import { chargerDossiers } from "@/components/auto/dossiers";
 import { formaterDate, messageErreurAuto } from "@/components/auto/format";
@@ -153,7 +153,7 @@ export default function APrevoir({ vehiculeFiltre = null, elementCible = null })
             type="button"
             onClick={() => h !== horizon && changerHorizon(h)}
             aria-pressed={h === horizon}
-            className={`rounded-full border px-3 py-1 text-sm font-medium transition ${h === horizon ? "border-primary bg-secondary text-primary" : "border-border bg-card text-foreground hover:bg-muted"}`}
+            className={`${puce} ${puceEtat(h === horizon)}`}
           >
             {h} jours
           </button>
@@ -168,7 +168,7 @@ export default function APrevoir({ vehiculeFiltre = null, elementCible = null })
               type="button"
               onClick={() => setFiltre(v.id)}
               aria-pressed={filtre === v.id}
-              className={`rounded-full border px-3 py-1 text-sm font-medium transition ${filtre === v.id ? "border-primary bg-secondary text-primary" : "border-border bg-card text-foreground hover:bg-muted"}`}
+              className={`${puce} ${puceEtat(filtre === v.id)}`}
             >
               {v.nom}
             </button>
@@ -221,7 +221,7 @@ export default function APrevoir({ vehiculeFiltre = null, elementCible = null })
               {terminees.map((t) => (
                 <li key={t.cle} className="flex items-center justify-between gap-3 px-4 py-3">
                   <span className="min-w-0">
-                    <span className="block truncate text-foreground line-through decoration-muted-foreground/50">{t.titre}</span>
+                    <span className="line-clamp-2 block break-words text-foreground line-through decoration-muted-foreground/50">{t.titre}</span>
                     <span className="block text-sm text-muted-foreground">
                       {t.vehicule.nom} · terminée le {formaterDate(t.termineeLe)}
                     </span>

@@ -22,7 +22,8 @@ import {
   tailleLisible,
   verifierFichierComplet,
 } from "@/lib/auto/documents";
-import { Alerte, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, etiquette } from "@/components/auto/elements";
+import { Alerte, boutonLien, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, etiquette, iconeLigne } from "@/components/auto/elements";
+import ChoixFichier from "@/components/auto/ChoixFichier";
 import { TYPES_INTERVENTION, formaterDate, libelleDe, messageErreurAuto } from "@/components/auto/format";
 
 // Ouvre un document dans un nouvel onglet. L'onglet est ouvert AVANT l'appel
@@ -74,7 +75,7 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
 
   return (
     <section id="documents" className="scroll-mt-20" aria-labelledby="titre-documents">
-      <div className="mb-2 mt-7 flex items-center justify-between">
+      <div className="mb-2 mt-7 flex flex-wrap items-center justify-between gap-x-2">
         <h2 id="titre-documents" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Documents
         </h2>
@@ -127,11 +128,11 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
             // Une facture conservée dont l'intervention n'est pas encore confirmée.
             const aConfirmer = d.type === "facture" && !d.historique_id && d.source === "proprietaire";
             return (
-              <li key={d.id} className="flex items-start gap-3 px-4 py-3.5">
-                <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground/70">
+              <li key={d.id} className="flex flex-wrap items-start gap-x-3 gap-y-1 px-4 py-3.5">
+                <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground/70 ${iconeLigne}`}>
                   <Icone className="size-4" aria-hidden="true" />
                 </span>
-                <button type="button" onClick={() => ouvrir(d)} className="min-w-0 flex-1 text-left">
+                <button type="button" onClick={() => ouvrir(d)} className="min-w-[min(9rem,100%)] flex-1 break-words rounded-lg text-left">
                   <span className="flex items-start gap-1.5 font-semibold text-foreground">
                     <span className="line-clamp-2 min-w-0 break-words">{d.titre || libelleDe(TYPES_DOCUMENT, d.type)}</span>
                     <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -151,22 +152,24 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
                     </span>
                   ) : null}
                 </button>
-                {aConfirmer && !archive ? (
-                  <Link href={`/auto/factures/${d.id}`} className="shrink-0 self-center rounded-lg px-2 py-2 text-sm font-semibold text-primary hover:bg-secondary">
-                    {d.proposition != null ? "Vérifier" : "Compléter"}
-                  </Link>
-                ) : null}
-                {d.source === "proprietaire" ? (
-                  <button
-                    type="button"
-                    onClick={() => supprimer(d)}
-                    disabled={enCours === d.id}
-                    className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-red-50 hover:text-destructive"
-                    aria-label={`Supprimer ${d.titre || d.nom_fichier}`}
-                  >
-                    {enCours === d.id ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
-                  </button>
-                ) : null}
+                <div className="ml-auto flex shrink-0 items-center self-center">
+                  {aConfirmer && !archive ? (
+                    <Link href={`/auto/factures/${d.id}`} className="inline-flex min-h-10 items-center rounded-lg px-2 text-sm font-semibold text-primary hover:bg-secondary">
+                      {d.proposition != null ? "Vérifier" : "Compléter"}
+                    </Link>
+                  ) : null}
+                  {d.source === "proprietaire" ? (
+                    <button
+                      type="button"
+                      onClick={() => supprimer(d)}
+                      disabled={enCours === d.id}
+                      className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-red-50 hover:text-destructive"
+                      aria-label={`Supprimer ${d.titre || d.nom_fichier}`}
+                    >
+                      {enCours === d.id ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
+                    </button>
+                  ) : null}
+                </div>
               </li>
             );
           })}
@@ -238,19 +241,14 @@ function FormulaireDocument({ vehiculeId, proprietaireId, historique, historique
 
   return (
     <form onSubmit={soumettre} noValidate className="mt-4 space-y-3 border-t border-border pt-4">
-      <div>
-        <label htmlFor="document-fichier" className={etiquette}>
-          Fichier
-        </label>
-        <input
-          id="document-fichier"
-          type="file"
-          accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
-          onChange={(e) => setFichier(e.target.files?.[0] ?? null)}
-          className="block w-full text-sm text-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-secondary file:px-3 file:py-2.5 file:text-sm file:font-semibold file:text-primary"
-        />
-        <p className={aide}>PDF ou photo, 10 Mo au plus. Le fichier reste privé.</p>
-      </div>
+      <ChoixFichier
+        id="document-fichier"
+        libelle="Fichier"
+        accepte="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
+        fichier={fichier}
+        onChange={setFichier}
+        aideTexte="PDF ou photo, 10 Mo au plus. Le fichier reste privé."
+      />
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2 sm:col-span-1">
           <label htmlFor="document-type" className={etiquette}>

@@ -13,8 +13,8 @@ import { TYPES_INTERVENTION } from "@/components/auto/format";
 export default function EditeurOperations({ operations, surligne = false, nonLue = false, onChange }) {
   const changer = (i, champs) => onChange(operations.map((o, j) => (j === i ? { ...o, ...champs } : o)));
   return (
-    <fieldset className={surligne ? "rounded-xl bg-amber-50 p-2 ring-2 ring-amber-300" : ""}>
-      <legend className={cn(etiquette, "flex items-center gap-2")}>
+    <fieldset className={cn("min-w-0", surligne ? "rounded-xl bg-amber-50 p-2 ring-2 ring-amber-300" : "")}>
+      <legend className={cn(etiquette, "flex flex-wrap items-center gap-x-2")}>
         Opérations <span className="font-normal text-muted-foreground">(facultatif)</span>
         {surligne ? <span className="rounded bg-amber-100 px-1.5 text-xs font-semibold text-amber-900">À vérifier</span> : null}
       </legend>

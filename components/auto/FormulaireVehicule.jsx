@@ -9,7 +9,7 @@ import { ChevronDown, LoaderCircle } from "lucide-react";
 
 import { aujourdhuiIso } from "@/lib/auto/echeances";
 import { afficherImmatriculation } from "@/lib/auto/immatriculation";
-import { Alerte, aide, boutonPrincipal, boutonSecondaire, champ, etiquette } from "@/components/auto/elements";
+import { Alerte, aide, boutonPrincipal, boutonSecondaire, champ, etiquette, focaliserPremiereErreur } from "@/components/auto/elements";
 import { ENERGIES, MARQUES_COURANTES } from "@/components/auto/format";
 import { validerVehicule } from "@/components/auto/validation";
 
@@ -54,7 +54,7 @@ export default function FormulaireVehicule({ vehicule, creation = false, libelle
     setErreurs(verification.erreurs);
     if (["dateMiseEnCirculation", "dernierControle", "controleValableJusquAu", "kilometrage"].some((c) => verification.erreurs[c])) setEcheancesOuvertes(true);
     setAvertissements(verification.avertissements);
-    if (!verification.valide) return;
+    if (!verification.valide) return focaliserPremiereErreur(evenement.currentTarget);
     setEnCours(true);
     const message = await onEnregistrer(verification.donnees);
     setEnCours(false);

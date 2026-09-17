@@ -25,10 +25,16 @@ export const boutonSecondaire =
   "inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-border bg-card px-5 text-base font-semibold text-foreground transition hover:bg-muted active:translate-y-px disabled:pointer-events-none disabled:opacity-60";
 export const boutonLien =
   "inline-flex items-center gap-1.5 rounded-lg px-2 py-2 text-left text-sm font-semibold text-primary transition hover:bg-secondary disabled:opacity-60";
+// Un choix parmi quelques-uns (voiture, période, façon de faire) : 36 px de haut au moins.
+export const puce = "inline-flex min-h-9 items-center rounded-full border px-3 py-1 text-left text-sm font-medium transition";
+export const puceEtat = (actif) => (actif ? "border-primary bg-secondary text-primary" : "border-border bg-card text-foreground hover:bg-muted");
+export const iconeLigne = "@max-[16rem]:hidden";
 export const carte = "rounded-2xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(15,27,51,0.04)]";
 // Une carte qui contient une liste : chaque ligne porte sa propre marge.
 // (Ajouter « p-0 » à `carte` ne suffit pas : Tailwind range p-0 avant p-4.)
-export const carteListe = "divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_2px_rgba(15,27,51,0.04)]";
+// `@container` : quand le texte est agrandi, la largeur mesurée en rem
+// diminue et les icônes décoratives des lignes s'effacent (`iconeLigne`).
+export const carteListe = "@container divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card shadow-[0_1px_2px_rgba(15,27,51,0.04)]";
 
 // La session Supabase de la personne. `undefined` tant qu'on ne sait pas
 // encore, `null` si personne n'est connecté.
@@ -56,6 +62,12 @@ export function useSessionAuto() {
     };
   }, []);
   return session;
+}
+
+// Après un envoi refusé : le focus va au premier champ à corriger. Au clavier
+// comme au lecteur d'écran, l'erreur est lue avec son champ (aria-describedby).
+export function focaliserPremiereErreur(formulaire) {
+  requestAnimationFrame(() => formulaire?.querySelector?.('[aria-invalid="true"]')?.focus());
 }
 
 // La voiture que la personne consulte, conservée pendant la session du
@@ -102,14 +114,14 @@ export function EnteteAuto({ session }) {
   }
 
   return (
-    <header className="sticky top-0 z-20 border-b border-border/70 bg-background/85 backdrop-blur-md">
-      <div className="mx-auto flex h-14 w-full max-w-xl items-center justify-between px-4">
-        <Link href="/auto" className="flex items-center gap-2 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-primary/30">
+    <header className="@container sticky top-0 z-20 border-b border-border/70 bg-background/85 backdrop-blur-md">
+      <div className="mx-auto flex min-h-14 w-full max-w-xl flex-wrap items-center justify-between gap-x-2 px-4">
+        <Link href="/auto" className="flex shrink-0 items-center gap-2 rounded-lg">
           <Image src="/logo-nexora.png" alt="" width={240} height={116} className="h-8 w-8 object-contain" priority />
           <span className="font-display text-[17px] font-bold tracking-tight text-foreground">Nexora</span>
         </Link>
         {session ? (
-          <button type="button" onClick={seDeconnecter} disabled={sortie} className="rounded-lg px-2 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground">
+          <button type="button" onClick={seDeconnecter} disabled={sortie} className="whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground">
             Se déconnecter
           </button>
         ) : session === null ? (
@@ -119,7 +131,8 @@ export function EnteteAuto({ session }) {
         ) : null}
       </div>
       {session ? (
-        <nav aria-label="Espaces" className="mx-auto flex w-full max-w-xl gap-1 px-2 pb-2 min-[360px]:px-3">
+        // Texte agrandi : les onglets passent à la ligne plutôt que de sortir de l'écran.
+        <nav aria-label="Espaces" className="mx-auto flex w-full max-w-xl flex-wrap gap-1 px-2 pb-2 min-[360px]:px-3">
           {ONGLETS.map(({ href, libelle, icone: Icone, actif }) => {
             const courant = actif(chemin);
             return (
@@ -127,10 +140,10 @@ export function EnteteAuto({ session }) {
                 key={href}
                 href={href}
                 aria-current={courant ? "page" : undefined}
-                className={`inline-flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-1.5 py-2 text-sm font-semibold transition min-[360px]:px-2 ${courant ? "bg-secondary text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                className={`inline-flex flex-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-1.5 py-2 text-sm font-semibold transition min-[360px]:px-2 ${courant ? "bg-secondary text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
               >
                 {/* Trois onglets sur un écran de 320 px : les icônes cèdent la place. */}
-                <Icone className="hidden size-4 min-[360px]:block" aria-hidden="true" />
+                <Icone className="hidden size-4 min-[360px]:block @max-[22rem]:hidden" aria-hidden="true" />
                 {libelle}
               </Link>
             );
@@ -144,8 +157,13 @@ export function EnteteAuto({ session }) {
 export function PageAuto({ session, children, large = false }) {
   return (
     <>
+      <a href="#contenu" className="sr-only rounded-lg bg-card text-sm font-semibold text-primary shadow-md focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:px-3 focus:py-2">
+        Aller au contenu
+      </a>
       <EnteteAuto session={session} />
-      <main className={`mx-auto w-full ${large ? "max-w-2xl" : "max-w-xl"} px-4 pb-24 pt-6`}>{children}</main>
+      <main id="contenu" tabIndex={-1} className={`mx-auto w-full ${large ? "max-w-2xl" : "max-w-xl"} px-4 pb-24 pt-6 outline-none`}>
+        {children}
+      </main>
     </>
   );
 }
@@ -173,7 +191,7 @@ const TONS = {
 
 export function Pastille({ ton = "neutre", children }) {
   return (
-    <span className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${TONS[ton] ?? TONS.neutre}`}>
+    <span className={`inline-flex max-w-full shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${TONS[ton] ?? TONS.neutre}`}>
       {children}
     </span>
   );
