@@ -35,7 +35,8 @@ Il est mis à jour à chaque lot. Le contrat détaillé de chaque lot reste dans
 | I — mobile et accessibilité | `auto/lot-i-mobile-accessibilite` | `auto/lot-h-import-fluide` | [#118](https://github.com/nexorasolutionsfr/Nexora-/pull/118) | fait sur Test, sans migration |
 | J — kilométrage et rappels | `auto/lot-j-kilometrage-rappels` | `auto/lot-i-mobile-accessibilite` | [#119](https://github.com/nexorasolutionsfr/Nexora-/pull/119) | fait sur Test, sans migration |
 | K — maîtrise du dossier | `auto/lot-k-maitrise-dossier` | `auto/lot-j-kilometrage-rappels` | [#120](https://github.com/nexorasolutionsfr/Nexora-/pull/120) | fait sur Test, sans migration |
-| L — consolidation technique | `auto/lot-l-consolidation` | `auto/lot-k-maitrise-dossier` | à ouvrir | fait sur Test, sans migration |
+| L — consolidation technique | `auto/lot-l-consolidation` | `auto/lot-k-maitrise-dossier` | [#121](https://github.com/nexorasolutionsfr/Nexora-/pull/121) | fait sur Test, sans migration |
+| Livraison et compte rendu | `auto/livraison` | `auto/lot-l-consolidation` | voir la PR « livraison » | documents seulement ; rien d'exécuté en Production |
 
 ## Recette globale — constats
 
@@ -412,4 +413,9 @@ sont bornés, et qu'aucun échec ne laisse un état trompeur.
 **Limites et décision à prendre.**
 - Le compartiment se fie au type annoncé : un client modifié peut déposer un contenu qui n'est pas un PDF. Portée limitée : le fichier n'est servi qu'à son propriétaire, par adresse signée, depuis le domaine du stockage et non depuis celui de l'application ; il n'est jamais lu sans contrôle du contenu. Une vérification au dépôt demanderait un passage par le serveur, limité à 4,5 Mo sur Vercel, ou une fonction de stockage : à décider si besoin.
 - **Lint.** Le dépôt n'a pas de configuration ESLint (`npm run lint` échoue aussi sur `main`). Pour ce programme, un lint ponctuel a été passé hors dépôt, avec ESLint 9 et les règles React et Hooks. Il reste 7 alertes `react-hooks/set-state-in-effect`, connues : des chargements lancés dans un effet, sans défaut constaté. Décision : ajouter une configuration limitée à Nexora Auto et un script `lint:auto` ? Cela modifie `package.json` et `pnpm-lock.yaml`, partagés avec Nexora Pro.
+
+## Livraison et compte rendu
+
+- `docs/architecture/nexora-auto-livraison.md` : stratégie en une seule fusion, ordre et compatibilité des migrations, sauvegarde, variables d'environnement, contrôles après déploiement, retour arrière qui préserve les données. Préparé, **non exécuté**.
+- `docs/architecture/nexora-auto-compte-rendu.md` : construit, vérifié, disponible sur Test, limites, décisions nécessaires, PR et migrations, prochaine étape.
 
