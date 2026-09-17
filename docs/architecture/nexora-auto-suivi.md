@@ -898,3 +898,61 @@ efface tout.
 promesse — jamais en erreur — et rend `undefined`. L'insertion suivante partait
 sans voiture, et c'est la règle d'accès qui la refusait. Un script qui ne lit
 pas ses propres erreurs teste le vide.
+
+## Lot E — des services accessibles par le besoin (19 septembre 2026)
+
+Personne ne se réveille en pensant « géométrie » ou « detailing ». Le
+catalogue reste entier ; **quatre entrées** le précèdent, dans les mots de
+l'automobiliste :
+
+- **Entretenir ma voiture** — révision, vidange, freins, batterie, climatisation ;
+- **J'ai un problème** — parcours guidé, ci-dessous ;
+- **Préparer mon contrôle technique** — le contrôle, les freins, les pneus ;
+- **Nettoyer ma voiture** — lavage, remise en état.
+
+Les entrées sont dans `lib/auto/besoins.js`, pur et testé. Un test vérifie que
+**chaque besoin renvoie à des prestations qui existent vraiment** : une entrée
+qui promettrait un service absent casserait la recette.
+
+**Les façons de faire descendent en pied d'écran.** « Chez un professionnel »,
+« à domicile », « collecte et restitution » étaient trois filtres bien visibles
+qui ne débouchent sur **aucune offre réservable**. Ils restent — ils décrivent
+une réalité du métier — mais sous un titre honnête, « Où cela se fait,
+d'habitude », avec la phrase qui va avec : « Nexora ne propose ni rendez-vous
+ni prestataire. »
+
+### « J'ai un problème » : mettre des mots, pas un diagnostic
+
+Un écran, trois questions, une phrase relisible :
+
+> Que constatez-vous ? — *Quelque chose a changé au freinage*
+> Depuis quand ? — *Depuis quelques jours*
+> À quel moment ? — *En freinant*
+> Autre chose à préciser (facultatif)
+>
+> **Ce que vous pourrez décrire**
+> Quelque chose a changé au freinage, depuis quelques jours, en freinant.
+> *Nexora ne dit pas d'où cela vient : seul un professionnel peut le constater sur la voiture.*
+
+La description part dans « À prévoir », rattachée à la voiture — **la seule
+prochaine étape réellement disponible aujourd'hui**. Aucun prix, aucun
+créneau, aucun professionnel : rien de tout cela n'existe encore.
+
+**Ce que ce parcours ne fait jamais**, et qui est tenu par des tests :
+
+- il ne nomme aucune pièce. Les constats sont des observations (« un bruit
+  inhabituel », « un voyant allumé »), jamais des pannes ;
+- il ne déduit pas de cause. Un bruit **au freinage** ne mène pas à la
+  prestation « Freinage » mais au **Diagnostic**, dont la définition est
+  précisément « chercher l'origine d'un voyant, d'un bruit ou d'un
+  comportement inhabituel » ;
+- il n'énonce aucune règle de sécurité que nous ne pourrions pas sourcer. Pour
+  les deux constats qui peuvent immobiliser (ne démarre plus, odeur ou fumée),
+  une seule phrase de prudence — « si vous avez le moindre doute sur la
+  sécurité, ne prenez pas la route » — et l'assistance plutôt que le
+  diagnostic.
+
+**Les boucles de navigation** signalées (Services → À prévoir → fiche → même
+information à compléter) étaient déjà courtes : la fiche d'une prestation
+propose « Compléter » qui ouvre directement le bon formulaire, voiture
+sélectionnée. Vérifié, rien à défaire.
