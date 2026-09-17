@@ -1,7 +1,7 @@
 import { NouvelleFacture } from "@/components/auto/ImportFacture"
 import { identifiantOuNul } from "@/lib/auto/identifiants"
 
-export const metadata = { title: "Ajouter une facture — Nexora" }
+export const metadata = { title: "Ajouter un document — Nexora" }
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ vehicule?: string }> }) {
   const { vehicule } = await searchParams

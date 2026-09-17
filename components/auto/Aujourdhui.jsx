@@ -1,20 +1,26 @@
 "use client";
 
-// « Aujourd'hui » : la voiture consultée, la prochaine action, et trois gestes
-// utiles. Rien d'autre.
+// « Aujourd'hui » : la voiture consultée, la prochaine action **si elle existe**,
+// et quelques gestes utiles. Rien d'autre.
 //
-// Ce que cet écran ne fait jamais : rassurer sur la santé de la voiture.
-// Nexora ne connaît que ce qui est enregistré ; l'absence d'alerte ne veut pas
-// dire que tout va bien. Quand rien n'est calculable, l'écran dit ce qui
-// manque et comment le compléter.
+// Deux choses que cet écran ne fait jamais :
+//
+// - **rassurer sur ce qu'il ne sait pas.** Nexora ne connaît que ce qui est
+//   enregistré ; l'absence d'alerte n'est pas un bilan de santé ;
+// - **mettre une échéance lointaine en action du jour.** Un contrôle technique
+//   dans 21 mois se résume plus bas ; la place revient à ce qui aide
+//   maintenant. Quand rien ne presse, l'écran reste calme.
+//
+// Les règles de choix sont pures et testées : lib/auto/aujourdhui.js.
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { CalendarClock, ChevronRight, CircleAlert, FileText, Gauge, Plus, ReceiptText, Wrench } from "lucide-react";
 
-import { aujourdhuiIso, dernierKilometrage } from "@/lib/auto/echeances";
-import { choisirVoiture, etatAujourdhui } from "@/lib/auto/aujourdhui";
-import { FONDEMENTS, construireAPrevoir, pastilleElement } from "@/components/auto/aPrevoir";
+import { supabase } from "@/lib/supabase";
+import { ajouterJours, aujourdhuiIso, dernierKilometrage, joursEntre } from "@/lib/auto/echeances";
+import { choisirVoiture, etatAujourdhui, kilometrageFrais } from "@/lib/auto/aujourdhui";
+import { construireAPrevoir, libelleFondement, pastilleElement } from "@/components/auto/aPrevoir";
 import { chargerDossiers } from "@/components/auto/dossiers";
 import { VoitureAAjouter } from "@/components/auto/MonGarage";
 import {
@@ -32,22 +38,34 @@ import {
   puceEtat,
   voitureCourante,
 } from "@/components/auto/elements";
-import { formaterKm } from "@/components/auto/format";
+import { formaterDate, formaterKm } from "@/components/auto/format";
 
 // La session vient de l'accueil, qui l'a déjà lue pour choisir entre la page
 // de présentation et cet écran.
 export default function Aujourdhui({ session }) {
   return (
     <PageAuto session={session}>
-      {session === undefined ? <Chargement /> : <MaJournee />}
+      {session === undefined ? <Chargement /> : <MaJournee session={session} />}
     </PageAuto>
   );
 }
 
-function MaJournee() {
+// « renseigné aujourd'hui », « il y a 3 jours », « le 12 juin 2026 » : la
+// fraîcheur d'un relevé se lit d'un coup d'œil, et sert à ne pas le redemander.
+function fraicheur(date, aujourdhui) {
+  const jours = joursEntre(date, aujourdhui);
+  if (!Number.isFinite(jours) || jours < 0) return `le ${formaterDate(date)}`;
+  if (jours === 0) return "renseigné aujourd'hui";
+  if (jours === 1) return "renseigné hier";
+  if (jours <= 30) return `renseigné il y a ${jours} jours`;
+  return `renseigné le ${formaterDate(date)}`;
+}
+
+function MaJournee({ session }) {
   const [dossiers, setDossiers] = useState(null);
   const [erreur, setErreur] = useState(false);
   const [choisie, setChoisie] = useState(null);
+  const [message, setMessage] = useState("");
 
   const charger = useCallback(async () => {
     setErreur(false);
@@ -100,79 +118,55 @@ function MaJournee() {
   });
   const etat = etatAujourdhui({ elements, vehiculeId: vehicule.id, horizonJours: dossiers.horizonJours });
   const km = dernierKilometrage({ releves: vehicule.releves, historique: vehicule.historique });
+  const kmFrais = kilometrageFrais(km, aujourdhui);
 
   function changerVoiture(id) {
     memoriserVoitureCourante(id);
     setChoisie(id);
+    setMessage("");
+  }
+
+  // « Plus tard » : le report vit en base, il tient d'un appareil à l'autre et
+  // d'une session à l'autre.
+  async function plusTard(element) {
+    const { error } = await supabase
+      .from("auto_rappels_reports")
+      .upsert({ proprietaire_id: session.user.id, cle: element.cle, reporte_jusqu_au: ajouterJours(aujourdhui, 30) }, { onConflict: "proprietaire_id,cle" });
+    if (error) return setMessage("Ce report n'a pas pu être enregistré.");
+    setMessage("Entendu. Nexora n'y reviendra pas avant un mois.");
+    await charger();
   }
 
   return (
     <>
       <h1 className="mb-4 font-display text-[28px] font-bold tracking-tight text-foreground">Aujourd'hui</h1>
 
-      <MaVoiture vehicule={vehicule} km={km} actives={actives} onChoisir={changerVoiture} />
+      <MaVoiture vehicule={vehicule} km={km} aujourdhui={aujourdhui} actives={actives} onChoisir={changerVoiture} />
 
-      {etat.principale ? <ActionPrincipale etat={etat} vehicule={vehicule} /> : null}
-
-      {etat.autres.length > 0 ? (
-        <Link href={`/auto/a-prevoir?vehicule=${vehicule.id}`} className={`${carte} mt-3 flex items-center gap-3 transition hover:border-primary/40`}>
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
-            <CalendarClock className="size-5" aria-hidden="true" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block font-semibold text-foreground">
-              {etat.autres.length > 1 ? `${etat.autres.length} autres échéances` : "1 autre échéance"}
-            </span>
-            <span className="block text-sm text-muted-foreground">Tout ce qui est à prévoir pour cette voiture.</span>
-          </span>
-          <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        </Link>
+      {message ? (
+        <div className="mb-3">
+          <Alerte ton="succes">{message}</Alerte>
+        </div>
       ) : null}
 
-      {etat.ailleurs.length > 0 ? <AilleursDansLeGarage elements={etat.ailleurs} onChoisir={changerVoiture} /> : null}
+      {etat.principale?.urgence === "a_completer" ? (
+        <Preparer etat={etat} vehicule={vehicule} onPlusTard={plusTard} />
+      ) : etat.principale ? (
+        <ActionPrincipale etat={etat} vehicule={vehicule} />
+      ) : null}
 
-      <Raccourcis vehicule={vehicule} />
+      {etat.lointaines.length > 0 ? <Resume elements={etat.lointaines} /> : null}
+
+      <Acces etat={etat} vehicule={vehicule} kmFrais={kmFrais} />
+
+      {etat.ailleurs.length > 0 ? <AilleursDansLeGarage elements={etat.ailleurs} onChoisir={changerVoiture} /> : null}
     </>
   );
 }
 
-// Une échéance qui presse sur une autre voiture ne doit pas se perdre parce
-// qu'on regarde celle-ci. Une ligne, pas une carte : c'est un signal, pas
-// l'action du jour.
-function AilleursDansLeGarage({ elements, onChoisir }) {
-  return (
-    <section aria-labelledby="titre-ailleurs" className="mt-3">
-      <h2 id="titre-ailleurs" className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Vos autres voitures
-      </h2>
-      <ul className={carteListe}>
-        {elements.map((el) => {
-          const pastille = pastilleElement(el, { avecSujet: false });
-          return (
-            <li key={el.cle}>
-              <button
-                type="button"
-                onClick={() => onChoisir(el.vehicule.id)}
-                className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 text-left transition hover:bg-muted/50"
-              >
-                <span className="min-w-0">
-                  <span className="block break-words font-semibold text-foreground">{el.vehicule.nom}</span>
-                  <span className="block break-words text-sm text-muted-foreground">{el.titre}</span>
-                </span>
-                <Pastille ton={pastille.ton}>{pastille.texte}</Pastille>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
-  );
-}
-
-// La voiture dont on parle, nommée en haut de l'écran. Une seule voiture : pas
-// de choix à faire. Plusieurs : des pastilles, et celle qu'on choisit est
-// gardée sur l'appareil.
-function MaVoiture({ vehicule, km, actives, onChoisir }) {
+// La voiture dont on parle, nommée en haut de l'écran, avec la fraîcheur de son
+// compteur. Une seule voiture : pas de choix à faire.
+function MaVoiture({ vehicule, km, aujourdhui, actives, onChoisir }) {
   return (
     <section aria-labelledby="titre-voiture" className={`${carte} mb-3`}>
       <Link
@@ -186,7 +180,7 @@ function MaVoiture({ vehicule, km, actives, onChoisir }) {
           </span>
           <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted-foreground">
             <Plaque valeur={vehicule.immatriculation} />
-            <span>{km ? formaterKm(km.kilometrage) : "Kilométrage à renseigner"}</span>
+            <span>{km ? `${formaterKm(km.kilometrage)} · ${fraicheur(km.date, aujourdhui)}` : "Kilométrage à renseigner"}</span>
           </span>
         </span>
         <ChevronRight className="mt-1 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -211,19 +205,59 @@ function MaVoiture({ vehicule, km, actives, onChoisir }) {
   );
 }
 
+// Une information manque pour suivre l'entretien. Plutôt que de renvoyer la
+// personne à son carnet, on commence par ce qui demande le moins : un document
+// qu'elle a déjà. Nexora en tirera ce qu'il peut — et le dit sans promettre.
+function Preparer({ etat, vehicule, onPlusTard }) {
+  const { element } = etat.principale;
+  const premiere = element.actions?.[0] ?? null;
+
+  return (
+    <section aria-labelledby="titre-preparer" className={`${carte} border-l-4 border-l-primary/50`}>
+      <p id="titre-preparer" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Préparons la suite
+      </p>
+      <h2 className="mt-1.5 font-display text-xl font-semibold leading-snug text-foreground">
+        {element.genre === "revision" ? "Votre prochain entretien" : element.titre}
+      </h2>
+      <p className="mt-1 text-[15px] leading-snug text-foreground">
+        Ajoutez une facture de garage : Nexora y cherchera la date, le kilométrage et ce qui a été fait.
+      </p>
+      <p className="mt-2 text-[13px] leading-snug text-muted-foreground">
+        Une facture ne porte pas toujours l'intervalle prévu par le constructeur. Si elle manque, Nexora vous le dira plutôt que de l'inventer.
+      </p>
+
+      <div className="mt-4 space-y-2">
+        <Link href={`/auto/factures/nouvelle?vehicule=${vehicule.id}`} className={boutonPrincipal}>
+          <ReceiptText className="size-5" aria-hidden="true" />
+          Ajouter une facture
+        </Link>
+        {premiere ? (
+          <Link
+            href={`/auto/vehicules/${vehicule.id}?action=${premiere.code}`}
+            className="flex min-h-11 items-center justify-center rounded-xl px-3 text-sm font-semibold text-primary transition hover:bg-secondary"
+          >
+            Je n'ai pas de facture : {premiere.libelle.charAt(0).toLowerCase()}{premiere.libelle.slice(1)}
+          </Link>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => onPlusTard(element)}
+          className="flex min-h-11 w-full items-center justify-center rounded-xl px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted"
+        >
+          Plus tard
+        </button>
+      </div>
+    </section>
+  );
+}
+
 // Les phrases d'en-tête, une par raison d'être en premier. Aucune ne porte de
 // jugement sur l'état de la voiture.
-const ENTETES = {
-  depasse: { titre: "À faire sans attendre", ton: "depasse" },
-  proche: { titre: "À faire bientôt", ton: "proche" },
-  horizon: { titre: "À prévoir", ton: "ok" },
-  plus_tard: { titre: "Prochaine échéance connue", ton: "ok" },
-  a_completer: { titre: "À compléter pour que Nexora calcule", ton: "neutre" },
-};
+const ENTETES = { depasse: "À faire sans attendre", proche: "À faire bientôt", horizon: "À prévoir" };
 
 function ActionPrincipale({ etat, vehicule }) {
   const { element, urgence } = etat.principale;
-  const entete = ENTETES[urgence] ?? ENTETES.horizon;
   const pastille = pastilleElement(element, { avecSujet: false });
   const estTache = element.genre === "tache";
   // Une tâche se termine ou se reporte dans « À prévoir » : l'écran y renvoie
@@ -234,7 +268,7 @@ function ActionPrincipale({ etat, vehicule }) {
     <section aria-labelledby="titre-action" className={`${carte} border-l-4 ${urgence === "depasse" ? "border-l-red-500" : urgence === "proche" ? "border-l-amber-500" : "border-l-primary/50"}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p id="titre-action" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {entete.titre}
+          {ENTETES[urgence] ?? ENTETES.horizon}
         </p>
         <Pastille ton={pastille.ton}>{pastille.texte}</Pastille>
       </div>
@@ -243,7 +277,7 @@ function ActionPrincipale({ etat, vehicule }) {
       <p className="mt-1 text-[15px] leading-snug text-foreground">{element.quand}</p>
 
       <p className="mt-2 text-[13px] leading-snug text-muted-foreground">
-        <span className="font-semibold text-foreground/80">{FONDEMENTS[element.fondement]}.</span>
+        <span className="font-semibold text-foreground/80">{libelleFondement(element)}.</span>
         {element.explication ? ` ${element.explication}` : ""}
       </p>
 
@@ -274,31 +308,46 @@ function ActionPrincipale({ etat, vehicule }) {
           </Link>
         ) : null}
       </div>
-
-      {/* Dire ce que Nexora ne sait pas, même quand une autre échéance est
-          calculée : sans cela, un écran calme laisserait croire à un bilan. */}
-      {etat.aCompleter.length > 0 && urgence !== "a_completer" ? (
-        <p className="mt-3 border-t border-border pt-3 text-[13px] leading-snug text-muted-foreground">
-          {etat.aCompleter.length > 1
-            ? `${etat.aCompleter.length} échéances ne sont pas encore calculées faute d'informations.`
-            : "Une échéance n'est pas encore calculée faute d'informations."}{" "}
-          <Link href={`/auto/a-prevoir?vehicule=${vehicule.id}`} className="font-semibold text-primary hover:underline">
-            Voir lesquelles
-          </Link>
-        </p>
-      ) : null}
     </section>
   );
 }
 
-// Trois gestes, dits en toutes lettres.
-function Raccourcis({ vehicule }) {
+// Ce qui est connu mais lointain : on le dit, on ne le met pas en action.
+// La provenance est nommée : une date que vous avez saisie n'est pas une date
+// que Nexora a lue sur un document.
+function Resume({ elements }) {
+  return (
+    <section aria-labelledby="titre-resume" className="mt-3">
+      <h2 id="titre-resume" className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Connu, et sans urgence
+      </h2>
+      <ul className={carteListe}>
+        {elements.map((el) => (
+          <li key={el.cle} className="px-4 py-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <span className="min-w-0 break-words font-semibold text-foreground">{el.titre}</span>
+              <span className="text-sm text-muted-foreground">{el.delai}</span>
+            </div>
+            <p className="mt-0.5 break-words text-sm text-muted-foreground">{el.quand}</p>
+            <p className="mt-0.5 text-[13px] text-muted-foreground/90">{libelleFondement(el)}.</p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// Les gestes, dits en toutes lettres — et seulement ceux qui servent.
+function Acces({ etat, vehicule, kmFrais }) {
   const gestes = [
-    { href: "/auto/factures/nouvelle", icone: ReceiptText, titre: "Ajouter une facture", texte: "En PDF : Nexora propose l'intervention, vous vérifiez." },
-    { href: `/auto/vehicules/${vehicule.id}?action=releve`, icone: Gauge, titre: "Mettre à jour le kilométrage", texte: "Ce qui rend les échéances au compteur justes." },
+    { href: `/auto/factures/nouvelle?vehicule=${vehicule.id}`, icone: ReceiptText, titre: "Ajouter un document", texte: "Facture, procès-verbal, carte grise. Une facture PDF est lue automatiquement." },
+    // Un compteur relevé cette semaine n'a pas à être redemandé.
+    ...(kmFrais ? [] : [{ href: `/auto/vehicules/${vehicule.id}?action=releve`, icone: Gauge, titre: "Mettre à jour le kilométrage", texte: "Ce qui rend les échéances au compteur justes." }]),
     { href: `/auto/vehicules/${vehicule.id}?action=intervention`, icone: Wrench, titre: "Enregistrer une révision", texte: "Ou toute autre intervention déjà réalisée." },
     { href: `/auto/vehicules/${vehicule.id}/dossier`, icone: FileText, titre: "Le dossier de ma voiture", texte: "Historique, documents et dépenses." },
   ];
+  const { echeances, aCompleter } = etat.compteurs;
+
   return (
     <section aria-labelledby="titre-gestes" className="mt-6">
       <h2 id="titre-gestes" className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -320,10 +369,65 @@ function Raccourcis({ vehicule }) {
           </li>
         ))}
       </ul>
+
+      {/* Une date connue et une information absente ne se comptent pas ensemble. */}
+      {echeances > 0 || aCompleter > 0 ? (
+        <Link href={`/auto/a-prevoir?vehicule=${vehicule.id}`} className={`${carte} mt-3 flex items-center gap-3 transition hover:border-primary/40`}>
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+            <CalendarClock className="size-5" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold text-foreground">Tout ce qui est à prévoir</span>
+            <span className="block text-sm text-muted-foreground">
+              {[
+                echeances > 0 ? `${echeances} ${echeances > 1 ? "échéances" : "échéance"}` : null,
+                aCompleter > 0 ? `${aCompleter} ${aCompleter > 1 ? "informations à compléter" : "information à compléter"}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          </span>
+          <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </Link>
+      ) : null}
+
       <Link href="/auto/vehicules/nouveau" className="mt-3 inline-flex min-h-11 items-center gap-1.5 rounded-xl px-2 text-sm font-semibold text-primary transition hover:bg-secondary">
         <Plus className="size-4" aria-hidden="true" />
         Ajouter une autre voiture
       </Link>
+    </section>
+  );
+}
+
+// Une échéance qui presse sur une autre voiture ne doit pas se perdre parce
+// qu'on regarde celle-ci. Une ligne, pas une carte : c'est un signal, pas
+// l'action du jour.
+function AilleursDansLeGarage({ elements, onChoisir }) {
+  return (
+    <section aria-labelledby="titre-ailleurs" className="mt-6">
+      <h2 id="titre-ailleurs" className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Vos autres voitures
+      </h2>
+      <ul className={carteListe}>
+        {elements.map((el) => {
+          const pastille = pastilleElement(el, { avecSujet: false });
+          return (
+            <li key={el.cle}>
+              <button
+                type="button"
+                onClick={() => onChoisir(el.vehicule.id)}
+                className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 text-left transition hover:bg-muted/50"
+              >
+                <span className="min-w-0">
+                  <span className="block break-words font-semibold text-foreground">{el.vehicule.nom}</span>
+                  <span className="block break-words text-sm text-muted-foreground">{el.titre}</span>
+                </span>
+                <Pastille ton={pastille.ton}>{pastille.texte}</Pastille>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }

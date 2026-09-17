@@ -19,6 +19,7 @@ import {
   TYPES_DOCUMENT,
   cheminDocument,
   nomAffichable,
+  phraseLimites,
   tailleLisible,
   verifierFichierComplet,
 } from "@/lib/auto/documents";
@@ -85,18 +86,25 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
         <h2 id="titre-documents" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Documents
         </h2>
+        {/* Une seule entrée. Deux boutons obligeaient à deviner le classement
+            interne avant d'avoir ouvert le fichier — et « Autre document »
+            proposait « Facture » par défaut (constat du 18 sept. 2026).
+            L'écran d'ajout reconnaît ce qu'il peut et oriente tout seul.
+            Le dépôt direct reste pour une voiture archivée, qu'on ne veut pas
+            renvoyer vers un parcours de facture. */}
         {!formulaireOuvert ? (
           <div className="flex flex-wrap justify-end gap-x-1">
-            {!archive ? (
+            {archive ? (
+              <button type="button" onClick={() => onOuvrir(null)} className={boutonLien}>
+                <Upload className="size-4" aria-hidden="true" />
+                Ajouter un document
+              </button>
+            ) : (
               <Link href={`/auto/factures/nouvelle?vehicule=${vehiculeId}`} className={boutonLien}>
                 <ReceiptText className="size-4" aria-hidden="true" />
-                Ajouter une facture
+                Ajouter un document
               </Link>
-            ) : null}
-            <button type="button" onClick={() => onOuvrir(null)} className={boutonLien}>
-              <Upload className="size-4" aria-hidden="true" />
-              Autre document
-            </button>
+            )}
           </div>
         ) : null}
       </div>
@@ -375,7 +383,7 @@ function FormulaireDocument({ vehiculeId, proprietaireId, historique, historique
         accepte="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
         fichier={fichier}
         onChange={setFichier}
-        aideTexte="PDF ou photo, 10 Mo au plus. Le fichier reste privé."
+        aideTexte={phraseLimites()}
       />
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2 sm:col-span-1">

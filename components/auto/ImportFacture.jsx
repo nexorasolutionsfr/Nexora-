@@ -1,6 +1,7 @@
 "use client";
 
-// Ajouter une facture : déposer → lire → vérifier → confirmer une fois.
+// Ajouter un document : déposer → lire ce qu'on peut → vérifier → confirmer
+// une fois. Une seule entrée pour tout : facture, procès-verbal, carte grise.
 //
 // - Le fichier part dans le stockage privé et devient un document de la
 //   voiture AVANT toute lecture : il est conservé quoi qu'il arrive.
@@ -16,28 +17,36 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CircleAlert, CircleCheck, ExternalLink, FileText, LoaderCircle, Plus, ScanText, Upload } from "lucide-react";
+import { ArrowLeft, Check, CircleAlert, CircleCheck, ExternalLink, FileText, LoaderCircle, Plus, ScanText, Upload } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { aujourdhuiIso } from "@/lib/auto/echeances";
-import { COMPARTIMENT, cheminDocument, nomAffichable, verifierFichierComplet } from "@/lib/auto/documents";
+import {
+  COMPARTIMENT,
+  cheminDocument,
+  nomAffichable,
+  phraseLimites,
+  verifierFichierComplet,
+} from "@/lib/auto/documents";
 import { ecrireBrouillon, effacerBrouillon, lireBrouillon, stockageNavigateur } from "@/lib/auto/brouillon";
 import { empreinteSha256 } from "@/lib/auto/empreinte";
 import { nouvelIdentifiant } from "@/lib/auto/identifiants";
 import {
   champsCorriges,
+  effetsEnregistrement,
   incoherencesKilometrage,
   interventionsRessemblantes,
-  plaqueDifferente,
-  voitureDeLaPlaque,
   modeInitial,
+  plaqueDifferente,
   saisieDepuisProposition,
   saisieVide,
   typePrincipal,
   validerFacture,
+  voitureDeLaPlaque,
 } from "@/lib/auto/factures";
 import { afficherImmatriculation } from "@/lib/auto/immatriculation";
+import { LIMITES_LECTURE } from "@/lib/auto/lecture/limites";
 import { ouvrirDocument } from "@/components/auto/Documents";
 import ChoixFichier from "@/components/auto/ChoixFichier";
 import EditeurOperations from "@/components/auto/EditeurOperations";
@@ -184,13 +193,13 @@ export function NouvelleFacture({ vehiculeId = null }) {
         <ArrowLeft className="size-4" aria-hidden="true" />
         {vehicule ? `${vehicule.marque} ${vehicule.modele}` : "Mon garage"}
       </Link>
-      <h1 className="mt-2 font-display text-[28px] font-bold leading-tight tracking-tight text-foreground">Ajouter une facture</h1>
+      <h1 className="mt-2 font-display text-[28px] font-bold leading-tight tracking-tight text-foreground">Ajouter un document</h1>
       <p className="mt-1 text-[15px] text-muted-foreground">
         {!lecture.disponible
-          ? "Votre facture est rangée dans le dossier de la voiture ; vous renseignez ensuite l'intervention."
+          ? "Facture, procès-verbal, carte grise : le document est rangé dans le dossier de la voiture, et vous renseignez ce qu'il faut."
           : lecture.formats.some((f) => f.startsWith("image/"))
-            ? "Nexora lit la facture et vous propose les informations. Vous vérifiez, puis vous confirmez."
-            : "Ajoutez votre facture PDF : Nexora essaie de préremplir les informations pour vous. Une photo ou un scan est conservé comme document, et vous renseignez les informations."}
+            ? "Facture, procès-verbal, carte grise. Nexora lit ce qu'il peut et vous propose les informations : vous vérifiez, puis vous confirmez."
+            : "Facture, procès-verbal, carte grise. Une facture PDF est lue automatiquement et Nexora vous propose les informations ; tout autre document est simplement rangé."}
       </p>
 
       {vehicules.length === 0 ? (
@@ -229,7 +238,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
           <div>
             <ChoixFichier
               id="facture-fichier"
-              libelle="Facture"
+              libelle="Document"
               accepte={ACCEPTES}
               fichier={fichier}
               onChange={(f) => {
@@ -237,7 +246,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
                 setExistant(null);
                 setErreur("");
               }}
-              aideTexte="PDF ou photo, 10 Mo au plus. Le fichier reste privé."
+              aideTexte={phraseLimites({ lisibles: lecture.formats, tailleLectureMax: LIMITES_LECTURE.tailleMaxOctets, pagesMax: LIMITES_LECTURE.pagesMax })}
             />
             {lecture.externe ? (
               <p className={`${aide} text-amber-800`}>Lecture automatique en essai : utilisez des factures fictives ou anonymisées.</p>
@@ -249,7 +258,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
 
           <button type="submit" disabled={enCours || !fichier} className={boutonPrincipal}>
             {enCours ? <LoaderCircle className="size-5 animate-spin" aria-hidden="true" /> : <Upload className="size-5" aria-hidden="true" />}
-            Ajouter une facture
+            Ajouter ce document
           </button>
         </form>
       )}
@@ -469,7 +478,7 @@ export function ConfirmerFacture({ documentId, lire = false }) {
               Voir {vehicule.marque} {vehicule.modele}
             </Link>
             <Link href={`/auto/factures/nouvelle?vehicule=${vehicule.id}`} className={boutonSecondaire}>
-              Ajouter une facture
+              Ajouter un autre document
             </Link>
           </div>
         </div>
@@ -806,6 +815,30 @@ export function ConfirmerFacture({ documentId, lire = false }) {
         </fieldset>
 
         {erreurEnvoi ? <Alerte>{erreurEnvoi}</Alerte> : null}
+
+        {/* Ce que le bouton va faire, avant de le presser. Une confirmation
+            qui n'annonce pas ses effets demande un acte de foi. */}
+        <section aria-labelledby="titre-effets" className="rounded-xl border border-border bg-muted/40 px-4 py-3">
+          <h2 id="titre-effets" className="text-sm font-semibold text-foreground">
+            {rattachement ? "En rattachant ce document" : "En enregistrant"}
+          </h2>
+          <ul className="mt-1.5 space-y-1">
+            {effetsEnregistrement({
+              vehicule,
+              saisie,
+              mode: rattachement ? "document" : mode,
+              libelleType: libelleDe(TYPES_INTERVENTION, saisie.type || typePrincipal(saisie.operations ?? [])),
+              formaterDate,
+              formaterMontant: formaterEuros,
+              formaterKm,
+            }).map((effet) => (
+              <li key={effet} className="flex items-start gap-2 text-[13px] leading-snug text-muted-foreground">
+                <Check className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden="true" />
+                <span>{effet}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
 
         <div className="space-y-3 pt-1">
           <button type="submit" disabled={enCours || lecture.etat === "en_cours"} className={boutonPrincipal}>

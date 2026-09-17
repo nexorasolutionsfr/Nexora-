@@ -715,3 +715,109 @@ gardant l'adresse saisie, et « J'ai oublié mon mot de passe ».
 cette nuit partaient d'une adresse **neuve**. Le premier vrai utilisateur,
 lui, avait déjà un compte — le cas le plus banal pour une application greffée
 sur un produit existant, et le seul que personne n'avait joué.
+
+## Lot A — un accueil qui choisit une action utile (18 septembre 2026)
+
+Après la revue d'interface de Baptiste sur son propre compte. Situation
+reproduite sur Test avec des données fictives (`scenario-corsa`) : Opel Corsa,
+kilométrage donné le jour même, contrôle technique favorable il y a trois mois
+— donc **échéance dans 21 mois** —, et aucun intervalle d'entretien.
+
+**Le défaut.** L'accueil proposait « Enregistrer un contrôle » en action
+dominante. Une échéance à 21 mois occupait le premier écran avec un bouton
+d'enregistrement, pendant que la vraie question — « qu'est-ce qui bloque mon
+suivi d'entretien ? » — restait au second plan.
+
+**La règle changée**, dans `lib/auto/aujourdhui.js` (pure, 17 contrôles) :
+
+1. la première place revient à une échéance **en retard, proche, ou dans
+   l'horizon choisi** ;
+2. sinon à une **information manquante** non reportée ;
+3. sinon **à rien**. Une échéance lointaine ne prend jamais la première place :
+   elle se résume sous « Connu, et sans urgence », avec sa date et sa
+   provenance. L'écran a le droit d'être calme.
+
+**Ce que l'accueil affiche maintenant, dans ce cas :**
+
+> Opel Corsa — 231 000 km · renseigné aujourd'hui
+>
+> **PRÉPARONS LA SUITE** — Votre prochain entretien
+> Ajoutez une facture de garage : Nexora y cherchera la date, le kilométrage et
+> ce qui a été fait.
+> *Une facture ne porte pas toujours l'intervalle prévu par le constructeur. Si
+> elle manque, Nexora vous le dira plutôt que de l'inventer.*
+> [Ajouter une facture] · Je n'ai pas de facture : renseigner l'intervalle · Plus tard
+>
+> **CONNU, ET SANS URGENCE** — Contrôle technique, dans 21 mois, avant le
+> 18 juin 2028. *Date du procès-verbal, renseignée par vous.*
+
+**Quatre autres corrections du même lot :**
+
+- **« Plus tard » tient.** Le report vit en base (`auto_rappels_reports`), donc
+  d'un appareil à l'autre : vérifié, la carte ne revient pas après
+  rechargement, et le compteur bascule proprement.
+- **Les compteurs se séparent** : « 1 échéance · 1 information à compléter ».
+  Une information absente ne se compte plus comme une date connue.
+- **Le kilométrage n'est plus réclamé s'il vient d'être donné** :
+  `kilometrageFrais` (14 jours). La saisie manuelle reste accessible depuis la
+  fiche ; c'est seulement le raccourci qui s'efface.
+- **« Date officielle » disparaît.** Le mot laissait croire que Nexora avait
+  vérifié le document. `libelleFondement` dit désormais la provenance : « Date
+  du procès-verbal, **renseignée par vous** » ou « **lue sur votre document** »,
+  selon `auto_historique.source`. Même libellé dans « À prévoir » et dans la
+  fiche.
+
+Recette : 187 tests, `lint:auto` sans avertissement, `next build` réussi,
+audits d'écrans (320/375/390 px) et de texte agrandi (150 %/200 %) sans défaut
+sur l'accueil, « À prévoir » et la fiche.
+
+## Lot B — une entrée commune pour les documents (18 septembre 2026)
+
+**Trois défauts, un seul parcours.**
+
+**1. Deux portes pour la même chose.** « Ajouter une facture » et « Autre
+document » ouvraient deux écrans différents — et le second proposait
+« Facture » comme type par défaut. Il fallait deviner le classement interne
+avant même d'avoir ouvert le fichier. Il n'y a plus qu'une entrée,
+**« Ajouter un document »**, qui accepte tout et reconnaît ce qu'elle peut :
+une facture PDF est lue et préremplie, le reste est simplement rangé. Le
+formulaire direct ne subsiste que pour joindre un justificatif à une
+intervention précise, et pour une voiture archivée — deux cas où le contexte
+est déjà connu.
+
+**2. Deux limites qui ne se parlaient pas.** Le dépôt accepte **10 Mo** ; la
+lecture automatique s'arrête à **5 Mo et 4 pages** — et on ne l'apprenait
+qu'**après** avoir envoyé le fichier. `phraseLimites` construit désormais
+l'annonce à partir des constantes réelles, avant le dépôt :
+
+> PDF ou photo, 10 Mo au plus. Le fichier reste privé. Nexora lit les PDF de
+> moins de 5 Mo, 4 pages au plus ; au-delà, le document est conservé et vous
+> renseignez les informations.
+
+Si la lecture automatique est coupée, la phrase ne promet rien : elle s'arrête
+à la limite du dépôt.
+
+**3. Une confirmation qui n'annonçait pas ses effets.** L'écran de
+vérification demandait d'enregistrer sans dire ce que cela changerait.
+`effetsEnregistrement` (pur, testé) énonce les conséquences avant le clic :
+
+> **En enregistrant**
+> Une intervention « Révision » du 2 sept. 2026 entre dans l'historique de votre Opel Corsa.
+> 335,00 € s'ajoutent à vos dépenses, comptés une seule fois.
+> Le compteur est enregistré à 84 500 km, à la date de l'intervention.
+> Le document est rangé et rattaché à cette intervention : il en devient le justificatif.
+
+Rien n'est annoncé qui n'arrivera pas : sans montant ni compteur, ces deux
+lignes disparaissent ; en mode document, une seule phrase dit ce qui **ne** se
+passera pas.
+
+**Piège rencontré**, corrigé avant livraison : `typePrincipal` attend des
+opérations, pas la saisie entière. L'écran de vérification plantait
+(`operations.map is not a function`) — visible seulement au navigateur, pas au
+lint ni aux tests. Le récapitulatif nomme désormais le type retenu
+(`saisie.type`), avec repli sur le calcul depuis les opérations.
+
+Recette : 189 tests, `lint:auto` sans avertissement, `next build` réussi,
+parcours dégradés **32/32** (dépôt, doublons, lectures en échec, import
+abandonné), audits d'écrans et de texte agrandi sans défaut sur l'entrée et la
+vérification.
