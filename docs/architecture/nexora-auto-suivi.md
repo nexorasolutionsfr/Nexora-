@@ -380,6 +380,7 @@ sont bornés, et qu'aucun échec ne laisse un état trompeur.
   - Ces deux échecs sont non facturés, définitifs et expliqués à l'écran.
 - **Journal serveur.** Une erreur de lecture inattendue n'écrit plus que l'identifiant de la tentative et le nom de l'erreur, jamais son message ni sa pile.
 - **Relevé des fichiers orphelins** (lot K) rejoué.
+- **Scripts de recette relus au lint** : l'audit d'écrans du lot I gardait un contrôle de contour « pâle » inopérant (expression régulière cassée dans une chaîne) et du code mort. Le contrôle est retiré : le changement visible au focus suffit depuis le contour plein de 2 px. Les scripts de recette Auto passent désormais le lint.
 
 **Vérifié.**
 - Accès croisés : **47/47** sur Test, avec le serveur local pour la route de lecture.

@@ -46,20 +46,12 @@ const AUDIT = `(() => { const r = { debordement: document.documentElement.scroll
     if (e.disabled || !e.getClientRects().length) return;
     document.activeElement?.blur?.();
     const avant = proprietes(e); e.focus({ focusVisible: true, preventScroll: true }); const apres = proprietes(e);
-    const c = getComputedStyle(e);
     const nom = (e.getAttribute('aria-label') || e.innerText || e.id || e.name || e.tagName).trim().slice(0, 30);
     if (avant === apres) r.focusInvisible.push(nom);
-    else if (c.outlineStyle !== 'none' && /rgba\(.*, 0\.[0-4]\d*\)$/.test(c.outlineColor) && c.boxShadow === 'none' && avant.split('|')[4] === apres.split('|')[4]) r.focusInvisible.push(nom + ' (contour pâle ' + c.outlineColor + ')');
   });
   document.activeElement?.blur?.();
   r.focusInvisible = [...new Set(r.focusInvisible)].slice(0, 12);
   return r; })()`;
-
-const ZOOM = `(async () => { document.documentElement.style.fontSize = '200%'; await new Promise(r => setTimeout(r, 400));
-  const r = { debordementZoom: document.documentElement.scrollWidth > innerWidth + 1, coupesZoom: [] };
-  document.querySelectorAll('main *').forEach(e => { const c = getComputedStyle(e); if ((c.overflow === 'hidden' || c.overflowX === 'hidden') && e.scrollWidth > e.clientWidth + 2 && e.innerText) r.coupesZoom.push(e.tagName + ':' + e.innerText.slice(0, 30)); if (e.getBoundingClientRect().right > innerWidth + 2 && c.position !== 'fixed') r.horsEcran = (r.horsEcran || []).concat((e.innerText || e.tagName).slice(0, 30)); });
-  r.coupesZoom = [...new Set(r.coupesZoom)].slice(0, 6); r.horsEcran = [...new Set(r.horsEcran || [])].slice(0, 6);
-  document.documentElement.style.fontSize = ''; return r; })()`;
 
 for (const chemin of chemins) {
   for (const largeur of [320, 375, 390]) {
@@ -67,7 +59,7 @@ for (const chemin of chemins) {
     await cdp("Page.navigate", { url: new URL(chemin, lien).href });
     await attendre(4500);
     const r = await evaluer(AUDIT);
-    const defauts = Object.entries(r ?? {}).filter(([k, v]) => (Array.isArray(v) ? v.length : v));
+    const defauts = Object.entries(r ?? {}).filter(([, v]) => (Array.isArray(v) ? v.length : v));
     console.log(`${chemin} @${largeur}: ${defauts.length ? JSON.stringify(Object.fromEntries(defauts)) : "RAS"}`);
   }
 }
