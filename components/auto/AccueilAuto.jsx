@@ -187,7 +187,7 @@ function MesVehicules() {
           </span>
           <span className="min-w-0 flex-1">
             <span className="block font-semibold text-foreground">Ajouter une facture</span>
-            <span className="block text-sm text-muted-foreground">Nexora la range et renseigne l'historique avec vous.</span>
+            <span className="block text-sm text-muted-foreground">En PDF, Nexora essaie de préremplir les informations pour vous.</span>
           </span>
           <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
         </Link>

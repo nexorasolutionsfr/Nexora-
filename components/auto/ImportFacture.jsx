@@ -23,11 +23,13 @@ import { cn } from "@/lib/utils";
 import { aujourdhuiIso } from "@/lib/auto/echeances";
 import { COMPARTIMENT, cheminDocument, nomAffichable, verifierFichier } from "@/lib/auto/documents";
 import { empreinteSha256 } from "@/lib/auto/empreinte";
+import { nouvelIdentifiant } from "@/lib/auto/identifiants";
 import {
   champsCorriges,
   incoherencesKilometrage,
   interventionsRessemblantes,
   plaqueDifferente,
+  modeInitial,
   saisieDepuisProposition,
   saisieVide,
   typePrincipal,
@@ -132,7 +134,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
       return setExistant(deja.data[0]);
     }
 
-    const chemin = cheminDocument({ proprietaireId: session.user.id, vehiculeId: vehicule.id, identifiant: crypto.randomUUID(), typeMime: verification.typeMime });
+    const chemin = cheminDocument({ proprietaireId: session.user.id, vehiculeId: vehicule.id, identifiant: nouvelIdentifiant(), typeMime: verification.typeMime });
     const depot = await supabase.storage.from(COMPARTIMENT).upload(chemin, fichier, { contentType: verification.typeMime, upsert: false });
     if (depot.error) {
       setEnCours(false);
@@ -171,7 +173,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
           ? "Votre facture est rangée dans le dossier de la voiture ; vous renseignez ensuite l'intervention."
           : lecture.formats.some((f) => f.startsWith("image/"))
             ? "Nexora lit la facture et vous propose les informations. Vous vérifiez, puis vous confirmez."
-            : "Pour une facture PDF, Nexora lit les informations et vous les propose. Pour une photo, vous les renseignez. Vous confirmez ensuite."}
+            : "Ajoutez votre facture PDF : Nexora essaie de préremplir les informations pour vous. Une photo ou un scan est conservé comme document, et vous renseignez les informations."}
       </p>
 
       {vehicules.length === 0 ? (
@@ -258,7 +260,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
 const MESSAGES_LECTURE = {
   indisponible: "Lecture automatique non activée : renseignez les informations de la facture.",
   illisible: {
-    format: "Les photos ne sont pas encore lues automatiquement : renseignez les informations.",
+    format: "Les photos et les scans ne sont pas encore lus automatiquement : renseignez les informations.",
     taille: "Fichier trop lourd pour la lecture automatique (5 Mo au plus) : renseignez les informations.",
     pages: "Document trop long pour la lecture automatique (4 pages au plus) : renseignez les informations.",
     longueur: "Document trop long pour la lecture automatique : renseignez les informations.",
@@ -302,6 +304,7 @@ export function ConfirmerFacture({ documentId, lire = false }) {
   const [erreurEnvoi, setErreurEnvoi] = useState("");
   const [enCours, setEnCours] = useState(false);
   const [enregistre, setEnregistre] = useState(null);
+  const [mode, setMode] = useState("intervention");
   const lectureLancee = useRef(false);
   const aujourdhui = aujourdhuiIso();
 
@@ -313,6 +316,7 @@ export function ConfirmerFacture({ documentId, lire = false }) {
     setInitiale(proposee);
     setMarques({ incertains, nonLus, immatriculationLue, estFacture });
     setTouches(new Set());
+    setMode(modeInitial(resultat.proposition));
   }, []);
 
   const charger = useCallback(async () => {
@@ -394,6 +398,26 @@ export function ConfirmerFacture({ documentId, lire = false }) {
   const { document, vehicule } = etat;
   const retour = `/auto/vehicules/${vehicule.id}`;
 
+  if (enregistre?.document) {
+    return (
+      <PageAuto session={session}>
+        <div className={`${carte} mt-2 p-5`}>
+          <CircleCheck className="size-8 text-emerald-600" aria-hidden="true" />
+          <h1 className="mt-3 font-display text-2xl font-bold text-foreground">Document conservé</h1>
+          <p className="mt-1 text-[15px] text-muted-foreground">Il est rangé dans les documents de la voiture. Aucune intervention ni dépense n'a été enregistrée.</p>
+          <div className="mt-5 space-y-3">
+            <Link href={`${retour}#documents`} className={boutonPrincipal}>
+              Voir {vehicule.marque} {vehicule.modele}
+            </Link>
+            <Link href={`/auto/factures/nouvelle?vehicule=${vehicule.id}`} className={boutonSecondaire}>
+              Ajouter une facture
+            </Link>
+          </div>
+        </div>
+      </PageAuto>
+    );
+  }
+
   if (enregistre || document.historique_id) {
     return (
       <PageAuto session={session}>
@@ -427,6 +451,15 @@ export function ConfirmerFacture({ documentId, lire = false }) {
     setSaisie((s) => ({ ...s, operations, type: touches.has("type") || !operations.length ? s.type : typePrincipal(operations) }));
     setTouches((t) => new Set(t).add("operations"));
   };
+
+  async function garderCommeDocument() {
+    setErreurEnvoi("");
+    setEnCours(true);
+    const { error } = await supabase.from("auto_documents").update({ type: "autre" }).eq("id", document.id);
+    setEnCours(false);
+    if (error) return setErreurEnvoi(messageErreurAuto(error));
+    setEnregistre({ document: true });
+  }
 
   async function relire() {
     setLecture({ etat: "en_cours" });
@@ -506,11 +539,11 @@ export function ConfirmerFacture({ documentId, lire = false }) {
             <LoaderCircle className="size-5 shrink-0 animate-spin text-primary" aria-hidden="true" />
             <p className="text-[15px] text-foreground">Lecture de la facture…</p>
           </div>
-        ) : lecture.etat === "proposee" && !propositionVide ? (
+        ) : lecture.etat === "proposee" && !propositionVide && mode === "intervention" ? (
           <div role="status" className="flex items-start gap-2.5 rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-3 text-sm text-sky-950">
             <ScanText className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             <p>
-              Informations proposées d'après votre facture. Vérifiez les champs <span className="rounded bg-amber-100 px-1 font-semibold text-amber-900">à vérifier</span>, complétez ce qui manque, puis enregistrez.
+              Nexora a essayé de préremplir les informations d'après votre facture. Vérifiez les champs <span className="rounded bg-amber-100 px-1 font-semibold text-amber-900">à vérifier</span>, complétez ce qui manque, puis enregistrez.
             </p>
           </div>
         ) : message ? (
@@ -530,16 +563,40 @@ export function ConfirmerFacture({ documentId, lire = false }) {
             Lire la facture automatiquement
           </button>
         ) : null}
-        {marques.estFacture === false && lecture.etat === "proposee" ? (
-          <Alerte>Ce document ne ressemble pas à une facture d'intervention sur un véhicule : vérifiez chaque information.</Alerte>
+        {marques.estFacture === false && lecture.etat === "proposee" && mode === "intervention" ? (
+          <Alerte>Ce document ne ressemble pas à une facture : vérifiez chaque information avant de l'enregistrer comme intervention.</Alerte>
         ) : null}
-        {plaqueDifferente(vehicule, marques.immatriculationLue) ? (
+        {mode === "intervention" && plaqueDifferente(vehicule, marques.immatriculationLue) ? (
           <Alerte>
             La facture mentionne la plaque {marques.immatriculationLue}, différente de celle de cette voiture. Vérifiez qu'il s'agit du bon véhicule.
           </Alerte>
         ) : null}
       </div>
 
+      {mode === "document" ? (
+        <section className={`${carte} mt-4 p-5`} aria-labelledby="titre-non-facture">
+          <h2 id="titre-non-facture" className="font-semibold text-foreground">
+            Ce document ne ressemble pas à une facture
+          </h2>
+          <p className="mt-1 text-[15px] leading-snug text-muted-foreground">
+            Devis, attestation ou autre document : il est conservé dans les documents de la voiture. Aucune intervention ni dépense n'est enregistrée.
+          </p>
+          {erreurEnvoi ? (
+            <div className="mt-3">
+              <Alerte>{erreurEnvoi}</Alerte>
+            </div>
+          ) : null}
+          <div className="mt-4 space-y-3">
+            <button type="button" onClick={garderCommeDocument} disabled={enCours} className={boutonPrincipal}>
+              {enCours ? <LoaderCircle className="size-5 animate-spin" aria-hidden="true" /> : null}
+              Le garder comme document
+            </button>
+            <button type="button" onClick={() => setMode("intervention")} disabled={enCours} className={boutonSecondaire}>
+              C'est bien une facture : renseigner l'intervention
+            </button>
+          </div>
+        </section>
+      ) : (
       <form onSubmit={enregistrer} noValidate className={`${carte} mt-4 space-y-5 p-5`} aria-busy={lecture.etat === "en_cours"}>
         {ressemblantes.length ? (
           <fieldset className="rounded-xl border border-amber-300 bg-amber-50 p-3.5">
@@ -631,6 +688,7 @@ export function ConfirmerFacture({ documentId, lire = false }) {
           <p className={`${aide} text-center`}>« Plus tard » : la facture reste dans les documents de la voiture.</p>
         </div>
       </form>
+      )}
     </PageAuto>
   );
 }

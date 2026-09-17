@@ -10,8 +10,13 @@
 // Pour chaque dossier : compte de recette neuf, voiture, dépôt de chaque
 // document avec les droits de ce compte, lecture par la VRAIE route
 // /api/auto/documents/<id>/lecture, puis :
-// - chaque champ comparé à attendus.json : exact, absent, incorrect ou INVENTÉ
-//   (une valeur proposée là où le document n'en a pas), avec sa certitude ;
+// - chaque champ comparé à attendus.json, en cinq classes :
+//     extrait          présent sur le document et correctement proposé ;
+//     manque           présent, mais non proposé ;
+//     errone           présent, mais proposé avec une autre valeur ;
+//     absence_correcte absent du document et laissé vide ;
+//     invente          absent du document, mais une valeur est proposée ;
+//   avec la certitude affichée ;
 // - « à corriger » : champs que la personne devra modifier ;
 // - attente entre le début du dépôt et la proposition ;
 // - coût et facturation journalisés (auto_lectures) ;
@@ -130,7 +135,8 @@ for (const dossier of dossiers) {
     .in("document_id", documents.map((d) => d.documentId));
 
   const bilan = { documents: documents.length, proposees: 0, nonLus: {}, champs: {}, aCorrigerTotal: 0, inventes: [], typePrincipal: { justes: 0, total: 0 }, revisionInventee: [], nonFactureReconnu: [], scanReconnu: [] };
-  for (const [nom] of CHAMPS) bilan.champs[nom] = { exact: 0, absent: 0, incorrect: 0, invente: 0 };
+  for (const [nom] of CHAMPS) bilan.champs[nom] = { presents: 0, extrait: 0, manque: 0, errone: 0, absence_correcte: 0, invente: 0 };
+  bilan.total = { presents: 0, extrait: 0, manque: 0, errone: 0, absence_correcte: 0, invente: 0 };
 
   for (const d of documents) {
     const { attendu, reponse } = d;
@@ -157,12 +163,17 @@ for (const dossier of dossiers) {
       const valeurAttendue = attendu[nom];
       const lu = p.champs[nom];
       let issue;
-      if (valeurAttendue == null) issue = lu.valeur == null ? "exact" : "invente";
-      else if (lu.valeur == null) issue = "absent";
-      else issue = egal(valeurAttendue, lu.valeur) ? "exact" : "incorrect";
+      if (valeurAttendue == null) issue = lu.valeur == null ? "absence_correcte" : "invente";
+      else if (lu.valeur == null) issue = "manque";
+      else issue = egal(valeurAttendue, lu.valeur) ? "extrait" : "errone";
       bilan.champs[nom][issue]++;
+      bilan.total[issue]++;
+      if (valeurAttendue != null) {
+        bilan.champs[nom].presents++;
+        bilan.total.presents++;
+      }
       d.champs[nom] = { issue, lu: lu.valeur, certitude: lu.certitude, attendu: valeurAttendue ?? null };
-      if (issue !== "exact") d.aCorriger++;
+      if (issue === "manque" || issue === "errone" || issue === "invente") d.aCorriger++;
       if (issue === "invente") bilan.inventes.push(`${attendu.fichier} ${nom}=${lu.valeur}`);
     }
     const type = saisieDepuisProposition(p).saisie.type;
@@ -198,7 +209,7 @@ for (const dossier of dossiers) {
 
   console.log(`\n=== ${dossier.split("/").pop()} ===`);
   for (const d of rapport.documents) {
-    const champs = Object.entries(d.champs).map(([n, c]) => `${n}:${c.issue}${c.issue !== "exact" ? `(${c.lu ?? "∅"}≠${c.attendu ?? "∅"})` : ""}`).join(" ");
+    const champs = Object.entries(d.champs).map(([n, c]) => `${n}:${c.issue}${["manque", "errone", "invente"].includes(c.issue) ? `(${c.lu ?? "∅"}≠${c.attendu ?? "∅"})` : ""}`).join(" ");
     console.log(`${d.fichier.padEnd(14)} ${d.etat}${d.raison ? `/${d.raison}` : ""} · ${d.attenteMs} ms · à corriger ${d.aCorriger}${champs ? ` · ${champs}` : ""}${d.typePrincipal ? ` · type ${d.typePrincipal.lu}${d.typePrincipal.lu !== d.typePrincipal.attendu ? `≠${d.typePrincipal.attendu}` : ""}` : ""}`);
   }
   console.log(JSON.stringify(bilan, null, 2));

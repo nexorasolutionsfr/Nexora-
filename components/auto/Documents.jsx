@@ -11,6 +11,7 @@ import { ExternalLink, FileImage, FileText, LoaderCircle, Paperclip, ReceiptText
 
 import { supabase } from "@/lib/supabase";
 import { aujourdhuiIso } from "@/lib/auto/echeances";
+import { nouvelIdentifiant } from "@/lib/auto/identifiants";
 import {
   COMPARTIMENT,
   DUREE_LIEN_SECONDES,
@@ -189,7 +190,7 @@ function FormulaireDocument({ vehiculeId, proprietaireId, historique, historique
     if (saisie.dateDocument && saisie.dateDocument > aujourdhui) return setErreur("La date ne peut pas être dans le futur.");
 
     setEnCours(true);
-    const chemin = cheminDocument({ proprietaireId, vehiculeId, identifiant: crypto.randomUUID(), typeMime: verification.typeMime });
+    const chemin = cheminDocument({ proprietaireId, vehiculeId, identifiant: nouvelIdentifiant(), typeMime: verification.typeMime });
     const depot = await supabase.storage.from(COMPARTIMENT).upload(chemin, fichier, { contentType: verification.typeMime, upsert: false });
     if (depot.error) {
       setEnCours(false);
