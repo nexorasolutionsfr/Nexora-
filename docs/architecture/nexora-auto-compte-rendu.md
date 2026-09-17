@@ -115,7 +115,7 @@ Mises à jour le 17 septembre, après la préparation de la bêta privée
 | [#120](https://github.com/nexorasolutionsfr/Nexora-/pull/120) | K | #119 | — |
 | [#121](https://github.com/nexorasolutionsfr/Nexora-/pull/121) | L | #120 | — |
 | [#122](https://github.com/nexorasolutionsfr/Nexora-/pull/122) | livraison et compte rendu | #121 | — |
-| PR « bêta privée » | accès contrôlé, lint permanent, recette, données personnelles | #122 | `001100` |
+| [#123](https://github.com/nexorasolutionsfr/Nexora-/pull/123) | bêta privée : accès contrôlé, lint permanent, recette, données personnelles | #122 | `001100` |
 
 Toutes les migrations portent le préfixe `20260922`. Production : aucune.
 

@@ -25,7 +25,7 @@ a pour base `main` (`349652e`, ancêtre de toute la pile).
 | [#120](https://github.com/nexorasolutionsfr/Nexora-/pull/120) | K — maîtrise du dossier | — |
 | [#121](https://github.com/nexorasolutionsfr/Nexora-/pull/121) | L — consolidation technique | — |
 | [#122](https://github.com/nexorasolutionsfr/Nexora-/pull/122) | livraison et compte rendu | — |
-| PR « bêta privée » (`auto/beta-privee`) | accès contrôlé, lint permanent, recette et données personnelles | `20260922001100` |
+| [#123](https://github.com/nexorasolutionsfr/Nexora-/pull/123) | bêta privée : accès contrôlé, lint permanent, recette et données personnelles | `20260922001100` |
 
 **Hors de l'espace Auto**, la pile ne modifie que :
 - `app/globals.css` : une règle de focus limitée à `.espace-auto` ;
