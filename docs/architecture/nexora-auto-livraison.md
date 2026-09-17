@@ -35,16 +35,101 @@ a pour base `main` (`349652e`, ancêtre de toute la pile).
 
 Aucune table, route ni aucun écran de Nexora Pro n'est modifié. Une politique restrictive est ajoutée sur `storage.objects`, mais elle ne s'applique qu'au compartiment `auto-documents`.
 
-## 2. Préalables
+## 2. Préalable 1 : isoler les prévisualisations Vercel (à faire en premier)
 
-1. **Prévisualisations Vercel.**
-   - Constat du 17 septembre 2026 : elles utilisent la base de **Production** (adresse Supabase `omphppsmhmyllapdqevn` lue dans le code servi).
-   - Tant que ce n'est pas corrigé, **aucune recette sur une URL de prévisualisation**. Nexora Auto s'y ferme de lui-même (`lib/auto/acces.js`), mais Nexora Pro reste exposé à la base de Production depuis ces URL.
-   - Manipulation (Baptiste, dans Vercel) : projet `nexora-dashboard` → *Settings* → *Environment Variables*. Pour l'environnement **Preview** seulement, remplacer `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` et `SUPABASE_SERVICE_ROLE_KEY` par les valeurs du projet **Test** (`slawilafseganlbghgwx`).
-   - Autre possibilité : désactiver les prévisualisations automatiques des branches.
-   - Contrôle ensuite : ouvrir une prévisualisation et vérifier que le code servi contient `slawilafseganlbghgwx`. Le contrôle déjà fait lisait les scripts de la page, sans rien saisir.
-2. **Région des fonctions Vercel** (décision D2 de `nexora-auto-donnees-personnelles.md`) : aujourd'hui `iad1` (États-Unis). À décider avant d'ouvrir la lecture de factures à des personnes extérieures.
-3. **Textes** : politique de confidentialité et conditions d'utilisation pour Nexora Auto (décisions D1 à D7).
+**Constat du 17 septembre 2026.** Le code servi par une prévisualisation de
+branche contient l'adresse Supabase `omphppsmhmyllapdqevn`, soit la
+**Production**. Les variables de l'environnement « Preview » sont donc celles
+de la Production, pour Nexora Auto comme pour Nexora Pro.
+
+**Portée.** Nexora Auto se ferme désormais de lui-même sur une prévisualisation
+reliée à la Production (`lib/auto/acces.js`). Cette protection ne vaut ni pour
+Nexora Pro, ni pour les 87 prévisualisations déjà déployées : elles restent
+reliées à la Production. Les réglages de Production ne changent pas.
+
+### 2.1 Réglages à faire (Baptiste, dans Vercel)
+
+Projet `nexora-dashboard` → **Settings** → **Environment Variables**. Pour
+chaque variable, ne modifier que la valeur de l'environnement **Preview**
+(laisser Production intacte).
+
+| Variable | Lue par | Valeur Preview recommandée |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | navigateur et serveur | l'adresse du projet **Test** (`https://slawilafseganlbghgwx.supabase.co`) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | navigateur et serveur | clé publique du projet **Test** |
+| `SUPABASE_SERVICE_ROLE_KEY` | serveur | clé de service du projet **Test** |
+| `NEXT_PUBLIC_APP_URL` | liens absolus, redirections Stripe et Google | vide (le code retombe sur l'adresse de production) ou l'adresse de la prévisualisation |
+| `STRIPE_SECRET_KEY` | routes d'abonnement | clé de **test** Stripe, ou vide : sans elle, les routes d'abonnement répondent une erreur au lieu de créer un paiement réel |
+| `STRIPE_WEBHOOK_SECRET` | route de rappel Stripe | secret du point d'entrée de test, ou vide |
+| `RESEND_API_KEY` | formulaire de démonstration | **vide** : sans elle, la demande n'est pas transmise (message dans les journaux) au lieu d'envoyer un e-mail réel |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_OAUTH_STATE_SECRET`, `NEXT_PUBLIC_GOOGLE_CALENDAR_CONNECT_URL` | connexion d'un agenda Google | vide, ou identifiants d'un client Google de test |
+| `NEXT_PUBLIC_COCKPIT_OPPORTUNITES_ACTIF` | ancien indicateur d'affichage | inchangée |
+| `AUTO_ACCES` | Nexora Auto | facultative ; `ferme` pour fermer Nexora Auto aussi sur les prévisualisations |
+| `AUTO_LECTURE_FOURNISSEUR`, `AUTO_LECTURE_QUOTA_24H` | lecture des factures | absentes (lecture gratuite sur le serveur) |
+| `ANTHROPIC_API_KEY`, `AUTO_LECTURE_BUDGET_USD`, `AUTO_LECTURE_PRODUCTION` | lecture payante | **absentes** |
+
+**Points à vérifier pendant l'opération :**
+- une variable peut être définie pour plusieurs environnements à la fois : vérifier que la ligne modifiée ne s'applique pas aussi à Production ;
+- Vercel permet des valeurs propres à une branche (« Preview » + nom de branche) : parcourir la liste et traiter ces exceptions, sinon une branche continuerait d'utiliser la Production ;
+- un changement de variable ne prend effet qu'au **déploiement suivant** : les prévisualisations existantes gardent leurs anciennes valeurs.
+
+### 2.2 Vérifier qu'une prévisualisation est bien sur Test
+
+Une route de contrôle a été ajoutée : **`/api/auto/environnement`**. Elle ne
+renvoie aucune clé, seulement ce qui est déjà public ou d'exécution.
+
+1. Pousser un commit sur une branche (ou relancer un déploiement depuis Vercel) **après** le changement de variables.
+2. Ouvrir `https://<prévisualisation>.vercel.app/api/auto/environnement` (la protection Vercel s'applique).
+3. Attendu :
+   ```json
+   {"environnement":"preview","base":"autre","projetSupabase":"slawilafseganlbghgwx","regionFonction":"dub1","branche":"…","accesAuto":"…"}
+   ```
+   `base: "production"` signifie que la prévisualisation est encore reliée à la Production : ne pas s'en servir.
+4. Contrôle complémentaire, côté navigateur : la page `/auto/connexion` d'une prévisualisation ne doit plus contenir `omphppsmhmyllapdqevn` dans ses scripts.
+
+### 2.3 Anciennes prévisualisations
+
+- 87 prévisualisations existent (une par commit poussé). Toutes sont antérieures à la correction, donc **toutes reliées à la Production**.
+- Elles restent servies tant qu'elles ne sont pas supprimées. À traiter : ne plus s'en servir pour la recette, et, si vous le souhaitez, les supprimer depuis Vercel (Deployments → … → Delete), au moins celles des branches `auto/*`.
+- Une seule règle simple : **pour une recette, n'utiliser qu'une prévisualisation créée après la correction et vérifiée par la route ci-dessus.**
+
+## 2 bis. Préalable 2 : région d'exécution en Europe
+
+**Constat.** En Production, les routes serveur s'exécutent en `iad1`
+(Washington, États-Unis), d'après l'en-tête `x-vercel-id`. Les deux bases
+Supabase sont en `eu-west-1` (Irlande). Une facture lue automatiquement
+serait donc traitée aux États-Unis.
+
+**Ce qui est préparé.** `vercel.json` :
+
+```json
+{ "$schema": "https://openapi.vercel.sh/vercel.json", "regions": ["dub1"] }
+```
+
+- `dub1` est Dublin : la même région que les bases Supabase.
+- `export const preferredRegion` (route par route) a été retiré : Next.js 16 l'a déprécié.
+- **Une région par fonction n'est pas possible sur l'offre Hobby** : la documentation Vercel indique « Hobby : single region », et déployer plus de régions que l'offre ne permet fait échouer le déploiement. Le réglage est donc **commun à tout le projet**.
+
+**Effet sur Nexora Pro.** Ses routes passeraient aussi en Irlande. Elles
+parlent à la même base Supabase (Irlande), donc la latence diminue plutôt
+qu'elle n'augmente. Les services externes (Stripe, Brevo, Resend, Google)
+sont appelés en HTTPS depuis l'Europe, sans changement de fonctionnement.
+À vérifier avant de retenir ce réglage :
+
+1. le déploiement réussit (visible sur la première prévisualisation qui suit) ;
+2. `/api/auto/environnement` renvoie `"regionFonction":"dub1"` ;
+3. aucun surcoût : la facturation Vercel dépend de l'usage, pas de la région, mais la page de facturation doit être relue une fois le changement en place (`dub1` n'a pas de tarif majoré connu, à confirmer sur votre offre) ;
+4. un parcours Nexora Pro reste normal sur cette prévisualisation (connexion, tableau de bord, devis).
+
+Si l'un de ces points échoue, retirer `vercel.json` : le projet revient à
+`iad1`, et la décision D2 doit alors être écrite explicitement dans la
+politique de confidentialité.
+
+## 2 ter. Préalable 3 : textes et décisions
+
+Politique de confidentialité et conditions d'utilisation pour Nexora Auto,
+durées de conservation : voir `nexora-auto-donnees-personnelles.md`,
+décisions D1 à D8.
 
 ## 3. Une seule fusion, jamais la pile PR par PR
 
@@ -70,6 +155,7 @@ des états intermédiaires incomplets.
 | Accès croisés et bêta | `node scripts/recette/acces-croises.mjs http://localhost:3114` | 55/55 en mode bêta |
 | Simultanéité | `node scripts/recette/factures/concurrence.mjs 20` | A 20/20, B 20/20, C 10/10 |
 | Écrans | `audit-ecrans.mjs` et `audit-texte-agrandi.mjs` sur les écrans principaux | aucun défaut |
+| Fermeture | `node scripts/recette/fermeture-beta.mjs http://localhost:3114` | 14/14, mode remis à l'identique |
 | Fichiers orphelins | `supabase/tests/auto_fichiers_orphelins.sql` | 0 et 0 |
 | Recette humaine | `nexora-auto-recette-beta.md`, temps A | relevés remplis |
 
@@ -141,13 +227,38 @@ Son compte et ses données restent, mais elle n'y accède plus (décision D3 pou
 
 **Ouverture à tous** (décision distincte) : `update public.auto_acces_parametres set mode = 'ouvert';`
 
-## 8. Fermer en urgence, revenir en arrière
+## 8. Fermer : deux gestes qui ne font pas la même chose
 
-**Fermer sans redéployer** : `update public.auto_acces_parametres set mode = 'ferme';`.
-Effet immédiat sur les données, et sur les écrans à la requête suivante.
+Mesuré le 17 septembre 2026 sur Test (`scripts/recette/fermeture-beta.mjs`,
+14 contrôles, et un essai à la main pour la fermeture applicative).
 
-**Fermer sans toucher à la base** : variable `AUTO_ACCES=ferme` sur Vercel, puis
-redéploiement.
+| | **Fermeture en base** `update auto_acces_parametres set mode = 'ferme'` | **Fermeture applicative** `AUTO_ACCES=ferme` sur Vercel |
+| --- | --- | --- |
+| Effet | immédiat, sans redéploiement | au redéploiement |
+| Écrans `/auto` | « arrive bientôt » | « arrive bientôt » |
+| Routes `/api/auto/*` | 403 | 403 |
+| Session déjà ouverte, **lecture directe de la base** | **plus rien** (0 ligne) | **continue de fonctionner** |
+| Session déjà ouverte, **écriture directe** | refusée | **acceptée** |
+| Fichiers jamais téléchargés | refusés | accessibles |
+| Nouvelles adresses signées | refusées | délivrées |
+| À utiliser pour | **couper l'accès aux données** | retirer l'application de l'affiche |
+
+**La seule fermeture qui protège les données est celle de la base.** La
+variable d'environnement ferme l'application, pas la base : un onglet déjà
+ouvert parle directement à Supabase.
+
+**Limite mesurée du stockage.** Les fichiers privés sont servis derrière un
+cache (`Cache-Control: public, max-age=3600`). Après une fermeture :
+- un fichier **jamais téléchargé** est refusé ;
+- un **autre compte** est refusé, même sur un fichier déjà mis en cache ;
+- mais **la même session** peut encore recevoir un fichier qu'elle avait déjà téléchargé, pendant au plus une heure. Poser `cacheControl: "0"` au dépôt n'y change rien (vérifié).
+- Si une révocation doit être immédiate au fichier près : supprimer le document (le fichier part du stockage), ou le déplacer, ce qui change son chemin.
+
+**Retirer une personne de la bêta** (`delete from auto_acces_beta …`) a le
+même effet immédiat que la fermeture, pour cette personne seulement : ses
+données restent en base, elle n'y accède plus.
+
+## 8 bis. Revenir en arrière
 
 **Code, sans perte de données** : `git revert` du commit de fusion dans `main`.
 Les tables `auto_*` et les fichiers restent, inertes.
@@ -155,6 +266,8 @@ Les tables `auto_*` et les fichiers restent, inertes.
 **Base** : ne rien supprimer par défaut.
 - Chaque migration décrit son retour arrière dans son en-tête ; ces retours suppriment des objets, donc ne s'appliquent qu'après un export et sur décision.
 - En cas de doute sur les droits : réappliquer `20260922000700` et `20260922001100`, toutes deux idempotentes.
+
+**Région** : retirer `vercel.json` ramène le projet à `iad1`.
 
 **Stockage** : `auto-documents` doit rester privé ; vérifier `public = false` et
 les politiques `auto_documents_stockage_*`, sans supprimer le compartiment.

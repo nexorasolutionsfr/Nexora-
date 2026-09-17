@@ -6,7 +6,18 @@ liste les décisions. Il **n'invente ni durée de conservation ni garantie** :
 tout ce qui n'est pas décidé est marqué **[À DÉCIDER]** ; ce qui doit être
 vérifié chez un prestataire est marqué **[À VÉRIFIER]**.
 
-## 1. Changement de rôle
+## 1. Qui est responsable, et changement de rôle
+
+**Identité du responsable de traitement.** D'après la politique actuelle
+(`app/confidentialite/page.tsx`) : **Baptiste Papoul, entrepreneur
+individuel**, exerçant sous le nom commercial « Nexora Solutions »,
+21 rue de l'École, 52100 Saint-Dizier, SIREN 108 995 788. « Nexora Solutions »
+est un nom commercial, pas une personne morale : c'est l'entrepreneur
+individuel qui est responsable, et c'est cette identité qui doit figurer dans
+les textes. **[À CONFIRMER]** qu'aucune société n'a été créée depuis, et que
+l'adresse et le SIREN sont à jour.
+
+## 1 bis. Changement de rôle
 
 Pour Nexora Pro, la politique actuelle (`app/confidentialite/page.tsx`, section 3)
 présente Nexora Solutions comme **sous-traitant** des garages.
@@ -24,6 +35,8 @@ recevoir une section dédiée avant toute ouverture à une personne extérieure.
 | Exécution des routes serveur en Production | Vercel, région `iad1` (États-Unis) | en-tête `x-vercel-id: cdg1::iad1::…` d'une route dynamique publique |
 | Lecture automatique des factures | gratuite, **sur le serveur Nexora** (fonction Vercel) : texte du PDF, aucun prestataire d'IA | `lib/auto/lecture/configuration.js`, `texte-pdf.js` |
 | Conséquence | une facture PDF lue automatiquement serait **traitée aux États-Unis** tant que les fonctions tournent en `iad1` | voir décision D2 |
+| Correction préparée | `vercel.json` fixe la région à `dub1` (Dublin), la même que les bases. Une région par fonction est impossible sur l'offre Hobby : le réglage vaut pour tout le projet, Nexora Pro compris (effets examinés dans `nexora-auto-livraison.md`) | à confirmer au premier déploiement |
+| Fichiers privés | servis derrière un cache d'une heure (`Cache-Control: public, max-age=3600`) : après un retrait d'accès, la **même session** peut encore recevoir un fichier déjà téléchargé pendant au plus une heure ; un autre compte est refusé, et un fichier jamais téléchargé aussi | mesuré le 17 sept. 2026, `scripts/recette/fermeture-beta.mjs` |
 | Prévisualisations Vercel | reliées à la base de **Production** | lu dans le code servi, voir `nexora-auto-suivi.md` |
 | E-mails de compte (confirmation, mot de passe) | Supabase Auth, via le SMTP Brevo déjà utilisé | configuration existante (mémoire « envoi des e-mails en Production ») |
 | Mesure d'audience | Vercel Analytics chargé en Production par la mise en page générale, `/auto` compris | `app/layout.tsx` |
@@ -151,12 +164,39 @@ Uniquement ce qui est vérifié :
 - **Dépôt d'un document :** « Le fichier reste privé : vous seul pouvez l'ouvrir. » (déjà affiché)
 - **Lecture automatique :** « Nexora lit le texte de votre PDF sur ses serveurs pour vous proposer les informations. Vous vérifiez avant d'enregistrer. » **[À COMPLÉTER : lieu, décision D2]**
 
+## 6 bis. Durées de conservation : proposition
+
+**Principe.** Une durée ne vaut que si un mécanisme l'applique. Aujourd'hui,
+**aucune suppression automatique n'existe** : toutes les lignes « mécanisme à
+créer » sont des engagements à ne pas écrire dans la politique avant d'avoir
+le mécanisme. Les durées ci-dessous sont des **propositions**, à valider
+(décision D1).
+
+| Donnée | Finalité | Durée proposée | Justification | Déclencheur de suppression | Sauvegardes |
+| --- | --- | --- | --- | --- | --- |
+| Compte (adresse, mot de passe haché) | accéder à son dossier | tant que le compte sert ; **24 mois sans connexion** → avertissement, puis suppression | un carnet d'entretien se consulte rarement : un an est trop court, dix ans n'a pas de finalité | à créer : relevé des comptes inactifs, e-mail d'avertissement, suppression | disparaît des sauvegardes à leur expiration (voir plus bas) |
+| Voitures, kilométrages, interventions, tâches, préférences | tenir le dossier | même durée que le compte | le dossier n'a pas de sens sans le compte | suppression du compte, ou suppression de la voiture par la personne (immédiate, déjà en place) | idem |
+| Documents déposés et leurs fichiers | garder ses justificatifs | même durée que le compte | c'est la personne qui décide de garder ou non ses factures ; **ce ne sont pas les factures comptables de Nexora** et la règle des 10 ans ne s'y applique pas | suppression par la personne (immédiate, en place) ou suppression du compte | idem |
+| Fichier déposé puis abandonné (import interrompu, jamais confirmé) | reprendre un import | **30 jours**, puis suppression du fichier et de sa fiche si aucune intervention n'y est rattachée | au-delà, il ne sert plus à rien et n'a pas été voulu | à créer : relevé des documents sans intervention et sans ouverture depuis 30 jours | idem |
+| Brouillon de vérification (sur l'appareil) | ne rien perdre en quittant l'écran | **7 jours** | déjà en place, dans le navigateur | automatique : à la lecture du brouillon, et à la déconnexion | aucune : rien n'est envoyé au serveur |
+| Proposition de lecture (`auto_documents.lecture`) | montrer ce qui a été proposé, et ne pas relire | vie du document | sans elle, une relecture serait nécessaire | suppression du document | avec la base |
+| Journal des lectures (`auto_lectures`, sans donnée de facture) | suivre coûts, échecs et qualité | **12 mois** | un an couvre le suivi de qualité et des dépenses ; au-delà, aucune finalité | à créer : purge mensuelle ; le lien personnel est déjà coupé à la suppression du compte | avec la base |
+| Liste des adresses invitées (`auto_acces_beta`) | ouvrir l'accès pendant la bêta | jusqu'à la fin de la bêta, **3 mois** au plus après | la liste n'a plus d'objet une fois l'accès ouvert ou la bêta arrêtée | à la main, ou purge à la fin de la bêta | avec la base |
+| Journaux techniques (Vercel, Supabase) | exploitation, sécurité | durée du prestataire **[À VÉRIFIER]** selon l'offre | non paramétrable par nous ; ils ne contiennent ni adresse ni contenu de facture (vérifié) | automatique, chez le prestataire | sans objet |
+| Mesure d'audience | comprendre l'usage | selon Vercel Analytics **[À VÉRIFIER]** | à confirmer, sinon désactiver sur `/auto` (D7) | automatique | sans objet |
+| Données supprimées présentes dans les sauvegardes | pouvoir restaurer après incident | durée de rétention des sauvegardes Supabase **[À VÉRIFIER]** (dépend de l'offre) | une sauvegarde sans rétention ne protège de rien ; la suppression y devient effective à l'expiration | automatique, par rotation des sauvegardes | **à écrire dans la politique** : « une donnée supprimée disparaît des sauvegardes au plus tard au bout de N jours » |
+
+**Ce qui est déjà immédiat, sans mécanisme à créer :** suppression d'un
+document, d'une intervention, d'un relevé, d'une tâche ou d'une voiture par la
+personne ; retrait de la liste bêta ; fermeture de l'accès. La suppression du
+compte lui-même n'existe pas encore (décision D3).
+
 ## 7. Décisions à prendre
 
 | # | Décision | Options | Recommandation |
 | --- | --- | --- | --- |
-| D1 | Durées de conservation (compte actif, inactif, après suppression, journal des lectures, liste bêta) | à fixer par Baptiste | décider avant la bêta externe ; ne rien publier sans durée |
-| D2 | Lieu de lecture des factures | (a) passer les fonctions Vercel en Europe (`cdg1` ou `fra1`, réglage du projet ou `preferredRegion` sur la route), à vérifier selon l'offre Vercel ; (b) garder `iad1` et encadrer le transfert | (a) si l'offre le permet sans coût ; sinon (b), explicitement écrit |
+| D1 | Durées de conservation | valider ou corriger le tableau de la section 6 bis, durée par durée, et décider quels mécanismes de suppression construire | valider les durées avant la bêta externe ; ne publier une durée qu'avec son mécanisme |
+| D2 | Lieu de lecture des factures | (a) `vercel.json` avec `regions: ["dub1"]`, **préparé** : tout le projet passe à Dublin, Nexora Pro compris ; (b) garder `iad1` et encadrer le transfert dans la politique | (a), après les quatre contrôles de `nexora-auto-livraison.md` (déploiement, région constatée, facturation, parcours Pro) |
 | D3 | Suppression du compte | depuis l'application, ou sur demande par e-mail pendant la bêta ; effacement des fichiers ; sort du journal des lectures ; compte Nexora Pro partagé | sur demande pendant la bêta, traitée à la main avec une procédure écrite |
 | D4 | Accès administrateur aux dossiers | aucun sans demande de la personne, ou accès d'exploitation tracé | aucun accès sans demande, écrit dans la politique |
 | D5 | Pièces d'identité (carte grise…) | autoriser, déconseiller, refuser | déconseiller à l'écran pendant la bêta |

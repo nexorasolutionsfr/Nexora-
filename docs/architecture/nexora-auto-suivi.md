@@ -82,6 +82,9 @@ boutons sans nom, champs sans libellé, cibles tactiles), et situations limites.
 | R33 | En Production, les routes serveur s'exécutent aux États-Unis (`iad1`) : une facture lue y serait traitée | **constaté** (bêta) : décision D2 |
 | R34 | `/auto` serait public dès le déploiement, sans moyen de limiter l'accès | **corrigé** (bêta) : fermé par défaut, bêta sur invitation, contrôle en base |
 | R35 | Lint ponctuel seulement, hors dépôt | **corrigé** (bêta) : `npm run lint:auto`, exceptions écrites dans le code |
+| R36 | Fichiers privés servis derrière un cache d'une heure : après un retrait d'accès, la même session peut encore recevoir un fichier déjà téléchargé | **mesuré et documenté** (préparation) : un autre compte reste refusé, un fichier jamais téléchargé aussi ; `cacheControl: "0"` n'y change rien |
+| R37 | `AUTO_ACCES=ferme` ferme l'application mais pas l'accès direct à la base : une session ouverte lit et écrit encore | **mesuré et documenté** (préparation) : seule la fermeture en base coupe les données |
+| R38 | `preferredRegion` déprécié par Next 16 ; une région par fonction impossible sur l'offre Hobby | **corrigé** (préparation) : `vercel.json` avec une région unique, `dub1` |
 
 Vérifié sans défaut : aucune page ne déborde à 320 px ; écrans sans voiture
 (chacun propose d'ajouter une voiture) ; session expirée au chargement
@@ -483,4 +486,36 @@ pas seulement dans l'écran.
 - Écrans « arrive bientôt » et « Accès réservé » : audits 320/375/390 px et texte à 150 et 200 %, sans défaut ; captures contrôlées.
 - `npm run lint:auto` : 0 problème ; un défaut planté exprès est bien détecté. 148 tests node.
 - Comptes fictifs créés pour ces vérifications : supprimés.
+
+## Préparation de la mise en ligne (suite du 17 septembre)
+
+**Prévisualisations Vercel.**
+- 87 prévisualisations existent, toutes antérieures à la correction, donc **toutes reliées à la base de Production**.
+- La procédure exacte (variables par environnement, exceptions par branche, contrôle) est dans `nexora-auto-livraison.md`, section 2. La table couvre **toutes** les variables lues par l'application, pas seulement Supabase : sans quoi une prévisualisation reliée à Test pourrait encore créer un paiement Stripe réel ou envoyer un e-mail réel.
+- Nouvelle route de contrôle `/api/auto/environnement` : environnement, base (`production` ou `autre`), identifiant du projet Supabase, région de la fonction, branche, mode d'accès. Aucune clé, rien qui ne soit déjà public ou d'exécution.
+
+**Région d'exécution.**
+- `preferredRegion` retiré (déprécié par Next 16). `vercel.json` fixe `regions: ["dub1"]` (Dublin, où sont les bases).
+- L'offre Hobby n'autorise qu'une seule région : le réglage vaut pour tout le projet, Nexora Pro compris. Quatre contrôles à faire avant de le retenir (`nexora-auto-livraison.md`, section 2 bis).
+
+**Les deux fermetures, mesurées.**
+- **En base** (`mode = 'ferme'`, ou adresse retirée) : effet immédiat, y compris pour une session déjà ouverte qui parle directement à Supabase — plus aucune lecture, aucune écriture, aucun fichier nouveau, aucune adresse signée.
+- **Applicative** (`AUTO_ACCES=ferme`) : écrans et routes fermés, mais la session ouverte **lit et écrit encore** directement dans la base. Vérifié à la main : lecture d'une ligne et écriture acceptée, alors que `/auto` affichait « arrive bientôt » et que la route de lecture répondait 403.
+- **Limite du stockage** : cache d'une heure sur les fichiers privés. Après fermeture, un fichier déjà téléchargé peut encore être servi **à la même session** ; un autre compte est refusé, et un fichier jamais téléchargé aussi.
+- Recette rejouable : `scripts/recette/fermeture-beta.mjs` (14 contrôles, remet le mode d'origine, supprime ses comptes fictifs).
+
+**Conservation.** Tableau complet dans `nexora-auto-donnees-personnelles.md`,
+section 6 bis : donnée, finalité, durée proposée, justification, déclencheur,
+sauvegardes. Aucune suppression automatique n'existe aujourd'hui : chaque
+durée proposée indique le mécanisme à construire. Une facture déposée par un
+automobiliste n'est pas une facture comptable de Nexora.
+
+**Responsable de traitement.** Baptiste Papoul, entrepreneur individuel,
+nom commercial « Nexora Solutions » (SIREN 108 995 788, d'après la politique
+actuelle, à confirmer).
+
+**Inscription réelle.** Parcours prêt (`nexora-auto-recette-beta.md`, temps A0),
+en attente de l'accord et de l'adresse. Point à vérifier d'abord : sans SMTP
+dédié, l'envoi Supabase n'accepte que les adresses membres du projet, 2 par
+heure.
 

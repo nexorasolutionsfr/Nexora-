@@ -8,6 +8,7 @@ voiture », en observant de vraies personnes **sans les guider**. Préparé le
 
 | Temps | Qui | Où | Données |
 | --- | --- | --- | --- |
+| **A0. Inscription réelle** | Baptiste | serveur local, base **Test** | votre adresse ou une boîte dédiée, **sur votre accord** (section 1 bis) |
 | **A. Recette interne** | Baptiste, sur son téléphone | serveur local sur le Mac, base **Test**, même Wi-Fi | compte fictif `@nexora-recette.invalid` ; 3 à 5 **de vos propres** factures (décision D8), supprimées après la mesure |
 | **B. Bêta observée** | 3 à 5 personnes invitées | **Production en mode bêta**, après la mise en ligne contrôlée (`nexora-auto-livraison.md`) | leurs vraies données, dans l'environnement prévu pour cela |
 
@@ -15,6 +16,54 @@ voiture », en observant de vraies personnes **sans les guider**. Préparé le
 - Test n'est pas prévu pour les données de tiers.
 - Les prévisualisations sont reliées à la base de Production et réservées aux membres du compte Vercel.
 - La bêta B suppose donc les décisions de mise en ligne, et la politique de confidentialité à jour (`nexora-auto-donnees-personnelles.md`).
+
+## 1 bis. Temps A0 : l'inscription réelle, de l'invitation à la voiture
+
+**Rien n'est envoyé avant votre accord.** Il me faut deux choses :
+
+1. votre **accord explicite** pour qu'un e-mail réel soit envoyé ;
+2. **l'adresse** à utiliser : la vôtre, ou une boîte dédiée à la recette.
+
+### Ce qu'il faut vérifier avant (5 minutes, dans Supabase)
+
+Projet **Test** → *Authentication* → *Emails* / *SMTP Settings* :
+
+- **Si un SMTP dédié est configuré** (Brevo, comme en Production) : n'importe quelle adresse peut recevoir l'e-mail.
+- **Sinon**, l'envoi par défaut de Supabase n'accepte **que les adresses des membres du projet**, et **2 messages par heure** (documentation Supabase). Toute autre adresse reçoit l'erreur « Email address not authorized ». Dans ce cas : utiliser votre adresse de membre, et compter une inscription et un renvoi par heure au maximum.
+
+À noter aussi : la durée de validité du lien de confirmation et les adresses
+de redirection autorisées (*URL Configuration*) doivent inclure l'adresse du
+serveur utilisé (par exemple `http://192.168.x.x:3115` pour un essai sur
+téléphone en Wi-Fi local).
+
+### Le parcours à jouer
+
+| # | Geste | Attendu |
+| --- | --- | --- |
+| 1 | J'invite l'adresse : `node scripts/recette/beta.mjs inviter <adresse> "recette A0"` | l'adresse figure dans la liste, **aucun message envoyé** |
+| 2 | Sur le téléphone (ou le Mac), ouvrir `/auto/connexion?mode=inscription`, saisir l'adresse et un mot de passe de 8 caractères au moins | écran « Vérifiez vos e-mails », texte neutre |
+| 3 | Ouvrir l'e-mail reçu | expéditeur, objet et texte lisibles ; noter le délai de réception |
+| 4 | Ouvrir le lien depuis le téléphone | retour dans Nexora, **connecté**, sur l'accueil du garage |
+| 5 | Ajouter la voiture | la voiture apparaît, avec le mot d'accueil et « Pour bien démarrer » |
+| 6 | Se déconnecter, puis se reconnecter avec le mot de passe | retour dans le garage, la voiture est là |
+| 7 | Rouvrir **le même lien** de confirmation | message clair « ce lien n'est plus valable », sans écran cassé |
+| 8 | Demander « Mot de passe oublié », ouvrir le lien, choisir un nouveau mot de passe | message neutre, puis connexion avec le nouveau mot de passe |
+
+Contrôle complémentaire, sans e-mail : une adresse **non invitée** doit
+obtenir le même écran neutre, et **aucun compte** ne doit être créé
+(déjà vérifié le 17 septembre ; à refaire si l'envoi change).
+
+### Ce qu'on relève
+
+Délai de réception de chaque e-mail, expéditeur affiché, lisibilité sur
+téléphone, comportement du lien (ouvre-t-il le bon navigateur ?), écrans
+rencontrés, messages d'erreur mot pour mot.
+
+### Après le test
+
+- Si l'adresse utilisée est une vraie adresse : décider du sort du compte de Test (le garder pour la suite, ou le supprimer avec ses données).
+- Retirer l'adresse de la liste si le compte est supprimé : `node scripts/recette/beta.mjs retirer <adresse>`.
+- Relever les fichiers orphelins.
 
 ## 2. Préparer le temps A (10 minutes)
 
