@@ -112,7 +112,7 @@ Détail par lot : `nexora-auto-suivi.md`. Mise en ligne : `nexora-auto-livraison
 | [#119](https://github.com/nexorasolutionsfr/Nexora-/pull/119) | J | #118 | — |
 | [#120](https://github.com/nexorasolutionsfr/Nexora-/pull/120) | K | #119 | — |
 | [#121](https://github.com/nexorasolutionsfr/Nexora-/pull/121) | L | #120 | — |
-| PR « livraison » | documents de livraison et compte rendu | #121 | — |
+| [#122](https://github.com/nexorasolutionsfr/Nexora-/pull/122) | livraison et compte rendu | #121 | — |
 
 Toutes les migrations portent le préfixe `20260922`. Production : aucune.
 

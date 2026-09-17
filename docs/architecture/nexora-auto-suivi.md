@@ -36,7 +36,7 @@ Il est mis à jour à chaque lot. Le contrat détaillé de chaque lot reste dans
 | J — kilométrage et rappels | `auto/lot-j-kilometrage-rappels` | `auto/lot-i-mobile-accessibilite` | [#119](https://github.com/nexorasolutionsfr/Nexora-/pull/119) | fait sur Test, sans migration |
 | K — maîtrise du dossier | `auto/lot-k-maitrise-dossier` | `auto/lot-j-kilometrage-rappels` | [#120](https://github.com/nexorasolutionsfr/Nexora-/pull/120) | fait sur Test, sans migration |
 | L — consolidation technique | `auto/lot-l-consolidation` | `auto/lot-k-maitrise-dossier` | [#121](https://github.com/nexorasolutionsfr/Nexora-/pull/121) | fait sur Test, sans migration |
-| Livraison et compte rendu | `auto/livraison` | `auto/lot-l-consolidation` | voir la PR « livraison » | documents seulement ; rien d'exécuté en Production |
+| Livraison et compte rendu | `auto/livraison` | `auto/lot-l-consolidation` | [#122](https://github.com/nexorasolutionsfr/Nexora-/pull/122) | documents seulement ; rien d'exécuté en Production |
 
 ## Recette globale — constats
 
