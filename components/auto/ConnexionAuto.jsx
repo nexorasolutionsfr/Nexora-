@@ -247,9 +247,18 @@ export default function ConnexionAuto() {
             {mode === "connexion" && suite !== "/auto"
               ? "Connectez-vous pour reprendre là où vous en étiez."
               : mode === "inscription" && beta
-                ? "Nexora Auto est en bêta privée : la création de compte est réservée aux adresses invitées."
+                ? "Nexora Auto est en bêta privée : la création de compte est réservée aux adresses invitées. Si la vôtre ne l'est pas, aucun e-mail ne partira."
                 : libelles.texte}
           </p>
+
+          {/* Beaucoup d'invités ont déjà un compte Nexora du côté garage. Le
+              dire ici évite le détour par une création de compte qui ne peut
+              pas aboutir — et ne révèle rien sur une adresse en particulier. */}
+          {mode === "connexion" ? (
+            <p className="mt-2 text-[13px] leading-snug text-muted-foreground">
+              Vous avez déjà un compte Nexora, côté garage ? La même adresse et le même mot de passe ouvrent aussi Nexora Auto.
+            </p>
+          ) : null}
 
           <div className="mt-5 space-y-3">
             {erreurLien ? <Alerte>{messageLienEchoue(erreurLien)}</Alerte> : null}

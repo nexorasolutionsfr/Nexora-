@@ -58,31 +58,47 @@ reliée à la Production (`lib/auto/acces.js`). Cette protection ne vaut ni pour
 Nexora Pro, ni pour les 87 prévisualisations déjà déployées : elles restent
 reliées à la Production. Les réglages de Production ne changent pas.
 
-### 2.1 Réglages à faire (Baptiste, dans Vercel)
+### 2.1 Réglages à faire — la liste exacte, relevée dans Vercel
 
-Projet `nexora-dashboard` → **Settings** → **Environment Variables**. Pour
-chaque variable, ne modifier que la valeur de l'environnement **Preview**
-(laisser Production intacte).
+**Relevé le 17 septembre 2026** dans `nexora-dashboard` → Settings →
+Environment Variables, filtre « Preview ». Aucune valeur n'a été lue : seuls
+les noms, les environnements et les dates. **L'environnement Preview compte
+exactement dix variables** :
 
-| Variable | Lue par | Valeur Preview recommandée |
-| --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | navigateur et serveur | l'adresse du projet **Test** (`https://slawilafseganlbghgwx.supabase.co`) |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | navigateur et serveur | clé publique du projet **Test** |
-| `SUPABASE_SERVICE_ROLE_KEY` | serveur | clé de service du projet **Test** |
-| `NEXT_PUBLIC_APP_URL` | liens absolus, redirections Stripe et Google | vide (le code retombe sur l'adresse de production) ou l'adresse de la prévisualisation |
-| `STRIPE_SECRET_KEY` | routes d'abonnement | clé de **test** Stripe, ou vide : sans elle, les routes d'abonnement répondent une erreur au lieu de créer un paiement réel |
-| `STRIPE_WEBHOOK_SECRET` | route de rappel Stripe | secret du point d'entrée de test, ou vide |
-| `RESEND_API_KEY` | formulaire de démonstration | **vide** : sans elle, la demande n'est pas transmise (message dans les journaux) au lieu d'envoyer un e-mail réel |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_OAUTH_STATE_SECRET`, `NEXT_PUBLIC_GOOGLE_CALENDAR_CONNECT_URL` | connexion d'un agenda Google | vide, ou identifiants d'un client Google de test |
-| `NEXT_PUBLIC_COCKPIT_OPPORTUNITES_ACTIF` | ancien indicateur d'affichage | inchangée |
-| `AUTO_ACCES` | Nexora Auto | facultative ; `ferme` pour fermer Nexora Auto aussi sur les prévisualisations |
-| `AUTO_LECTURE_FOURNISSEUR`, `AUTO_LECTURE_QUOTA_24H` | lecture des factures | absentes (lecture gratuite sur le serveur) |
-| `ANTHROPIC_API_KEY`, `AUTO_LECTURE_BUDGET_USD`, `AUTO_LECTURE_PRODUCTION` | lecture payante | **absentes** |
+| # | Variable | Dernière modification | Ce qu'il faut en faire |
+| --- | --- | --- | --- |
+| 1 | `NEXT_PUBLIC_SUPABASE_URL` | 14 août | **remplacer** par l'adresse du projet **Test** |
+| 2 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 14 août | **remplacer** par la clé publique de **Test** |
+| 3 | `SUPABASE_SERVICE_ROLE_KEY` | 26 août | **remplacer** par la clé de service de **Test** |
+| 4 | `RESEND_API_KEY` | 5 sept. | **supprimer** la ligne Preview : sans elle, la demande de démonstration est journalisée au lieu d'être envoyée. Une prévisualisation ne peut plus écrire à personne |
+| 5 | `STRIPE_SECRET_KEY` | 5 sept. | **supprimer** la ligne Preview, ou mettre une clé de **test** Stripe : sans elle, les routes d'abonnement répondent une erreur au lieu de créer un paiement réel |
+| 6 | `STRIPE_WEBHOOK_SECRET` | 5 sept. | **supprimer** la ligne Preview, ou le secret du point d'entrée de test |
+| 7 | `GOOGLE_CLIENT_ID` | 26 août | laisser, ou vider si vous ne testez pas l'agenda |
+| 8 | `GOOGLE_CLIENT_SECRET` | 29 août | idem |
+| 9 | `OAUTH_STATE_SECRET` | 27 août | laisser (c'est un secret de signature, pas un accès à des données) |
+| 10 | `NEXT_PUBLIC_COCKPIT_OPPORTUNITES_ACTIF` | 31 août | **laisser** : c'est la seule exception par branche, sur `feature/cockpit-opportunites-v1`, et c'est un simple indicateur d'affichage |
 
-**Points à vérifier pendant l'opération :**
-- une variable peut être définie pour plusieurs environnements à la fois : vérifier que la ligne modifiée ne s'applique pas aussi à Production ;
-- Vercel permet des valeurs propres à une branche (« Preview » + nom de branche) : parcourir la liste et traiter ces exceptions, sinon une branche continuerait d'utiliser la Production ;
-- un changement de variable ne prend effet qu'au **déploiement suivant** : les prévisualisations existantes gardent leurs anciennes valeurs.
+**Deux constats qui simplifient le travail :**
+
+- **Aucune variable Supabase n'a d'exception par branche.** La seule exception
+  qui existe porte sur un indicateur d'affichage. Il n'y a donc rien à
+  traquer : les trois lignes Supabase « Preview » gouvernent toutes les
+  prévisualisations.
+- Chaque variable a **une ligne par environnement** (Production, Preview,
+  Development séparées). Modifier la ligne « Preview » ne touche donc pas la
+  Production — vérifiez tout de même l'étiquette de la ligne avant d'agir.
+
+**Ce que je n'ai pas fait, et pourquoi.** Les trois premières demandent
+d'écrire des clés : je ne saisis pas vos secrets. Les lignes 4 à 6 se
+règlent par une suppression, sans secret — mais supprimer trois clés de votre
+projet Vercel sans que vous soyez devant, à partir d'une liste filtrée que je
+ne peux pas revérifier au moment du clic, met en jeu le paiement et les envois
+de Nexora Pro si je me trompe de ligne. Je m'arrête donc ici : ces six gestes
+prennent deux minutes avec la liste ci-dessus sous les yeux.
+
+**Effet immédiat, à ne pas oublier** : un changement de variable ne s'applique
+qu'au **déploiement suivant**. Les prévisualisations déjà construites gardent
+leurs anciennes valeurs.
 
 ### 2.2 Vérifier qu'une prévisualisation est bien sur Test
 
