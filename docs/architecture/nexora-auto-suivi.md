@@ -29,7 +29,8 @@ Il est mis à jour à chaque lot. Le contrat détaillé de chaque lot reste dans
 
 | Lot | Branche | Base | PR | État |
 | --- | --- | --- | --- | --- |
-| F — recette globale et corrections | `auto/lot-f-recette-globale` | `auto/lot-e-factures` | à ouvrir | en cours |
+| F — recette globale et corrections | `auto/lot-f-recette-globale` | `auto/lot-e-factures` | [#115](https://github.com/nexorasolutionsfr/Nexora-/pull/115) | fait sur Test |
+| G — première utilisation | `auto/lot-g-premiere-utilisation` | `auto/lot-f-recette-globale` | à ouvrir | fait sur Test |
 
 ## Recette globale — constats
 
@@ -39,11 +40,11 @@ boutons sans nom, champs sans libellé, cibles tactiles), et situations limites.
 
 | # | Constat | Traitement |
 | --- | --- | --- |
-| R1 | L'accueil ne parle ni des factures, ni de « À prévoir », ni des services | lot G (première utilisation) |
+| R1 | L'accueil ne parle ni des factures, ni de « À prévoir », ni des services | **corrigé** (lot G) |
 | R2 | Exemple de l'accueil : échéances coupées à 375 px | **corrigé** (lot F) |
 | R3 | Inscription : la règle des 8 caractères n'apparaît qu'après une erreur | **corrigé** (lot F) |
-| R4 | Juste après l'ajout d'une voiture : « Information manquante » répété, sections vides, pas de première action claire | lot G |
-| R5 | Les onglets « À prévoir » et « Services » oublient la voiture consultée | lot G |
+| R4 | Juste après l'ajout d'une voiture : « Information manquante » répété, sections vides, pas de première action claire | **corrigé** (lot G) : mot d'accueil, « Pour bien démarrer », « À compléter » |
+| R5 | Les onglets « À prévoir » et « Services » oublient la voiture consultée | **corrigé** (lot G) pour « Services » et « Ajouter une facture » ; « À prévoir » reste une vue de toutes les voitures, filtrable |
 | R6 | Bouton « Ajouter » de « Mon garage » ambigu | **corrigé** : « Voiture », nom accessible « Ajouter une voiture » |
 | R7 | Retour sur la connexion après expiration : aucune explication | **corrigé** : « Connectez-vous pour reprendre là où vous en étiez » |
 | R8 | Lecture de facture refusée faute de session : écran muet | **corrigé** : message explicite |
@@ -58,3 +59,37 @@ Vérifié sans défaut : aucune page ne déborde à 320 px ; écrans sans voitur
 enregistrement (message clair, saisie conservée, bouton de nouveau actif) ;
 fichier non accepté (message de format) ; destination conservée après
 connexion.
+
+## Lot G — première utilisation et accueil personnel
+
+**Objectif.** Un nouvel utilisateur crée son premier dossier et comprend sa
+prochaine action sans explication extérieure.
+
+**Fait.**
+- **Accueil.** La promesse cite les factures (« Ajoutez une facture PDF : Nexora essaie de préremplir… »), l'historique, « À prévoir » et les services.
+- **Ajout d'une voiture.**
+  - Seuls la marque et le modèle sont visibles, avec l'utilité de chaque champ facultatif (énergie : fiches d'entretien ; plaque : reconnaître la voiture sur les factures).
+  - Les informations d'échéance sont repliées sous « Calculer les échéances dès maintenant » et s'ouvrent seules en cas d'erreur.
+- **Juste après l'ajout.**
+  - La fiche s'ouvre sur « <voiture> est dans votre garage ».
+  - L'encart « Pour bien démarrer » propose trois gestes : ajouter une facture, indiquer le kilométrage, ajouter la mise en circulation.
+  - Chaque geste disparaît une fois fait. « Plus tard » masque l'encart pour cette voiture (mémorisé dans le navigateur).
+  - L'encart n'apparaît que tant que le dossier n'a ni intervention ni document.
+- **Vocabulaire.** « Information manquante » devient « À compléter », « Date inconnue » devient « Pas encore calculé ».
+- **« Mon garage ».**
+  - Chaque carte de voiture affiche sa dernière intervention.
+  - Le bouton d'ajout dit « Voiture » (lot F).
+- **Voiture conservée.**
+  - La voiture consultée est retenue pour la session du navigateur ; « Services » et « Ajouter une facture » la reprennent. Une voiture archivée ou supprimée est ignorée.
+  - Sur une fiche de service, le nom de la voiture ramène à sa fiche.
+
+**Vérifié.** Parcours navigateur (375 px, compte fictif) :
+- voiture ajoutée avec marque et modèle seulement, puis mot d'accueil et encart ;
+- kilométrage saisi depuis l'encart (formulaire amené à l'écran), et le geste disparaît ;
+- « Plus tard » tient après rechargement ;
+- onglet « Services » et ajout de facture reprennent la Yaris, qui n'est pas la voiture principale.
+
+115 tests node.
+
+**Limites.** La mémoire de la voiture consultée et le masquage de l'encart
+vivent dans le navigateur, pas dans le compte.

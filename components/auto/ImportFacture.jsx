@@ -36,7 +36,7 @@ import {
   validerFacture,
 } from "@/lib/auto/factures";
 import { ouvrirDocument } from "@/components/auto/Documents";
-import { Alerte, PageAuto, Plaque, SqueletteVehicules, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, champ, etiquette, useSessionAuto } from "@/components/auto/elements";
+import { Alerte, PageAuto, Plaque, SqueletteVehicules, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, champ, etiquette, useSessionAuto, voitureCourante } from "@/components/auto/elements";
 import { TYPES_INTERVENTION, formaterDate, formaterEuros, formaterKm, libelleDe, messageErreurAuto } from "@/components/auto/format";
 
 const ACCEPTES = "application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif";
@@ -117,7 +117,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
     );
   }
 
-  const vehicule = vehicules.find((v) => v.id === choisi) ?? vehicules[0] ?? null;
+  const vehicule = vehicules.find((v) => v.id === choisi) ?? vehicules.find((v) => v.id === voitureCourante()) ?? vehicules[0] ?? null;
 
   async function deposer(evenement) {
     evenement.preventDefault();

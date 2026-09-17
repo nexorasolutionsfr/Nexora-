@@ -42,7 +42,7 @@ import { aujourdhuiIso } from "@/lib/auto/echeances";
 import { LIBELLE_NON_DISPONIBLE, disponibiliteReservation } from "@/lib/auto/offres";
 import { construireAPrevoir } from "@/components/auto/aPrevoir";
 import { chargerDossiers } from "@/components/auto/dossiers";
-import { Alerte, PageAuto, Pastille, Plaque, SqueletteVehicules, aide, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, etiquette, useSessionAuto } from "@/components/auto/elements";
+import { Alerte, PageAuto, Pastille, Plaque, SqueletteVehicules, aide, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, etiquette, memoriserVoitureCourante, useSessionAuto, voitureCourante } from "@/components/auto/elements";
 import { ENERGIES, formaterDate, libelleDe, messageErreurAuto } from "@/components/auto/format";
 import {
   MODES,
@@ -94,10 +94,12 @@ function useDonneesServices(session) {
   return [session === null ? { dossiers: null, offres: [] } : donnees, charger];
 }
 
-// La voiture demandée si elle est active, sinon la principale.
+// La voiture demandée si elle est active, sinon celle consultée en dernier,
+// sinon la principale.
 function choisirVehicule(vehicules, id) {
   const actives = vehicules.filter((v) => !v.archive_le).sort((a, b) => Number(b.principal) - Number(a.principal));
-  return { actives, vehicule: actives.find((v) => v.id === id) ?? actives[0] ?? null };
+  const vehicule = actives.find((v) => v.id === id) ?? actives.find((v) => v.id === voitureCourante()) ?? actives[0] ?? null;
+  return { actives, vehicule };
 }
 
 function adresse(chemin, params) {
@@ -143,7 +145,7 @@ export function CatalogueServices({ vehiculeId = null, mode = null }) {
       <p className="mt-1 text-sm text-muted-foreground">Comprendre chaque prestation pour votre voiture, et la garder dans vos prochaines actions.</p>
 
       <div className="mt-4">
-        <ChoixVoiture session={session} actives={actives} vehicule={vehicule} suite="/auto/services" onChoisir={(id) => aller({ vehicule: id })} />
+        <ChoixVoiture session={session} actives={actives} vehicule={vehicule} suite="/auto/services" onChoisir={(id) => { memoriserVoitureCourante(id); aller({ vehicule: id }); }} />
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Façon de réaliser la prestation">
@@ -259,6 +261,7 @@ export function FicheService({ code, vehiculeId = null }) {
           suite={suite}
           onChoisir={(id) => {
             setMessage("");
+            memoriserVoitureCourante(id);
             router.replace(adresse(`/auto/services/${service.code}`, { vehicule: id }), { scroll: false });
           }}
         >
@@ -386,9 +389,9 @@ function ChoixVoiture({ session, actives, vehicule, suite, onChoisir, children }
       ) : null}
       <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${actives.length > 1 ? "mt-3" : ""}`}>
         <Car className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className="font-semibold text-foreground">
+        <Link href={`/auto/vehicules/${vehicule.id}`} className="-my-1 inline-flex min-h-8 items-center rounded-lg font-semibold text-foreground hover:underline">
           {vehicule.marque} {vehicule.modele}
-        </span>
+        </Link>
         <Plaque valeur={vehicule.immatriculation} />
       </div>
       <p className="mt-0.5 text-sm text-muted-foreground">

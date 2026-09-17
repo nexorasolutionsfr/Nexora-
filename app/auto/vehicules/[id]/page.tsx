@@ -10,11 +10,11 @@ export default async function Page({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ action?: string }>
+  searchParams: Promise<{ action?: string; bienvenue?: string }>
 }) {
   const { id } = await params
-  const { action } = await searchParams
+  const { action, bienvenue } = await searchParams
   // Une adresse mal formée n'interroge pas la base (sinon quatre erreurs 400).
   if (!estIdentifiant(id)) notFound()
-  return <FicheVehicule vehiculeId={id} actionInitiale={typeof action === "string" ? action : null} />
+  return <FicheVehicule vehiculeId={id} actionInitiale={typeof action === "string" ? action : null} bienvenue={bienvenue === "1"} />
 }

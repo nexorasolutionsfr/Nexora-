@@ -27,6 +27,7 @@ import {
   Paperclip,
   Pencil,
   Plus,
+  ReceiptText,
   Snowflake,
   Sparkles,
   Star,
@@ -52,6 +53,7 @@ import {
   carteListe,
   champ,
   etiquette,
+  memoriserVoitureCourante,
   useSessionAuto,
 } from "@/components/auto/elements";
 import FormulaireVehicule from "@/components/auto/FormulaireVehicule";
@@ -97,7 +99,7 @@ const ICONES = {
   lavage: Sparkles,
 };
 
-export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
+export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienvenue = false }) {
   const session = useSessionAuto();
   const router = useRouter();
   const [etat, setEtat] = useState({ chargement: true, erreur: false, introuvable: false, vehicule: null, releves: [], historique: [], documents: [] });
@@ -140,6 +142,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
       return;
     }
     setEtat({ chargement: false, erreur: false, introuvable: false, vehicule: vehicule.data, releves: releves.data, historique: historique.data, documents: documents.data });
+    if (!vehicule.data.archive_le) memoriserVoitureCourante(vehicule.data.id);
   }, [vehiculeId]);
 
   useEffect(() => {
@@ -159,6 +162,34 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
     requestAnimationFrame(() => document.getElementById(SECTION_PAR_ACTION[actionInitiale] ?? "echeance-ct")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }, [etat.chargement, etat.vehicule, actionInitiale]);
 
+  // Juste après l'ajout de la voiture : un mot d'accueil, une seule fois.
+  const bienvenueAffichee = useRef(false);
+  useEffect(() => {
+    if (!bienvenue || bienvenueAffichee.current || etat.chargement || !etat.vehicule) return;
+    bienvenueAffichee.current = true;
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+    setMessage(`${etat.vehicule.marque} ${etat.vehicule.modele} est dans votre garage.`);
+  }, [bienvenue, etat.chargement, etat.vehicule]);
+
+  // « Pour bien démarrer » : masqué pour cette voiture si la personne le demande.
+  const [premiersPasMasques, setPremiersPasMasques] = useState(true);
+  useEffect(() => {
+    try {
+      setPremiersPasMasques((JSON.parse(localStorage.getItem("nexora-auto-premiers-pas-masques") || "[]") ?? []).includes(vehiculeId));
+    } catch {
+      setPremiersPasMasques(false);
+    }
+  }, [vehiculeId]);
+  function masquerPremiersPas() {
+    setPremiersPasMasques(true);
+    try {
+      const liste = JSON.parse(localStorage.getItem("nexora-auto-premiers-pas-masques") || "[]");
+      localStorage.setItem("nexora-auto-premiers-pas-masques", JSON.stringify([...new Set([...liste, vehiculeId])].slice(-50)));
+    } catch {
+      // Sans stockage, l'encart reviendra à la prochaine visite : sans gravité.
+    }
+  }
+
   // Arrivée sur une section précise (#documents, depuis l'assistance) : le
   // dossier se charge après la navigation, le défilement attend l'affichage.
   const ancreAppliquee = useRef(false);
@@ -169,11 +200,11 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
     if (ancre) requestAnimationFrame(() => document.getElementById(ancre)?.scrollIntoView({ block: "start" }));
   }, [etat.chargement, etat.vehicule]);
 
-  function faireAction(code) {
+  function faireAction(code, { defiler = false } = {}) {
     setMessage("");
     setOuvert(FORMULAIRE_PAR_ACTION[code]);
-    const section = SECTION_PAR_ACTION[code];
-    if (section === "kilometrage") requestAnimationFrame(() => document.getElementById(section)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    const section = SECTION_PAR_ACTION[code] ?? "echeance-ct";
+    if (defiler || section === "kilometrage") requestAnimationFrame(() => document.getElementById(section)?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
   async function apresEnregistrement(texte) {
@@ -342,6 +373,10 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
         </div>
       ) : null}
 
+      {!archive && !premiersPasMasques && historique.length === 0 && documents.length === 0 ? (
+        <PremiersPas vehicule={vehicule} kilometrageConnu={Boolean(km)} onAction={(code) => faireAction(code, { defiler: true })} onMasquer={masquerPremiersPas} />
+      ) : null}
+
       {/* Kilométrage */}
       <section id="kilometrage" className={`${carte} mt-3 scroll-mt-28`} aria-labelledby="titre-km">
         <div className="flex items-center gap-3">
@@ -474,6 +509,58 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null }) {
 
       <ZoneSuppression vehicule={vehicule} documents={documents} />
     </PageAuto>
+  );
+}
+
+// Un dossier vide : trois gestes utiles, aucun obligatoire.
+function PremiersPas({ vehicule, kilometrageConnu, onAction, onMasquer }) {
+  const gestes = [
+    { cle: "facture", icone: ReceiptText, titre: "Ajouter une facture", texte: "En PDF, Nexora essaie de préremplir l'intervention, le kilométrage et la dépense.", href: `/auto/factures/nouvelle?vehicule=${vehicule.id}` },
+    kilometrageConnu ? null : { cle: "releve", icone: Gauge, titre: "Indiquer le kilométrage", texte: "Pour suivre l'entretien au compteur." },
+    vehicule.date_mise_en_circulation ? null : { cle: "mise_en_circulation", icone: CalendarClock, titre: "Ajouter la mise en circulation", texte: "Case B de la carte grise : Nexora calcule le contrôle technique." },
+  ].filter(Boolean);
+  const classeGeste = "flex w-full items-center gap-3 rounded-xl px-2 py-2.5 text-left transition hover:bg-muted";
+  return (
+    <section className={`${carte} mt-3`} aria-labelledby="titre-premiers-pas">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 id="titre-premiers-pas" className="font-semibold text-foreground">
+            Pour bien démarrer
+          </h2>
+          <p className="text-sm text-muted-foreground">Rien d'obligatoire : chaque geste rend le dossier plus utile.</p>
+        </div>
+        <button type="button" onClick={onMasquer} className="-my-1 shrink-0 rounded-lg px-2 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+          Plus tard
+        </button>
+      </div>
+      <ul className="-mx-2 mt-2">
+        {gestes.map(({ cle, icone: Icone, titre, texte, href }) => {
+          const contenu = (
+            <>
+              <IconeRonde icone={Icone} />
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold text-foreground">{titre}</span>
+                <span className="block text-sm leading-snug text-muted-foreground">{texte}</span>
+              </span>
+              <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            </>
+          );
+          return (
+            <li key={cle}>
+              {href ? (
+                <Link href={href} className={classeGeste}>
+                  {contenu}
+                </Link>
+              ) : (
+                <button type="button" onClick={() => onAction(cle)} className={classeGeste}>
+                  {contenu}
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

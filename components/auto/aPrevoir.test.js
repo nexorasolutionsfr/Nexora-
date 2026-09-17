@@ -50,7 +50,7 @@ test("CT : information manquante, jamais une date inventée", () => {
   const el = elementControle({ ...clio, date_mise_en_circulation: null, historique: [] }, { aujourdhui: AUJOURDHUI });
   assert.equal(el.etat, "a_completer");
   assert.equal(el.fondement, "manquant");
-  assert.equal(el.quand, "Date inconnue");
+  assert.equal(el.quand, "Pas encore calculé");
   assert.deepEqual(el.actions.map((a) => a.code), ["mise_en_circulation"]);
 });
 

@@ -33,7 +33,7 @@ export default function NouveauVehicule() {
       p_controle_valable_jusqu_au: donnees.controleValableJusquAu,
     });
     if (error) return messageErreurAuto(error);
-    router.replace(`/auto/vehicules/${data}`);
+    router.replace(`/auto/vehicules/${data}?bienvenue=1`);
     return "";
   }
 
@@ -47,7 +47,7 @@ export default function NouveauVehicule() {
           </Link>
           <h1 className="mt-2 font-display text-[28px] font-bold tracking-tight text-foreground">Ajouter un véhicule</h1>
           <p className="mb-6 mt-1.5 text-[15px] leading-relaxed text-muted-foreground">
-            Seuls la marque et le modèle sont obligatoires. Le reste sert à calculer vos échéances.
+            La marque et le modèle suffisent pour commencer. Vous compléterez le dossier quand vous voudrez.
           </p>
           <FormulaireVehicule creation libelleBouton="Ajouter ce véhicule" onEnregistrer={enregistrer} />
         </>

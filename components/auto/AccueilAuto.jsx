@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Archive, CalendarCheck, CalendarClock, Car, ChevronDown, ChevronRight, Gauge, History, Plus, ReceiptText, Star } from "lucide-react";
+import { Archive, CalendarCheck, CalendarClock, Car, ChevronDown, ChevronRight, Gauge, History, LayoutGrid, Plus, ReceiptText, Star } from "lucide-react";
 
 import { aujourdhuiIso, dernierKilometrage } from "@/lib/auto/echeances";
 import { construireAPrevoir, elementControle, elementRevision, pastilleElement } from "@/components/auto/aPrevoir";
@@ -21,7 +21,7 @@ import {
   carte,
   useSessionAuto,
 } from "@/components/auto/elements";
-import { ENERGIES, formaterDate, formaterKm, libelleDe } from "@/components/auto/format";
+import { ENERGIES, TYPES_INTERVENTION, formaterDate, formaterKm, libelleDe } from "@/components/auto/format";
 
 export default function AccueilAuto() {
   const session = useSessionAuto();
@@ -44,7 +44,7 @@ function Bienvenue() {
           <span className="text-primary">Une seule app.</span>
         </h1>
         <p className="mt-4 max-w-md text-lg leading-relaxed text-muted-foreground">
-          L'historique, le kilométrage et les échéances de votre voiture, au même endroit. Sans rien oublier.
+          Vos factures, l'historique, le kilométrage et ce qui est à prévoir pour votre voiture, au même endroit. Sans rien oublier.
         </p>
         <div className="mt-8 space-y-3">
           <Link href="/auto/connexion?mode=inscription&suite=/auto/vehicules/nouveau" className={boutonPrincipal}>
@@ -76,8 +76,10 @@ function Bienvenue() {
       </section>
 
       <ul className="mt-10 space-y-4">
+        <Avantage icone={ReceiptText} titre="Vos factures, rangées et utiles" texte="Ajoutez une facture PDF : Nexora essaie de préremplir l'intervention, le kilométrage et la dépense. Vous confirmez." />
         <Avantage icone={History} titre="Tout l'historique au même endroit" texte="Révisions, contrôles, pneus, réparations : datés, avec le kilométrage et le montant." />
-        <Avantage icone={CalendarClock} titre="Les échéances, sans calcul" texte="Contrôle technique et entretien calculés à partir de ce que vous renseignez, jamais devinés." />
+        <Avantage icone={CalendarClock} titre="Ce qui est à prévoir, sans calcul" texte="Contrôle technique et entretien calculés à partir de votre dossier, jamais devinés." />
+        <Avantage icone={LayoutGrid} titre="Les services, expliqués" texte="Ce que comprend une prestation et ce qui dépend de votre voiture, avant de la faire réaliser." />
         <Avantage icone={Car} titre="Toutes vos voitures" texte="Ajoutez celles du foyer et retrouvez chacune en un geste." />
       </ul>
     </PageAuto>
@@ -233,6 +235,7 @@ function CarteVehicule({ vehicule }) {
   const ct = pastilleElement(elementControle(vehicule));
   const revision = pastilleElement(elementRevision(vehicule));
   const details = [libelleDe(ENERGIES, vehicule.energie), vehicule.annee].filter(Boolean).join(" · ");
+  const derniere = [...(vehicule.historique ?? [])].sort((a, b) => (a.realise_le < b.realise_le ? 1 : a.realise_le > b.realise_le ? -1 : 0))[0];
 
   return (
     <Link href={`/auto/vehicules/${vehicule.id}`} className={`${carte} block transition hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25`}>
@@ -254,6 +257,11 @@ function CarteVehicule({ vehicule }) {
               {details ? ` · ${details}` : ""}
             </span>
           </div>
+          {derniere ? (
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              Dernière intervention : {libelleDe(TYPES_INTERVENTION, derniere.type)}, {formaterDate(derniere.realise_le)}
+            </p>
+          ) : null}
         </div>
         <ChevronRight className="mt-1 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
       </div>

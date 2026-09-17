@@ -49,6 +49,27 @@ export function useSessionAuto() {
   return session;
 }
 
+// La voiture que la personne consulte, conservée pendant la session du
+// navigateur : « Services » et « Ajouter une facture » la reprennent. Une
+// voiture archivée ou supprimée est simplement ignorée par ces écrans.
+const CLE_VOITURE_COURANTE = "nexora-auto-voiture-courante";
+
+export function memoriserVoitureCourante(id) {
+  try {
+    if (id) sessionStorage.setItem(CLE_VOITURE_COURANTE, id);
+  } catch {
+    // Stockage indisponible (navigation privée stricte) : sans conséquence.
+  }
+}
+
+export function voitureCourante() {
+  try {
+    return sessionStorage.getItem(CLE_VOITURE_COURANTE);
+  } catch {
+    return null;
+  }
+}
+
 // Les trois espaces de la personne connectée.
 const ONGLETS = [
   { href: "/auto", libelle: "Mon garage", icone: Car, actif: (chemin) => chemin === "/auto" || chemin.startsWith("/auto/vehicules") },

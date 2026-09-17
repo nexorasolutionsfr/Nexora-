@@ -22,7 +22,7 @@ export const FONDEMENTS = {
   intervalle: "Selon l'intervalle renseigné",
   estimation: "Estimation",
   tache: "Votre tâche",
-  manquant: "Information manquante",
+  manquant: "À compléter",
 };
 
 const RANG = { depasse: 3, proche: 2, ok: 1, neutre: 0 };
@@ -64,7 +64,7 @@ export function elementControle(vehicule, { aujourdhui } = {}) {
       cle: `controle_technique:${vehicule.id}:a_completer:${ct.manque}`,
       etat: "a_completer",
       titre: "Contrôle technique",
-      quand: "Date inconnue",
+      quand: "Pas encore calculé",
       delai: null,
       niveau: "neutre",
       fondement: "manquant",
@@ -151,7 +151,7 @@ export function elementRevision(vehicule, { aujourdhui } = {}) {
       ...aCompleter,
       cle: `revision:${vehicule.id}:a_completer:${e.etat}`,
       etat: "a_completer",
-      quand: "Date inconnue",
+      quand: "Pas encore calculé",
       delai: null,
       niveau: "neutre",
       fondement: "manquant",
@@ -166,7 +166,7 @@ export function elementRevision(vehicule, { aujourdhui } = {}) {
       ...base,
       cle: `revision:${vehicule.id}:a_completer:kilometrage_revision`,
       etat: "a_completer",
-      quand: "Date inconnue",
+      quand: "Pas encore calculé",
       delai: null,
       niveau: "neutre",
       fondement: "manquant",

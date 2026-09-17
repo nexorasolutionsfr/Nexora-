@@ -5,7 +5,7 @@
 // dernier contrôle technique, enregistrés avec la voiture en une transaction.
 
 import { useState } from "react";
-import { LoaderCircle } from "lucide-react";
+import { ChevronDown, LoaderCircle } from "lucide-react";
 
 import { aujourdhuiIso } from "@/lib/auto/echeances";
 import { afficherImmatriculation } from "@/lib/auto/immatriculation";
@@ -34,6 +34,9 @@ export default function FormulaireVehicule({ vehicule, creation = false, libelle
   const [avertissements, setAvertissements] = useState({});
   const [erreurEnvoi, setErreurEnvoi] = useState("");
   const [enCours, setEnCours] = useState(false);
+  // En création, les informations d'échéance sont repliées : elles sont utiles
+  // mais jamais nécessaires pour commencer.
+  const [echeancesOuvertes, setEcheancesOuvertes] = useState(!creation);
   const aujourdhui = aujourdhuiIso();
 
   function modifier(champNom) {
@@ -49,6 +52,7 @@ export default function FormulaireVehicule({ vehicule, creation = false, libelle
     setErreurEnvoi("");
     const verification = validerVehicule(saisie, { aujourdhui, creation });
     setErreurs(verification.erreurs);
+    if (["dateMiseEnCirculation", "dernierControle", "controleValableJusquAu", "kilometrage"].some((c) => verification.erreurs[c])) setEcheancesOuvertes(true);
     setAvertissements(verification.avertissements);
     if (!verification.valide) return;
     setEnCours(true);
@@ -117,6 +121,7 @@ export default function FormulaireVehicule({ vehicule, creation = false, libelle
             </select>
             {erreurDe("energie")}
           </div>
+          <p className={`${aide} col-span-2 -mt-1`}>L'énergie adapte les fiches d'entretien et de services.</p>
         </div>
         {!creation ? (
           <div>
@@ -142,9 +147,24 @@ export default function FormulaireVehicule({ vehicule, creation = false, libelle
           />
           {erreurDe("immatriculation")}
           {!erreurs.immatriculation && avertissements.immatriculation ? <p className={aide}>{avertissements.immatriculation}</p> : null}
+          {!erreurs.immatriculation && !avertissements.immatriculation ? <p className={aide}>Pour reconnaître la voiture sur vos factures.</p> : null}
         </div>
       </fieldset>
 
+      {!echeancesOuvertes ? (
+        <button
+          type="button"
+          onClick={() => setEcheancesOuvertes(true)}
+          aria-expanded="false"
+          className="flex w-full items-center justify-between gap-3 rounded-xl border border-dashed border-border px-3.5 py-3 text-left text-sm text-foreground transition hover:bg-muted"
+        >
+          <span>
+            <span className="block font-semibold">Calculer les échéances dès maintenant</span>
+            <span className="block text-[13px] text-muted-foreground">Carte grise, dernier contrôle, kilométrage : facultatif, possible plus tard.</span>
+          </span>
+          <ChevronDown className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </button>
+      ) : (
       <fieldset className="space-y-4">
         <legend className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pour calculer vos échéances</legend>
         <div>
@@ -186,6 +206,7 @@ export default function FormulaireVehicule({ vehicule, creation = false, libelle
           </>
         ) : null}
       </fieldset>
+      )}
 
       {erreurEnvoi ? <Alerte>{erreurEnvoi}</Alerte> : null}
 
