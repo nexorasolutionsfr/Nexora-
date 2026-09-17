@@ -39,12 +39,15 @@ import { TYPES_INTERVENTION, formaterDate, formaterEuros, formaterKm, libelleDe,
 
 const ACCEPTES = "application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif";
 
+// { disponible, formats, externe } : formats lus automatiquement, et si le
+// document part chez un prestataire extérieur (lecture payante).
 async function lectureDisponible() {
   try {
     const r = await fetch("/api/auto/lecture", { cache: "no-store" });
-    return (await r.json())?.disponible === true;
+    const c = await r.json();
+    return { disponible: c?.disponible === true, formats: Array.isArray(c?.formats) ? c.formats : [], externe: c?.externe === true };
   } catch {
-    return false;
+    return { disponible: false, formats: [], externe: false };
   }
 }
 
@@ -81,7 +84,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
   useConnexionRequise(session, "/auto/factures/nouvelle");
   const [vehicules, setVehicules] = useState(null);
   const [choisi, setChoisi] = useState(vehiculeId);
-  const [disponible, setDisponible] = useState(null);
+  const [lecture, setLecture] = useState({ disponible: false, formats: [], externe: false });
   const [fichier, setFichier] = useState(null);
   const [erreur, setErreur] = useState("");
   const [existant, setExistant] = useState(null);
@@ -91,12 +94,12 @@ export function NouvelleFacture({ vehiculeId = null }) {
     if (!session) return;
     let actif = true;
     (async () => {
-      const [lecture, reponse] = await Promise.all([
+      const [configurationLecture, reponse] = await Promise.all([
         lectureDisponible(),
         supabase.from("auto_vehicules").select("id, marque, modele, immatriculation, principal").is("archive_le", null).order("created_at", { ascending: true }),
       ]);
       if (!actif) return;
-      setDisponible(lecture);
+      setLecture(configurationLecture);
       setVehicules(reponse.error ? [] : [...reponse.data].sort((a, b) => Number(b.principal) - Number(a.principal)));
     })();
     return () => {
@@ -153,7 +156,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
       setEnCours(false);
       return setErreur(messageErreurAuto(error));
     }
-    router.push(`/auto/factures/${data.id}${disponible ? "?lire=1" : ""}`);
+    router.push(`/auto/factures/${data.id}${lecture.disponible && lecture.formats.includes(verification.typeMime) ? "?lire=1" : ""}`);
   }
 
   return (
@@ -164,9 +167,11 @@ export function NouvelleFacture({ vehiculeId = null }) {
       </Link>
       <h1 className="mt-2 font-display text-[28px] font-bold leading-tight tracking-tight text-foreground">Ajouter ma facture</h1>
       <p className="mt-1 text-[15px] text-muted-foreground">
-        {disponible
-          ? "Nexora lit la facture et vous propose les informations. Vous vérifiez, puis vous confirmez."
-          : "Votre facture est rangée dans le dossier de la voiture ; vous renseignez ensuite l'intervention."}
+        {!lecture.disponible
+          ? "Votre facture est rangée dans le dossier de la voiture ; vous renseignez ensuite l'intervention."
+          : lecture.formats.some((f) => f.startsWith("image/"))
+            ? "Nexora lit la facture et vous propose les informations. Vous vérifiez, puis vous confirmez."
+            : "Pour une facture PDF, Nexora lit les informations et vous les propose. Pour une photo, vous les renseignez. Vous confirmez ensuite."}
       </p>
 
       {vehicules.length === 0 ? (
@@ -218,7 +223,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
               className="block w-full text-sm text-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-secondary file:px-3 file:py-2.5 file:text-sm file:font-semibold file:text-primary"
             />
             <p className={aide}>PDF ou photo, 10 Mo au plus. Le fichier reste privé.</p>
-            {disponible ? (
+            {lecture.externe ? (
               <p className={`${aide} text-amber-800`}>Lecture automatique en essai : utilisez des factures fictives ou anonymisées.</p>
             ) : null}
           </div>
@@ -253,7 +258,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
 const MESSAGES_LECTURE = {
   indisponible: "Lecture automatique non activée : renseignez les informations de la facture.",
   illisible: {
-    format: "Ce format de photo n'est pas lu automatiquement : renseignez les informations.",
+    format: "Les photos ne sont pas encore lues automatiquement : renseignez les informations.",
     taille: "Fichier trop lourd pour la lecture automatique (5 Mo au plus) : renseignez les informations.",
     pages: "Document trop long pour la lecture automatique (4 pages au plus) : renseignez les informations.",
     longueur: "Document trop long pour la lecture automatique : renseignez les informations.",
@@ -264,9 +269,19 @@ const MESSAGES_LECTURE = {
     budget: "Le budget d'essai de la lecture automatique est atteint : renseignez les informations.",
   },
   echec: "La lecture n'a pas abouti : renseignez les informations, ou réessayez.",
+  pdf_sans_texte: "Ce PDF est une image scannée : il n'est pas encore lu automatiquement. Renseignez les informations.",
+  pdf_illisible: "Ce PDF n'a pas pu être lu : renseignez les informations.",
+  vide: "Aucune information n'a pu être lue sur ce document : renseignez-les.",
 };
 
+// Échecs qu'une nouvelle tentative ne résoudrait pas.
+const ECHECS_DEFINITIFS = new Set(["pdf_sans_texte", "pdf_illisible", "format_non_lu", "session"]);
+
 function messageLecture(lecture) {
+  if (lecture.etat === "echec" && MESSAGES_LECTURE[lecture.raison]) return MESSAGES_LECTURE[lecture.raison];
+  if (lecture.etat === "proposee" && lecture.proposition && !Object.values(lecture.proposition.champs ?? {}).some((c) => c.valeur != null) && !(lecture.proposition.operations ?? []).length) {
+    return MESSAGES_LECTURE.vide;
+  }
   const m = MESSAGES_LECTURE[lecture.etat];
   if (!m) return null;
   return typeof m === "string" ? m : m[lecture.raison] ?? "Lecture automatique indisponible : renseignez les informations.";
@@ -277,7 +292,7 @@ export function ConfirmerFacture({ documentId, lire = false }) {
   useConnexionRequise(session, `/auto/factures/${documentId}`);
   const [etat, setEtat] = useState({ chargement: true });
   const [lecture, setLecture] = useState({ etat: "aucune" });
-  const [disponible, setDisponible] = useState(false);
+  const [configurationLecture, setConfigurationLecture] = useState({ disponible: false, formats: [], externe: false });
   const [saisie, setSaisie] = useState(saisieVide);
   const [initiale, setInitiale] = useState(null);
   const [marques, setMarques] = useState({ incertains: new Set(), nonLus: new Set(), immatriculationLue: null, estFacture: null });
@@ -316,7 +331,7 @@ export function ConfirmerFacture({ documentId, lire = false }) {
       lectureDisponible(),
     ]);
     if (vehicule.error || releves.error || historique.error || !vehicule.data) return setEtat({ chargement: false, erreur: true });
-    setDisponible(dispo);
+    setConfigurationLecture(dispo);
     setEtat({ chargement: false, document: d, vehicule: vehicule.data, releves: releves.data, historique: historique.data });
     return d;
   }, [documentId]);
@@ -455,7 +470,14 @@ export function ConfirmerFacture({ documentId, lire = false }) {
     setEnregistre({ rattachee: Boolean(rattacherA) });
   }
 
-  const message = lecture.etat === "aucune" && !disponible ? MESSAGES_LECTURE.indisponible : messageLecture(lecture);
+  const formatLu = configurationLecture.disponible && configurationLecture.formats.includes(document.type_mime);
+  const message =
+    lecture.etat === "aucune" && !formatLu
+      ? configurationLecture.disponible
+        ? MESSAGES_LECTURE.illisible.format
+        : MESSAGES_LECTURE.indisponible
+      : messageLecture(lecture);
+  const propositionVide = message === MESSAGES_LECTURE.vide;
   const surligner = (nom) => marques.incertains.has(nom) && !touches.has(nom);
   const nonLu = (nom) => marques.nonLus.has(nom) && !touches.has(nom) && lecture.etat === "proposee";
   const rattachement = Boolean(choixValide && choixValide !== "creer");
@@ -484,7 +506,7 @@ export function ConfirmerFacture({ documentId, lire = false }) {
             <LoaderCircle className="size-5 shrink-0 animate-spin text-primary" aria-hidden="true" />
             <p className="text-[15px] text-foreground">Lecture de la facture…</p>
           </div>
-        ) : lecture.etat === "proposee" ? (
+        ) : lecture.etat === "proposee" && !propositionVide ? (
           <div role="status" className="flex items-start gap-2.5 rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-3 text-sm text-sky-950">
             <ScanText className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             <p>
@@ -496,13 +518,13 @@ export function ConfirmerFacture({ documentId, lire = false }) {
             {message} Votre facture est conservée dans le dossier.
           </p>
         ) : null}
-        {lecture.etat === "echec" && lecture.raison !== "session" ? (
+        {lecture.etat === "echec" && !ECHECS_DEFINITIFS.has(lecture.raison) ? (
           <button type="button" onClick={relire} className={boutonLien}>
             <ScanText className="size-4" aria-hidden="true" />
             Réessayer la lecture
           </button>
         ) : null}
-        {lecture.etat === "aucune" && disponible ? (
+        {lecture.etat === "aucune" && formatLu ? (
           <button type="button" onClick={relire} className={boutonLien}>
             <ScanText className="size-4" aria-hidden="true" />
             Lire la facture automatiquement

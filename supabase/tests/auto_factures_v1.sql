@@ -325,10 +325,16 @@ begin
   perform pg_temp.assert(v_ligne.refus = 'document', 'réserver : document d''une autre personne');
 
   select * into v_ligne from public.auto_lecture_reserver(pg_temp.fid('alice'), v_doc2, 'anthropic', 'claude-haiku-4-5-20251001', 1, 0, 2, 10);
-  perform pg_temp.assert(v_ligne.refus = 'parametres', 'réserver : sans budget, rien');
+  perform pg_temp.assert(v_ligne.refus = 'parametres', 'réserver : lecture payante sans budget, rien');
 
   select * into v_ligne from public.auto_lecture_reserver(pg_temp.fid('alice'), v_doc2, 'anthropic', 'claude-haiku-4-5-20251001', 1, 999999999, 9, 3);
   perform pg_temp.assert(v_ligne.refus = 'quota', 'réserver : quota de lectures sur 24 h');
+
+  -- Lecture gratuite : aucune réserve, aucun budget, mais tentatives et quota.
+  select * into v_ligne from public.auto_lecture_reserver(pg_temp.fid('alice'), pg_temp.fid('doc4'), 'texte_pdf', 'regles-1', 0, null, 2, 50);
+  perform pg_temp.assert(v_ligne.lecture_id is not null and v_ligne.refus is null, 'réserver : lecture gratuite sans budget');
+  select * into v_ligne from public.auto_lecture_reserver(pg_temp.fid('alice'), pg_temp.fid('doc4'), 'texte_pdf', 'regles-1', 0, null, 2, 3);
+  perform pg_temp.assert(v_ligne.refus = 'quota', 'réserver : lecture gratuite soumise au quota');
   reset role;
 end;
 $$;

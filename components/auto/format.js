@@ -57,7 +57,7 @@ export function formaterDate(iso) {
   return `${jour === 1 ? "1er" : jour} ${MOIS_COURTS[Number(m[2]) - 1]} ${m[1]}`;
 }
 
-const ESPACE_FINE = " ";
+const ESPACE_FINE = "\u202F";
 
 export function formaterNombre(n) {
   if (!Number.isFinite(n)) return "";

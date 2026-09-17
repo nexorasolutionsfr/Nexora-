@@ -5,13 +5,16 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { aujourdhuiIso } from "@/lib/auto/echeances";
 import { estIdentifiant } from "@/lib/auto/identifiants";
 import { creerFournisseurAnthropic } from "@/lib/auto/lecture/anthropic";
+import { creerFournisseurTextePdf } from "@/lib/auto/lecture/texte-pdf";
 import { configurationLecture } from "@/lib/auto/lecture/configuration";
 import { LIMITES_LECTURE } from "@/lib/auto/lecture/limites";
 import { lireFacture } from "@/lib/auto/lecture/service";
 
 // Lire une facture déposée par la personne connectée (lot E).
 //
-// La clé du fournisseur et le budget restent côté serveur. La personne est
+// Par défaut, lecture gratuite du texte des PDF, sur ce serveur. La lecture
+// payante (Claude) n'existe que sur activation explicite ; sa clé et son
+// budget restent côté serveur. La personne est
 // identifiée par son jeton de session ; le document et le fichier sont lus
 // avec SES droits (RLS, stockage privé). Seuls la réservation sur le budget
 // et le journal des coûts passent par le rôle de service. Voir
@@ -52,13 +55,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     configuration,
     clientPersonne,
     clientServeur: supabaseAdmin,
-    creerFournisseur: (c: { modele: string }) =>
-      creerFournisseurAnthropic({
-        cle: process.env.ANTHROPIC_API_KEY as string,
-        modele: c.modele,
-        jetonsSortieMax: LIMITES_LECTURE.jetonsSortieMax,
-        delaiMs: LIMITES_LECTURE.delaiMs,
-      }),
+    creerFournisseur: (c: { fournisseur: string; modele: string }) =>
+      c.fournisseur === "anthropic"
+        ? creerFournisseurAnthropic({
+            cle: process.env.ANTHROPIC_API_KEY as string,
+            modele: c.modele,
+            jetonsSortieMax: LIMITES_LECTURE.jetonsSortieMax,
+            delaiMs: LIMITES_LECTURE.delaiMs,
+          })
+        : creerFournisseurTextePdf(),
     aujourdhui: aujourdhuiIso(),
   });
 

@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { construireAPrevoir, elementControle, elementRevision, elementTache, palierRappel, pastilleElement, rappelsADeclencher } from "./aPrevoir.js";
 
-const F = " ";
+const F = "\u202F";
 const AUJOURDHUI = "2026-09-16";
 
 const clio = {

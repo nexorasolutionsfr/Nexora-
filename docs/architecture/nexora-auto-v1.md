@@ -66,7 +66,7 @@ l'ouverture au public n'est pas décidée.
 | **B** | Consolider « Mon garage » : plusieurs véhicules et véhicule principal, archivage, documents (factures, carnet, contrôle technique) rattachés aux interventions, historique qui distingue saisie et justificatif, dépenses par véhicule | **Fait sur Test**, PR de revue (section E) |
 | **C** | « À prévoir » : contrôle technique et révision, rappels personnalisés, tâches personnelles (pneus, batterie, nettoyage), actions simples, et ce qui reste inconnu | **Fait sur Test**, PR de revue (section F) |
 | **D** | Univers des services, reliés au véhicule : entretien et réparation, pneus, lavage et esthétique, contrôle technique, assistance ; modes (chez un professionnel, à domicile, collecte et restitution) distincts des prestations. Chaque fiche explique la prestation et ce qu'il faut pour une future offre ; ajout aux prochaines actions sans doublon ; consulter ≠ réserver | **Fait sur Test**, PR de revue (section G) |
-| **E** (« lot 5 ») | Ajouter une facture, enrichir le dossier : import privé, lecture automatique (Claude Haiku 4.5, remplaçable), proposition préremplie, confirmation unique, sans doublon ni écrasement | **Fait sur Test**, lecture payante **non activée** en attendant la clé et le budget d'essai (section H) |
+| **E** (« lot 5 ») | Ajouter une facture, enrichir le dossier : import privé, lecture **gratuite** du texte des PDF (règles, sur le serveur), proposition préremplie, confirmation unique, sans doublon ni écrasement ; lecture payante (Claude Haiku 4.5) construite mais inactive | **Fait sur Test** (section H) |
 | **F et suivants** | Procès-verbaux de contrôle technique et photos du compteur, partenaires et offres, disponibilités, réservation (paiement au garage ou en ligne), côté garage « Commandes Nexora » et travaux supplémentaires, admin Nexora, suivi et notifications, assistant « décrivez le problème » | plus tard, sur ce socle |
 
 ---
@@ -503,33 +503,60 @@ Pour `20260922000800` et `20260922000700` : voir leur en-tête.
 
 ### La lecture automatique
 
-- **Fournisseur** : Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) par l'API
-  Messages, sortie forcée par un outil au schéma fixe
-  (`lib/auto/lecture/anthropic.js`). Interface commune
-  (`compterJetons`, `lire`) : un autre fournisseur se branche sans toucher au
-  reste.
-- **Activation** (serveur seulement, `lib/auto/lecture/configuration.js`) :
-  `ANTHROPIC_API_KEY` **et** `AUTO_LECTURE_BUDGET_USD` > 0, modèle au tarif
-  connu, hors Production (déploiement de production Vercel ou projet Supabase de
-  Production refusés sauf `AUTO_LECTURE_PRODUCTION=oui`). La clé n'est jamais
-  dans le dépôt, le navigateur ni une variable `NEXT_PUBLIC_`.
-- **Limites** (`lib/auto/lecture/limites.js`) : PDF ou JPEG/PNG/WebP (HEIC
-  conservé, non lu), 5 Mo, 4 pages, 25 000 jetons en entrée (comptage gratuit
-  avant l'appel), 1 500 en sortie, 45 s, 2 tentatives par document, 10 lectures
-  par compte sur 24 h (`AUTO_LECTURE_QUOTA_24H`, 50 au plus), budget d'essai.
+**Par défaut : gratuite.** Le texte contenu dans le PDF est extrait sur le
+serveur (`unpdf`, bibliothèque libre) puis lu par des règles
+(`lib/auto/lecture/regles.js`) :
+- « Total TTC » ou « Net à payer », avec contrôle HT + TVA ;
+- dates avec leur libellé ;
+- plaques SIV et FNI ;
+- kilométrage, hors garantie, prochain entretien et assistance ;
+- opérations classées par mots-clés.
+
+Aucun coût, rien ne sort de Nexora. Limites : PDF seulement (les photos se renseignent à la main) et PDF scanné sans texte non lu.
+
+**Payante : construite, inactive.** Claude Haiku 4.5 (`lib/auto/lecture/anthropic.js`) ne s'active qu'avec `AUTO_LECTURE_FOURNISSEUR=anthropic`, `ANTHROPIC_API_KEY`, `AUTO_LECTURE_BUDGET_USD` > 0 et hors Production. Une clé présente ne suffit pas.
+
+Les deux lecteurs partagent la même interface (`compterJetons`, `lire`), la même normalisation (`proposition.js`), les mêmes limites et le même journal. `AUTO_LECTURE_FOURNISSEUR=aucun` coupe toute lecture.
+
+- **Limites** (`lib/auto/lecture/limites.js`) :
+  - fichier : 5 Mo, 4 pages ;
+  - durée : 45 s ;
+  - usage : 2 tentatives par document, 10 lectures par compte sur 24 h (`AUTO_LECTURE_QUOTA_24H`, 50 au plus) ;
+  - lecture payante en plus : 25 000 jetons en entrée (comptage gratuit avant l'appel), 1 500 en sortie, budget réservé sous verrou par `auto_lecture_reserver`.
+
   Aucune nouvelle tentative automatique.
-- **Budget** : `auto_lecture_reserver` réserve le pire coût (0,0325 $) sous
-  verrou avant chaque appel et refuse au-delà du budget ; la réserve est
-  remplacée par le coût estimé. Une lecture interrompue garde sa réserve.
-- **Coût** : **estimation** calculée sur l'usage renvoyé (1 $ / million de
-  jetons en entrée, 5 $ en sortie, tarifs du 16 sept. 2026 ; ex. 6 000 + 600
-  jetons ≈ 0,009 $). La facture du fournisseur fait foi : un échec ou une
-  coupure peut être facturé sans que Nexora le sache (`facturation` =
-  inconnue).
-- **Journal** `auto_lectures` : fournisseur, modèle, jetons, coût estimé,
-  facturation connue ou non, durée, erreur, puis confirmation et **champs
-  corrigés** (noms seulement). Aucune donnée du document. La personne voit ses
-  tentatives sans les coûts.
+- **Coût** : 0 pour la lecture gratuite. Pour la payante, une **estimation** (1 $ / million de jetons en entrée, 5 $ en sortie au 16 sept. 2026) ; la facture du fournisseur fait foi.
+- **Journal** `auto_lectures`, à chaque tentative :
+  - fournisseur, jetons, coût, facturation (`non_facturee` pour la gratuite), durée, erreur ;
+  - puis confirmation et **champs corrigés** (noms seulement, aucune donnée du document).
+
+### Essai de la lecture gratuite (17 septembre 2026)
+
+Deux corpus **fictifs**, lus par la vraie route
+(`scripts/recette/factures/lecture-essai.mjs`) :
+- **mise au point** (`corpus.mjs`, 13 documents) : les règles ont été réglées dessus ;
+- **contrôle** (`corpus-controle.mjs`, 7 documents) : mise en page différente, écrit **avant** les règles et jamais utilisé pour les régler ; pièges : prochaine vidange, kilométrage garanti, date de mise en circulation, total sur la ligne suivante, devis, scan, ancienne plaque.
+
+« Exact » compte aussi une absence correcte : une date d'intervention que la facture ne donne pas, et qui reste vide.
+
+| Résultat | Mise au point | Contrôle |
+| --- | --- | --- |
+| Factures lues | 9 PDF (3 photos : saisie manuelle) | 5 PDF |
+| Champs exacts (date de facture, date d'intervention, professionnel, plaque, kilométrage, montant) | 54 / 54 | 30 / 30 |
+| Champs **inventés** | 0 | 0 |
+| Type principal juste | 9 / 9 | 4 / 5 (ticket de lavage classé « Autre ») |
+| Document non pertinent reconnu | attestation d'assurance : oui | devis : oui |
+| PDF scanné | — | reconnu, saisie manuelle |
+| Champs à corriger au total | 0 | 1 |
+| Lecture seule / attente dépôt → proposition | 27 ms / 0,9 s | 13 ms / 0,9 s |
+| Coût | 0 $ | 0 $ |
+| Facture déjà lue redemandée | aucune nouvelle lecture | aucune nouvelle lecture |
+
+Même résultat sur le build de production.
+
+**Défauts connus.** Le ticket « Programme Prestige » n'est pas reconnu comme lavage. Un libellé de devis garde « € HT ».
+
+**Limite de la mesure.** Ces documents viennent tous de logiciels propres. Ni la variété des vraies factures de garage, ni des colonnes mélangées, ne sont couvertes. **Prochaine mesure : quelques vraies factures anonymisées, toujours sans coût.**
 
 ### Base (`20260922000900_auto_factures.sql`)
 
@@ -540,58 +567,27 @@ Pour `20260922000800` et `20260922000700` : voir leur en-tête.
 
 ### Avant toute activation publique
 
-- Essai sur Test avec le corpus **fictif** (`scripts/recette/factures/`) :
-  résultats et coût réel présentés avant de décider.
-- Confidentialité : contrat de sous-traitance du fournisseur, durée de
-  conservation des documents envoyés, encadrement des transferts hors UE,
-  mention dans la politique de confidentialité et à l'écran d'import.
-- Plafond de dépense aussi réglé côté fournisseur (console), en plus du budget
-  Nexora.
-
-### Essai payant (quand la clé est configurée)
-
-```
-# .env.local du serveur local (jamais dans git) :
-ANTHROPIC_API_KEY=…
-AUTO_LECTURE_BUDGET_USD=5
-AUTO_LECTURE_QUOTA_24H=20
-```
-
-Puis redémarrer le serveur, et :
-
-```
-node scripts/recette/factures/corpus.mjs <dossier>
-node scripts/recette/factures/lecture-essai.mjs <dossier>
-```
-
-Le corpus compte 13 documents inventés, marqués « DOCUMENT FICTIF » :
-- 8 factures PDF, dont une de 2 pages avec une date d'ordre de réparation distincte, une sans kilométrage et une avec une plaque différente ;
-- 3 photos abîmées (inclinaison, perspective, bruit, JPEG) ;
-- 1 ticket ;
-- 1 attestation d'assurance, qui n'est pas une facture.
-
-Le script lit chaque document par la vraie route. Il mesure champ par champ :
-- les valeurs justes, fausses et manquantes ;
-- les valeurs **inventées** ;
-- les révisions inventées ;
-- le coût estimé et la durée.
-
-Il écrit ensuite `rapport-lecture.json`, puis supprime le compte d'essai. Le journal des coûts est conservé.
+- Lecture gratuite : aucune transmission extérieure. Mesurer sur de vraies factures anonymisées ; traiter les photos (dont HEIC) lors de la recette sur un vrai téléphone.
+- Lecture payante, si elle est un jour choisie :
+  - contrat de sous-traitance du fournisseur ;
+  - conservation des documents envoyés et transferts hors UE ;
+  - mention dans la politique de confidentialité et à l'écran ;
+  - plafond de dépense réglé aussi chez le fournisseur.
 
 ### Recette jouée le 16 septembre 2026 (sans clé)
 
 | Contrôle | Résultat |
 | --- | --- |
-| `node --test lib/auto components/auto lib/auto/lecture` | 100 tests au vert (normalisation, garde révision, coûts, limites, configuration, fournisseur simulé, orchestration avec faux clients, doublons, kilométrage, empreinte) |
+| `node --test lib/auto components/auto lib/auto/lecture` | 111 tests au vert (règles de lecture, extraction réelle d'un PDF, normalisation, garde révision, coûts, limites, configuration gratuite par défaut, fournisseur payant simulé, orchestration, doublons, kilométrage, empreinte) |
 | `auto_factures_v1.sql` et `auto_droits_v1.sql` sur base jetable (migration jouée deux fois), puis sur **Test** ; bancs A à D rejoués | passés ; mutations (règle de ressemblance, index d'empreinte, coût lisible) détectées |
 | Parcours navigateur sur Test, factures fictives | facture saisie à la main (« D'après votre facture », dépense comptée une fois, pas de kilométrage inventé) ; même fichier → renvoi vers l'existant ; intervention ressemblante → refus sans choix, rattachement sans dépense en plus ; ticket de 2024 : alerte de kilométrage, relevé actuel 61 400 km inchangé, échéance de révision inchangée ; proposition préremplie (écrite à la main pour la recette de l'écran) : « À vérifier » sur la date d'intervention, le professionnel et les opérations, vidange étiquetée révision ramenée à vidange ; aucun débordement à 320 et 375 px ; 0 lecture payante ; données de recette supprimées ensuite |
 | `next build` | réussi |
 
 ### Ce que le lot ne fait pas
 
-Pas de procès-verbal de contrôle technique ni de photo de compteur (étapes
-suivantes), pas d'association automatique d'une facture à une intervention, pas
-de lecture en Production.
+Pas de lecture des photos ni des PDF scannés, pas de procès-verbal de contrôle
+technique ni de photo de compteur (étapes suivantes), pas d'association
+automatique d'une facture à une intervention.
 
 ### Retour arrière
 

@@ -13,7 +13,7 @@ import {
   messageErreurAuto,
 } from "./format.js";
 
-const F = " ";
+const F = "\u202F";
 
 test("formaterDate : date calendaire lisible, 1er compris", () => {
   assert.equal(formaterDate("2027-03-12"), "12 mars 2027");

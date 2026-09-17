@@ -28,7 +28,7 @@
 -- d. `auto_lecture_reserver` (service_role) : sous verrou, refuse au-delà des
 --    tentatives par document, des lectures par compte sur 24 h ou du budget,
 --    puis réserve le pire coût possible. Une ligne restée « en_cours » garde
---    sa réserve : prudence.
+--    sa réserve : prudence. Une lecture gratuite (réserve 0) passe sans budget.
 -- e. `auto_enregistrer_facture` (personne connectée, droits RLS) : en une
 --    transaction, crée l'intervention OU rattache la facture à une
 --    intervention existante choisie par la personne, puis relie le document.
@@ -210,7 +210,9 @@ begin
   -- Un seul calcul de budget à la fois.
   perform pg_advisory_xact_lock(hashtext('auto_lecture_budget'));
 
-  if p_proprietaire_id is null or p_document_id is null or coalesce(p_budget_micro_usd, 0) <= 0 or coalesce(p_cout_reserve_micro_usd, -1) < 0 then
+  -- Une lecture gratuite (réserve 0) n'a pas besoin de budget.
+  if p_proprietaire_id is null or p_document_id is null or coalesce(p_cout_reserve_micro_usd, -1) < 0
+     or (p_cout_reserve_micro_usd > 0 and coalesce(p_budget_micro_usd, 0) <= 0) then
     return query select null::uuid, 'parametres'::text;
     return;
   end if;
@@ -244,7 +246,7 @@ begin
   into v_depense
   from public.auto_lectures l;
 
-  if v_depense + p_cout_reserve_micro_usd > p_budget_micro_usd then
+  if p_cout_reserve_micro_usd > 0 and v_depense + p_cout_reserve_micro_usd > p_budget_micro_usd then
     return query select null::uuid, 'budget'::text;
     return;
   end if;
