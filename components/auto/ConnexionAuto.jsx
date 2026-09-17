@@ -184,13 +184,42 @@ export default function ConnexionAuto() {
           {demandeBeta ? (
             <p className="mt-2 break-words text-[15px] leading-relaxed text-muted-foreground">
               Si <strong className="font-semibold text-foreground">{aVerifier}</strong> est invitée à la bêta privée, un lien d'activation vient de lui être envoyé. Ouvrez-le : vous
-              reviendrez ici, connecté. Sans e-mail d'ici quelques minutes, vérifiez l'adresse indiquée avec la personne qui vous a invité.
+              reviendrez ici, connecté.
             </p>
           ) : (
             <p className="mt-2 break-words text-[15px] leading-relaxed text-muted-foreground">
               Un lien d'activation a été demandé pour <strong className="font-semibold text-foreground">{aVerifier}</strong>. Ouvrez-le : vous reviendrez ici, connecté.
             </p>
           )}
+
+          {/* Le cas qui bloque vraiment les gens, et que la protection contre
+              l'énumération d'adresses nous interdit de leur dire nommément :
+              cette adresse a déjà un compte, donc aucun e-mail n'est parti.
+              On l'énonce pour tout le monde — cela ne révèle rien — avec le
+              bouton qui débloque. Constaté sur la première inscription réelle,
+              le 18 septembre 2026. */}
+          <div className="mt-4 rounded-xl border border-border bg-muted/40 px-4 py-3">
+            <p className="text-[15px] font-semibold text-foreground">Aucun e-mail au bout de quelques minutes ?</p>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+              Le plus souvent, c'est que cette adresse a <strong className="font-semibold text-foreground">déjà un compte</strong> : dans ce cas rien n'est envoyé, et il faut se
+              connecter. Sinon, vérifiez les indésirables, puis l'orthographe de l'adresse.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setAVerifier("");
+                setDemandeBeta(false);
+                setEmail(aVerifier);
+                changerMode("connexion");
+              }}
+              className={`${boutonSecondaire} mt-3`}
+            >
+              Se connecter avec cette adresse
+            </button>
+            <button type="button" onClick={() => changerMode("oubli")} className={`${boutonLien} mt-1`}>
+              J'ai oublié mon mot de passe
+            </button>
+          </div>
           <div className="mt-5 space-y-3">
             {info ? <Alerte ton={info.ton === "erreur" ? "erreur" : "succes"}>{info.texte}</Alerte> : null}
             {demandeBeta ? null : (

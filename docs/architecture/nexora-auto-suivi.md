@@ -685,3 +685,33 @@ Piège de recette au passage : le premier scénario ne montrait rien parce que
 la Peugeot n'avait **pas été créée** — `auto_ajouter_vehicule` avait refusé la
 plaque `AB-123-CD` et le script ne lisait pas l'erreur. Un scénario qui ne
 vérifie pas ses propres écritures teste le vide.
+
+## Le cul-de-sac de l'inscription (18 septembre 2026)
+
+**Première inscription réelle, et elle a échoué.** Baptiste a suivi le gros
+bouton de la page d'accueil — « Ajouter ma voiture » —, qui mène à la
+*création* de compte. Son adresse ayant déjà un compte (celui de Nexora Pro),
+Supabase a répondu comme si tout allait bien, sans rien créer ni envoyer :
+c'est sa protection contre l'énumération d'adresses, et elle est juste. L'écran
+« Vérifiez vos e-mails », lui, ne parlait que de deux cas — adresse non
+invitée, ou faute de frappe. Il a attendu un e-mail qui ne pouvait pas arriver.
+
+**Ce qui était mal posé :** nous savons que ce cas existe, mais nous n'avons
+pas le droit de dire à cette personne-là « vous avez déjà un compte ». La
+sortie est de le dire **à tout le monde** : c'est une phrase générique, elle ne
+révèle rien, et elle débloque exactement celui qui est coincé.
+
+L'écran ajoute donc, sous le message d'attente :
+
+> **Aucun e-mail au bout de quelques minutes ?** Le plus souvent, c'est que
+> cette adresse a **déjà un compte** : dans ce cas rien n'est envoyé, et il
+> faut se connecter. Sinon, vérifiez les indésirables, puis l'orthographe de
+> l'adresse.
+
+Avec deux boutons : **« Se connecter avec cette adresse »**, qui bascule en
+gardant l'adresse saisie, et « J'ai oublié mon mot de passe ».
+
+**Ce que ça apprend sur la recette :** tous les parcours d'inscription éprouvés
+cette nuit partaient d'une adresse **neuve**. Le premier vrai utilisateur,
+lui, avait déjà un compte — le cas le plus banal pour une application greffée
+sur un produit existant, et le seul que personne n'avait joué.
