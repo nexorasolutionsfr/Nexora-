@@ -178,7 +178,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
 
   return (
     <PageAuto session={session}>
-      <Link href={vehicule ? `/auto/vehicules/${vehicule.id}` : "/auto"} className="-ml-2 inline-flex items-center gap-1 rounded-lg px-2 py-2 text-sm font-medium text-muted-foreground transition hover:text-foreground">
+      <Link href={vehicule ? `/auto/vehicules/${vehicule.id}` : "/auto/garage"} className="-ml-2 inline-flex items-center gap-1 rounded-lg px-2 py-2 text-sm font-medium text-muted-foreground transition hover:text-foreground">
         <ArrowLeft className="size-4" aria-hidden="true" />
         {vehicule ? `${vehicule.marque} ${vehicule.modele}` : "Mon garage"}
       </Link>

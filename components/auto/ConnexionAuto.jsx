@@ -293,6 +293,18 @@ export default function ConnexionAuto() {
                 {enCours ? <LoaderCircle className="size-5 animate-spin" aria-hidden="true" /> : null}
                 {libelles.bouton}
               </button>
+
+              {/* À la création du compte : ce que devient ce qu'on enregistre,
+                  lisible avant de s'inscrire. */}
+              {mode === "inscription" ? (
+                <p className="text-[13px] leading-snug text-muted-foreground">
+                  En créant votre compte, vos données sont traitées comme décrit dans la{" "}
+                  <Link href="/auto/confidentialite" className="font-semibold text-primary hover:underline">
+                    politique de confidentialité de Nexora Auto
+                  </Link>
+                  .
+                </p>
+              ) : null}
             </form>
           )}
 

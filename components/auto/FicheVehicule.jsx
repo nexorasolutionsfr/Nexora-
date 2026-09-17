@@ -629,7 +629,7 @@ function PremiersPas({ vehicule, kilometrageConnu, onAction, onMasquer }) {
 
 function RetourGarage() {
   return (
-    <Link href="/auto" className="-ml-2 inline-flex items-center gap-1 rounded-lg px-2 py-2 text-sm font-medium text-muted-foreground transition hover:text-foreground">
+    <Link href="/auto/garage" className="-ml-2 inline-flex items-center gap-1 rounded-lg px-2 py-2 text-sm font-medium text-muted-foreground transition hover:text-foreground">
       <ArrowLeft className="size-4" aria-hidden="true" />
       Mon garage
     </Link>
@@ -1397,7 +1397,7 @@ function ZoneSuppression({ vehicule, proprietaireId, historique = [], releves = 
     // Les rappels reportés de cette voiture n'ont plus d'objet.
     await supabase.from("auto_rappels_reports").delete().like("cle", `%:${vehicule.id}:%`);
     setEnCours(false);
-    router.replace("/auto");
+    router.replace("/auto/garage");
   }
 
   return (

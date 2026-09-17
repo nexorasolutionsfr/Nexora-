@@ -8,8 +8,8 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { CalendarCheck, Car, CircleAlert, LayoutGrid, LoaderCircle } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { CircleAlert, Car, LayoutGrid, LoaderCircle, Sun, UserRound } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { effacerBrouillons, stockageNavigateur } from "@/lib/auto/brouillon";
@@ -72,14 +72,16 @@ export function focaliserPremiereErreur(formulaire) {
   requestAnimationFrame(() => formulaire?.querySelector?.('[aria-invalid="true"]')?.focus());
 }
 
-// La voiture que la personne consulte, conservée pendant la session du
-// navigateur : « Services » et « Ajouter une facture » la reprennent. Une
-// voiture archivée ou supprimée est simplement ignorée par ces écrans.
+// La voiture que la personne consulte, gardée sur CET appareil : « Aujourd'hui »,
+// « Services » et « Ajouter une facture » la reprennent. Une personne qui n'a
+// qu'une voiture ne la choisit donc jamais, et celle qu'elle a ouverte la
+// veille est encore là au retour. Une voiture archivée ou supprimée est
+// simplement ignorée par ces écrans.
 const CLE_VOITURE_COURANTE = "nexora-auto-voiture-courante";
 
 export function memoriserVoitureCourante(id) {
   try {
-    if (id) sessionStorage.setItem(CLE_VOITURE_COURANTE, id);
+    if (id) localStorage.setItem(CLE_VOITURE_COURANTE, id);
   } catch {
     // Stockage indisponible (navigation privée stricte) : sans conséquence.
   }
@@ -87,33 +89,41 @@ export function memoriserVoitureCourante(id) {
 
 export function voitureCourante() {
   try {
-    return sessionStorage.getItem(CLE_VOITURE_COURANTE);
+    return localStorage.getItem(CLE_VOITURE_COURANTE);
   } catch {
     return null;
   }
 }
 
-// Les trois espaces de la personne connectée.
+export function oublierVoitureCourante() {
+  try {
+    localStorage.removeItem(CLE_VOITURE_COURANTE);
+  } catch {
+    // Sans conséquence.
+  }
+}
+
+// Les quatre espaces de la personne connectée, et pas un de plus :
+// ce qu'il y a à faire, ses voitures, les prestations, son compte.
+// « À prévoir » et « Ajouter une facture » vivent dans « Aujourd'hui ».
 const ONGLETS = [
-  { href: "/auto", libelle: "Mon garage", icone: Car, actif: (chemin) => chemin === "/auto" || chemin.startsWith("/auto/vehicules") },
-  { href: "/auto/a-prevoir", libelle: "À prévoir", icone: CalendarCheck, actif: (chemin) => chemin.startsWith("/auto/a-prevoir") },
+  { href: "/auto", libelle: "Aujourd'hui", icone: Sun, actif: (chemin) => chemin === "/auto" || chemin.startsWith("/auto/a-prevoir") || chemin.startsWith("/auto/factures") },
+  { href: "/auto/garage", libelle: "Mon garage", icone: Car, actif: (chemin) => chemin.startsWith("/auto/garage") || chemin.startsWith("/auto/vehicules") },
   { href: "/auto/services", libelle: "Services", icone: LayoutGrid, actif: (chemin) => chemin.startsWith("/auto/services") },
+  { href: "/auto/compte", libelle: "Compte", icone: UserRound, actif: (chemin) => chemin.startsWith("/auto/compte") || chemin.startsWith("/auto/confidentialite") },
 ];
 
-export function EnteteAuto({ session }) {
-  const router = useRouter();
-  const chemin = usePathname() ?? "";
-  const [sortie, setSortie] = useState(false);
+// La sortie, appelée depuis « Compte ». Rien de la personne ne reste sur
+// l'appareil : ni brouillon de facture, ni voiture consultée.
+export async function deconnecterAuto() {
+  deconnexionDemandee = true;
+  effacerBrouillons({ stockage: stockageNavigateur() });
+  oublierVoitureCourante();
+  await supabase.auth.signOut();
+}
 
-  async function seDeconnecter() {
-    setSortie(true);
-    deconnexionDemandee = true;
-    // Aucun brouillon de facture ne reste sur l'appareil après la sortie.
-    effacerBrouillons({ stockage: stockageNavigateur() });
-    await supabase.auth.signOut();
-    router.replace("/auto");
-    setSortie(false);
-  }
+export function EnteteAuto({ session }) {
+  const chemin = usePathname() ?? "";
 
   return (
     <header className="@container sticky top-0 z-20 print:hidden border-b border-border/70 bg-background/85 backdrop-blur-md">
@@ -122,11 +132,7 @@ export function EnteteAuto({ session }) {
           <Image src="/logo-nexora.png" alt="" width={240} height={116} className="h-8 w-8 object-contain" priority />
           <span className="font-display text-[17px] font-bold tracking-tight text-foreground">Nexora</span>
         </Link>
-        {session ? (
-          <button type="button" onClick={seDeconnecter} disabled={sortie} className="whitespace-nowrap rounded-lg px-2 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground">
-            Se déconnecter
-          </button>
-        ) : session === null ? (
+        {session === null ? (
           <Link href="/auto/connexion" className={boutonLien}>
             Se connecter
           </Link>
@@ -144,8 +150,8 @@ export function EnteteAuto({ session }) {
                 aria-current={courant ? "page" : undefined}
                 className={`inline-flex flex-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-1.5 py-2 text-sm font-semibold transition min-[360px]:px-2 ${courant ? "bg-secondary text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
               >
-                {/* Trois onglets sur un écran de 320 px : les icônes cèdent la place. */}
-                <Icone className="hidden size-4 min-[360px]:block @max-[22rem]:hidden" aria-hidden="true" />
+                {/* Quatre onglets sur un écran de 320 px, ou du texte agrandi : les icônes cèdent la place. */}
+                <Icone className="hidden size-4 min-[420px]:block @max-[26rem]:hidden" aria-hidden="true" />
                 {libelle}
               </Link>
             );

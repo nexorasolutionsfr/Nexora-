@@ -197,10 +197,21 @@ export default function APrevoir({ vehiculeFiltre = null, elementCible = null })
         </section>
       ) : null}
 
+      {/* Aucune échéance proche n'est pas un bilan de santé : Nexora ne connaît
+          que ce qui est enregistré, et le dit. */}
       {rienDUrgent ? (
-        <div className={`${carte} mt-4 flex items-center gap-3`}>
-          <CalendarCheck className="size-6 shrink-0 text-emerald-600" aria-hidden="true" />
-          <p className="text-[15px] text-foreground">Rien d'urgent dans les {horizon} prochains jours.</p>
+        <div className={`${carte} mt-4 flex items-start gap-3`}>
+          <CalendarCheck className="mt-0.5 size-6 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-[15px] text-foreground">
+              Aucune échéance dans les {horizon} prochains jours, d'après ce qui est enregistré.
+            </p>
+            <p className="mt-1 text-[13px] leading-snug text-muted-foreground">
+              {groupes.aCompleter.length > 0
+                ? `${groupes.aCompleter.length > 1 ? `${groupes.aCompleter.length} échéances ne sont pas` : "Une échéance n'est pas"} encore calculée${groupes.aCompleter.length > 1 ? "s" : ""} : voyez « À compléter » ci-dessous.`
+                : "Ajoutez une facture ou actualisez le kilométrage pour affiner les prochains calculs."}
+            </p>
+          </div>
         </div>
       ) : null}
 
