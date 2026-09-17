@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Archive, Car, ChevronDown, ChevronRight, Plus, Star } from "lucide-react";
 
 import { dernierKilometrage } from "@/lib/auto/echeances";
@@ -14,6 +15,7 @@ import { chargerDossiers } from "@/components/auto/dossiers";
 import {
   Alerte,
   PageAuto,
+  deconnexionVolontaire,
   Pastille,
   Plaque,
   SqueletteVehicules,
@@ -26,6 +28,14 @@ import { ENERGIES, TYPES_INTERVENTION, formaterDate, formaterKm, libelleDe } fro
 
 export default function MonGarage() {
   const session = useSessionAuto();
+  const router = useRouter();
+
+  // Session expirée : on ramène à la connexion, qui reprendra ici. Départ
+  // voulu : on reste sur un écran qui invite à revenir, sans rien réclamer.
+  useEffect(() => {
+    if (session === null && !deconnexionVolontaire()) router.replace("/auto/connexion?suite=/auto/garage");
+  }, [session, router]);
+
   return (
     <PageAuto session={session}>
       {session === undefined ? <SqueletteVehicules /> : session === null ? <ARejoindre /> : <MesVehicules />}
