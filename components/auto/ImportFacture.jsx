@@ -16,12 +16,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CircleAlert, CircleCheck, ExternalLink, FileText, LoaderCircle, Plus, ScanText, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, CircleAlert, CircleCheck, ExternalLink, FileText, LoaderCircle, Plus, ScanText, Upload } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { aujourdhuiIso } from "@/lib/auto/echeances";
-import { COMPARTIMENT, cheminDocument, nomAffichable, verifierFichier } from "@/lib/auto/documents";
+import { COMPARTIMENT, cheminDocument, nomAffichable, verifierFichierComplet } from "@/lib/auto/documents";
+import { ecrireBrouillon, effacerBrouillon, lireBrouillon, stockageNavigateur } from "@/lib/auto/brouillon";
 import { empreinteSha256 } from "@/lib/auto/empreinte";
 import { nouvelIdentifiant } from "@/lib/auto/identifiants";
 import {
@@ -36,7 +37,8 @@ import {
   validerFacture,
 } from "@/lib/auto/factures";
 import { ouvrirDocument } from "@/components/auto/Documents";
-import { Alerte, PageAuto, Plaque, SqueletteVehicules, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, champ, etiquette, useSessionAuto, voitureCourante } from "@/components/auto/elements";
+import EditeurOperations from "@/components/auto/EditeurOperations";
+import { Alerte, PageAuto, Plaque, SqueletteVehicules, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, champ, deconnexionVolontaire, etiquette, useSessionAuto, voitureCourante } from "@/components/auto/elements";
 import { TYPES_INTERVENTION, formaterDate, formaterEuros, formaterKm, libelleDe, messageErreurAuto } from "@/components/auto/format";
 
 const ACCEPTES = "application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif";
@@ -72,7 +74,7 @@ async function demanderLecture(documentId, { relire = false } = {}) {
 function useConnexionRequise(session, suite) {
   const router = useRouter();
   useEffect(() => {
-    if (session === null) router.replace(`/auto/connexion?suite=${encodeURIComponent(suite)}`);
+    if (session === null && !deconnexionVolontaire()) router.replace(`/auto/connexion?suite=${encodeURIComponent(suite)}`);
   }, [session, router, suite]);
 }
 
@@ -119,19 +121,29 @@ export function NouvelleFacture({ vehiculeId = null }) {
 
   const vehicule = vehicules.find((v) => v.id === choisi) ?? vehicules.find((v) => v.id === voitureCourante()) ?? vehicules[0] ?? null;
 
+  // Le même fichier, déjà dans l'un des dossiers de la personne (les droits
+  // de la base ne montrent jamais celui d'une autre).
+  async function chercherExistant(empreinte) {
+    const deja = await supabase.from("auto_documents").select("id, vehicule_id, historique_id, type").eq("empreinte_sha256", empreinte).limit(1);
+    return deja.data?.[0] ?? null;
+  }
+
   async function deposer(evenement) {
     evenement.preventDefault();
     setErreur("");
     setExistant(null);
-    const verification = verifierFichier(fichier);
-    if (!verification.valide) return setErreur(verification.erreur);
     setEnCours(true);
+    const verification = await verifierFichierComplet(fichier);
+    if (!verification.valide) {
+      setEnCours(false);
+      return setErreur(verification.erreur);
+    }
 
     const empreinte = await empreinteSha256(fichier);
-    const deja = await supabase.from("auto_documents").select("id, vehicule_id, historique_id").eq("empreinte_sha256", empreinte).limit(1);
-    if (deja.data?.length) {
+    const deja = await chercherExistant(empreinte);
+    if (deja) {
       setEnCours(false);
-      return setExistant(deja.data[0]);
+      return setExistant(deja);
     }
 
     const chemin = cheminDocument({ proprietaireId: session.user.id, vehiculeId: vehicule.id, identifiant: nouvelIdentifiant(), typeMime: verification.typeMime });
@@ -155,8 +167,10 @@ export function NouvelleFacture({ vehiculeId = null }) {
       .single();
     if (error) {
       await supabase.storage.from(COMPARTIMENT).remove([chemin]);
+      // Déposée entre-temps (deuxième onglet, double appui) : on montre l'existante.
+      const entreTemps = error.code === "23505" ? await chercherExistant(empreinte) : null;
       setEnCours(false);
-      return setErreur(messageErreurAuto(error));
+      return entreTemps ? setExistant(entreTemps) : setErreur(messageErreurAuto(error));
     }
     router.push(`/auto/factures/${data.id}${lecture.disponible && lecture.formats.includes(verification.typeMime) ? "?lire=1" : ""}`);
   }
@@ -230,17 +244,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
             ) : null}
           </div>
 
-          {existant ? (
-            <div role="status" className="rounded-xl border border-border bg-muted px-3.5 py-3 text-sm text-foreground">
-              <p className="font-semibold">Cette facture est déjà dans votre dossier.</p>
-              <Link
-                href={existant.historique_id ? `/auto/vehicules/${existant.vehicule_id}#documents` : `/auto/factures/${existant.id}`}
-                className="mt-1 inline-flex items-center gap-1 font-semibold text-primary hover:underline"
-              >
-                {existant.historique_id ? "La voir dans le dossier" : "La compléter"}
-              </Link>
-            </div>
-          ) : null}
+          {existant ? <DejaDeposee existant={existant} vehicules={vehicules} vehiculeChoisi={vehicule} /> : null}
           {erreur ? <Alerte>{erreur}</Alerte> : null}
 
           <button type="submit" disabled={enCours || !fichier} className={boutonPrincipal}>
@@ -250,6 +254,33 @@ export function NouvelleFacture({ vehiculeId = null }) {
         </form>
       )}
     </PageAuto>
+  );
+}
+
+// Le fichier est déjà dans un dossier : rien n'est envoyé ni relu à nouveau.
+function DejaDeposee({ existant, vehicules, vehiculeChoisi }) {
+  const autre = existant.vehicule_id !== vehiculeChoisi?.id ? vehicules.find((v) => v.id === existant.vehicule_id) : null;
+  const facture = existant.type === "facture";
+  const aVerifier = facture && !existant.historique_id;
+  return (
+    <div role="status" className="rounded-xl border border-border bg-muted px-3.5 py-3 text-sm text-foreground">
+      <p className="font-semibold">
+        {facture ? "Cette facture" : "Ce fichier"} est déjà dans {autre ? `le dossier de ${autre.marque} ${autre.modele}` : "votre dossier"}.
+      </p>
+      <p className="mt-0.5 text-muted-foreground">
+        {existant.historique_id
+          ? `${facture ? "Elle" : "Il"} justifie déjà une intervention. Rien n'a été envoyé à nouveau.`
+          : aVerifier
+            ? "Ses informations restent à confirmer : reprenez là où vous en étiez."
+            : "Il est rangé dans les documents de la voiture. Rien n'a été envoyé à nouveau."}
+      </p>
+      <Link
+        href={aVerifier ? `/auto/factures/${existant.id}` : `/auto/vehicules/${existant.vehicule_id}#documents`}
+        className="-my-1 mt-1 inline-flex min-h-10 items-center gap-1 font-semibold text-primary hover:underline"
+      >
+        {aVerifier ? "Reprendre la vérification" : `${facture ? "La" : "Le"} voir dans le dossier`}
+      </Link>
+    </div>
   );
 }
 
@@ -264,6 +295,7 @@ const MESSAGES_LECTURE = {
     taille: "Fichier trop lourd pour la lecture automatique (5 Mo au plus) : renseignez les informations.",
     pages: "Document trop long pour la lecture automatique (4 pages au plus) : renseignez les informations.",
     longueur: "Document trop long pour la lecture automatique : renseignez les informations.",
+    contenu: "Le contenu de ce fichier n'est pas un PDF lisible : ouvrez-le pour vérifier, puis renseignez les informations.",
   },
   limite: {
     tentatives: "Cette facture a déjà été lue le nombre de fois permis : renseignez les informations.",
@@ -307,6 +339,9 @@ export function ConfirmerFacture({ documentId, lire = false }) {
   const [enCours, setEnCours] = useState(false);
   const [enregistre, setEnregistre] = useState(null);
   const [mode, setMode] = useState("intervention");
+  // Modifié par la personne : gardé en brouillon sur l'appareil (lib/auto/brouillon.js).
+  const [modifie, setModifie] = useState(false);
+  const [brouillonRepris, setBrouillonRepris] = useState(false);
   const lectureLancee = useRef(false);
   const aujourdhui = aujourdhuiIso();
 
@@ -347,8 +382,21 @@ export function ConfirmerFacture({ documentId, lire = false }) {
     let actif = true;
     (async () => {
       const d = await charger();
-      if (!actif || !d || d.historique_id) return;
-      if (d.lecture) return appliquer({ etat: "proposee", proposition: d.lecture, reprise: true });
+      if (!actif || !d) return;
+      const stockage = stockageNavigateur();
+      if (d.historique_id) return effacerBrouillon(d.id, { stockage });
+      if (d.lecture) appliquer({ etat: "proposee", proposition: d.lecture, reprise: true });
+      // Reprendre ce que la personne avait modifié avant de quitter l'écran.
+      const brouillon = lireBrouillon(d.id, { stockage });
+      if (brouillon) {
+        setSaisie(brouillon.saisie);
+        setChoix(brouillon.choix);
+        setMode(brouillon.mode);
+        setTouches(new Set(brouillon.touches));
+        setBrouillonRepris(true);
+        return;
+      }
+      if (d.lecture) return;
       if (lire && !lectureLancee.current) {
         lectureLancee.current = true;
         // Un rechargement ne relance pas la lecture : la proposition est conservée.
@@ -362,6 +410,10 @@ export function ConfirmerFacture({ documentId, lire = false }) {
       actif = false;
     };
   }, [session, charger, appliquer, lire]);
+
+  useEffect(() => {
+    if (modifie) ecrireBrouillon(documentId, { saisie, choix, mode, touches: [...touches] }, { stockage: stockageNavigateur() });
+  }, [modifie, documentId, saisie, choix, mode, touches]);
 
   const verification = useMemo(() => validerFacture(saisie, { aujourdhui }), [saisie, aujourdhui]);
   const ressemblantes = useMemo(
@@ -426,11 +478,13 @@ export function ConfirmerFacture({ documentId, lire = false }) {
         <div className={`${carte} mt-2 p-5`}>
           <CircleCheck className="size-8 text-emerald-600" aria-hidden="true" />
           <h1 className="mt-3 font-display text-2xl font-bold text-foreground">{enregistre ? "Facture enregistrée" : "Facture déjà enregistrée"}</h1>
-          {enregistre ? (
-            <p className="mt-1 text-[15px] text-muted-foreground">
-              {enregistre.rattachee ? "Elle justifie l'intervention existante, qui n'a pas été modifiée." : "L'intervention est ajoutée à l'historique de la voiture, d'après votre facture."}
-            </p>
-          ) : null}
+          <p className="mt-1 text-[15px] text-muted-foreground">
+            {!enregistre
+              ? "Elle a déjà été confirmée, peut-être depuis un autre appareil. Rien n'a été compté deux fois."
+              : enregistre.rattachee
+                ? "Elle justifie l'intervention existante, qui n'a pas été modifiée."
+                : "L'intervention est ajoutée à l'historique de la voiture, d'après votre facture."}
+          </p>
           <div className="mt-5 space-y-3">
             <Link href={retour} className={boutonPrincipal}>
               Voir {vehicule.marque} {vehicule.modele}
@@ -444,15 +498,37 @@ export function ConfirmerFacture({ documentId, lire = false }) {
     );
   }
 
+  const stockage = stockageNavigateur();
   const modifier = (nom, valeur) => {
     setSaisie((s) => ({ ...s, [nom]: valeur }));
     setTouches((t) => new Set(t).add(nom));
+    setModifie(true);
     if (erreurs[nom]) setErreurs((e) => ({ ...e, [nom]: undefined }));
   };
   const modifierOperations = (operations) => {
     setSaisie((s) => ({ ...s, operations, type: touches.has("type") || !operations.length ? s.type : typePrincipal(operations) }));
     setTouches((t) => new Set(t).add("operations"));
+    setModifie(true);
   };
+  const choisir = (valeur) => {
+    setChoix(valeur);
+    setModifie(true);
+  };
+  const oublierBrouillon = () => {
+    effacerBrouillon(document.id, { stockage });
+    setModifie(false);
+    setBrouillonRepris(false);
+  };
+  const propositionConnue = lecture.etat === "proposee" ? lecture.proposition : document.lecture;
+  function repartir() {
+    oublierBrouillon();
+    setChoix("");
+    setErreurs({});
+    if (propositionConnue) return appliquer({ etat: "proposee", proposition: propositionConnue, reprise: true });
+    setSaisie(saisieVide());
+    setTouches(new Set());
+    setMode("intervention");
+  }
 
   async function garderCommeDocument() {
     setErreurEnvoi("");
@@ -460,10 +536,12 @@ export function ConfirmerFacture({ documentId, lire = false }) {
     const { error } = await supabase.from("auto_documents").update({ type: "autre" }).eq("id", document.id);
     setEnCours(false);
     if (error) return setErreurEnvoi(messageErreurAuto(error));
+    oublierBrouillon();
     setEnregistre({ document: true });
   }
 
   async function relire() {
+    oublierBrouillon();
     setLecture({ etat: "en_cours" });
     appliquer(await demanderLecture(document.id, { relire: true }));
   }
@@ -497,11 +575,19 @@ export function ConfirmerFacture({ documentId, lire = false }) {
     });
     setEnCours(false);
     if (error) {
+      const texte = error.message || "";
+      // Confirmée entre-temps (autre onglet, autre appareil) : l'écran le montre,
+      // rien n'est compté deux fois.
+      if (texte.includes("auto_facture_deja_enregistree")) {
+        oublierBrouillon();
+        return charger();
+      }
       setErreurEnvoi(messageErreurAuto(error));
       // Une intervention a pu être ajoutée entre-temps : l'écran la montre.
-      if ((error.message || "").includes("auto_doublon_potentiel")) await charger();
+      if (texte.includes("auto_doublon_potentiel")) await charger();
       return;
     }
+    oublierBrouillon();
     setEnregistre({ rattachee: Boolean(rattacherA) });
   }
 
@@ -536,6 +622,14 @@ export function ConfirmerFacture({ documentId, lire = false }) {
       </p>
 
       <div className="mt-4 space-y-3">
+        {brouillonRepris ? (
+          <div role="status" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-border bg-muted px-3.5 py-2 text-sm text-foreground">
+            <p>Vos modifications non enregistrées ont été reprises.</p>
+            <button type="button" onClick={repartir} className="-mx-1 inline-flex min-h-10 items-center rounded-lg px-1 font-semibold text-primary hover:underline">
+              {propositionConnue ? "Revenir à la proposition" : "Tout effacer"}
+            </button>
+          </div>
+        ) : null}
         {lecture.etat === "en_cours" ? (
           <div role="status" className={`${carte} flex items-center gap-3`}>
             <LoaderCircle className="size-5 shrink-0 animate-spin text-primary" aria-hidden="true" />
@@ -593,7 +687,15 @@ export function ConfirmerFacture({ documentId, lire = false }) {
               {enCours ? <LoaderCircle className="size-5 animate-spin" aria-hidden="true" /> : null}
               Le garder comme document
             </button>
-            <button type="button" onClick={() => setMode("intervention")} disabled={enCours} className={boutonSecondaire}>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("intervention");
+                setModifie(true);
+              }}
+              disabled={enCours}
+              className={boutonSecondaire}
+            >
               C'est bien une facture : renseigner l'intervention
             </button>
           </div>
@@ -607,7 +709,7 @@ export function ConfirmerFacture({ documentId, lire = false }) {
             <div className="mt-2 space-y-2">
               {ressemblantes.map((h) => (
                 <label key={h.id} className="flex cursor-pointer items-start gap-2.5 rounded-lg bg-white/70 px-3 py-2.5 text-sm">
-                  <input type="radio" name="choix-doublon" value={h.id} checked={choixValide === h.id} onChange={() => setChoix(h.id)} className="mt-0.5 size-4 accent-primary" />
+                  <input type="radio" name="choix-doublon" value={h.id} checked={choixValide === h.id} onChange={() => choisir(h.id)} className="mt-0.5 size-4 accent-primary" />
                   <span>
                     <span className="font-semibold text-foreground">Rattacher à cette intervention</span>
                     <span className="block text-muted-foreground">
@@ -617,7 +719,7 @@ export function ConfirmerFacture({ documentId, lire = false }) {
                 </label>
               ))}
               <label className="flex cursor-pointer items-start gap-2.5 rounded-lg bg-white/70 px-3 py-2.5 text-sm">
-                <input type="radio" name="choix-doublon" value="creer" checked={choixValide === "creer"} onChange={() => setChoix("creer")} className="mt-0.5 size-4 accent-primary" />
+                <input type="radio" name="choix-doublon" value="creer" checked={choixValide === "creer"} onChange={() => choisir("creer")} className="mt-0.5 size-4 accent-primary" />
                 <span className="font-semibold text-foreground">Créer une autre intervention</span>
               </label>
             </div>
@@ -639,7 +741,7 @@ export function ConfirmerFacture({ documentId, lire = false }) {
             <input id="facture-professionnel" value={saisie.professionnel} maxLength={120} onChange={(e) => modifier("professionnel", e.target.value)} className={champ} placeholder="Garage, centre auto…" />
           </Champ>
 
-          <Operations operations={saisie.operations} surligne={surligner("operations")} nonLue={nonLu("operations")} onChange={modifierOperations} />
+          <EditeurOperations operations={saisie.operations} surligne={surligner("operations")} nonLue={nonLu("operations")} onChange={modifierOperations} />
 
           <Champ nom="type" label="Classée comme" surligner={surligner} nonLu={() => false} erreur={erreurs.type} aideTexte="Une vidange seule reste une vidange : « Révision » seulement si la facture le dit.">
             <select id="facture-type" value={saisie.type} onChange={(e) => modifier("type", e.target.value)} className={`${champ} appearance-none`}>
@@ -687,7 +789,9 @@ export function ConfirmerFacture({ documentId, lire = false }) {
           <Link href={`${retour}#documents`} className={boutonSecondaire}>
             Plus tard
           </Link>
-          <p className={`${aide} text-center`}>« Plus tard » : la facture reste dans les documents de la voiture.</p>
+          <p className={`${aide} text-center`}>
+            « Plus tard » : la facture reste dans les documents de la voiture{modifie || brouillonRepris ? ", et vos modifications sont gardées sur cet appareil" : ""}.
+          </p>
         </div>
       </form>
       )}
@@ -711,41 +815,5 @@ function Champ({ nom, label, facultatif = false, surligner, nonLu, erreur, avert
       {!erreur && nonLu(nom) ? <p className={aide}>Non lu sur la facture.</p> : null}
       {aideTexte ? <p className={aide}>{aideTexte}</p> : null}
     </div>
-  );
-}
-
-function Operations({ operations, surligne, nonLue, onChange }) {
-  const changer = (i, champs) => onChange(operations.map((o, j) => (j === i ? { ...o, ...champs } : o)));
-  return (
-    <fieldset className={surligne ? "rounded-xl bg-amber-50 p-2 ring-2 ring-amber-300" : ""}>
-      <legend className={cn(etiquette, "flex items-center gap-2")}>
-        Opérations <span className="font-normal text-muted-foreground">(facultatif)</span>
-        {surligne ? <span className="rounded bg-amber-100 px-1.5 text-xs font-semibold text-amber-900">À vérifier</span> : null}
-      </legend>
-      <div className="space-y-2">
-        {operations.map((o, i) => (
-          <div key={i} className="space-y-2 rounded-xl border border-border bg-card p-2.5">
-            <input aria-label={`Libellé de l'opération ${i + 1}`} value={o.libelle} maxLength={120} onChange={(e) => changer(i, { libelle: e.target.value })} className={champ} placeholder="Plaquettes avant, vidange…" />
-            <div className="flex items-center gap-2">
-              <select aria-label={`Type de l'opération ${i + 1}`} value={o.type} onChange={(e) => changer(i, { type: e.target.value })} className={cn(champ, "min-w-0 flex-1 appearance-none py-2.5 text-sm")}>
-                {TYPES_INTERVENTION.map((t) => (
-                  <option key={t.valeur} value={t.valeur}>
-                    {t.libelle}
-                  </option>
-                ))}
-              </select>
-              <button type="button" onClick={() => onChange(operations.filter((_, j) => j !== i))} className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-red-50 hover:text-destructive" aria-label={`Retirer l'opération ${i + 1}`}>
-                <Trash2 className="size-4" aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-      {nonLue && operations.length === 0 ? <p className={aide}>Aucune opération lue sur la facture.</p> : null}
-      <button type="button" onClick={() => onChange([...operations, { type: "autre", libelle: "" }])} className={`${boutonLien} -ml-2 mt-1`}>
-        <Plus className="size-4" aria-hidden="true" />
-        Ajouter une opération
-      </button>
-    </fieldset>
   );
 }

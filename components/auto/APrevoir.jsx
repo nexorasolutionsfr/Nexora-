@@ -12,7 +12,7 @@ import { BellOff, Calculator, CalendarCheck, Car, ChevronRight, CircleAlert, Cir
 
 import { supabase } from "@/lib/supabase";
 import { ajouterJours, aujourdhuiIso } from "@/lib/auto/echeances";
-import { Alerte, PageAuto, Pastille, Plaque, SqueletteVehicules, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, etiquette, useSessionAuto } from "@/components/auto/elements";
+import { Alerte, PageAuto, Pastille, Plaque, SqueletteVehicules, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, deconnexionVolontaire, etiquette, useSessionAuto } from "@/components/auto/elements";
 import { FONDEMENTS, HORIZONS_JOURS, construireAPrevoir, pastilleElement } from "@/components/auto/aPrevoir";
 import { chargerDossiers } from "@/components/auto/dossiers";
 import { formaterDate, messageErreurAuto } from "@/components/auto/format";
@@ -31,7 +31,7 @@ export default function APrevoir({ vehiculeFiltre = null, elementCible = null })
   const aujourdhui = aujourdhuiIso();
 
   useEffect(() => {
-    if (session === null) router.replace("/auto/connexion?suite=/auto/a-prevoir");
+    if (session === null && !deconnexionVolontaire()) router.replace("/auto/connexion?suite=/auto/a-prevoir");
   }, [session, router]);
 
   const charger = useCallback(async () => {

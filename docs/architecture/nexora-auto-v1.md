@@ -565,6 +565,14 @@ Même résultat sur le build de production.
 `auto_operations_valides`) ; `auto_lectures` ; `auto_lecture_reserver`
 (service_role) ; `auto_enregistrer_facture` (personne connectée, droits RLS).
 
+Complété par `20260922001000_auto_import_fluide.sql` (programme autonome,
+lot H) : `auto_enregistrer_facture` prend un verrou par voiture (deux fichiers
+de la même facture confirmés au même moment créaient deux interventions), et
+le titre automatique « Facture <professionnel> » suit la correction du
+professionnel. La correction d'une intervention, le brouillon de
+vérification et le contrôle du contenu des fichiers sont décrits dans
+`docs/architecture/nexora-auto-suivi.md`.
+
 ### Avant toute activation publique
 
 - Lecture gratuite : aucune transmission extérieure. Mesurer sur de vraies factures anonymisées ; traiter les photos (dont HEIC) lors de la recette sur un vrai téléphone.

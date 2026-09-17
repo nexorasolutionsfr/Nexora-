@@ -82,7 +82,7 @@ test("messageErreurAuto : les contraintes de la base deviennent des phrases", ()
     messageErreurAuto({ code: "23514", message: "auto_facture : intervention ressemblante à trancher (auto_doublon_potentiel)" }),
     /rattacher la facture ou de créer une autre intervention/,
   );
-  assert.equal(messageErreurAuto({ code: "23505", message: 'duplicate key value violates unique constraint "auto_documents_empreinte_unique"' }), "Cette facture est déjà dans le dossier de cette voiture.");
+  assert.equal(messageErreurAuto({ code: "23505", message: 'duplicate key value violates unique constraint "auto_documents_empreinte_unique"' }), "Ce fichier est déjà dans le dossier de cette voiture.");
   assert.equal(messageErreurAuto({ code: "42501", message: "permission denied" }), "Votre session a expiré. Reconnectez-vous.");
   assert.match(messageErreurAuto({ message: "Failed to fetch" }), /n'a pas abouti/);
 });

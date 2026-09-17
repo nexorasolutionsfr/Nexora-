@@ -7,10 +7,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ExternalLink, FileImage, FileText, LoaderCircle, Paperclip, ReceiptText, Trash2, Upload } from "lucide-react";
+import { ExternalLink, FileImage, FileText, LoaderCircle, Paperclip, ReceiptText, ScanText, Trash2, Upload } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { aujourdhuiIso } from "@/lib/auto/echeances";
+import { empreinteSha256 } from "@/lib/auto/empreinte";
 import { nouvelIdentifiant } from "@/lib/auto/identifiants";
 import {
   COMPARTIMENT,
@@ -19,7 +20,7 @@ import {
   cheminDocument,
   nomAffichable,
   tailleLisible,
-  verifierFichier,
+  verifierFichierComplet,
 } from "@/lib/auto/documents";
 import { Alerte, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, etiquette } from "@/components/auto/elements";
 import { TYPES_INTERVENTION, formaterDate, libelleDe, messageErreurAuto } from "@/components/auto/format";
@@ -123,6 +124,8 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
           {documents.map((d) => {
             const Icone = d.type_mime === "application/pdf" ? FileText : FileImage;
             const lie = d.historique_id ? parId.get(d.historique_id) : null;
+            // Une facture conservée dont l'intervention n'est pas encore confirmée.
+            const aConfirmer = d.type === "facture" && !d.historique_id && d.source === "proprietaire";
             return (
               <li key={d.id} className="flex items-start gap-3 px-4 py-3.5">
                 <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground/70">
@@ -137,15 +140,20 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
                     {[libelleDe(TYPES_DOCUMENT, d.type), d.date_document ? formaterDate(d.date_document) : null, tailleLisible(d.taille_octets)].filter(Boolean).join(" · ")}
                   </span>
                   {lie ? (
-                    <span className="mt-0.5 flex items-center gap-1 text-sm text-foreground/80">
-                      <Paperclip className="size-3.5" aria-hidden="true" />
+                    <span className="mt-0.5 flex items-start gap-1 text-sm text-foreground/80">
+                      <Paperclip className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                       Justifie : {libelleIntervention(lie)}
+                    </span>
+                  ) : aConfirmer ? (
+                    <span className="mt-0.5 flex items-start gap-1 text-sm text-amber-800">
+                      <ScanText className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                      {d.proposition != null ? "Informations proposées, à vérifier" : "Intervention à renseigner"}
                     </span>
                   ) : null}
                 </button>
-                {d.type === "facture" && !d.historique_id && d.source === "proprietaire" && !archive ? (
+                {aConfirmer && !archive ? (
                   <Link href={`/auto/factures/${d.id}`} className="shrink-0 self-center rounded-lg px-2 py-2 text-sm font-semibold text-primary hover:bg-secondary">
-                    À compléter
+                    {d.proposition != null ? "Vérifier" : "Compléter"}
                   </Link>
                 ) : null}
                 {d.source === "proprietaire" ? (
@@ -185,11 +193,21 @@ function FormulaireDocument({ vehiculeId, proprietaireId, historique, historique
   async function soumettre(evenement) {
     evenement.preventDefault();
     setErreur("");
-    const verification = verifierFichier(fichier);
-    if (!verification.valide) return setErreur(verification.erreur);
     if (saisie.dateDocument && saisie.dateDocument > aujourdhui) return setErreur("La date ne peut pas être dans le futur.");
-
     setEnCours(true);
+    const verification = await verifierFichierComplet(fichier);
+    if (!verification.valide) {
+      setEnCours(false);
+      return setErreur(verification.erreur);
+    }
+    // Le même fichier, déjà rangé : ni nouvel envoi, ni doublon.
+    const empreinte = await empreinteSha256(fichier);
+    const deja = await supabase.from("auto_documents").select("id, vehicule_id").eq("empreinte_sha256", empreinte).limit(1);
+    if (deja.data?.length) {
+      setEnCours(false);
+      return setErreur(deja.data[0].vehicule_id === vehiculeId ? "Ce fichier est déjà dans les documents de cette voiture." : "Ce fichier est déjà dans le dossier d'une autre de vos voitures.");
+    }
+
     const chemin = cheminDocument({ proprietaireId, vehiculeId, identifiant: nouvelIdentifiant(), typeMime: verification.typeMime });
     const depot = await supabase.storage.from(COMPARTIMENT).upload(chemin, fichier, { contentType: verification.typeMime, upsert: false });
     if (depot.error) {
@@ -206,6 +224,7 @@ function FormulaireDocument({ vehiculeId, proprietaireId, historique, historique
       nom_fichier: nomAffichable(fichier.name),
       type_mime: verification.typeMime,
       taille_octets: fichier.size,
+      empreinte_sha256: empreinte,
     });
     if (error) {
       // Pas de fichier sans fiche.

@@ -12,6 +12,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { CalendarCheck, Car, CircleAlert, LayoutGrid, LoaderCircle } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
+import { effacerBrouillons, stockageNavigateur } from "@/lib/auto/brouillon";
 import { afficherImmatriculation } from "@/lib/auto/immatriculation";
 
 export const champ =
@@ -31,14 +32,22 @@ export const carteListe = "divide-y divide-border overflow-hidden rounded-2xl bo
 
 // La session Supabase de la personne. `undefined` tant qu'on ne sait pas
 // encore, `null` si personne n'est connecté.
+// Déconnexion demandée par la personne : les écrans privés ne la renvoient
+// pas vers « Connectez-vous pour reprendre là où vous en étiez » ; elle
+// revient à l'accueil. Une session expirée, elle, redirige toujours.
+let deconnexionDemandee = false;
+export const deconnexionVolontaire = () => deconnexionDemandee;
+
 export function useSessionAuto() {
   const [session, setSession] = useState(undefined);
   useEffect(() => {
     let actif = true;
     supabase.auth.getSession().then(({ data }) => {
+      if (data.session) deconnexionDemandee = false;
       if (actif) setSession(data.session ?? null);
     });
     const { data } = supabase.auth.onAuthStateChange((_evenement, s) => {
+      if (s) deconnexionDemandee = false;
       if (actif) setSession(s ?? null);
     });
     return () => {
@@ -84,6 +93,9 @@ export function EnteteAuto({ session }) {
 
   async function seDeconnecter() {
     setSortie(true);
+    deconnexionDemandee = true;
+    // Aucun brouillon de facture ne reste sur l'appareil après la sortie.
+    effacerBrouillons({ stockage: stockageNavigateur() });
     await supabase.auth.signOut();
     router.replace("/auto");
     setSortie(false);

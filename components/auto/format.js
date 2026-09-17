@@ -122,7 +122,7 @@ export function messageErreurAuto(erreur) {
   if (texte.includes("auto_vehicules_plaque_par_proprietaire")) return "Cette plaque est déjà enregistrée dans votre garage.";
   if (texte.includes("auto_doublon_potentiel")) return "Une intervention ressemblante existe déjà : choisissez de rattacher la facture ou de créer une autre intervention.";
   if (texte.includes("auto_facture_deja_enregistree")) return "Cette facture est déjà enregistrée.";
-  if (texte.includes("auto_documents_empreinte_unique")) return "Cette facture est déjà dans le dossier de cette voiture.";
+  if (texte.includes("auto_documents_empreinte_unique")) return "Ce fichier est déjà dans le dossier de cette voiture.";
   if (texte.includes("auto_document_introuvable")) return "Cette facture est introuvable. Elle a peut-être été supprimée.";
   if (texte.includes("auto_intervention_introuvable")) return "Cette intervention est introuvable pour cette voiture.";
   if (texte.includes("auto_facture_incomplete")) return "Indiquez la date et le type d'intervention.";
