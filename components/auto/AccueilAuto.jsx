@@ -22,6 +22,7 @@ import {
   useSessionAuto,
 } from "@/components/auto/elements";
 import { ENERGIES, TYPES_INTERVENTION, formaterDate, formaterKm, libelleDe } from "@/components/auto/format";
+import { useModeAcces } from "@/components/auto/acces";
 
 export default function AccueilAuto() {
   const session = useSessionAuto();
@@ -35,9 +36,11 @@ export default function AccueilAuto() {
 }
 
 function Bienvenue() {
+  const beta = useModeAcces() === "beta";
   return (
     <PageAuto session={null}>
       <section className="pt-4">
+        {beta ? <p className="mb-3 inline-flex rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary">Bêta privée</p> : null}
         <h1 className="font-display text-[40px] font-bold leading-[1.05] tracking-tight text-foreground">
           Votre voiture.
           <br />
@@ -54,6 +57,7 @@ function Bienvenue() {
           <Link href="/auto/connexion" className={boutonSecondaire}>
             J'ai déjà un compte
           </Link>
+          {beta ? <p className="text-center text-[13px] text-muted-foreground">Nexora Auto est ouvert pour l'instant aux personnes invitées.</p> : null}
         </div>
       </section>
 
@@ -124,6 +128,7 @@ function MesVehicules() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement du garage (indicateur, puis réponse Supabase) ; `charger` sert aussi au bouton « Recharger ».
     charger();
   }, [charger]);
 

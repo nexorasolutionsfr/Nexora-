@@ -1,13 +1,14 @@
 # Nexora Auto — document de livraison
 
-État au 17 septembre 2026. **Procédure préparée, rien n'a été exécuté en
-Production** : aucune fusion dans `main`, aucune migration en Production,
-aucun déploiement. Chaque étape ci-dessous attend une décision explicite.
+Mis à jour le 17 septembre 2026, avec la bêta privée. **Procédure préparée,
+rien n'a été exécuté en Production** : aucune fusion dans `main`, aucune
+migration en Production, aucun déploiement, aucune invitation. Chaque étape
+attend une décision explicite.
 
 ## 1. Ce qui est livré
 
-Douze PR en brouillon, empilées. Chacune a pour base la précédente, et
-#110 a pour base `main` (`349652e`, qui est bien l'ancêtre de toute la pile).
+Treize PR en brouillon, empilées : chacune a pour base la précédente, et #110
+a pour base `main` (`349652e`, ancêtre de toute la pile).
 
 | PR | Lot | Migration |
 | --- | --- | --- |
@@ -23,108 +24,145 @@ Douze PR en brouillon, empilées. Chacune a pour base la précédente, et
 | [#119](https://github.com/nexorasolutionsfr/Nexora-/pull/119) | J — kilométrage et rappels | — |
 | [#120](https://github.com/nexorasolutionsfr/Nexora-/pull/120) | K — maîtrise du dossier | — |
 | [#121](https://github.com/nexorasolutionsfr/Nexora-/pull/121) | L — consolidation technique | — |
-
-Les migrations de lot et leur contenu sont rappelés à la section 3 ; le
-détail est dans `docs/architecture/nexora-auto-v1.md` et
-`docs/architecture/nexora-auto-suivi.md`.
+| [#122](https://github.com/nexorasolutionsfr/Nexora-/pull/122) | livraison et compte rendu | — |
+| PR « bêta privée » (`auto/beta-privee`) | accès contrôlé, lint permanent, recette et données personnelles | `20260922001100` |
 
 **Hors de l'espace Auto**, la pile ne modifie que :
 - `app/globals.css` : une règle de focus limitée à `.espace-auto` ;
-- `package.json` et `pnpm-lock.yaml` : ajout de `unpdf` 1.8.1, lecture du texte des PDF ;
-- `supabase/tests/prelude_stockage_base_jetable.sql` : outil de banc, jamais exécuté en Production.
+- `package.json` et `pnpm-lock.yaml` : `unpdf` en dépendance ; ESLint et ses règles en dépendances de développement ; script `lint:auto` ;
+- `eslint.auto.config.mjs` : configuration limitée à Nexora Auto. `npm run lint` n'est pas modifié et échoue toujours faute de configuration globale, comme sur `main` ;
+- `supabase/tests/prelude_stockage_base_jetable.sql` : outil de banc.
 
-Aucune table, aucune route ni aucun écran de Nexora Pro n'est modifié.
+Aucune table, route ni aucun écran de Nexora Pro n'est modifié. Une politique restrictive est ajoutée sur `storage.objects`, mais elle ne s'applique qu'au compartiment `auto-documents`.
 
-## 2. Ne pas fusionner la pile PR par PR
+## 2. Préalables
 
-Vercel déploie `main` à chaque fusion. Fusionner #110 puis #111… publierait
-onze états intermédiaires, dont certains sont incomplets ou incohérents : des
-écrans sans leur migration, ou la lecture de facture sans ses corrections.
+1. **Prévisualisations Vercel.**
+   - Constat du 17 septembre 2026 : elles utilisent la base de **Production** (adresse Supabase `omphppsmhmyllapdqevn` lue dans le code servi).
+   - Tant que ce n'est pas corrigé, **aucune recette sur une URL de prévisualisation**. Nexora Auto s'y ferme de lui-même (`lib/auto/acces.js`), mais Nexora Pro reste exposé à la base de Production depuis ces URL.
+   - Manipulation (Baptiste, dans Vercel) : projet `nexora-dashboard` → *Settings* → *Environment Variables*. Pour l'environnement **Preview** seulement, remplacer `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` et `SUPABASE_SERVICE_ROLE_KEY` par les valeurs du projet **Test** (`slawilafseganlbghgwx`).
+   - Autre possibilité : désactiver les prévisualisations automatiques des branches.
+   - Contrôle ensuite : ouvrir une prévisualisation et vérifier que le code servi contient `slawilafseganlbghgwx`. Le contrôle déjà fait lisait les scripts de la page, sans rien saisir.
+2. **Région des fonctions Vercel** (décision D2 de `nexora-auto-donnees-personnelles.md`) : aujourd'hui `iad1` (États-Unis). À décider avant d'ouvrir la lecture de factures à des personnes extérieures.
+3. **Textes** : politique de confidentialité et conditions d'utilisation pour Nexora Auto (décisions D1 à D7).
 
-**Stratégie recommandée : une seule fusion.**
-1. Mettre à jour la branche du dernier lot (`auto/lot-l-consolidation`, ou `auto/livraison` qui ne fait qu'y ajouter ce document) avec `main` si `main` a avancé, puis rejouer les tests, le build et la recette sur Test.
-2. Ouvrir **une** PR de cette branche vers `main`, relue en entier. Les PR #110 à #121 sont fermées avec la mention « intégrée dans #… » ; elles restent consultables lot par lot.
-3. Appliquer les migrations en Production (section 3) **avant** la fusion.
-4. Fusionner cette PR unique. Vercel déploie une seule fois l'état final.
+## 3. Une seule fusion, jamais la pile PR par PR
 
-Variante : changer la base de chaque PR pour la faire pointer sur la suivante,
-puis fusionner en cascade dans la branche du haut, jamais dans `main`. Même
-résultat, plus de manipulations.
+Vercel déploie `main` à chaque fusion : fusionner #110, puis #111… publierait
+des états intermédiaires incomplets.
 
-## 3. Migrations en Production
+1. **Branche finale** : `auto/beta-privee`, qui contient tout. Si `main` a avancé, la mettre à jour avec `main`, puis rejouer la recette complète (section 4) sur Test.
+2. **Une seule PR** de cette branche vers `main`, relue en entier. Fermer #110 à #122 et la PR bêta avec la mention « intégrée dans #… ».
+3. **Migrations en Production avant la fusion** (section 5). Nexora Auto reste **fermé** : le mode par défaut de `20260922001100` est `ferme`.
+4. **Fusion unique** : Vercel déploie une fois l'état final, et `/auto` affiche « Nexora Auto arrive bientôt ».
+5. **Ouverture progressive**, séparée du déploiement : bêta interne, puis bêta externe (section 7).
 
-**Ordre.** Les dix fichiers dans l'ordre de leur horodatage, de
-`20260922000100_auto_mon_vehicule.sql` à `20260922001000_auto_import_fluide.sql`.
-`supabase db push` les applique dans cet ordre, chacun dans sa propre
-transaction.
+## 4. Recette complète de la version cumulée (sur Test)
+
+À rejouer sur la branche finale juste avant la PR unique :
+
+| Contrôle | Commande | Attendu |
+| --- | --- | --- |
+| Tests | `node --test lib/auto/*.test.js lib/auto/lecture/*.test.js components/auto/*.test.js` | tout passe (148 au 17 sept.) |
+| Lint | `npm run lint:auto` | 0 problème |
+| Build | `npx next build` | réussi |
+| Bancs SQL | chaque `supabase/tests/auto_*_v1.sql` via `supabase db query --linked -f` | code de sortie 0 |
+| Accès croisés et bêta | `node scripts/recette/acces-croises.mjs http://localhost:3114` | 55/55 en mode bêta |
+| Simultanéité | `node scripts/recette/factures/concurrence.mjs 20` | A 20/20, B 20/20, C 10/10 |
+| Écrans | `audit-ecrans.mjs` et `audit-texte-agrandi.mjs` sur les écrans principaux | aucun défaut |
+| Fichiers orphelins | `supabase/tests/auto_fichiers_orphelins.sql` | 0 et 0 |
+| Recette humaine | `nexora-auto-recette-beta.md`, temps A | relevés remplis |
+
+## 5. Migrations en Production
+
+**Ordre** : les onze fichiers, de `20260922000100_auto_mon_vehicule.sql` à
+`20260922001100_auto_acces_beta.sql`, dans l'ordre d'horodatage. `supabase db push`
+les applique dans cet ordre, chacun dans sa transaction.
 
 **Compatibilité.**
-- Tout est additif : tables `auto_*` nouvelles, fonctions `auto_*` nouvelles, compartiment de stockage `auto-documents` nouveau et privé.
-- Aucune table existante n'est modifiée. `auto_partenaires.garage_id` référence `garages` en lecture seule, sans rien y changer.
-- Le code actuellement en Production n'utilise aucun de ces objets : appliquer les migrations avant de déployer le code est sans effet visible.
-- Les droits par défaut de Supabase (tout ouvert à `anon` et `authenticated` sur une nouvelle table) sont resserrés par `20260922000700`. **Ne jamais s'arrêter entre `000600` et `000700`** : appliquer l'ensemble en une fois.
+- Tout est additif : tables et fonctions `auto_*` nouvelles, compartiment privé `auto-documents` nouveau.
+- Aucune table existante n'est modifiée ; `auto_partenaires.garage_id` référence `garages` sans le changer.
+- Le code en Production n'utilise aucun de ces objets.
+- Ne jamais s'arrêter entre `000600` et `000700`, qui resserre les droits par défaut de Supabase.
+- `001100` ferme l'accès par défaut : même si le code arrivait avant la décision d'ouvrir, aucune donnée Nexora Auto ne serait lisible ni modifiable.
 
-**Procédure (à exécuter seulement sur décision).**
-1. **Sauvegarde.**
-   - Vérifier dans le tableau de bord Supabase la dernière sauvegarde automatique de la Production et son offre (restauration à un instant donné ou non).
-   - Faire en plus un export du schéma et des données : `supabase db dump` (schéma), puis `supabase db dump --data-only`, sur un poste de confiance. Le résultat n'est jamais versé dans le dépôt.
-2. **Lecture de l'état.** `supabase migration list` sur la Production : confirmer qu'aucune migration `202609220…` n'y figure et qu'aucune migration inattendue n'est en attente.
-3. **Répétition.** Appliquer les dix fichiers sur une base jetable restaurée depuis le schéma de Production (méthode : mémoire « base jetable depuis le schéma Production »), puis passer `auto_droits_v1.sql` et les autres bancs Auto.
-4. **Essai à blanc.** `supabase db push --dry-run` sur la Production : la liste doit être exactement les dix fichiers.
+**Procédure (sur décision).**
+1. **Sauvegarde.** Vérifier la dernière sauvegarde automatique et l'offre Supabase, puis exporter sur un poste de confiance : `supabase db dump`, et `supabase db dump --data-only`. Ces exports ne vont jamais dans le dépôt.
+2. **État.** `supabase migration list` sur la Production : aucune migration `202609220…` ne doit apparaître.
+3. **Répétition.** Appliquer les onze fichiers sur une base jetable issue du schéma de Production, puis passer les bancs Auto.
+4. **Essai à blanc.** `supabase db push --dry-run` : exactement les onze fichiers.
 5. **Application.** `supabase db push`.
 6. **Contrôles en lecture seule.**
-   - `auto_droits_v1.sql` : compare les droits effectifs à la liste attendue et ne crée rien.
-   - Relevé `auto_fichiers_orphelins.sql`.
-   - Compartiment `auto-documents` présent, **privé**, 10 Mo, 6 types.
-   - Les autres bancs (`auto_*_v1.sql`) créent des comptes fictifs dans une transaction annulée. Ne pas les passer en Production sans décision explicite.
+   - `auto_droits_v1.sql`.
+   - Relevé des fichiers orphelins.
+   - `select mode from public.auto_acces_parametres` doit renvoyer `ferme`.
+   - Compartiment `auto-documents` privé, 10 Mo, 6 types.
+   - Les autres bancs créent des comptes fictifs dans une transaction annulée : ne pas les passer en Production sans décision.
 
 **Variables d'environnement (Vercel, Production).**
-- Déjà présentes pour Nexora Pro : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
-- `AUTO_LECTURE_FOURNISSEUR` : à laisser **absente**. Par défaut, la lecture est gratuite, sur le serveur (texte des PDF). `aucun` désactive toute lecture automatique.
-- `AUTO_LECTURE_QUOTA_24H` : facultative, 10 par défaut, entre 1 et 50.
-- **Ne pas définir** `ANTHROPIC_API_KEY`, `AUTO_LECTURE_BUDGET_USD` ni `AUTO_LECTURE_PRODUCTION`. La lecture payante est refusée en Production tant que `AUTO_LECTURE_PRODUCTION` ne vaut pas `oui`, et reste impossible sans clé ni budget.
-- Route de lecture : `maxDuration = 60` s ; l'extraction s'arrête d'elle-même à 15 s.
+- Existantes : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
+- `AUTO_ACCES` : absente. `AUTO_ACCES=ferme` est l'interrupteur d'urgence : il ferme Nexora Auto quel que soit le mode en base, et prend effet au redéploiement. Aucune valeur de cette variable n'ouvre l'accès.
+- `AUTO_LECTURE_FOURNISSEUR` : absente, ce qui donne la lecture gratuite sur le serveur. `aucun` coupe la lecture automatique.
+- `AUTO_LECTURE_QUOTA_24H` : facultative (10 par défaut).
+- **Ne pas définir** `ANTHROPIC_API_KEY`, `AUTO_LECTURE_BUDGET_USD` ni `AUTO_LECTURE_PRODUCTION`.
 
-## 4. Ordre de mise en ligne
+## 6. Contrôles après déploiement, Nexora Auto fermé
 
-1. Décision de lancement. `/auto` est public dès le déploiement : toute personne peut créer un compte. Il n'y a pas d'interrupteur de lancement : en ajouter un est une décision, voir le compte rendu.
-2. Politique de confidentialité et mentions à jour pour Nexora Auto : documents privés, lecture sur le serveur, conservation, suppression du compte.
-3. Sauvegarde, puis migrations (section 3).
-4. Fusion de la PR unique ; déploiement Vercel.
-5. Contrôles après déploiement (section 5).
-6. Surveillance les premières heures : journaux Vercel de `/api/auto/*` (qui ne contiennent aucun texte de facture) et erreurs Supabase.
+- `/auto` et `/auto/connexion` affichent « Nexora Auto arrive bientôt ».
+- `GET /api/auto/lecture` renvoie `{"disponible":false,"formats":[],"externe":false}`.
+- `POST /api/auto/documents/<uuid>/lecture` renvoie 403 (`acces_ferme`).
+- `POST /api/auto/inscription` renvoie 403 (`ferme`).
+- Nexora Pro : le tableau de bord d'un garage s'ouvre normalement, et ses fichiers aussi (contrôle de la politique de stockage).
 
-## 5. Contrôles après déploiement
+## 7. Ouverture progressive
 
-Sans donnée personnelle réelle :
+Les commandes SQL se passent dans l'éditeur SQL du projet de Production, par
+Baptiste. **Ajouter une adresse n'envoie aucun message.**
 
-- `GET /api/auto/lecture` renvoie `{"disponible":true,"formats":["application/pdf"],"externe":false}`.
-- `/auto` s'affiche sans session : accueil, lien de connexion. `/auto/connexion` s'affiche aussi.
-- `/auto/vehicules/pas-un-identifiant` renvoie une page 404, sans appel à la base.
-- `POST /api/auto/documents/<uuid>/lecture` sans session répond 401.
-- Nexora Pro : le tableau de bord d'un garage s'ouvre normalement (aucun objet Pro n'a changé, contrôle de principe).
-- Parcours complet (compte, voiture, facture PDF, confirmation, export, suppression) : seulement avec un **compte de recette en Production**, à décider. Il faudrait l'effacer ensuite, fichiers compris.
+**Bêta interne.**
+```sql
+update public.auto_acces_parametres set mode = 'beta';
+insert into public.auto_acces_beta (email, note) values ('<adresse de Baptiste>', 'bêta interne');
+```
+Baptiste crée son compte depuis `/auto/connexion?mode=inscription` et reçoit l'e-mail de confirmation habituel. Il déroule ensuite le parcours de `nexora-auto-recette-beta.md`.
+- Contrôles : écran « Accès réservé » avec un autre compte non invité ; même message neutre à l'inscription pour une adresse non invitée ; route de lecture en 403 pour ce compte.
 
-## 6. Retour arrière
+**Bêta externe** (après les préalables de la section 2) :
+```sql
+insert into public.auto_acces_beta (email, note) values ('<adresse>', '<qui, pourquoi>');
+```
+Baptiste prévient lui-même chaque personne invitée.
 
-**Code, sans perte de données.** Annuler la fusion (`git revert` du commit de
-fusion dans `main`) ; Vercel redéploie l'état précédent. Les tables `auto_*`
-et les fichiers restent en base, inutilisés. Un compte créé entre-temps garde
-son dossier, qui revient si Nexora Auto est republié.
+**Retirer une personne** :
+```sql
+delete from public.auto_acces_beta where email = '<adresse>';
+```
+Son compte et ses données restent, mais elle n'y accède plus (décision D3 pour l'effacement).
 
-**Base.**
-- Ne rien supprimer par défaut : les objets `auto_*` sont inertes sans le code.
-- Si un défaut de migration impose un retour, chaque fichier décrit son retour arrière dans son en-tête. Par exemple, `20260922001000` recrée la fonction de confirmation sans le verrou, sans aucune donnée à reprendre.
-- Ces retours arrière suppriment des objets et donc des données : ils ne s'appliquent qu'après un export (section 3) et sur décision.
-- **Priorité en cas d'incident de droits** : réappliquer `20260922000700_auto_droits_resserres.sql`, idempotent, plutôt que défaire.
+**Ouverture à tous** (décision distincte) : `update public.auto_acces_parametres set mode = 'ouvert';`
 
-**Stockage.** Le compartiment `auto-documents` est privé. En cas de doute sur
-son exposition : vérifier `public = false` et les politiques
-`auto_documents_stockage_*`, sans le supprimer.
+## 8. Fermer en urgence, revenir en arrière
 
-## 7. Ce qui n'est pas livré
+**Fermer sans redéployer** : `update public.auto_acces_parametres set mode = 'ferme';`.
+Effet immédiat sur les données, et sur les écrans à la requête suivante.
 
-- Aucune réservation, aucun paiement, aucun partenaire ni aucune offre : `auto_offres` est vide.
-- Aucune lecture payante active.
-- Aucun rappel envoyé hors de l'application : les rappels sont préparés, non branchés.
-- Aucune suppression de compte : décisions listées au lot K du suivi.
+**Fermer sans toucher à la base** : variable `AUTO_ACCES=ferme` sur Vercel, puis
+redéploiement.
+
+**Code, sans perte de données** : `git revert` du commit de fusion dans `main`.
+Les tables `auto_*` et les fichiers restent, inertes.
+
+**Base** : ne rien supprimer par défaut.
+- Chaque migration décrit son retour arrière dans son en-tête ; ces retours suppriment des objets, donc ne s'appliquent qu'après un export et sur décision.
+- En cas de doute sur les droits : réappliquer `20260922000700` et `20260922001100`, toutes deux idempotentes.
+
+**Stockage** : `auto-documents` doit rester privé ; vérifier `public = false` et
+les politiques `auto_documents_stockage_*`, sans supprimer le compartiment.
+
+## 9. Ce qui n'est pas livré
+
+- Aucune réservation, aucun paiement, aucun partenaire ni aucune offre.
+- Aucune lecture payante.
+- Aucun rappel envoyé hors de l'application.
+- Aucune invitation envoyée par Nexora.
+- Aucune suppression de compte depuis l'application (décision D3).

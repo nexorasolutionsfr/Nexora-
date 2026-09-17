@@ -17,6 +17,7 @@ import { supabase } from "@/lib/supabase";
 import { adresseSansErreurAuth, decisionFragment, erreurAuthDansFragment, messageLienEchoue } from "@/components/connexion/lienConfirmation";
 import { DELAI_RENVOI_SECONDES, libelleRenvoi, messageRenvoi, secondesAvantRenvoi } from "@/components/connexion/renvoiConfirmation";
 import { Alerte, PageAuto, boutonLien, boutonPrincipal, boutonSecondaire, carte, champ, etiquette, useSessionAuto } from "@/components/auto/elements";
+import { useModeAcces } from "@/components/auto/acces";
 import { cheminSuite, messageConnexion } from "@/components/auto/format";
 
 const MODES = {
@@ -31,6 +32,10 @@ export default function ConnexionAuto() {
   const router = useRouter();
   const suite = cheminSuite(params.get("suite"));
   const session = useSessionAuto();
+  // Bêta privée : la création de compte passe par le serveur, qui n'inscrit
+  // que les adresses invitées sans jamais dire lesquelles le sont.
+  const beta = useModeAcces() === "beta";
+  const [demandeBeta, setDemandeBeta] = useState(false);
 
   const [mode, setMode] = useState(MODES[params.get("mode")] ? params.get("mode") : "connexion");
   const [email, setEmail] = useState("");
@@ -51,6 +56,7 @@ export default function ConnexionAuto() {
     if (decision === "nettoyer") {
       window.history.replaceState(window.history.state, "", adresseSansErreurAuth(window.location.href));
     } else if (decision === "expliquer") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture unique du fragment d'adresse (lien d'e-mail expiré), système extérieur à React.
       setErreurLien(erreurAuthDansFragment(window.location.hash));
     }
   }, [session]);
@@ -103,6 +109,20 @@ export default function ConnexionAuto() {
           setErreur(messageConnexion(error));
           if (error.code === "email_not_confirmed") setAVerifier(adresse);
         }
+      } else if (mode === "inscription" && beta) {
+        const reponse = await fetch("/api/auto/inscription", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: adresse, motDePasse, suite }),
+        });
+        const corps = await reponse.json().catch(() => ({}));
+        if (corps.etat === "demande_recue") {
+          setDemandeBeta(true);
+          setAVerifier(adresse);
+        } else if (corps.etat === "ferme") setErreur("Nexora Auto n'est pas encore ouvert.");
+        else if (corps.champ === "mot_de_passe") setErreur("Choisissez un mot de passe de 8 à 72 caractères.");
+        else if (corps.champ === "email") setErreur("Indiquez une adresse e-mail valide.");
+        else setErreur("La demande n'a pas abouti. Vérifiez votre connexion et réessayez.");
       } else if (mode === "inscription") {
         const { data, error } = await supabase.auth.signUp({
           email: adresse,
@@ -161,18 +181,28 @@ export default function ConnexionAuto() {
             <MailCheck className="size-6" aria-hidden="true" />
           </span>
           <h1 className="mt-4 font-display text-2xl font-bold tracking-tight text-foreground">Vérifiez vos e-mails</h1>
-          <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">
-            Un lien d'activation a été demandé pour <strong className="font-semibold text-foreground">{aVerifier}</strong>. Ouvrez-le : vous reviendrez ici, connecté.
-          </p>
+          {demandeBeta ? (
+            <p className="mt-2 break-words text-[15px] leading-relaxed text-muted-foreground">
+              Si <strong className="font-semibold text-foreground">{aVerifier}</strong> est invitée à la bêta privée, un lien d'activation vient de lui être envoyé. Ouvrez-le : vous
+              reviendrez ici, connecté. Sans e-mail d'ici quelques minutes, vérifiez l'adresse indiquée avec la personne qui vous a invité.
+            </p>
+          ) : (
+            <p className="mt-2 break-words text-[15px] leading-relaxed text-muted-foreground">
+              Un lien d'activation a été demandé pour <strong className="font-semibold text-foreground">{aVerifier}</strong>. Ouvrez-le : vous reviendrez ici, connecté.
+            </p>
+          )}
           <div className="mt-5 space-y-3">
             {info ? <Alerte ton={info.ton === "erreur" ? "erreur" : "succes"}>{info.texte}</Alerte> : null}
-            <button type="button" onClick={renvoyer} disabled={enCours || secondes > 0} className={boutonSecondaire}>
-              {libelleRenvoi({ enCours, secondesRestantes: secondes })}
-            </button>
+            {demandeBeta ? null : (
+              <button type="button" onClick={renvoyer} disabled={enCours || secondes > 0} className={boutonSecondaire}>
+                {libelleRenvoi({ enCours, secondesRestantes: secondes })}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
                 setAVerifier("");
+                setDemandeBeta(false);
                 changerMode(mode === "inscription" ? "inscription" : "connexion");
               }}
               className={boutonLien}
@@ -185,7 +215,11 @@ export default function ConnexionAuto() {
         <section className="mt-4">
           <h1 className="font-display text-[28px] font-bold tracking-tight text-foreground">{libelles.titre}</h1>
           <p className="mt-1.5 text-[15px] leading-relaxed text-muted-foreground">
-            {mode === "connexion" && suite !== "/auto" ? "Connectez-vous pour reprendre là où vous en étiez." : libelles.texte}
+            {mode === "connexion" && suite !== "/auto"
+              ? "Connectez-vous pour reprendre là où vous en étiez."
+              : mode === "inscription" && beta
+                ? "Nexora Auto est en bêta privée : la création de compte est réservée aux adresses invitées."
+                : libelles.texte}
           </p>
 
           <div className="mt-5 space-y-3">
@@ -266,7 +300,7 @@ export default function ConnexionAuto() {
             {mode === "connexion" ? (
               <>
                 <button type="button" onClick={() => changerMode("inscription")} className={boutonLien}>
-                  Pas encore de compte ? Créer un compte
+                  {beta ? "Invité à la bêta ? Créer votre compte" : "Pas encore de compte ? Créer un compte"}
                 </button>
                 <button type="button" onClick={() => changerMode("oubli")} className={boutonLien}>
                   Mot de passe oublié ?

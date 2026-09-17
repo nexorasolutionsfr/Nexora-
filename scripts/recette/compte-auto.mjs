@@ -53,7 +53,9 @@ if (commande === "creer") {
     console.error("Échec :", error.message);
     process.exit(1);
   }
-  console.log(`Compte créé : ${email} (${data.user.id})`);
+  // Bêta privée (20260922001100) : un compte de recette est invité d'office sur Test.
+  const invitation = await admin.from("auto_acces_beta").upsert({ email, note: "compte fictif de recette (Test)" });
+  console.log(`Compte créé : ${email} (${data.user.id})${invitation.error ? " — invitation à la bêta impossible" : ", invité à la bêta"}`);
 } else if (commande === "lien" && adresse) {
   if (!adresse.endsWith("@nexora-recette.invalid")) {
     console.error("Refus : seuls les comptes @nexora-recette.invalid sont servis par ce script.");

@@ -9,6 +9,11 @@
 //    même montant, sans choix « créer une autre intervention » : une seule
 //    intervention, l'autre appel reçoit « intervention ressemblante » ;
 //    aucune dépense comptée deux fois.
+// C. deux interventions RÉELLEMENT distinctes (même date, même montant) : la
+//    seconde est d'abord signalée comme ressemblante, puis créée quand la
+//    personne choisit « Créer une autre intervention » ; et deux confirmations
+//    simultanées avec ce choix explicite créent bien deux interventions. Le
+//    verrou ordonne, il ne fusionne jamais.
 //
 // Compte fictif en .invalid créé puis supprimé avec ses fichiers. Aucun
 // e-mail, aucune lecture automatique. Refus hors de la base Test.
@@ -35,6 +40,8 @@ const email = `recette.concurrence.${Date.now()}@nexora-recette.invalid`;
 const creation = await admin.auth.admin.createUser({ email, email_confirm: true, user_metadata: { espace: "auto" } });
 if (creation.error) throw creation.error;
 const utilisateurId = creation.data.user.id;
+// Bêta privée (20260922001100) : le compte fictif est invité le temps de la recette.
+await admin.from("auto_acces_beta").upsert({ email: email.toLowerCase(), note: "recette automatique (Test)" });
 const chemins = [];
 
 try {
@@ -67,15 +74,15 @@ try {
     return data.id;
   }
 
-  const confirmer = (client, documentId, realiseLe) =>
+  const confirmer = (client, documentId, realiseLe, { creer = false } = {}) =>
     client.rpc("auto_enregistrer_facture", {
       p_document_id: documentId, p_rattacher_a: null, p_realise_le: realiseLe, p_date_facture: realiseLe, p_type: "vidange",
       p_operations: [{ type: "vidange", libelle: "Vidange moteur" }], p_prestataire: "Garage fictif", p_kilometrage: 42000,
-      p_montant_ttc: 129.9, p_libelle: "Vidange moteur", p_creer_malgre_ressemblance: false, p_lecture_id: null, p_corrections: null,
+      p_montant_ttc: 129.9, p_libelle: "Vidange moteur", p_creer_malgre_ressemblance: creer, p_lecture_id: null, p_corrections: null,
     });
   const code = (r) => (r.error ? (r.error.message.match(/\((auto_[a-z_]+)\)/)?.[1] ?? r.error.message) : "ok");
 
-  const bilan = { A: { tours: 0, uneSeule: 0, issues: {} }, B: { tours: 0, uneSeule: 0, issues: {} } };
+  const bilan = { A: { tours: 0, uneSeule: 0, issues: {} }, B: { tours: 0, uneSeule: 0, issues: {} }, C: { tours: 0, deux: 0, issues: {} } };
   const noter = (cas, resultats, interventions) => {
     bilan[cas].tours += 1;
     if (interventions === 1) bilan[cas].uneSeule += 1;
@@ -95,13 +102,36 @@ try {
     noter("B", await Promise.all([confirmer(a, pdf, lendemain), confirmer(b, photo, lendemain)]), await compter(lendemain));
   }
 
+  // C. Deux interventions distinctes, même date, même montant.
+  const toursC = Math.max(1, Math.round(TOURS / 2));
+  for (let tour = 0; tour < toursC; tour += 1) {
+    const sequentiel = new Date(Date.UTC(2024, 0, 1 + tour * 2)).toISOString().slice(0, 10);
+    const simultane = new Date(Date.UTC(2024, 0, 2 + tour * 2)).toISOString().slice(0, 10);
+    const [premier, second] = [await deposer(`C-${tour}-1`), await deposer(`C-${tour}-2`)];
+    const r1 = await confirmer(a, premier, sequentiel);
+    const r2 = await confirmer(a, second, sequentiel);
+    const r3 = await confirmer(a, second, sequentiel, { creer: true });
+    const [d1, d2] = [await deposer(`C-${tour}-3`), await deposer(`C-${tour}-4`)];
+    const simultanes = await Promise.all([confirmer(a, d1, simultane, { creer: true }), confirmer(b, d2, simultane, { creer: true })]);
+    bilan.C.tours += 1;
+    const cle = `${[r1, r2, r3].map(code).join(" > ")} | ${simultanes.map(code).sort().join(" + ")}`;
+    bilan.C.issues[cle] = (bilan.C.issues[cle] ?? 0) + 1;
+    if (code(r1) === "ok" && code(r2) === "auto_doublon_potentiel" && code(r3) === "ok" && (await compter(sequentiel)) === 2 && simultanes.every((r) => !r.error) && (await compter(simultane)) === 2) bilan.C.deux += 1;
+  }
+
   const { data: depenses } = await admin.from("auto_historique").select("montant_ttc").eq("vehicule_id", vehiculeId);
-  console.log(JSON.stringify({ tours: TOURS, ...bilan, interventions: depenses.length, attendues: TOURS * 2 }, null, 2));
-  const ok = bilan.A.uneSeule === TOURS && bilan.B.uneSeule === TOURS && depenses.length === TOURS * 2;
-  console.log(ok ? "RÉSULTAT : aucune intervention ni dépense en double." : "RÉSULTAT : DOUBLE ENREGISTREMENT constaté.");
+  const attendues = TOURS * 2 + toursC * 4;
+  console.log(JSON.stringify({ tours: TOURS, ...bilan, interventions: depenses.length, attendues }, null, 2));
+  const ok = bilan.A.uneSeule === TOURS && bilan.B.uneSeule === TOURS && bilan.C.deux === toursC && depenses.length === attendues;
+  console.log(
+    ok
+      ? "RÉSULTAT : aucun doublon involontaire, et les interventions distinctes choisies explicitement sont bien créées."
+      : "RÉSULTAT : ÉCART constaté (doublon involontaire, ou intervention distincte refusée).",
+  );
   process.exitCode = ok ? 0 : 3;
 } finally {
   for (let i = 0; i < chemins.length; i += 100) await admin.storage.from("auto-documents").remove(chemins.slice(i, i + 100));
+  await admin.from("auto_acces_beta").delete().eq("email", email.toLowerCase());
   await admin.auth.admin.deleteUser(utilisateurId);
   const reste = await admin.from("auto_vehicules").select("id", { count: "exact", head: true }).eq("proprietaire_id", utilisateurId);
   console.log(`Nettoyage : compte supprimé, ${chemins.length} fichiers retirés, voitures restantes : ${reste.count}.`);

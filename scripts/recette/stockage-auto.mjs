@@ -46,6 +46,8 @@ async function ouvrirSession(prenom) {
   const email = `recette.auto.stockage.${prenom}.${horodatage}@nexora-recette.invalid`;
   const { data: cree, error } = await admin.auth.admin.createUser({ email, email_confirm: true, user_metadata: { espace: "auto" } });
   if (error) throw new Error(`création ${prenom} : ${error.message}`);
+  // Bêta privée (20260922001100) : le compte fictif est invité le temps de la recette.
+  await admin.from("auto_acces_beta").upsert({ email: email.toLowerCase(), note: "recette automatique (Test)" });
   const { data: lien, error: erreurLien } = await admin.auth.admin.generateLink({ type: "magiclink", email });
   if (erreurLien) throw new Error(`lien ${prenom} : ${erreurLien.message}`);
   const client = createClient(url, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
@@ -97,6 +99,7 @@ try {
   await admin.storage.from(COMPARTIMENT).remove([cheminAlice]);
   for (const personne of [alice, bruno]) {
     await admin.from("auto_vehicules").delete().eq("proprietaire_id", personne.id);
+    await admin.from("auto_acces_beta").delete().eq("email", personne.email.toLowerCase());
     await admin.auth.admin.deleteUser(personne.id);
   }
   console.log("Nettoyage : fichier, voitures et comptes de recette supprimés.");

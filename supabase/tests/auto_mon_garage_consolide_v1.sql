@@ -10,6 +10,9 @@
 
 begin;
 
+-- Accès Nexora Auto ouvert le temps du banc, annulé avec lui (20260922001100).
+do $$ begin if to_regclass('public.auto_acces_parametres') is not null then update public.auto_acces_parametres set mode = 'ouvert'; end if; end $$;
+
 create temporary table _fixture_ids (cle text primary key, valeur uuid not null) on commit drop;
 
 create function pg_temp.fid(p_cle text) returns uuid

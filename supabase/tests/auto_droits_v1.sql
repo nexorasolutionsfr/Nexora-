@@ -1,6 +1,6 @@
 -- Nexora Auto — droits exacts sur tous les objets `auto_*` — banc en LECTURE SEULE.
 --
--- Présuppose 20260922000100 → 20260922000900 appliquées. N'écrit rien.
+-- Présuppose 20260922000100 → 20260922001100 appliquées. N'écrit rien.
 --
 -- Compare, pour `anon` et `authenticated`, les privilèges effectifs de chaque
 -- table et séquence `auto_*` à la liste attendue ci-dessous. Une table `auto_*`
@@ -25,6 +25,9 @@ insert into _droits_attendus (objet, anon, authenticated) values
   ('auto_services_modes',        '', 'SELECT'),
   ('auto_offres',                '', 'SELECT'),
   ('auto_partenaires',           '', 'SELECT'),
+  -- Accès (20260922001100) : rôle de service seulement.
+  ('auto_acces_parametres',      '', ''),
+  ('auto_acces_beta',            '', ''),
   -- Droits par colonne seulement (contrôlés plus bas) : aucun droit de table.
   ('auto_lectures',              '', '');
 

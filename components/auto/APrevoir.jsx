@@ -39,6 +39,7 @@ export default function APrevoir({ vehiculeFiltre = null, elementCible = null })
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement Supabase à l'ouverture et à la connexion ; l'état n'est posé qu'à la réponse, et `charger` sert aussi après chaque enregistrement.
     if (session) charger();
   }, [session, charger]);
 

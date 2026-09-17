@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { accesAutoServeur, personneAutorisee } from "@/lib/auto/acces-serveur";
 import { aujourdhuiIso } from "@/lib/auto/echeances";
 import { estIdentifiant } from "@/lib/auto/identifiants";
 import { creerFournisseurAnthropic } from "@/lib/auto/lecture/anthropic";
@@ -19,6 +20,9 @@ import { lireFacture } from "@/lib/auto/lecture/service";
 // avec SES droits (RLS, stockage privé). Seuls la réservation sur le budget
 // et le journal des coûts passent par le rôle de service. Voir
 // lib/auto/lecture/service.js pour le détail et les limites.
+//
+// Accès : fermé côté serveur (lib/auto/acces.js) ou personne non autorisée
+// (bêta privée) → 403, avant toute lecture, réservation ou journal.
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +32,7 @@ const STATUT_HTTP: Record<string, number> = { introuvable: 404, deja_enregistree
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if ((await accesAutoServeur()).mode === "ferme") return NextResponse.json({ etat: "acces_ferme" }, { status: 403 });
   if (!estIdentifiant(id)) return NextResponse.json({ etat: "introuvable" }, { status: 404 });
 
   const jeton = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
@@ -46,6 +51,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     global: { headers: { Authorization: `Bearer ${jeton}` } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  if (!(await personneAutorisee(clientPersonne))) return NextResponse.json({ etat: "acces_ferme" }, { status: 403 });
 
   const configuration = configurationLecture(process.env);
   const resultat = await lireFacture({

@@ -78,6 +78,8 @@ async function compteEtVoiture() {
   const email = `recette.lecture.${Date.now()}.${randomUUID().slice(0, 6)}@nexora-recette.invalid`;
   const creation = await admin.auth.admin.createUser({ email, email_confirm: true, user_metadata: { espace: "auto" } });
   if (creation.error) throw creation.error;
+  // Bêta privée (20260922001100) : le compte fictif est invité le temps de la recette.
+  await admin.from("auto_acces_beta").upsert({ email: email.toLowerCase(), note: "recette automatique (Test)" });
   const lien = await admin.auth.admin.generateLink({ type: "magiclink", email });
   const destination = (await fetch(lien.data.properties.action_link, { redirect: "manual" })).headers.get("location") || "";
   const jeton = new URLSearchParams(destination.split("#")[1] || "").get("access_token");
@@ -88,7 +90,7 @@ async function compteEtVoiture() {
     p_date_mise_en_circulation: "2019-05-02", p_kilometrage: null, p_dernier_controle: null, p_controle_valable_jusqu_au: null,
   });
   if (error) throw error;
-  return { utilisateurId: creation.data.user.id, jeton, personne, vehiculeId };
+  return { utilisateurId: creation.data.user.id, email, jeton, personne, vehiculeId };
 }
 
 const lire = (documentId, jeton) =>
@@ -96,7 +98,7 @@ const lire = (documentId, jeton) =>
 
 for (const dossier of dossiers) {
   const attendus = JSON.parse(readFileSync(join(dossier, "attendus.json"), "utf8"));
-  const { utilisateurId, jeton, personne, vehiculeId } = await compteEtVoiture();
+  const { utilisateurId, email, jeton, personne, vehiculeId } = await compteEtVoiture();
   const chemins = [];
   const documents = [];
 
@@ -216,6 +218,7 @@ for (const dossier of dossiers) {
 
   if (!garder) {
     await admin.storage.from("auto-documents").remove(chemins);
+    await admin.from("auto_acces_beta").delete().eq("email", email.toLowerCase());
     await admin.auth.admin.deleteUser(utilisateurId);
   }
 }

@@ -8,6 +8,9 @@
 // s'en servir par les fonctions en base, par le stockage privé et par la
 // route de lecture. Un visiteur sans session aussi. Chaque tentative doit
 // échouer ou ne rien rendre ; le dossier d'Alice doit rester intact.
+// Bêta privée (20260922001100) : Alice et Bruno sont invités le temps de la
+// recette ; Claire, adresse confirmée mais NON invitée, ne doit rien pouvoir
+// faire, pas même dans son propre dossier.
 // Les deux comptes et leurs fichiers sont supprimés à la fin.
 // Refus de démarrer hors de la base Test.
 
@@ -34,11 +37,12 @@ const resultats = [];
 const verifier = (nom, ok, detail = "") => resultats.push({ nom, ok: Boolean(ok), detail });
 const comptes = [];
 
-async function compte(prenom) {
+async function compte(prenom, { invite = true } = {}) {
   const email = `recette.acces.${prenom}.${Date.now()}@nexora-recette.invalid`;
   const creation = await admin.auth.admin.createUser({ email, email_confirm: true, user_metadata: { espace: "auto" } });
   if (creation.error) throw creation.error;
-  comptes.push(creation.data.user.id);
+  comptes.push({ id: creation.data.user.id, email });
+  if (invite) await admin.from("auto_acces_beta").upsert({ email, note: "recette automatique (Test)" });
   const lien = await admin.auth.admin.generateLink({ type: "magiclink", email });
   const destination = (await fetch(lien.data.properties.action_link, { redirect: "manual" })).headers.get("location") || "";
   const jeton = new URLSearchParams(destination.split("#")[1] || "").get("access_token");
@@ -55,6 +59,7 @@ const lignes = async (requete) => {
 try {
   const alice = await compte("alice");
   const bruno = await compte("bruno");
+  const claire = await compte("claire", { invite: false });
   const visiteur = createClient(URL_BASE, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
 
   // --- Le dossier d'Alice, par l'API avec ses droits ---
@@ -135,6 +140,29 @@ try {
   await b.storage.from(COMPARTIMENT).remove([chemin]);
   verifier("Bruno n'efface pas le fichier d'Alice", !(await a.storage.from(COMPARTIMENT).download(chemin)).error);
 
+  // --- Claire : confirmée, non invitée à la bêta ---
+  const c = claire.client;
+  const modeTest = (await admin.from("auto_acces_parametres").select("mode").single()).data?.mode;
+  if (modeTest === "beta") {
+    const etat = await c.rpc("auto_etat_acces");
+    verifier("Claire (non invitée) : accès refusé par la base", !etat.error && etat.data?.autorise === false, JSON.stringify(etat.data ?? etat.error));
+    const ajout = await c.rpc("auto_ajouter_vehicule", { p_marque: "Fiat", p_modele: "Panda fictive", p_annee: 2012 });
+    verifier("Claire (non invitée) : n'ajoute pas de voiture à son propre compte", ajout.error, ajout.error?.code);
+    const posee = await admin.from("auto_vehicules").insert({ proprietaire_id: claire.id, marque: "Fiat", modele: "Posée par l'administrateur" }).select("id").single();
+    verifier("Claire (non invitée) : ne lit pas sa propre voiture", (await lignes(c.from("auto_vehicules").select("id").eq("id", posee.data?.id))).n === 0);
+    verifier("Claire (non invitée) : ne lit pas le dossier d'Alice", (await lignes(c.from("auto_documents").select("id").eq("id", documentA.id))).n === 0);
+    const cheminClaire = `${claire.id}/${posee.data?.id}/${randomUUID()}.pdf`;
+    verifier("Claire (non invitée) : ne dépose aucun fichier", (await c.storage.from(COMPARTIMENT).upload(cheminClaire, octets, { contentType: "application/pdf" })).error);
+    verifier("Claire (non invitée) : ne lit pas les réglages d'accès", (await c.from("auto_acces_parametres").select("mode")).error);
+    verifier("Claire (non invitée) : ne s'invite pas", (await c.from("auto_acces_beta").insert({ email: "claire@example.invalid" })).error);
+    if (SERVEUR) {
+      const appel = await fetch(`${SERVEUR}/api/auto/documents/${documentA.id}/lecture`, { method: "POST", headers: { "content-type": "application/json", Authorization: `Bearer ${claire.jeton}` }, body: "{}" });
+      verifier("Claire (non invitée) : route de lecture refusée (403)", appel.status === 403, String(appel.status));
+    }
+  } else {
+    verifier(`Contrôles « non invitée » ignorés : Test est en mode ${modeTest}, pas en bêta`, true);
+  }
+
   // --- Visiteur sans session ---
   for (const table of ["auto_vehicules", "auto_historique", "auto_documents", "auto_releves_km", "auto_taches", "auto_lectures"]) {
     const r = await lignes(visiteur.from(table).select("id").limit(1));
@@ -165,7 +193,8 @@ try {
 } catch (e) {
   verifier("Déroulé de la recette", false, e?.message ?? String(e));
 } finally {
-  for (const id of comptes) {
+  for (const { id, email } of comptes) {
+    await admin.from("auto_acces_beta").delete().eq("email", email);
     const vehicules = (await admin.from("auto_vehicules").select("id").eq("proprietaire_id", id)).data ?? [];
     for (const v of vehicules) {
       const fichiers = (await admin.storage.from(COMPARTIMENT).list(`${id}/${v.id}`)).data ?? [];

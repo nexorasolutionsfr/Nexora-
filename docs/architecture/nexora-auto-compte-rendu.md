@@ -39,7 +39,7 @@ Détail par lot : `nexora-auto-suivi.md`. Mise en ligne : `nexora-auto-livraison
   - Document renommé, reclassé, détaché ou rattaché.
   - Conséquences dites avant chaque suppression.
   - Suppression d'une voiture sans fichier orphelin.
-  - Export imprimable et CSV, sans fichier, avec provenance.
+  - Export : page imprimable (« PDF » = impression du navigateur, aucun fichier PDF produit par Nexora) et tableau CSV téléchargé, sans fichier joint, avec provenance.
   - Décisions sur la suppression de compte documentées.
 - **L — Consolidation.**
   - Recette d'accès croisés de bout en bout.
@@ -86,15 +86,17 @@ Détail par lot : `nexora-auto-suivi.md`. Mise en ligne : `nexora-auto-livraison
 
 ## Décisions nécessaires
 
-1. **Mise en ligne.** Quand, et selon `nexora-auto-livraison.md` : sauvegarde, dix migrations, puis **une seule** fusion. `/auto` est public dès le déploiement ; faut-il d'abord un interrupteur de lancement, ou une inscription sur invitation ?
-2. **Recette réelle.** Fournir 3 à 5 vraies factures anonymisées de garages différents, et faire un essai sur votre téléphone (iPhone de préférence).
-3. **Compte de recette en Production** pour les contrôles après déploiement : oui ou non ; il serait effacé ensuite.
-4. **Confidentialité.** Mettre à jour la politique pour Nexora Auto : documents privés, lecture sur le serveur, durées de conservation.
-5. **Suppression de compte.** Parcours, délai de rétractation, sort du journal des lectures, relation avec un compte Nexora Pro (6 points au lot K).
-6. **Prévisualisations Vercel.** Chaque branche poussée est déployée en prévisualisation, protégée par l'authentification Vercel (vérifié : redirection vers la connexion Vercel). À vérifier dans Vercel : vers quelle base pointent les variables de l'environnement « Preview ». Si c'est la Production, désactiver ces prévisualisations ou les pointer vers Test. Je n'ai touché à aucun réglage.
-7. **Lint permanent** limité à Nexora Auto : oui ou non (modifie `package.json` et le lockfile partagés).
-8. **Contrôle du contenu au dépôt côté serveur** : utile ou non, vu la portée limitée (section « Limites »).
-9. **Lecture payante** : reste désactivée. Ne la reconsidérer qu'après la mesure sur vraies factures, et avec contrat de sous-traitance, budget et mention à l'écran.
+Mises à jour le 17 septembre, après la préparation de la bêta privée
+(section « Mise à jour » plus bas).
+
+1. **Prévisualisations Vercel : à corriger en priorité.** Elles utilisent la base de **Production** (constaté). Il faut repointer les variables « Preview » vers Test ou désactiver les prévisualisations (manipulation dans `nexora-auto-livraison.md`, section 2). D'ici là, aucune recette sur une URL Vercel.
+2. **Région de lecture des factures** (D2) : fonctions Vercel en Europe, ou transfert vers les États-Unis encadré et écrit.
+3. **Textes et conservation** (D1, D3 à D7) : durées, suppression de compte, accès administrateur, conditions d'utilisation, mesure d'audience.
+4. **Recette interne** (temps A de `nexora-auto-recette-beta.md`) : votre téléphone et 3 à 5 de vos factures sur Test, supprimées après la mesure (D8).
+5. **Mise en ligne contrôlée** : migrations et fusion unique Nexora Auto **fermé**, puis bêta interne, puis 3 à 5 personnes invitées (temps B).
+6. **Compte de recette en Production** : prévu dans la procédure (votre adresse en bêta interne), à créer seulement le moment venu.
+7. **Contrôle du contenu au dépôt côté serveur** : utile ou non, vu la portée limitée.
+8. **Lecture payante** : reste désactivée.
 
 ## PR et migrations
 
@@ -113,6 +115,7 @@ Détail par lot : `nexora-auto-suivi.md`. Mise en ligne : `nexora-auto-livraison
 | [#120](https://github.com/nexorasolutionsfr/Nexora-/pull/120) | K | #119 | — |
 | [#121](https://github.com/nexorasolutionsfr/Nexora-/pull/121) | L | #120 | — |
 | [#122](https://github.com/nexorasolutionsfr/Nexora-/pull/122) | livraison et compte rendu | #121 | — |
+| PR « bêta privée » | accès contrôlé, lint permanent, recette, données personnelles | #122 | `001100` |
 
 Toutes les migrations portent le préfixe `20260922`. Production : aucune.
 
@@ -121,3 +124,31 @@ Toutes les migrations portent le préfixe `20260922`. Production : aucune.
 1. **Relire** la pile dans son état final : branche `auto/livraison`, en une seule lecture, plutôt que PR par PR.
 2. **Faire la recette réelle** (décision 2) : `node scripts/recette/telephone.mjs` sur le même Wi-Fi, puis quelques vraies factures anonymisées. `bilan-reel.mjs` mesure alors champs extraits, manqués, erronés et inventés, sans rien afficher des valeurs.
 3. **Trancher** les décisions 1, 4 et 6, puis dérouler `nexora-auto-livraison.md`.
+
+## Mise à jour du 17 septembre : préparation de la bêta privée
+
+Branche `auto/beta-privee`, migration `20260922001100` (Test seulement).
+Détail : section « Bêta privée et livraison contrôlée » du suivi.
+
+- **Constats.**
+  - Les prévisualisations Vercel utilisent la base de Production.
+  - Les routes serveur de Production s'exécutent aux États-Unis ; les bases Supabase sont en Irlande.
+- **Construit.**
+  - Accès fermé par défaut, bêta sur invitation ou ouvert, contrôlé en base (politiques restrictives) et côté serveur (écran fermé, routes en 403).
+  - Inscription en bêta sans révéler qui est invité.
+  - Écran « Accès réservé ».
+  - Outil `beta.mjs` pour Test.
+  - Lint permanent `npm run lint:auto`, avec 7 exceptions écrites dans le code.
+  - Libellés de l'export clarifiés.
+  - Documents : données personnelles (D1 à D8), recette courte, livraison contrôlée.
+- **Vérifié.**
+  - Bancs SQL, dont `auto_acces_v1`, sur base jetable et sur Test, avec contre-épreuve.
+  - Accès croisés 55/55.
+  - Simultanéité : A, B et C (interventions distinctes créées sur choix explicite, 10/10).
+  - Navigateur en modes bêta et fermé ; inscription neutre sans compte créé.
+  - Audits des nouveaux écrans ; lint et 148 tests.
+- **Non fait volontairement.**
+  - Aucune invitation, aucun e-mail.
+  - Aucun réglage Vercel modifié.
+  - Aucune fusion, aucune migration en Production.
+

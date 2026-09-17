@@ -1,9 +1,11 @@
 "use client";
 
-// Le dossier d'une voiture, à garder, imprimer (ou enregistrer en PDF) et
-// transmettre soi-même, par exemple lors d'une vente. Tout est préparé dans le
-// navigateur : rien n'est envoyé ailleurs, aucun fichier ni lien de document
-// n'est inclus. Règles : lib/auto/export.js.
+// Le dossier d'une voiture, à garder, imprimer et transmettre soi-même, par
+// exemple lors d'une vente. Tout est préparé dans le navigateur : rien n'est
+// envoyé ailleurs, aucun fichier ni lien de document n'est inclus.
+// « PDF » = l'impression du navigateur (destination « Enregistrer au format
+// PDF ») : aucun fichier PDF n'est produit par Nexora.
+// « Tableau » = un fichier CSV téléchargé. Règles : lib/auto/export.js.
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -128,7 +130,16 @@ export default function DossierVoiture({ vehiculeId }) {
           Tableau (CSV)
         </button>
       </div>
-      <p className="mt-2 text-[13px] text-muted-foreground print:hidden">Préparé sur cet appareil : rien n'est envoyé. Les fichiers de vos documents restent privés et ne sont pas inclus.</p>
+      <div className="mt-2 space-y-1 text-[13px] leading-snug text-muted-foreground print:hidden">
+        <p>
+          <span className="font-semibold text-foreground/80">PDF :</span> le bouton ouvre l'impression de votre navigateur ; choisissez « Enregistrer au format PDF » (sur
+          téléphone, depuis l'aperçu d'impression ou le partage). Nexora ne crée pas de fichier PDF.
+        </p>
+        <p>
+          <span className="font-semibold text-foreground/80">Tableau :</span> un fichier CSV téléchargé, qui s'ouvre dans un tableur.
+        </p>
+        <p>Préparé sur cet appareil : rien n'est envoyé. Les fichiers de vos documents restent privés et ne sont pas inclus.</p>
+      </div>
 
       <Section titre="La voiture">
         {identite.length ? (

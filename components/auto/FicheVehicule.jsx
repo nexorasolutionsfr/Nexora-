@@ -158,6 +158,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
   }, [vehiculeId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement Supabase à l'ouverture et à la connexion ; l'état n'est posé qu'à la réponse, et `charger` sert aussi après chaque enregistrement.
     if (session) charger();
   }, [session, charger]);
 
@@ -170,6 +171,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
     actionAppliquee.current = true;
     window.history.replaceState(window.history.state, "", window.location.pathname);
     if (!FORMULAIRE_PAR_ACTION[actionInitiale] || etat.vehicule.archive_le) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- geste demandé par l'adresse (?action=), appliqué une seule fois après le chargement du dossier.
     setOuvert(FORMULAIRE_PAR_ACTION[actionInitiale]);
     requestAnimationFrame(() => document.getElementById(SECTION_PAR_ACTION[actionInitiale] ?? "echeance-ct")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }, [etat.chargement, etat.vehicule, actionInitiale]);
@@ -187,6 +189,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
   const [premiersPasMasques, setPremiersPasMasques] = useState(true);
   useEffect(() => {
     try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- préférence lue dans le stockage du navigateur, indisponible au rendu serveur.
       setPremiersPasMasques((JSON.parse(localStorage.getItem("nexora-auto-premiers-pas-masques") || "[]") ?? []).includes(vehiculeId));
     } catch {
       setPremiersPasMasques(false);

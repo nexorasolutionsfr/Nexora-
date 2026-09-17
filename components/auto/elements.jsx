@@ -13,6 +13,8 @@ import { CalendarCheck, Car, CircleAlert, LayoutGrid, LoaderCircle } from "lucid
 
 import { supabase } from "@/lib/supabase";
 import { effacerBrouillons, stockageNavigateur } from "@/lib/auto/brouillon";
+import { useAccesPersonne } from "@/components/auto/acces";
+import AccesReserve from "@/components/auto/AccesReserve";
 import { afficherImmatriculation } from "@/lib/auto/immatriculation";
 
 export const champ =
@@ -155,6 +157,17 @@ export function EnteteAuto({ session }) {
 }
 
 export function PageAuto({ session, children, large = false }) {
+  // Connecté sans accès (bêta privée…) : l'écran le dit au lieu d'afficher un
+  // dossier vide. Les données restent protégées par la base.
+  const acces = useAccesPersonne(session);
+  const contenu =
+    session && acces === undefined ? (
+      <Chargement texte="Vérification de l'accès…" />
+    ) : session && acces && !acces.autorise ? (
+      <AccesReserve acces={acces} email={session.user?.email} />
+    ) : (
+      children
+    );
   return (
     <>
       <a href="#contenu" className="sr-only rounded-lg bg-card text-sm font-semibold text-primary shadow-md focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:px-3 focus:py-2">
@@ -162,7 +175,7 @@ export function PageAuto({ session, children, large = false }) {
       </a>
       <EnteteAuto session={session} />
       <main id="contenu" tabIndex={-1} className={`mx-auto w-full ${large ? "max-w-2xl" : "max-w-xl"} px-4 pb-24 pt-6 outline-none`}>
-        {children}
+        {contenu}
       </main>
     </>
   );

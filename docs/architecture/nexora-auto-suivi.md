@@ -37,6 +37,7 @@ Il est mis à jour à chaque lot. Le contrat détaillé de chaque lot reste dans
 | K — maîtrise du dossier | `auto/lot-k-maitrise-dossier` | `auto/lot-j-kilometrage-rappels` | [#120](https://github.com/nexorasolutionsfr/Nexora-/pull/120) | fait sur Test, sans migration |
 | L — consolidation technique | `auto/lot-l-consolidation` | `auto/lot-k-maitrise-dossier` | [#121](https://github.com/nexorasolutionsfr/Nexora-/pull/121) | fait sur Test, sans migration |
 | Livraison et compte rendu | `auto/livraison` | `auto/lot-l-consolidation` | [#122](https://github.com/nexorasolutionsfr/Nexora-/pull/122) | documents seulement ; rien d'exécuté en Production |
+| Bêta privée | `auto/beta-privee` | `auto/livraison` | à ouvrir | fait sur Test, migration `20260922001100` appliquée sur Test (mode `beta`) |
 
 ## Recette globale — constats
 
@@ -77,6 +78,10 @@ boutons sans nom, champs sans libellé, cibles tactiles), et situations limites.
 | R29 | Boutons « Enregistrer / Annuler » hors de l'écran en texte agrandi | **corrigé** (lot K) |
 | R30 | Lecture PDF : un fichier au décompte de pages trompeur est entièrement analysé, sans limite de durée | **corrigé** (lot L) |
 | R31 | Journal serveur d'une erreur de lecture inattendue : message complet, qui pourrait contenir du texte de facture | **corrigé** (lot L) |
+| R32 | Les prévisualisations Vercel des branches utilisent la base de **Production** | **constaté** (bêta) : Nexora Auto s'y ferme de lui-même ; réglage Vercel à corriger par Baptiste |
+| R33 | En Production, les routes serveur s'exécutent aux États-Unis (`iad1`) : une facture lue y serait traitée | **constaté** (bêta) : décision D2 |
+| R34 | `/auto` serait public dès le déploiement, sans moyen de limiter l'accès | **corrigé** (bêta) : fermé par défaut, bêta sur invitation, contrôle en base |
+| R35 | Lint ponctuel seulement, hors dépôt | **corrigé** (bêta) : `npm run lint:auto`, exceptions écrites dans le code |
 
 Vérifié sans défaut : aucune page ne déborde à 320 px ; écrans sans voiture
 (chacun propose d'ajouter une voiture) ; session expirée au chargement
@@ -418,4 +423,64 @@ sont bornés, et qu'aucun échec ne laisse un état trompeur.
 
 - `docs/architecture/nexora-auto-livraison.md` : stratégie en une seule fusion, ordre et compatibilité des migrations, sauvegarde, variables d'environnement, contrôles après déploiement, retour arrière qui préserve les données. Préparé, **non exécuté**.
 - `docs/architecture/nexora-auto-compte-rendu.md` : construit, vérifié, disponible sur Test, limites, décisions nécessaires, PR et migrations, prochaine étape.
+
+## Bêta privée et livraison contrôlée
+
+**Objectif.** Pouvoir déployer Nexora Auto sans l'ouvrir, puis l'ouvrir à une
+liste courte de personnes, avec un contrôle qui tienne côté serveur et en base,
+pas seulement dans l'écran.
+
+**Constats préalables.**
+- **Prévisualisations Vercel.** Le code servi par une prévisualisation de branche contient l'adresse Supabase de la **Production**. Vérifié depuis le Chrome de Baptiste, connecté à Vercel, en lisant les scripts de la page, sans rien saisir.
+- **Région des routes serveur en Production** : `iad1` (États-Unis), d'après l'en-tête `x-vercel-id` d'une route publique.
+- **Bases Supabase Test et Production** : `eu-west-1`.
+
+**Fait.**
+- **Accès en base** (migration `20260922001100_auto_acces_beta.sql`).
+  - Mode `ferme` (défaut), `beta` ou `ouvert`.
+  - Liste des adresses invitées. En bêta, l'adresse du compte doit être invitée **et confirmée** ; elle est lue dans `auth.users`, pas dans le jeton.
+  - Politiques **restrictives** sur les 8 tables de données personnelles Auto et sur le compartiment `auto-documents` seulement. Les politiques existantes et les autres compartiments ne changent pas.
+  - Réglages lisibles et modifiables par le rôle de service seulement.
+- **Côté serveur** (`lib/auto/acces.js`, `lib/auto/acces-serveur.js`).
+  - La mise en page `/auto` lit le mode à chaque requête. Fermé : l'écran « Nexora Auto arrive bientôt », aucun autre écran servi.
+  - Fermeture forcée par `AUTO_ACCES=ferme`, sur une prévisualisation reliée à la Production, ou si la base est illisible.
+  - Route de lecture : 403 si c'est fermé ou si la personne n'est pas autorisée, avant toute lecture ou réservation. Route de configuration : « indisponible » si c'est fermé.
+- **Inscription en bêta** (`/api/auto/inscription`).
+  - Seule une adresse invitée est inscrite. La réponse est identique, avec un délai minimal de 1,5 s, pour une adresse invitée ou non ; les erreurs de saisie sont vérifiées avant toute consultation de la liste.
+  - Aucune adresse dans les journaux.
+- **Écran.**
+  - Connecté sans accès : « Accès réservé », avec l'adresse du compte.
+  - Accueil et connexion signalent la bêta privée. Le bouton de renvoi d'e-mail est masqué après une demande neutre.
+- **Outils.**
+  - `scripts/recette/beta.mjs` (Test seulement) : état, mode, inviter, retirer, sans rien envoyer.
+  - Les scripts de recette qui créent des comptes fictifs les invitent le temps de la recette, puis les retirent.
+- **Lint permanent.**
+  - `npm run lint:auto` : ESLint 9, règles React, Hooks et Next, limité à Nexora Auto, 0 avertissement toléré ; configuration dans `eslint.auto.config.mjs`.
+  - Les 7 exceptions `react-hooks/set-state-in-effect` sont écrites sur place avec leur raison. Une directive devenue inutile ferait échouer le lint.
+- **Export.** La page dit ce que fait chaque bouton. « PDF » ouvre l'impression du navigateur, destination « Enregistrer au format PDF » : Nexora ne produit pas de fichier PDF. « Tableau » télécharge un CSV.
+- **Documents.**
+  - `nexora-auto-donnees-personnelles.md` : traitements, sous-traitants, projets de textes, décisions D1 à D8, sans durée ni garantie inventée.
+  - `nexora-auto-recette-beta.md` : recette courte sur vrai téléphone et vraies factures.
+  - `nexora-auto-livraison.md` : préalables, recette de la version cumulée, publication fermée puis ouverture progressive, fermeture d'urgence.
+
+**Vérifié.**
+- Base jetable :
+  - migration jouée deux fois ;
+  - banc `auto_acces_v1` : fermé, bêta (invitée et confirmée, non invitée, invitée non confirmée), ouvert, réglages protégés, politiques en place, stockage fermé pour Auto et intact pour un autre compartiment ;
+  - contre-épreuve : sans la politique d'une table, le banc échoue ;
+  - 7 autres bancs Auto rejoués.
+- Test :
+  - migration appliquée, puis mode `beta` avec le compte fictif invité ;
+  - les 8 bancs passent, et le mode reste `beta` après chaque banc.
+- Accès croisés : **55/55**, dont 8 contrôles « confirmée mais non invitée » (lecture, écriture dans son propre compte, stockage, réglages, route de lecture).
+- Simultanéité : A 20/20, B 20/20, **C 10/10**. Deux interventions distinctes de même date et de même montant : la seconde est signalée, puis créée sur choix explicite, y compris en simultané.
+- Navigateur (serveur local, Test) :
+  - compte invité : garage normal ;
+  - compte confirmé non invité : « Accès réservé » et route de lecture en 403 ;
+  - Test passé en `ferme` : « arrive bientôt » sur `/auto` et `/auto/connexion`, lecture « indisponible », 403 sur lecture et inscription ; puis retour en `beta` ;
+  - inscription d'une adresse non invitée : écran neutre en 1,52 s, **aucun compte créé**.
+- Non éprouvé de bout en bout : l'inscription d'une adresse invitée, pour ne déclencher aucun e-mail. Couverte par les tests unitaires, avec dépendances simulées.
+- Écrans « arrive bientôt » et « Accès réservé » : audits 320/375/390 px et texte à 150 et 200 %, sans défaut ; captures contrôlées.
+- `npm run lint:auto` : 0 problème ; un défaut planté exprès est bien détecté. 148 tests node.
+- Comptes fictifs créés pour ces vérifications : supprimés.
 
