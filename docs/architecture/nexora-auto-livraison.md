@@ -11,8 +11,8 @@ autorisée par Baptiste.
 | Sauvegarde de la Production (schéma, rôles, données) | **faite** |
 | Répétition des onze migrations sur une copie du schéma réel de Production | **faite**, 11/11 |
 | Migrations en Production | **appliquées** le 17 septembre 2026 ; Nexora Auto reste **fermé** (`mode = 'ferme'`) |
-| Fusion unique dans `main` et déploiement | voir section 3 |
-| Ouverture de l'accès | voir section 7 |
+| Fusion unique dans `main` et déploiement | **faite** : PR [#124](https://github.com/nexorasolutionsfr/Nexora-/pull/124), puis deux correctifs trouvés par la recette ([#125](https://github.com/nexorasolutionsfr/Nexora-/pull/125), [#126](https://github.com/nexorasolutionsfr/Nexora-/pull/126)) |
+| Ouverture de l'accès | **faite en mode `beta`** : `https://nexora-garage.vercel.app/auto` est en ligne, ouvert aux adresses invitées (section 7) |
 | Variables « Preview » de Vercel | **à faire par Baptiste** (section 2) : aucun jeton d'API Vercel n'est disponible ici |
 
 ## 1. Ce qui est livré
@@ -235,18 +235,91 @@ les applique dans cet ordre, chacun dans sa transaction.
 - `AUTO_LECTURE_QUOTA_24H` : facultative (10 par défaut).
 - **Ne pas définir** `ANTHROPIC_API_KEY`, `AUTO_LECTURE_BUDGET_USD` ni `AUTO_LECTURE_PRODUCTION`.
 
-## 6. Contrôles après déploiement, Nexora Auto fermé
+## 6. Après le déploiement : ce qui a été vérifié en vrai
 
-- `/auto` et `/auto/connexion` affichent « Nexora Auto arrive bientôt ».
-- `GET /api/auto/lecture` renvoie `{"disponible":false,"formats":[],"externe":false}`.
-- `POST /api/auto/documents/<uuid>/lecture` renvoie 403 (`acces_ferme`).
-- `POST /api/auto/inscription` renvoie 403 (`ferme`).
-- Nexora Pro : le tableau de bord d'un garage s'ouvre normalement, et ses fichiers aussi (contrôle de la politique de stockage).
+### 6.1 Nexora Auto fermé (juste après la fusion)
+
+| Contrôle | Attendu | Constaté |
+| --- | --- | --- |
+| `/auto` et `/auto/connexion` | « Nexora Auto arrive bientôt » | **oui**, 200 |
+| `GET /api/auto/lecture` | `{"disponible":false,…}` | **`{"disponible":false,"formats":[],"externe":false}`** |
+| `POST /api/auto/documents/<uuid>/lecture` | 403 | **403 `{"etat":"acces_ferme"}`** |
+| `POST /api/auto/inscription` | 403 | **403 `{"etat":"ferme"}`** (aucun e-mail parti) |
+| `/api/auto/environnement` | production, base production, `dub1` | **`{"environnement":"production","base":"production","projetSupabase":"omphppsmhmyllapdqevn","regionFonction":"dub1","branche":"main","accesAuto":"ferme"}`** |
+| Nexora Pro : `/`, `/dashboard`, `/confidentialite`, `/mentions-legales` | 200 | **200** ; pages dynamiques exécutées à Dublin (`cdg1::dub1`) |
+| `nexorasolutions.fr` | 200 | **200** |
+
+**La région est confirmée en Production** : `dub1`. La décision D2 est donc
+applicable telle qu'écrite, et la page de confidentialité peut dire « Vercel,
+en Irlande ».
+
+### 6.2 Nexora Pro et la politique restrictive du stockage
+
+Éprouvé **sur la Production**, dans une transaction annulée, avec le rôle
+`authenticated` et l'identité du dirigeant du garage réel :
+
+| Contrôle | Attendu | Constaté |
+| --- | --- | --- |
+| Dépôt d'une photo dans `inspections-photos`, au chemin du garage | accepté | **accepté** |
+| Relecture de cette photo | lisible | **lisible** |
+| Dépôt dans `auto-documents`, Nexora Auto fermé | refusé | **refusé** |
+| Lecture de `auto_vehicules`, Nexora Auto fermé | 0 ligne | **0 ligne** |
+| Écriture dans `auto_vehicules`, Nexora Auto fermé | refusée | **refusée** |
+
+Piège rencontré : un premier essai avec un chemin quelconque a été refusé — non
+par la politique de Nexora Auto, mais par celle de Nexora Pro, qui exige
+`<identifiant du garage>/…`. Le refus prouvait donc que Pro garde sa propre
+règle, pas qu'Auto l'avait cassée. Un contrôle de sécurité qui échoue se relit
+avant de se conclure.
+
+### 6.3 Parcours complet sur l'URL publique, Nexora Auto en bêta
+
+Compte fictif `…@nexora-recette.invalid`, invité puis supprimé.
+
+| # | Contrôle | Constaté |
+| --- | --- | --- |
+| 1 | Accueil public | « Votre voiture. Une seule app. », pastille « bêta privée » |
+| 2 | Inscription d'une adresse **non invitée** | réponse identique `{"etat":"demande_recue"}`, et **aucun compte créé** |
+| 3 | Inscription d'une adresse **invitée** | compte créé, `confirmation_sent_at` renseigné : l'envoi a été accepté |
+| 4 | Lien de confirmation réel | 303 vers `…/auto#access_token=…` : compte confirmé, session ouverte |
+| 5 | Ajout d'une voiture avec **marque et modèle seulement** | dossier créé, écrans « à compléter » honnêtes |
+| 6 | Import d'une facture PDF fictive | lu gratuitement sur le serveur : date, kilométrage (84 500), montant (335 €), « révision » ; le prestataire mal lu était marqué « à vérifier » et corrigé à la main |
+| 7 | Historique, montant, document | une intervention, **335 € comptés une fois**, document rattaché, titre suivant le prestataire corrigé |
+| 8 | Document privé | URL publique et URL brute : **400** ; adresse signée de **5 minutes** : 200, fichier identique au bit près ; jeton altéré : **400** |
+| 9 | Déconnexion et reconnexion | session effacée, voiture consultée oubliée, reconnexion ramenant à l'écran quitté |
+| 10 | Affichage mobile (375 px) | les quatre onglets sur une ligne, aucun défaut |
+| 11 | Suppression de la voiture | avertissement nommant ce qui sera effacé, puis 0 voiture, 0 document, **0 fichier**, 0 orphelin |
+
+**Deux défauts trouvés par cette recette, corrigés et redéployés :**
+
+1. Un lien de confirmation périmé ramenait sur `/auto`, qui ne savait pas lire
+   le fragment d'erreur : la personne voyait « Ajoutez votre voiture » sans un
+   mot sur le lien mort (PR #125).
+2. Après « Se déconnecter », l'écran de connexion disait « Connectez-vous pour
+   reprendre là où vous en étiez » — le message d'une session expirée, pas d'un
+   départ voulu (PR #126).
+
+### 6.4 Ce qui n'a pas pu être vérifié
+
+**La réception d'un e-mail dans une vraie boîte.** Aucun message n'a été
+envoyé à une personne réelle. Ce qui est établi : Supabase a **accepté**
+l'envoi (`confirmation_sent_at` renseigné, ce que le service par défaut
+refuserait pour une adresse hors équipe), l'adresse de retour `/auto` est bien
+autorisée dans Supabase (une adresse non autorisée retombe sur `/dashboard`),
+et le lien de confirmation fonctionne de bout en bout. Le seul maillon non
+éprouvé est le trajet Brevo → boîte de réception ; la première inscription de
+Baptiste le prouvera en une fois.
 
 ## 7. Ouverture progressive
 
-Les commandes SQL se passent dans l'éditeur SQL du projet de Production, par
-Baptiste. **Ajouter une adresse n'envoie aucun message.**
+Les commandes SQL se passent dans l'éditeur SQL du projet de Production.
+**Ajouter une adresse n'envoie aucun message.**
+
+**État au 17 septembre 2026, au soir** : mode `beta`, deux adresses invitées —
+`nexorasolutions.france@gmail.com` et `baptiste.papoul52@gmail.com`. Aucun
+message n'a été envoyé : il suffit de créer son compte depuis
+`https://nexora-garage.vercel.app/auto/connexion?mode=inscription` avec l'une
+des deux, et de confirmer l'e-mail reçu.
 
 **Bêta interne.**
 ```sql

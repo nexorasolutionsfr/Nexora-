@@ -90,6 +90,9 @@ boutons sans nom, champs sans libellé, cibles tactiles), et situations limites.
 | R41 | La voiture consultée n'était gardée que pour l'onglet du navigateur : elle était reperdue à chaque retour | **corrigé** (B2C) : gardée sur l'appareil, oubliée à la déconnexion |
 | R42 | Aucun texte de confidentialité propre à Nexora Auto, alors que le rôle y est celui de responsable de traitement | **corrigé** (B2C) : `/auto/confidentialite`, lié depuis l'inscription, l'accueil public et « Compte » |
 | R43 | Aucun endroit pour son compte : la déconnexion vivait dans l'en-tête, l'horizon dans « À prévoir » | **corrigé** (B2C) : écran « Compte » |
+| R44 | Un lien de confirmation périmé ramenait sur `/auto`, qui ne lisait pas le fragment d'erreur : « Ajoutez votre voiture », sans un mot sur le lien mort | **corrigé** (mise en ligne) : l'accueil applique les décisions déjà testées pour Nexora Pro |
+| R45 | Après « Se déconnecter », l'écran de connexion disait « Connectez-vous pour reprendre là où vous en étiez » | **corrigé** (mise en ligne) : un départ voulu renvoie à l'accueil |
+| R46 | Aucune sauvegarde restaurable n'est listée pour le projet de Production (`pitr_enabled: false`, `backups: []`) | **constaté** : trois exports pris à la main avant les migrations ; à décider, une politique de sauvegarde |
 
 Vérifié sans défaut : aucune page ne déborde à 320 px ; écrans sans voiture
 (chacun propose d'ajouter une voiture) ; session expirée au chargement
@@ -580,3 +583,34 @@ haut) — les liens en ligne dans un paragraphe font exception (WCAG 2.5.8).
 Texte agrandi à 150 % et 200 % : deux défauts trouvés et corrigés sur
 « Compte » (adresse de contact qui sortait de l'écran, icônes de lignes qui ne
 s'effaçaient pas), puis RAS.
+
+## Mise en ligne (17 septembre 2026, au soir)
+
+Autorisée par Baptiste. Les onze migrations sont **appliquées en Production**,
+la pile est fusionnée en une fois (PR #124), et `https://nexora-garage.vercel.app/auto`
+est en ligne en **mode bêta**, ouvert aux adresses invitées.
+
+**Ce que la mise en ligne a appris.**
+
+- **Sauvegardes** : `supabase backups list` répond `walg_enabled: true`,
+  `pitr_enabled: false`, **`backups: []`**. Aucune sauvegarde restaurable n'est
+  listée. Trois exports (schéma, rôles, données) ont donc été pris à la main
+  avant d'écrire quoi que ce soit, et gardés hors du dépôt. **Une politique de
+  sauvegarde reste à décider.**
+- **La région est confirmée en Production** : `regionFonction: "dub1"`,
+  en-tête `cdg1::dub1`. Les factures sont lues en Irlande, comme les bases.
+- **Le schéma `storage` manque à la base jetable** : l'image Supabase ne l'a
+  pas, et le dump du schéma public ne le porte pas. Il faut poser la maquette
+  `supabase/tests/prelude_stockage_base_jetable.sql` avant les migrations.
+- **Un contrôle de sécurité qui échoue se relit avant de se conclure** : un
+  dépôt refusé dans le compartiment de Nexora Pro semblait accuser la nouvelle
+  politique restrictive ; c'était la politique de Pro elle-même, qui exige
+  `<identifiant du garage>/…`. Avec le bon chemin, tout passe.
+- **`auth.users.confirmation_token` est lisible en clair** : cela a permis
+  d'éprouver le vrai lien de confirmation de bout en bout, sans envoyer
+  d'e-mail à personne.
+- **La réception d'un e-mail dans une vraie boîte n'a pas été éprouvée** :
+  aucun message n'est parti vers une personne réelle. Ce qui est établi :
+  Supabase a accepté l'envoi, et l'adresse de retour `/auto` est autorisée.
+
+Détail complet des contrôles : `nexora-auto-livraison.md`, section 6.
