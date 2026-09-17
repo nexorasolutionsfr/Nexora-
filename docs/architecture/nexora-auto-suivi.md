@@ -496,7 +496,8 @@ pas seulement dans l'écran.
 
 **Région d'exécution.**
 - `preferredRegion` retiré (déprécié par Next 16). `vercel.json` fixe `regions: ["dub1"]` (Dublin, où sont les bases).
-- L'offre Hobby n'autorise qu'une seule région : le réglage vaut pour tout le projet, Nexora Pro compris. Quatre contrôles à faire avant de le retenir (`nexora-auto-livraison.md`, section 2 bis).
+- L'offre Hobby n'autorise qu'une seule région : le réglage vaut pour tout le projet, Nexora Pro compris.
+- **Vérifié sur une prévisualisation réelle** (commit `c7b77b4`) : le déploiement réussit, la fonction s'exécute bien à Dublin (`regionFonction: "dub1"`, en-tête `cdg1::dub1`), l'accueil, le tableau de bord et `/auto` répondent 200, et `/auto` affiche « arrive bientôt » — la garde « prévisualisation reliée à la Production » a joué en vrai. Restent à faire par Baptiste : la relecture de la facturation et un parcours Pro connecté.
 
 **Les deux fermetures, mesurées.**
 - **En base** (`mode = 'ferme'`, ou adresse retirée) : effet immédiat, y compris pour une session déjà ouverte qui parle directement à Supabase — plus aucune lecture, aucune écriture, aucun fichier nouveau, aucune adresse signée.

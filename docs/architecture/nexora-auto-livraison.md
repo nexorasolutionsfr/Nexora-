@@ -114,12 +114,12 @@ serait donc traitée aux États-Unis.
 parlent à la même base Supabase (Irlande), donc la latence diminue plutôt
 qu'elle n'augmente. Les services externes (Stripe, Brevo, Resend, Google)
 sont appelés en HTTPS depuis l'Europe, sans changement de fonctionnement.
-À vérifier avant de retenir ce réglage :
+État des contrôles (prévisualisation du 17 septembre 2026, commit `c7b77b4`) :
 
-1. le déploiement réussit (visible sur la première prévisualisation qui suit) ;
-2. `/api/auto/environnement` renvoie `"regionFonction":"dub1"` ;
-3. aucun surcoût : la facturation Vercel dépend de l'usage, pas de la région, mais la page de facturation doit être relue une fois le changement en place (`dub1` n'a pas de tarif majoré connu, à confirmer sur votre offre) ;
-4. un parcours Nexora Pro reste normal sur cette prévisualisation (connexion, tableau de bord, devis).
+1. **Fait** — le déploiement réussit : l'offre accepte cette région unique.
+2. **Fait** — `/api/auto/environnement` renvoie `"regionFonction":"dub1"`, et l'en-tête `x-vercel-id` montre `cdg1::dub1` (entrée à Paris, exécution à Dublin).
+3. **À faire par Baptiste** — relire la page de facturation Vercel après le changement : la facturation dépend de l'usage, et `dub1` n'a pas de tarif majoré connu, mais cela reste à confirmer sur votre offre.
+4. **Partiellement fait** — sur cette prévisualisation, la page d'accueil, le tableau de bord et `/auto` répondent 200, et `/auto` affiche bien « arrive bientôt » (la prévisualisation étant encore reliée à la Production, la garde de Nexora Auto s'est appliquée). Un parcours Nexora Pro connecté reste à faire par Baptiste, avec ses identifiants.
 
 Si l'un de ces points échoue, retirer `vercel.json` : le projet revient à
 `iad1`, et la décision D2 doit alors être écrite explicitement dans la
