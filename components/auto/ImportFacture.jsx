@@ -30,12 +30,14 @@ import {
   incoherencesKilometrage,
   interventionsRessemblantes,
   plaqueDifferente,
+  voitureDeLaPlaque,
   modeInitial,
   saisieDepuisProposition,
   saisieVide,
   typePrincipal,
   validerFacture,
 } from "@/lib/auto/factures";
+import { afficherImmatriculation } from "@/lib/auto/immatriculation";
 import { ouvrirDocument } from "@/components/auto/Documents";
 import ChoixFichier from "@/components/auto/ChoixFichier";
 import EditeurOperations from "@/components/auto/EditeurOperations";
@@ -366,15 +368,16 @@ export function ConfirmerFacture({ documentId, lire = false }) {
     if (document.error) return setEtat({ chargement: false, erreur: true });
     if (!document.data) return setEtat({ chargement: false, introuvable: true });
     const d = document.data;
-    const [vehicule, releves, historique, dispo] = await Promise.all([
+    const [vehicule, garage, releves, historique, dispo] = await Promise.all([
       supabase.from("auto_vehicules").select("id, marque, modele, immatriculation").eq("id", d.vehicule_id).maybeSingle(),
+      supabase.from("auto_vehicules").select("id, marque, modele, immatriculation").is("archive_le", null),
       supabase.from("auto_releves_km").select("kilometrage, releve_le, source").eq("vehicule_id", d.vehicule_id),
       supabase.from("auto_historique").select("id, type, realise_le, kilometrage, prestataire, montant_ttc, libelle").eq("vehicule_id", d.vehicule_id).order("realise_le", { ascending: false }),
       lectureDisponible(),
     ]);
     if (vehicule.error || releves.error || historique.error || !vehicule.data) return setEtat({ chargement: false, erreur: true });
     setConfigurationLecture(dispo);
-    setEtat({ chargement: false, document: d, vehicule: vehicule.data, releves: releves.data, historique: historique.data });
+    setEtat({ chargement: false, document: d, vehicule: vehicule.data, garage: garage.data ?? [], releves: releves.data, historique: historique.data });
     return d;
   }, [documentId]);
 
@@ -450,8 +453,9 @@ export function ConfirmerFacture({ documentId, lire = false }) {
     );
   }
 
-  const { document, vehicule } = etat;
+  const { document, vehicule, garage } = etat;
   const retour = `/auto/vehicules/${vehicule.id}`;
+  const autreVoiture = voitureDeLaPlaque(garage, marques.immatriculationLue, vehicule.id);
 
   if (enregistre?.document) {
     return (
@@ -676,9 +680,17 @@ export function ConfirmerFacture({ documentId, lire = false }) {
         {marques.estFacture === false && lecture.etat === "proposee" && mode === "intervention" ? (
           <Alerte>Ce document ne ressemble pas à une facture : vérifiez chaque information avant de l'enregistrer comme intervention.</Alerte>
         ) : null}
-        {mode === "intervention" && plaqueDifferente(vehicule, marques.immatriculationLue) ? (
+        {/* La plaque lue appartient à une AUTRE voiture du garage : c'est
+            l'erreur la plus facile à faire, et la plus silencieuse quand la
+            voiture regardée n'a pas de plaque enregistrée. */}
+        {mode === "intervention" && autreVoiture ? (
           <Alerte>
-            La facture mentionne la plaque {marques.immatriculationLue}, différente de celle de cette voiture. Vérifiez qu'il s'agit du bon véhicule.
+            Cette facture porte la plaque {afficherImmatriculation(marques.immatriculationLue)}, celle de votre {autreVoiture.marque} {autreVoiture.modele}. Vous
+            êtes sur le point de l'enregistrer sur {vehicule.marque} {vehicule.modele}.
+          </Alerte>
+        ) : mode === "intervention" && plaqueDifferente(vehicule, marques.immatriculationLue) ? (
+          <Alerte>
+            La facture mentionne la plaque {afficherImmatriculation(marques.immatriculationLue)}, différente de celle de cette voiture. Vérifiez qu'il s'agit du bon véhicule.
           </Alerte>
         ) : null}
       </div>
