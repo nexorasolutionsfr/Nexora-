@@ -60,3 +60,31 @@ cette garde.
 **La réception d'un e-mail dans une vraie boîte.** Aucun message n'a été
 envoyé à une personne réelle, et je n'en enverrai pas. La première inscription
 de Baptiste le prouvera en une fois.
+
+---
+
+# Nuit du 18 au 19 septembre 2026 — lots C à G
+
+## État réel au départ, vérifié
+
+| Point | Constat |
+| --- | --- |
+| Branche | `auto/livraison-b2c`, arbre propre au départ |
+| `main` | `d3028a2` — lots A et B **livrés et déployés** |
+| Production | mode `beta`, deux adresses invitées, 0 voiture fictive, fonctions à Dublin |
+| Test | mode `beta`, 1 adresse invitée (compte fictif conservé), données de recette nettoyées |
+| Lots C à G | **rien de commencé** avant cette nuit, sauf le début de C (formulaire d'intervalle) |
+
+## Checklist de la nuit
+
+- [x] **C — entretien accompagné** : les cinq situations (facture exploitable, dernière intervention connue, carnet, « je ne sais pas », « plus tard »), raccourcis génériques retirés.
+- [ ] **D — kilométrage** : relevés datés réutilisés, relevé réel ≠ estimation, règle de sollicitation explicable, saisie manuelle toujours accessible.
+- [ ] **E — services par besoin** : entrées « Entretenir ma voiture », « J'ai un problème », « Préparer mon contrôle technique », « Nettoyer ma voiture » ; boucles de navigation supprimées.
+- [ ] **F — qualité mobile** : hiérarchie, concision, détails progressifs, états de chargement et d'erreur.
+- [ ] **G — proactivité** : inventaire des rappels réels, déclencheur, report, annulation, recalcul, pas de promesse de canal externe.
+- [ ] **Recette finale** : les quatorze situations demandées, à 320 et 390 px, au clavier et en texte agrandi.
+
+## Ce qui reste hors de ma portée
+
+- **Variables « Preview » de Vercel** : relevé fait (dix variables, une seule exception par branche, aucune sur Supabase), six gestes listés en section 2.1 de `nexora-auto-livraison.md`. Je ne saisis pas de secrets et je ne clique pas au jugé dans une liste filtrée que je ne peux pas revérifier au moment du clic.
+- **Restauration complète d'une sauvegarde** : les données métier sont prouvées, **les comptes et les fichiers ne le sont pas ensemble**. Le prouver demande un troisième projet Supabase, donc une offre. Voir `nexora-auto-sauvegardes.md`.

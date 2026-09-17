@@ -254,6 +254,67 @@ try {
   await moi.from("auto_releves_km").insert({ vehicule_id: voitureA, kilometrage: 90000, releve_le: "2026-09-15" });
   const { data: recent } = await admin.from("auto_releves_km").select("kilometrage").eq("vehicule_id", voitureA).order("releve_le", { ascending: false }).limit(1).single();
   verifier("Une facture ancienne ne remplace pas un relevé récent", recent.kilometrage === 90000, `${recent.kilometrage} km`);
+
+  // ---------------------------------------------------------------------
+  // F. Rappels : ce qui se tait, ce qui revient, ce qui ne part jamais
+  // ---------------------------------------------------------------------
+  const { construireAPrevoir } = await import("../../components/auto/aPrevoir.js");
+  const dossierDe = async (vehiculeId) => {
+    const [v, releves, historique, taches, reports] = await Promise.all([
+      moi.from("auto_vehicules").select("*").eq("id", vehiculeId).single(),
+      moi.from("auto_releves_km").select("vehicule_id, kilometrage, releve_le, source").eq("vehicule_id", vehiculeId),
+      moi.from("auto_historique").select("*").eq("vehicule_id", vehiculeId),
+      moi.from("auto_taches").select("*").eq("vehicule_id", vehiculeId),
+      moi.from("auto_rappels_reports").select("cle, reporte_jusqu_au"),
+    ]);
+    return construireAPrevoir({
+      vehicules: [{ ...v.data, releves: releves.data, historique: historique.data }],
+      taches: taches.data ?? [],
+      reports: reports.data ?? [],
+      aujourdhui: "2026-09-18",
+    });
+  };
+
+  // Une voiture sans intervalle : la révision est « à compléter ». On reporte.
+  const { data: voitureC } = await moi.rpc("auto_ajouter_vehicule", {
+    p_marque: "Opel", p_modele: "Corsa", p_annee: null, p_energie: null, p_immatriculation: null,
+    p_date_mise_en_circulation: null, p_kilometrage: null, p_dernier_controle: null, p_controle_valable_jusqu_au: null,
+  });
+  const avantReport = await dossierDe(voitureC);
+  const revisionACompleter = avantReport.elements.find((el) => el.genre === "revision");
+  verifier("Sans intervalle, la révision est à compléter", revisionACompleter?.etat === "a_completer", revisionACompleter?.etat ?? "");
+
+  await moi.from("auto_rappels_reports").upsert({ proprietaire_id: utilisateurId, cle: revisionACompleter.cle, reporte_jusqu_au: "2026-12-01" }, { onConflict: "proprietaire_id,cle" });
+  const apresReport = await dossierDe(voitureC);
+  verifier(
+    "Un rappel reporté se tait",
+    Boolean(apresReport.elements.find((el) => el.cle === revisionACompleter.cle)?.reporteJusquau),
+    "",
+  );
+
+  // On renseigne l'intervalle et la dernière révision : l'échéance devient
+  // calculable, et le report de l'ANCIENNE situation ne doit pas la museler.
+  await moi.from("auto_vehicules").update({ intervalle_entretien_km: 15000, intervalle_entretien_mois: 12 }).eq("id", voitureC);
+  await moi.from("auto_historique").insert({ vehicule_id: voitureC, type: "revision", realise_le: "2026-03-01", kilometrage: 50000, libelle: "Révision" });
+  const apresCorrection = await dossierDe(voitureC);
+  const revisionCalculee = apresCorrection.elements.find((el) => el.genre === "revision");
+  verifier("L'information complétée rend l'échéance calculable", revisionCalculee?.etat === "a_faire", revisionCalculee?.etat ?? "");
+  verifier("Le report de l'ancienne situation ne muselle pas la nouvelle échéance", !revisionCalculee?.reporteJusquau, revisionCalculee?.reporteJusquau ?? "aucun");
+
+  // Une tâche terminée quitte les prochaines actions.
+  const { data: tache } = await moi.from("auto_taches").insert({ vehicule_id: voitureC, titre: "Monter les pneus hiver", echeance: "2026-09-25" }).select("id").single();
+  const avecTache = await dossierDe(voitureC);
+  verifier("Une tâche datée entre dans les prochaines actions", avecTache.prochaines.some((el) => el.tacheId === tache.id));
+  await moi.from("auto_taches").update({ statut: "terminee", terminee_le: new Date().toISOString() }).eq("id", tache.id);
+  const sansTache = await dossierDe(voitureC);
+  verifier("Une tâche terminée en sort aussitôt", !sansTache.prochaines.some((el) => el.tacheId === tache.id));
+
+  // Le journal des envois est réservé au service : personne ne le lit ni ne
+  // l'écrit depuis un navigateur, même pour ses propres rappels.
+  const lectureEnvois = await moi.from("auto_rappels_envois").select("id").limit(1);
+  const ecritureEnvois = await moi.from("auto_rappels_envois").insert({ proprietaire_id: utilisateurId, cle: "essai", palier: "j7", canal: "email" });
+  verifier("Journal des rappels envoyés : lecture refusée à la personne", Boolean(lectureEnvois.error), lectureEnvois.error?.message ?? "lue !");
+  verifier("Journal des rappels envoyés : écriture refusée à la personne", Boolean(ecritureEnvois.error), ecritureEnvois.error?.message ?? "acceptée !");
 } finally {
   const { data: fiches } = await admin.from("auto_documents").select("chemin").in("vehicule_id", (await admin.from("auto_vehicules").select("id").eq("proprietaire_id", utilisateurId)).data?.map((v) => v.id) ?? ["00000000-0000-0000-0000-000000000000"]);
   const { data: restes } = await admin.storage.from(COMPARTIMENT).list(utilisateurId, { limit: 100 });

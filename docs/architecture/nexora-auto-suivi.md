@@ -821,3 +821,253 @@ Recette : 189 tests, `lint:auto` sans avertissement, `next build` réussi,
 parcours dégradés **32/32** (dépôt, doublons, lectures en échec, import
 abandonné), audits d'écrans et de texte agrandi sans défaut sur l'entrée et la
 vérification.
+
+## Lot C — un entretien accompagné (18-19 septembre 2026)
+
+**L'impasse retirée.** « Recopiez l'intervalle de révision de votre carnet »
+était un ordre adressé à quelqu'un qui ne sait pas encore où chercher. Et les
+raccourcis « 15 000 km / 1 an », « 20 000 km / 2 ans », « 30 000 km / 2 ans »
+ont **disparu du produit** : trois valeurs génériques offertes en choix se
+lisent comme une préconisation adaptée à la voiture. Elles ne l'étaient pas.
+La table `INTERVALLES_COURANTS` est supprimée, avec la raison écrite à sa
+place pour qu'on ne la remette pas.
+
+**Le formulaire accompagne, en cinq situations :**
+
+| Situation | Ce que l'écran propose |
+| --- | --- |
+| Une facture exploitable | « C'est sur une facture : l'ajouter » → l'entrée documents, qui lit et préremplit |
+| La dernière intervention est connue | Nexora le dit en tête : « votre dernière révision date du 22 oct. 2025, à 61 000 km » — on ne redemande pas ce qui est au dossier |
+| Le carnet est sous les yeux | Les deux champs, sans suggestion : tous les … km ou tous les … mois |
+| « Je ne sais pas » | Ce que Nexora fait quand même (contrôle technique, historique, documents, dépenses) et ce qu'il ne peut pas faire, puis « Ne plus me le demander » |
+| « Plus tard » | Report d'un mois, en base |
+
+**Ce qui reste distingué, comme demandé :** date de la dernière intervention,
+opérations réellement effectuées, kilométrage à cette date, intervalle
+d'entretien, et **source** de cet intervalle. Une vidange ne devient pas une
+révision ; une facture ne fournit pas une préconisation constructeur.
+
+**L'accueil s'adapte à ce qui manque.** Proposer « ajoutez une facture » pour
+une date de mise en circulation aurait été une fausse promesse : aucun
+document n'est lu automatiquement pour ça. La carte « Préparons la suite »
+part du document **seulement pour l'entretien** ; ailleurs elle demande
+directement la donnée qui débloque.
+
+**Et un écran calme ne ment plus.** Quand rien ne presse, les échéances
+**inconnues** sont listées avec les échéances connues, sous « Ce que Nexora
+sait de cette voiture » : « Révision — inconnue — Nexora ne connaît pas encore
+l'intervalle de révision de cette voiture ». Un report tait le rappel, pas le
+trou.
+
+## Lot D — un kilométrage qui demande moins (18-19 septembre 2026)
+
+**Presque tout existait déjà**, et bien : relevé daté distinct de l'estimation
+(« Estimation. Environ 75 600 km d'après le rythme de vos relevés. Ce n'est pas
+un relevé. »), suspension de l'estimation quand deux compteurs se
+contredisent, saisie manuelle toujours accessible depuis la fiche, priorité du
+relevé le plus récent. La consigne était de vérifier avant d'ajouter du code :
+c'est ce qui a été fait.
+
+**Ce qui manquait : une seule règle.** L'accueil appliquait un délai de
+fraîcheur de 14 jours, la fiche appliquait « ce compteur sert-il à une
+échéance ? » (`demandeActualisation`). Deux règles pour une question. Le délai
+réclamait le compteur d'une voiture dont **aucune échéance ne dépend du
+compteur**.
+
+`sollicitationKilometrage` unifie, et tient en une phrase : **on ne demande le
+compteur que s'il sert à une échéance, et jamais tant que deux relevés se
+contredisent** — dans ce cas c'est une clarification qu'il faut, pas un chiffre
+de plus. Trois comportements, vérifiés à l'écran sur le jeu de recette :
+
+| Voiture | Ce que l'accueil propose |
+| --- | --- |
+| Corsa, aucune échéance au compteur | rien — le raccourci disparaît |
+| Clio, révision dans environ 400 km | « Mettre à jour le kilométrage — votre prochaine révision se suit au compteur » |
+| Golf, deux relevés contradictoires | « Vérifier vos kilométrages — tant qu'ils ne concordent pas, la révision n'est pas suivie au compteur » |
+
+## Un jeu de recette pour Nexora Auto
+
+`scripts/recette/jeu-auto.mjs` (Test seulement) crée un compte fictif et cinq
+voitures, une par situation à couvrir : dossier vide, contrôle technique
+lointain avec entretien inconnu, révision qui approche au compteur, contrôle
+technique dépassé, kilométrages contradictoires. Les dates sont relatives au
+jour d'exécution, donc le jeu reste valable demain. `jeu-auto.mjs supprimer`
+efface tout.
+
+**Piège rencontré** : `verifier(moi.rpc(...))` sans `await` vérifie une
+promesse — jamais en erreur — et rend `undefined`. L'insertion suivante partait
+sans voiture, et c'est la règle d'accès qui la refusait. Un script qui ne lit
+pas ses propres erreurs teste le vide.
+
+## Lot E — des services accessibles par le besoin (19 septembre 2026)
+
+Personne ne se réveille en pensant « géométrie » ou « detailing ». Le
+catalogue reste entier ; **quatre entrées** le précèdent, dans les mots de
+l'automobiliste :
+
+- **Entretenir ma voiture** — révision, vidange, freins, batterie, climatisation ;
+- **J'ai un problème** — parcours guidé, ci-dessous ;
+- **Préparer mon contrôle technique** — le contrôle, les freins, les pneus ;
+- **Nettoyer ma voiture** — lavage, remise en état.
+
+Les entrées sont dans `lib/auto/besoins.js`, pur et testé. Un test vérifie que
+**chaque besoin renvoie à des prestations qui existent vraiment** : une entrée
+qui promettrait un service absent casserait la recette.
+
+**Les façons de faire descendent en pied d'écran.** « Chez un professionnel »,
+« à domicile », « collecte et restitution » étaient trois filtres bien visibles
+qui ne débouchent sur **aucune offre réservable**. Ils restent — ils décrivent
+une réalité du métier — mais sous un titre honnête, « Où cela se fait,
+d'habitude », avec la phrase qui va avec : « Nexora ne propose ni rendez-vous
+ni prestataire. »
+
+### « J'ai un problème » : mettre des mots, pas un diagnostic
+
+Un écran, trois questions, une phrase relisible :
+
+> Que constatez-vous ? — *Quelque chose a changé au freinage*
+> Depuis quand ? — *Depuis quelques jours*
+> À quel moment ? — *En freinant*
+> Autre chose à préciser (facultatif)
+>
+> **Ce que vous pourrez décrire**
+> Quelque chose a changé au freinage, depuis quelques jours, en freinant.
+> *Nexora ne dit pas d'où cela vient : seul un professionnel peut le constater sur la voiture.*
+
+La description part dans « À prévoir », rattachée à la voiture — **la seule
+prochaine étape réellement disponible aujourd'hui**. Aucun prix, aucun
+créneau, aucun professionnel : rien de tout cela n'existe encore.
+
+**Ce que ce parcours ne fait jamais**, et qui est tenu par des tests :
+
+- il ne nomme aucune pièce. Les constats sont des observations (« un bruit
+  inhabituel », « un voyant allumé »), jamais des pannes ;
+- il ne déduit pas de cause. Un bruit **au freinage** ne mène pas à la
+  prestation « Freinage » mais au **Diagnostic**, dont la définition est
+  précisément « chercher l'origine d'un voyant, d'un bruit ou d'un
+  comportement inhabituel » ;
+- il n'énonce aucune règle de sécurité que nous ne pourrions pas sourcer. Pour
+  les deux constats qui peuvent immobiliser (ne démarre plus, odeur ou fumée),
+  une seule phrase de prudence — « si vous avez le moindre doute sur la
+  sécurité, ne prenez pas la route » — et l'assistance plutôt que le
+  diagnostic.
+
+**Les boucles de navigation** signalées (Services → À prévoir → fiche → même
+information à compléter) étaient déjà courtes : la fiche d'une prestation
+propose « Compléter » qui ouvre directement le bon formulaire, voiture
+sélectionnée. Vérifié, rien à défaire.
+
+## Lot G — la proactivité, inventaire avant promesse (19 septembre 2026)
+
+**Ce qui existe vraiment, relevé dans le code avant d'y toucher :**
+
+| Mécanisme | État | Canal |
+| --- | --- | --- |
+| Échéances calculées (contrôle technique, révision) | **actif** | dans l'application |
+| Tâches personnelles datées | **actif** | dans l'application |
+| Reports (`auto_rappels_reports`) | **actif** | dans l'application |
+| Horizon d'affichage (`auto_preferences.horizon_jours`) | **actif** | réglage |
+| `auto_preferences.rappels_externes` | colonne créée, **jamais lue** | — |
+| `palierRappel` / `rappelsADeclencher` | fonctions pures et testées, **branchées à rien** | — |
+| `auto_rappels_envois` | table créée, **jamais écrite** | — |
+
+**Conclusion, et elle est courte : Nexora n'envoie rien.** Aucun e-mail, aucun
+SMS, aucune notification. Les échéances se voient dans l'application, et
+l'interface ne dit nulle part le contraire — vérifié en cherchant les
+formulations de promesse dans tous les écrans : aucune.
+
+### Chaque rappel, ligne par ligne
+
+| | Échéance calculée | Tâche personnelle |
+| --- | --- | --- |
+| **Déclencheur** | une date ou un compteur tirés du dossier | une date que la personne a posée |
+| **Utilité** | dire ce qui arrive, sans le deviner | ne pas oublier ce qu'on s'est dit |
+| **Canal** | l'application, quand on l'ouvre | idem |
+| **Fréquence maximale** | sans objet : rien n'est envoyé | sans objet |
+| **Report** | « Plus tard » (30 jours) ou « Ne plus me le demander » (1 an), en base | « Reporter », à une date choisie |
+| **Annulation** | l'information complétée ou corrigée fait disparaître le rappel | « C'est fait » |
+
+### Les recalculs, éprouvés
+
+Sept contrôles de plus dans `scripts/recette/parcours-degrades.mjs`
+(**40 au total**) :
+
+- sans intervalle, la révision est « à compléter » ;
+- un rappel reporté se tait ;
+- **l'information complétée rend l'échéance calculable**, et le report de
+  l'ancienne situation **ne muselle pas** la nouvelle : la clé du rappel change
+  avec la situation, donc un report ne survit jamais à ce qu'il visait ;
+- une tâche datée entre dans les prochaines actions, une tâche terminée en sort
+  aussitôt ;
+- le journal des envois est **refusé en lecture comme en écriture** à une
+  personne connectée (`permission denied`) : il est réservé au service, pour le
+  jour où un envoi existera.
+
+**Pas de doublon possible** le jour où un envoi existera : `auto_rappels_envois`
+porte une contrainte d'unicité `(personne, échéance, palier, canal)`. Une
+relance technique ne peut pas envoyer deux fois.
+
+**Rien n'a été activé cette nuit**, et rien ne le sera sans décision : ni canal,
+ni destinataire, ni envoi d'essai.
+
+## Lot F — qualité mobile (19 septembre 2026)
+
+Le gros du travail visuel avait été fait par les lots précédents : une action
+dominante quand elle sert, des résumés courts, des boutons qui annoncent leur
+résultat, un vocabulaire unique. Restaient deux choses concrètes.
+
+**La fiche d'une voiture fait plusieurs écrans de haut.** Atteindre l'historique
+ou les documents demandait de faire défiler à l'aveugle. Les ancres existaient
+déjà (`#kilometrage`, `#echeance-ct`, `#historique`, `#documents`) : elles sont
+maintenant visibles, en une barre de pastilles sous l'en-tête, et les dépenses
+ont reçu la leur. Vérifié : les cinq liens pointent sur une section qui existe.
+
+**Les actions rares le restent.** « Modifier », « Archiver », « Exporter » sont
+des liens discrets en haut, « Supprimer ce véhicule » est en bas derrière une
+confirmation qui énonce ce qui sera effacé. Rien à déplacer.
+
+**L'ajout d'une voiture était déjà minimal** : marque et modèle suffisent, le
+reste est marqué « facultatif », et les informations d'échéance sont derrière
+un dépliant (« Calculer les échéances dès maintenant »). Vérifié à l'écran,
+laissé en l'état — ajouter un clic pour masquer trois champs facultatifs
+n'aurait rien simplifié.
+
+**Ce qui n'a pas été fait, et pourquoi.** Une navigation basse sur mobile : la
+barre d'onglets haute tient sur une ligne à 375 px, elle ne masque rien, et
+elle est déjà atteinte au pouce sur un écran de cette taille. La déplacer aurait
+été un changement de forme sans gain mesuré — et aurait demandé de vérifier à
+nouveau clavier, focus et clavier virtuel sur tous les écrans. À rouvrir si
+l'usage réel montre le contraire.
+
+## Recette de la nuit du 18 au 19 septembre 2026
+
+Les quatorze situations demandées, sur Test, avec le jeu de recette
+(`scripts/recette/jeu-auto.mjs`) et les bancs.
+
+| # | Situation | Comment | Résultat |
+| --- | --- | --- | --- |
+| 1 | Voiture sans historique | Toyota Yaris du jeu | « Ajouter ma voiture » puis dossier vide honnête : trois « à compléter », aucune échéance inventée |
+| 2 | CT lointain, entretien inconnu | Opel Corsa | « Préparons la suite » sur l'entretien ; le CT en résumé, pas en action |
+| 3 | Échéance proche ou dépassée | Renault Clio (révision ~300 km), Citroën C3 (CT en retard de 30 jours) | mise en avant sur sa fiche, et signalée depuis une autre voiture sous « Vos autres voitures » |
+| 4 | Kilométrage mis à jour aujourd'hui | Corsa | « renseigné aujourd'hui » puis « renseigné hier » le lendemain ; aucun raccourci de saisie proposé |
+| 5 | Information reportée, retrouvée sur une autre session | « Plus tard » puis session effacée et rouverte, rechargement complet | le report tient ; la carte ne revient pas ; l'échéance reste listée comme **inconnue** |
+| 6 | PDF exploitable | banc + navigateur | proposition rendue avec montant, kilométrage et deux opérations |
+| 7 | Document non lisible automatiquement | banc (PDF abîmé, photo JPEG) | la lecture le dit, **le document et le fichier restent** |
+| 8 | Document associé à un autre véhicule | scénario plaque | « Cette facture porte la plaque AB-123-CD, celle de votre Peugeot 308 » |
+| 9 | Import ancien face à un relevé récent | banc | le relevé récent l'emporte |
+| 10 | Reprise d'un import, tentative de doublon | banc | refus par l'empreinte, l'existant est retrouvé ; le même fichier sur une autre voiture reste possible |
+| 11 | Correction d'une intervention, recalcul | banc | dépenses et compteur actualisés ; le report de l'ancienne situation ne muselle pas la nouvelle échéance |
+| 12 | Service → action, sans boucle | fiche Révision d'une voiture sans intervalle | **corrigé cette nuit** : le lien ouvrait « À prévoir » pour y recliquer ; il ouvre maintenant `?action=intervalle`, voiture sélectionnée |
+| 13 | Session expirée | jeton périmé, jeton de renouvellement révoqué | retour à la connexion **en gardant la destination** |
+| 14 | Dossier d'un autre utilisateur | `acces-croises.mjs` | 55/55 |
+
+**Largeurs et accessibilité** : audits d'écrans à 320, 375 et 390 px et de
+texte agrandi à 150 % et 200 % sur l'accueil, le garage, la fiche, « À
+prévoir », les services, les deux écrans de document, « Compte » et la
+confidentialité — sans défaut. Erreurs de formulaire vérifiées à l'écran :
+champs marqués `aria-invalid`, messages lus avec leur champ, et **le focus va
+au premier champ en erreur**.
+
+**Bancs** : 195 tests, `lint:auto` sans avertissement, `next build` réussi,
+10 bancs SQL à 0, parcours dégradés **40/40**, accès croisés **55/55**,
+fermeture **14/14**, simultanéité sans doublon involontaire.

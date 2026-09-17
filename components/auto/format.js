@@ -31,11 +31,11 @@ export const TYPES_INTERVENTION = [
 // Intervalles fréquents dans les carnets, proposés en raccourci. Ce ne sont
 // que des raccourcis de saisie : c'est la personne qui choisit celui de SON
 // carnet, jamais l'application qui le suppose.
-export const INTERVALLES_COURANTS = [
-  { km: 15000, mois: 12 },
-  { km: 20000, mois: 24 },
-  { km: 30000, mois: 24 },
-];
+// Les « intervalles courants » (15 000 km / 1 an…) ont été retirés le
+// 18 septembre 2026 : proposés en raccourcis, ils se lisaient comme une
+// préconisation adaptée à la voiture. Ils ne l'étaient pas. Tant qu'une source
+// identifiable et une variante précise de véhicule ne sont pas disponibles,
+// Nexora demande l'intervalle plutôt que de le suggérer.
 
 export const MARQUES_COURANTES = [
   "Peugeot", "Renault", "Citroën", "Dacia", "Volkswagen", "Toyota", "Ford", "Opel",

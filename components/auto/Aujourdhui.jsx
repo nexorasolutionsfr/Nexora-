@@ -19,7 +19,8 @@ import { CalendarClock, ChevronRight, CircleAlert, FileText, Gauge, Plus, Receip
 
 import { supabase } from "@/lib/supabase";
 import { ajouterJours, aujourdhuiIso, dernierKilometrage, joursEntre } from "@/lib/auto/echeances";
-import { choisirVoiture, etatAujourdhui, kilometrageFrais } from "@/lib/auto/aujourdhui";
+import { estimerKilometrage } from "@/lib/auto/kilometrage";
+import { choisirVoiture, etatAujourdhui, sollicitationKilometrage } from "@/lib/auto/aujourdhui";
 import { construireAPrevoir, libelleFondement, pastilleElement } from "@/components/auto/aPrevoir";
 import { chargerDossiers } from "@/components/auto/dossiers";
 import { VoitureAAjouter } from "@/components/auto/MonGarage";
@@ -118,7 +119,8 @@ function MaJournee({ session }) {
   });
   const etat = etatAujourdhui({ elements, vehiculeId: vehicule.id, horizonJours: dossiers.horizonJours });
   const km = dernierKilometrage({ releves: vehicule.releves, historique: vehicule.historique });
-  const kmFrais = kilometrageFrais(km, aujourdhui);
+  const estimation = estimerKilometrage({ releves: vehicule.releves, historique: vehicule.historique, aujourdhui });
+  const compteur = sollicitationKilometrage({ elements, vehiculeId: vehicule.id, estimation });
 
   function changerVoiture(id) {
     memoriserVoitureCourante(id);
@@ -155,9 +157,11 @@ function MaJournee({ session }) {
         <ActionPrincipale etat={etat} vehicule={vehicule} />
       ) : null}
 
-      {etat.lointaines.length > 0 ? <Resume elements={etat.lointaines} /> : null}
+      {etat.lointaines.length > 0 || (!etat.principale && etat.aCompleter.length > 0) ? (
+        <Resume elements={etat.lointaines} aCompleter={etat.aCompleter} vehicule={vehicule} avecAction={Boolean(etat.principale)} />
+      ) : null}
 
-      <Acces etat={etat} vehicule={vehicule} kmFrais={kmFrais} />
+      <Acces etat={etat} vehicule={vehicule} compteur={compteur} />
 
       {etat.ailleurs.length > 0 ? <AilleursDansLeGarage elements={etat.ailleurs} onChoisir={changerVoiture} /> : null}
     </>
@@ -205,12 +209,20 @@ function MaVoiture({ vehicule, km, aujourdhui, actives, onChoisir }) {
   );
 }
 
-// Une information manque pour suivre l'entretien. Plutôt que de renvoyer la
-// personne à son carnet, on commence par ce qui demande le moins : un document
-// qu'elle a déjà. Nexora en tirera ce qu'il peut — et le dit sans promettre.
+// Une information manque. Par quoi commencer dépend de ce qui manque :
+//
+// - **l'entretien** : une facture de garage porte souvent la date et le
+//   kilométrage de la dernière révision, et Nexora sait la lire. On commence
+//   donc par le document — c'est ce qui demande le moins ;
+// - **tout le reste** (mise en circulation, dernier contrôle) : aucun document
+//   n'est lu automatiquement pour ça. Proposer « ajoutez une facture » serait
+//   une fausse promesse. On demande directement la seule donnée qui débloque.
+//
+// Dans les deux cas : « Plus tard » existe, et il tient.
 function Preparer({ etat, vehicule, onPlusTard }) {
   const { element } = etat.principale;
   const premiere = element.actions?.[0] ?? null;
+  const parLeDocument = element.genre === "revision";
 
   return (
     <section aria-labelledby="titre-preparer" className={`${carte} border-l-4 border-l-primary/50`}>
@@ -218,26 +230,41 @@ function Preparer({ etat, vehicule, onPlusTard }) {
         Préparons la suite
       </p>
       <h2 className="mt-1.5 font-display text-xl font-semibold leading-snug text-foreground">
-        {element.genre === "revision" ? "Votre prochain entretien" : element.titre}
+        {parLeDocument ? "Votre prochain entretien" : element.titre}
       </h2>
-      <p className="mt-1 text-[15px] leading-snug text-foreground">
-        Ajoutez une facture de garage : Nexora y cherchera la date, le kilométrage et ce qui a été fait.
-      </p>
-      <p className="mt-2 text-[13px] leading-snug text-muted-foreground">
-        Une facture ne porte pas toujours l'intervalle prévu par le constructeur. Si elle manque, Nexora vous le dira plutôt que de l'inventer.
-      </p>
+
+      {parLeDocument ? (
+        <>
+          <p className="mt-1 text-[15px] leading-snug text-foreground">
+            Ajoutez une facture de garage : Nexora y cherchera la date, le kilométrage et ce qui a été fait.
+          </p>
+          <p className="mt-2 text-[13px] leading-snug text-muted-foreground">
+            Une facture ne porte pas toujours l'intervalle prévu par le constructeur. Si elle manque, Nexora vous le dira plutôt que de l'inventer.
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-[15px] leading-snug text-foreground">{element.explication}</p>
+      )}
 
       <div className="mt-4 space-y-2">
-        <Link href={`/auto/factures/nouvelle?vehicule=${vehicule.id}`} className={boutonPrincipal}>
-          <ReceiptText className="size-5" aria-hidden="true" />
-          Ajouter une facture
-        </Link>
-        {premiere ? (
-          <Link
-            href={`/auto/vehicules/${vehicule.id}?action=${premiere.code}`}
-            className="flex min-h-11 items-center justify-center rounded-xl px-3 text-sm font-semibold text-primary transition hover:bg-secondary"
-          >
-            Je n'ai pas de facture : {premiere.libelle.charAt(0).toLowerCase()}{premiere.libelle.slice(1)}
+        {parLeDocument ? (
+          <>
+            <Link href={`/auto/factures/nouvelle?vehicule=${vehicule.id}`} className={boutonPrincipal}>
+              <ReceiptText className="size-5" aria-hidden="true" />
+              Ajouter une facture
+            </Link>
+            {premiere ? (
+              <Link
+                href={`/auto/vehicules/${vehicule.id}?action=${premiere.code}`}
+                className="flex min-h-11 items-center justify-center rounded-xl px-3 text-sm font-semibold text-primary transition hover:bg-secondary"
+              >
+                Je n'ai pas de facture : {premiere.libelle.charAt(0).toLowerCase()}{premiere.libelle.slice(1)}
+              </Link>
+            ) : null}
+          </>
+        ) : premiere ? (
+          <Link href={`/auto/vehicules/${vehicule.id}?action=${premiere.code}`} className={boutonPrincipal}>
+            {premiere.libelle}
           </Link>
         ) : null}
         <button
@@ -315,11 +342,15 @@ function ActionPrincipale({ etat, vehicule }) {
 // Ce qui est connu mais lointain : on le dit, on ne le met pas en action.
 // La provenance est nommée : une date que vous avez saisie n'est pas une date
 // que Nexora a lue sur un document.
-function Resume({ elements }) {
+function Resume({ elements, aCompleter = [], vehicule, avecAction }) {
+  // Un écran calme ne doit pas laisser croire que tout est connu. Quand une
+  // échéance n'est pas calculable, on le dit ici même — y compris lorsque la
+  // demande a été reportée : le report tait le rappel, pas le trou.
+  const inconnues = aCompleter.filter((el) => el.titre);
   return (
     <section aria-labelledby="titre-resume" className="mt-3">
       <h2 id="titre-resume" className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Connu, et sans urgence
+        Ce que Nexora sait de cette voiture
       </h2>
       <ul className={carteListe}>
         {elements.map((el) => (
@@ -332,17 +363,43 @@ function Resume({ elements }) {
             <p className="mt-0.5 text-[13px] text-muted-foreground/90">{libelleFondement(el)}.</p>
           </li>
         ))}
+        {!avecAction && inconnues.length > 0
+          ? inconnues.map((el) => (
+              <li key={el.cle} className="px-4 py-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <span className="min-w-0 break-words font-semibold text-foreground">{el.titre}</span>
+                  <span className="text-sm text-muted-foreground">inconnue</span>
+                </div>
+                {/* L'explication dit déjà ce qui manque : la redoubler d'un
+                    « Nexora ne peut pas la calculer » n'ajoutait qu'un mot de
+                    plus à lire. */}
+                <p className="mt-0.5 break-words text-sm text-muted-foreground">
+                  {el.explication || "Une information manque pour la calculer."}
+                </p>
+                {el.actions?.[0] ? (
+                  <Link href={`/auto/vehicules/${vehicule.id}?action=${el.actions[0].code}`} className="mt-1 inline-flex min-h-9 items-center text-sm font-semibold text-primary hover:underline">
+                    {el.actions[0].libelle}
+                  </Link>
+                ) : null}
+              </li>
+            ))
+          : null}
       </ul>
     </section>
   );
 }
 
 // Les gestes, dits en toutes lettres — et seulement ceux qui servent.
-function Acces({ etat, vehicule, kmFrais }) {
+function Acces({ etat, vehicule, compteur }) {
   const gestes = [
     { href: `/auto/factures/nouvelle?vehicule=${vehicule.id}`, icone: ReceiptText, titre: "Ajouter un document", texte: "Facture, procès-verbal, carte grise. Une facture PDF est lue automatiquement." },
-    // Un compteur relevé cette semaine n'a pas à être redemandé.
-    ...(kmFrais ? [] : [{ href: `/auto/vehicules/${vehicule.id}?action=releve`, icone: Gauge, titre: "Mettre à jour le kilométrage", texte: "Ce qui rend les échéances au compteur justes." }]),
+    // Le compteur n'est proposé ici que s'il sert à une échéance. La saisie
+    // reste évidemment possible à tout moment depuis la fiche de la voiture.
+    ...(compteur === "utile"
+      ? [{ href: `/auto/vehicules/${vehicule.id}?action=releve`, icone: Gauge, titre: "Mettre à jour le kilométrage", texte: "Votre prochaine révision se suit au compteur." }]
+      : compteur === "a_verifier"
+        ? [{ href: `/auto/vehicules/${vehicule.id}?action=verifier_kilometrage`, icone: Gauge, titre: "Vérifier vos kilométrages", texte: "Deux relevés se contredisent : tant qu'ils ne concordent pas, la révision n'est pas suivie au compteur." }]
+        : []),
     { href: `/auto/vehicules/${vehicule.id}?action=intervention`, icone: Wrench, titre: "Enregistrer une révision", texte: "Ou toute autre intervention déjà réalisée." },
     { href: `/auto/vehicules/${vehicule.id}/dossier`, icone: FileText, titre: "Le dossier de ma voiture", texte: "Historique, documents et dépenses." },
   ];

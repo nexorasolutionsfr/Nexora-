@@ -183,7 +183,10 @@ export function elementRevision(vehicule, { aujourdhui } = {}) {
   if (e.etat !== "calcule") {
     const aCompleter =
       e.etat === "intervalle_a_renseigner"
-        ? { explication: "Recopiez l'intervalle de révision de votre carnet d'entretien pour la suivre.", actions: [action("intervalle", "Renseigner l'intervalle")] }
+        // On dit ce qui manque ; c'est le formulaire qui accompagne. « Recopiez
+        // l'intervalle de votre carnet » était un ordre adressé à quelqu'un qui
+        // ne sait pas encore où chercher.
+        ? { explication: "Nexora ne connaît pas encore l'intervalle de révision de cette voiture.", actions: [action("intervalle", "Renseigner l'intervalle")] }
         : { explication: "Enregistrez votre dernière révision, avec son kilométrage. Une vidange seule ne compte pas comme une révision.", actions: [action("revision", "Enregistrer une révision")] };
     return {
       ...base,
