@@ -299,6 +299,35 @@ Compte fictif `…@nexora-recette.invalid`, invité puis supprimé.
    reprendre là où vous en étiez » — le message d'une session expirée, pas d'un
    départ voulu (PR #126).
 
+### 6.3 bis Recette finale, depuis une session neuve (nuit du 17 au 18 sept.)
+
+Compte créé **par l'inscription publique**, confirmé par le **vrai lien de
+confirmation**, puis supprimé avec toutes ses données.
+
+| # | Contrôle | Constaté |
+| --- | --- | --- |
+| 1 | Découvrir l'accueil | « Votre voiture. Une seule app. », pastille « bêta privée », l'exemple et les quatre promesses |
+| 2 | Se connecter | le lien de confirmation ouvre la session sur `/auto`, fragment nettoyé, écran « Bienvenue / Ajouter ma voiture » |
+| 3 | Ajouter deux voitures | une complète (marque, modèle, année, plaque), une **avec la marque et le modèle seulement** ; la première est « principale » |
+| 4 | Ajouter un document | facture PDF lue gratuitement : date, kilométrage 84 500, montant 335 €, « révision », deux opérations |
+| 5 | Confirmer l'intervention | prestataire mal lu marqué « à vérifier », corrigé à la main, puis enregistré |
+| 6 | Dépenses et historique | une intervention, **335 € comptés une fois**, kilométrage repris, document rattaché |
+| 7 | Comprendre « Aujourd'hui » | la voiture consultée, une seule action mise en avant, « 1 autre échéance », quatre raccourcis |
+| 8 | Retrouver le document | présent dans le dossier et dans l'export, avec la mention « justifie : Révision du 2 sept. 2026 » |
+| 9 | Quitter puis revenir | déconnexion vers l'accueil, reconnexion par mot de passe, **dossier intact** ; la voiture consultée est oubliée à la sortie (appareil partagé) |
+| 10 | Dossier incomplet | les deux voitures affichent « CT à compléter », « Révision à compléter » — jamais « tout va bien » |
+| 11 | Plusieurs voitures | pastilles de choix, et « Vos autres voitures » quand une autre porte une échéance qui presse |
+
+**Un défaut trouvé par cette recette, corrigé :** la facture portait la plaque
+de la Peugeot 308 et a été enregistrée sur la Toyota Yaris sans un mot. La
+voiture regardée n'ayant pas de plaque, la comparaison existante n'avait rien
+à comparer. L'écran cherche désormais la plaque lue dans **tout le garage** et
+nomme la voiture concernée.
+
+**Nettoyage :** compte, voitures, document, fichier supprimés. Production
+vérifiée après coup : 0 compte fictif, 0 voiture, 0 document, 0 fichier,
+0 journal rattaché à une personne.
+
 ### 6.4 Ce qui n'a pas pu être vérifié
 
 **La réception d'un e-mail dans une vraie boîte.** Aucun message n'a été
