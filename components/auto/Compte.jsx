@@ -20,6 +20,7 @@ import {
   carte,
   carteListe,
   deconnecterAuto,
+  iconeLigne,
   puce,
   puceEtat,
   useSessionAuto,
@@ -135,7 +136,7 @@ function MonCompte({ session }) {
         <ul className={carteListe}>
           <li>
             <Link href="/auto/confidentialite" className="flex items-center gap-3 px-4 py-3.5 transition hover:bg-muted/50">
-              <ShieldCheck className="size-5 shrink-0 text-primary" aria-hidden="true" />
+              <ShieldCheck className={`${iconeLigne} size-5 shrink-0 text-primary`} aria-hidden="true" />
               <span className="min-w-0 flex-1">
                 <span className="block font-semibold text-foreground">Confidentialité</span>
                 <span className="block text-sm leading-snug text-muted-foreground">Ce que Nexora enregistre, où, et vos droits.</span>
@@ -145,7 +146,7 @@ function MonCompte({ session }) {
           </li>
           <li>
             <Link href="/auto/garage" className="flex items-center gap-3 px-4 py-3.5 transition hover:bg-muted/50">
-              <Download className="size-5 shrink-0 text-primary" aria-hidden="true" />
+              <Download className={`${iconeLigne} size-5 shrink-0 text-primary`} aria-hidden="true" />
               <span className="min-w-0 flex-1">
                 <span className="block font-semibold text-foreground">Exporter un dossier</span>
                 <span className="block text-sm leading-snug text-muted-foreground">Depuis le dossier d'une voiture. Rien n'est envoyé : le fichier est préparé sur votre appareil.</span>
@@ -165,7 +166,7 @@ function MonCompte({ session }) {
           </p>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             La suppression du compte lui-même n'est pas encore possible depuis l'application. Écrivez à{" "}
-            <a href={`mailto:${ADRESSE_CONTACT}`} className="font-semibold text-primary hover:underline">
+            <a href={`mailto:${ADRESSE_CONTACT}`} className="font-semibold break-words text-primary hover:underline">
               {ADRESSE_CONTACT}
             </a>{" "}
             depuis l'adresse de votre compte, et elle sera faite à la main.
@@ -173,10 +174,7 @@ function MonCompte({ session }) {
         </div>
       </section>
 
-      <section aria-labelledby="titre-sortie" className="mt-6">
-        <h2 id="titre-sortie" className="sr-only">
-          Sortir
-        </h2>
+      <div className="mt-6">
         <button type="button" onClick={sortir} disabled={sortie} className={boutonSecondaire}>
           <LogOut className="size-4" aria-hidden="true" />
           {sortie ? "Déconnexion…" : "Se déconnecter"}
@@ -184,7 +182,7 @@ function MonCompte({ session }) {
         <p className="mt-2 text-center text-[13px] text-muted-foreground">
           Vos brouillons de facture en cours sur cet appareil sont effacés en même temps.
         </p>
-      </section>
+      </div>
     </>
   );
 }

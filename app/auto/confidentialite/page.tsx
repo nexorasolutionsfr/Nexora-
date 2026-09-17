@@ -58,7 +58,7 @@ export default function ConfidentialiteAutoPage() {
             21 rue de l&rsquo;École, 52100 Saint-Dizier, SIREN 108 995 788. Pour Nexora Auto,
             vous créez vous-même votre compte et votre dossier : Nexora Solutions est
             responsable du traitement de vos données. Contact :{" "}
-            <a href={`mailto:${CONTACT}`} className="font-semibold text-primary hover:underline">
+            <a href={`mailto:${CONTACT}`} className="font-semibold break-words text-primary hover:underline">
               {CONTACT}
             </a>
             .
@@ -184,7 +184,7 @@ export default function ConfidentialiteAutoPage() {
             l&rsquo;application, supprimer ce que vous voulez, et exporter le dossier d&rsquo;une
             voiture. La suppression du compte lui-même n&rsquo;est pas encore possible depuis
             l&rsquo;application : écrivez à{" "}
-            <a href={`mailto:${CONTACT}`} className="font-semibold text-primary hover:underline">
+            <a href={`mailto:${CONTACT}`} className="font-semibold break-words text-primary hover:underline">
               {CONTACT}
             </a>{" "}
             depuis l&rsquo;adresse de votre compte, et elle sera faite à la main. Vous disposez
