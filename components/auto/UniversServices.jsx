@@ -8,16 +8,17 @@
 // rendre une prestation réservable. Aujourd'hui il n'en existe aucune : l'écran
 // le dit sobrement, sans formulaire que personne ne traiterait.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, BatteryCharging, CalendarCheck, CalendarX2, Car, Check, ChevronRight, CircleAlert, CircleCheck, CircleDot, ClipboardCheck, Crosshair, Disc, Droplet, LifeBuoy, LoaderCircle, Minus, Plus, Snowflake, Sparkles, SprayCan, Stethoscope, ThermometerSnowflake, Wrench } from "lucide-react";
+import { ArrowLeft, BatteryCharging, CalendarCheck, CalendarX2, Car, Check, ChevronRight, CircleAlert, CircleCheck, CircleDot, ClipboardCheck, Copy, Crosshair, Disc, Droplet, LifeBuoy, LoaderCircle, Minus, Plus, Snowflake, Sparkles, SprayCan, Stethoscope, ThermometerSnowflake, Wrench } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { aujourdhuiIso } from "@/lib/auto/echeances";
 import { LIBELLE_NON_DISPONIBLE, disponibiliteReservation } from "@/lib/auto/offres";
-import { BESOINS, CONSTATS, DEPUIS, QUAND, besoinParCode, immobilise, prestationPour, resumeProbleme } from "@/lib/auto/besoins";
+import { BESOINS, CONSTATS, DEPUIS, besoinParCode, immobilise, precisionsPour, prestationPour, resumeProbleme, securite } from "@/lib/auto/besoins";
+import { etatEntretien } from "@/lib/auto/entretien";
 import { construireAPrevoir } from "@/components/auto/aPrevoir";
 import { chargerDossiers } from "@/components/auto/dossiers";
 import { Alerte, PageAuto, Pastille, Plaque, SqueletteVehicules, aide, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, etiquette, iconeLigne, memoriserVoitureCourante, puce, puceEtat, useSessionAuto, voitureCourante } from "@/components/auto/elements";
@@ -156,6 +157,11 @@ export function CatalogueServices({ vehiculeId = null, mode = null, besoin = nul
         <ChoixVoiture session={session} actives={actives} vehicule={vehicule} suite="/auto/services" onChoisir={(id) => { memoriserVoitureCourante(id); aller({ vehicule: id }); }} />
       </div>
 
+      {/* Un besoin doit parler de LA voiture choisie, pas seulement en porter
+          le nom en en-tête : « Entretenir ma voiture » menait à cinq
+          prestations à trier soi-même (constat du 18 sept. 2026). */}
+      {besoinChoisi?.code === "entretenir" ? <SuiviEntretien vehicule={vehicule} elements={elements} /> : null}
+
       {/* Par besoin d'abord : personne ne se réveille en pensant « géométrie ».
           Le catalogue reste dessous, entier. */}
       {!besoinChoisi ? (
@@ -185,7 +191,7 @@ export function CatalogueServices({ vehiculeId = null, mode = null, besoin = nul
         return (
           <section key={u.code} className="mt-7" aria-labelledby={`univers-${u.code}`}>
             <h2 id={`univers-${u.code}`} className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              {u.libelle}
+              {besoinChoisi ? `${u.libelle} : ce que comprend chaque prestation` : u.libelle}
             </h2>
             <ul className={`${carteListe} mt-2`}>
               {liste.map((service) => {
@@ -475,7 +481,7 @@ function BlocAction({ service, session, vehicule, existante, compat, disponibili
     const aCompleter = element.etat === "a_completer" && element.actions?.[0];
     action = aCompleter ? (
       <EtatAction
-        titre="Une information manque"
+        titre={element.nbManques > 1 ? "Des informations manquent" : "Une information manque"}
         detail={element.explication || "Nexora ne peut pas encore calculer cette échéance."}
         lien={`/auto/vehicules/${vehicule.id}?action=${element.actions[0].code}`}
         libelleLien={element.actions[0].libelle}
@@ -667,25 +673,108 @@ function Liste({ lignes }) {
 }
 
 // ---------------------------------------------------------------------------
+// « Entretenir ma voiture » commence par CETTE voiture
+// ---------------------------------------------------------------------------
+//
+// L'entrée ouvrait sur Révision, Vidange, Freinage, Batterie, Climatisation :
+// un classement propre, mais qui laissait la personne choisir elle-même ce qui
+// convenait à sa voiture (constat du 18 sept. 2026). Le dossier passe devant,
+// le catalogue reste dessous, entier.
+//
+// Aucun intervalle constructeur, aucune préconisation : on dit seulement ce qui
+// manque au dossier, ou ce qui en a déjà été calculé.
+// « Révision : Dans environ 300 km » — la majuscule de la phrase d'origine
+// tombait au milieu de celle-ci.
+const sansMajuscule = (texte) => (texte ? texte.charAt(0).toLowerCase() + texte.slice(1) : texte);
+
+function SuiviEntretien({ vehicule, elements }) {
+  const etat = etatEntretien({ vehicule, elements });
+  if (etat.cas === "sans_voiture") return null;
+
+  if (etat.cas === "a_preciser") {
+    const geste = etat.manques[0];
+    return (
+      <section className={`${carte} mt-4`} aria-labelledby="titre-suivi-entretien">
+        <h2 id="titre-suivi-entretien" className="font-display text-lg font-semibold text-foreground">
+          {etat.titre}
+        </h2>
+        <p className="mt-1 text-[15px] leading-snug text-muted-foreground">{etat.texte}</p>
+        <ul className="mt-3 space-y-1.5">
+          {etat.manques.map((manque) => (
+            <li key={manque.cle} className="flex items-start gap-2 text-sm leading-snug text-foreground">
+              <Minus className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="min-w-0">{manque.libelle}</span>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-4 space-y-2">
+          <Link href={`/auto/factures/nouvelle?vehicule=${vehicule.id}`} className={boutonPrincipal}>
+            Ajouter le justificatif de la dernière révision
+          </Link>
+          <Link href={`/auto/vehicules/${vehicule.id}?action=${geste.action}`} className={boutonSecondaire}>
+            {geste.geste}
+          </Link>
+        </div>
+      </section>
+    );
+  }
+
+  if (etat.cas === "echeance") {
+    return (
+      <section className={`${carte} mt-4`} aria-label="Votre prochaine révision">
+        <EtatAction titre={`${etat.titre} : ${sansMajuscule(etat.texte)}`} detail={etat.element.explication} lien={adresse("/auto/a-prevoir", { vehicule: vehicule.id, element: etat.element.cle })} />
+      </section>
+    );
+  }
+
+  return (
+    <p className="mt-4 flex items-start gap-2 text-sm leading-snug text-muted-foreground">
+      <Check className="mt-0.5 size-4 shrink-0 text-emerald-600" aria-hidden="true" />
+      <span className="min-w-0">{etat.texte ? `Prochaine révision : ${sansMajuscule(etat.texte)}.` : "Votre suivi d'entretien est renseigné."}</span>
+    </p>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // « J'ai un problème » : mettre des mots, pas un diagnostic
 // ---------------------------------------------------------------------------
 //
 // Ce parcours ne conclut jamais à une pièce ni à une cause. Il produit une
-// phrase que la personne peut relire, corriger, et emporter chez un
-// professionnel — et il l'enregistre dans « À prévoir », qui est la seule
-// prochaine étape réellement disponible aujourd'hui. Aucun prix, aucun
+// phrase que la personne peut relire, corriger, COPIER et emporter chez un
+// professionnel — et il l'enregistre dans « À prévoir ». Aucun prix, aucun
 // créneau, aucun professionnel proposé : rien de tout cela n'existe.
+//
+// Trois défauts corrigés le 18 sept. 2026, après une navigation du fondateur :
+//   1. la deuxième question était la même pour tous les constats, très
+//      générale, et la phrase obtenue se répétait — elle dépend maintenant du
+//      constat (lib/auto/besoins.js) ;
+//   2. sur un téléphone, tous les choix restaient dépliés et l'écran
+//      s'allongeait — une réponse donnée se replie en une ligne, modifiable ;
+//   3. la seule suite était « Garder cette description » : le résumé se copie,
+//      ce qui est la façon dont il sert réellement.
+// Ces listes-ci portent `code` (lib/auto/besoins.js) ; libelleDe() de
+// format.js cherche `valeur` et rendrait une chaîne vide en silence.
+const libelleParCode = (liste, code) => liste.find((e) => e.code === code)?.libelle ?? "";
+
 function DecrireLeProbleme({ vehicule, onEnregistre }) {
   const [constat, setConstat] = useState("");
   const [depuis, setDepuis] = useState("");
-  const [quand, setQuand] = useState("");
   const [precision, setPrecision] = useState("");
+  const [complement, setComplement] = useState("");
+  const [rouverte, setRouverte] = useState(null);
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState("");
   const [enregistre, setEnregistre] = useState(false);
+  const resumeRef = useRef(null);
 
-  const resume = resumeProbleme({ constat, depuis, quand, precision });
+  const jeu = precisionsPour(constat);
+  const resume = resumeProbleme({ constat, depuis, precision, complement });
   const prestation = constat ? serviceParCode(prestationPour(constat)) : null;
+
+  function repondre(setter, valeur, actuel) {
+    setter(valeur === actuel ? "" : valeur);
+    setRouverte(null);
+  }
 
   async function enregistrer() {
     setErreur("");
@@ -711,8 +800,15 @@ function DecrireLeProbleme({ vehicule, onEnregistre }) {
         <p className="mt-1 text-[15px] leading-relaxed text-muted-foreground">
           Votre description est dans « À prévoir », avec {vehicule.marque} {vehicule.modele}. Vous pourrez la relire, la corriger ou la supprimer.
         </p>
-        <div className="mt-5 space-y-3">
-          <Link href={`/auto/a-prevoir?vehicule=${vehicule.id}`} className={boutonPrincipal}>
+        {/* La suite réellement disponible : emporter cette phrase chez un
+            professionnel. Pas un créneau, qui n'existe pas. */}
+        <p className="mt-4 text-sm font-medium text-foreground">À dire, ou à envoyer :</p>
+        <p ref={resumeRef} className="mt-1 break-words rounded-xl bg-muted/60 px-3.5 py-3 text-[15px] leading-relaxed text-foreground">
+          {resume}
+        </p>
+        <div className="mt-4 space-y-3">
+          <BoutonCopier texte={resume} cibleRef={resumeRef} />
+          <Link href={`/auto/a-prevoir?vehicule=${vehicule.id}`} className={boutonSecondaire}>
             Voir dans À prévoir
           </Link>
           {prestation ? (
@@ -726,64 +822,60 @@ function DecrireLeProbleme({ vehicule, onEnregistre }) {
   }
 
   return (
-    <div className="mt-4 space-y-5">
-      <fieldset>
-        <legend className={etiquette}>Que constatez-vous ?</legend>
-        <div className="flex flex-wrap gap-2">
-          {CONSTATS.map((c) => (
-            <button key={c.code} type="button" onClick={() => setConstat(c.code)} aria-pressed={constat === c.code} className={`${puce} ${puceEtat(constat === c.code)}`}>
-              {c.libelle}
-            </button>
-          ))}
-        </div>
-      </fieldset>
+    <div className="mt-4 space-y-4">
+      <Etape
+        question="Que constatez-vous ?"
+        reponse={libelleParCode(CONSTATS, constat)}
+        ouverte={!constat || rouverte === "constat"}
+        onModifier={() => setRouverte("constat")}
+      >
+        {CONSTATS.map((c) => (
+          <button key={c.code} type="button" onClick={() => repondre(setConstat, c.code, constat)} aria-pressed={constat === c.code} className={`${puce} ${puceEtat(constat === c.code)}`}>
+            {c.libelle}
+          </button>
+        ))}
+      </Etape>
 
       {constat ? (
         <>
-          {immobilise(constat) ? (
-            <div role="status" className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-3 text-[13px] leading-snug text-amber-950">
-              <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              <p>Si vous avez le moindre doute sur la sécurité, ne prenez pas la route : une assistance vaut mieux qu'un trajet de plus.</p>
-            </div>
+          <ConseilConstat constat={constat} precision={precision} />
+
+          <Etape question="Depuis quand ?" reponse={libelleParCode(DEPUIS, depuis)} ouverte={!depuis || rouverte === "depuis"} onModifier={() => setRouverte("depuis")}>
+            {DEPUIS.map((d) => (
+              <button key={d.code} type="button" onClick={() => repondre(setDepuis, d.code, depuis)} aria-pressed={depuis === d.code} className={`${puce} ${puceEtat(depuis === d.code)}`}>
+                {d.libelle}
+              </button>
+            ))}
+          </Etape>
+
+          {jeu ? (
+            <Etape question={jeu.question} reponse={libelleParCode(jeu.options, precision)} ouverte={!precision || rouverte === "precision"} onModifier={() => setRouverte("precision")}>
+              {jeu.options.map((o) => (
+                <button key={o.code} type="button" onClick={() => repondre(setPrecision, o.code, precision)} aria-pressed={precision === o.code} className={`${puce} ${puceEtat(precision === o.code)}`}>
+                  {o.libelle}
+                </button>
+              ))}
+            </Etape>
           ) : null}
 
-          <fieldset>
-            <legend className={etiquette}>Depuis quand ?</legend>
-            <div className="flex flex-wrap gap-2">
-              {DEPUIS.map((d) => (
-                <button key={d.code} type="button" onClick={() => setDepuis(d.code === depuis ? "" : d.code)} aria-pressed={depuis === d.code} className={`${puce} ${puceEtat(depuis === d.code)}`}>
-                  {d.libelle}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
-          <fieldset>
-            <legend className={etiquette}>À quel moment ?</legend>
-            <div className="flex flex-wrap gap-2">
-              {QUAND.map((q) => (
-                <button key={q.code} type="button" onClick={() => setQuand(q.code === quand ? "" : q.code)} aria-pressed={quand === q.code} className={`${puce} ${puceEtat(quand === q.code)}`}>
-                  {q.libelle}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
           <div>
-            <label htmlFor="probleme-precision" className={etiquette}>
+            <label htmlFor="probleme-complement" className={etiquette}>
               Autre chose à préciser <span className="font-normal text-muted-foreground">(facultatif)</span>
             </label>
-            <textarea id="probleme-precision" rows={3} maxLength={300} value={precision} onChange={(e) => setPrecision(e.target.value)} className={champ} placeholder="Plutôt à l'avant droit, surtout quand il fait froid…" />
+            <textarea id="probleme-complement" rows={3} maxLength={300} value={complement} onChange={(e) => setComplement(e.target.value)} className={champ} placeholder="Plutôt à l'avant droit, surtout quand il fait froid…" />
           </div>
 
           <section aria-labelledby="titre-resume-probleme" className={`${carte} bg-muted/40`}>
             <h2 id="titre-resume-probleme" className="text-sm font-semibold text-foreground">
               Ce que vous pourrez décrire
             </h2>
-            <p className="mt-1.5 break-words text-[15px] leading-relaxed text-foreground">{resume}</p>
-            <p className="mt-2 text-[13px] leading-snug text-muted-foreground">
-              Nexora ne dit pas d'où cela vient : seul un professionnel peut le constater sur la voiture.
+            <p ref={resumeRef} className="mt-1.5 break-words text-[15px] leading-relaxed text-foreground">
+              {resume}
             </p>
+            <p className="mt-2 text-[13px] leading-snug text-muted-foreground">Nexora ne dit pas d'où cela vient : seul un professionnel peut le constater sur la voiture.</p>
+            <div className="mt-3">
+              <BoutonCopier texte={resume} cibleRef={resumeRef} />
+            </div>
           </section>
 
           {erreur ? <Alerte>{erreur}</Alerte> : null}
@@ -801,6 +893,105 @@ function DecrireLeProbleme({ vehicule, onEnregistre }) {
           </div>
         </>
       ) : null}
+    </div>
+  );
+}
+
+// Une question répondue tient en une ligne : sur un téléphone, huit constats
+// puis cinq moments puis cinq précisions faisaient trois écrans de défilement
+// pour trois clics.
+function Etape({ question, reponse, ouverte, onModifier, children }) {
+  if (!ouverte && reponse) {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 py-2 pl-3.5 pr-1.5">
+        <span className="min-w-0 flex-1">
+          <span className="block text-xs leading-snug text-muted-foreground">{question}</span>
+          <span className="block break-words text-[15px] font-medium leading-snug text-foreground">{reponse}</span>
+        </span>
+        <button type="button" onClick={onModifier} className="min-h-10 shrink-0 rounded-lg px-2 text-sm font-semibold text-primary hover:underline">
+          Modifier
+        </button>
+      </div>
+    );
+  }
+  return (
+    <fieldset>
+      <legend className={etiquette}>{question}</legend>
+      <div className="flex flex-wrap gap-2">{children}</div>
+    </fieldset>
+  );
+}
+
+// Deux messages distincts, parce que ce sont deux situations distinctes.
+// « Ne prenez pas la route » s'affichait sur « la voiture démarre mal » — où
+// il n'y a pas de route à prendre — et pas sur « quelque chose a changé au
+// freinage ». Aucun des deux n'énonce de règle mécanique : Nexora ne sait pas
+// ce qui se passe, il rappelle seulement la prudence et ce qui correspond.
+function ConseilConstat({ constat, precision }) {
+  if (securite(constat, precision)) {
+    return (
+      <div role="status" className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-3 text-[13px] leading-snug text-amber-950">
+        <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        <p>Si vous avez le moindre doute sur la sécurité, ne prenez pas la route : une vérification vaut mieux qu'un trajet de plus.</p>
+      </div>
+    );
+  }
+  if (immobilise(constat)) {
+    return (
+      <div role="status" className="flex items-start gap-2 rounded-xl border border-border bg-muted/40 px-3.5 py-3 text-[13px] leading-snug text-foreground">
+        <LifeBuoy className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <p>Si la voiture ne repart pas d'où elle est, c'est une assistance qu'il faut, pas un rendez-vous.</p>
+      </div>
+    );
+  }
+  return null;
+}
+
+// Copier, c'est la façon dont ce résumé sert vraiment : on le colle dans un
+// message, on le lit au téléphone.
+//
+// L'état « Copié » se déduit du texte copié — pas de minuterie à nettoyer, et
+// il retombe dès que la phrase change.
+//
+// Le presse-papiers peut être refusé (permission, navigateur ancien, page sans
+// activation). Mesuré le 18 sept. 2026 : dans un navigateur embarqué,
+// writeText rend « Write permission denied ». Un message d'échec seul
+// laisserait la personne recopier à la main : on sélectionne alors le texte
+// pour elle, et son propre « Copier » fait le reste.
+function BoutonCopier({ texte, cibleRef = null }) {
+  const [copieDe, setCopieDe] = useState(null);
+  const [aSelectionner, setASelectionner] = useState(false);
+  const copie = Boolean(texte) && copieDe === texte;
+
+  async function copier() {
+    setASelectionner(false);
+    try {
+      await navigator.clipboard.writeText(texte);
+      setCopieDe(texte);
+      return;
+    } catch {
+      // Refusé : on passe à la sélection, qui ne demande aucune permission.
+    }
+    const noeud = cibleRef?.current;
+    if (noeud) {
+      const plage = document.createRange();
+      plage.selectNodeContents(noeud);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(plage);
+    }
+    setASelectionner(true);
+  }
+
+  return (
+    <div>
+      <button type="button" onClick={copier} disabled={!texte} className={boutonSecondaire}>
+        {copie ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
+        {copie ? "Copié" : "Copier cette description"}
+      </button>
+      <p aria-live="polite" className={aSelectionner ? `${aide} mt-1.5` : "sr-only"}>
+        {copie ? "Description copiée." : aSelectionner ? "Votre navigateur n'autorise pas la copie automatique. Le texte est sélectionné : utilisez « Copier »." : ""}
+      </p>
     </div>
   );
 }

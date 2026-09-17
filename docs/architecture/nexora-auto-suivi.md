@@ -1071,3 +1071,125 @@ au premier champ en erreur**.
 **Bancs** : 195 tests, `lint:auto` sans avertissement, `next build` réussi,
 10 bancs SQL à 0, parcours dégradés **40/40**, accès croisés **55/55**,
 fermeture **14/14**, simultanéité sans doublon involontaire.
+
+## Lot H — l'aide effectivement apportée (19 septembre 2026)
+
+Revue du fondateur après navigation dans Chrome, y compris à 390 px : les lots
+A à G ont amélioré la saisie et la navigation, mais Nexora demandait encore à
+la personne de comprendre et d'organiser elle-même son entretien. Cinq défauts
+nommés, cinq correctifs.
+
+### R47 — « Je ne sais pas » laissait le formulaire ouvert
+
+Le parcours réel était : *je n'ai pas de facture* → deux champs km/mois → *je
+ne sais pas* → **davantage** de texte et deux boutons de plus, sous des champs
+toujours affichés. On en donnait plus à lire à quelqu'un qui venait de dire
+qu'il ne pouvait pas répondre.
+
+C'est maintenant une sortie qui **remplace** le formulaire : une phrase (« votre
+suivi reste disponible… la prochaine révision sera calculée le jour où vous
+aurez ces informations »), « Revenir à ma voiture », la ligne qui dit où
+retrouver la demande, et « Ne plus me le demander ». Deux commandes au lieu de
+six.
+
+### R48 — « Il manque une seule chose » était faux dans ce dossier
+
+Le formulaire annonçait qu'il ne manquait que l'intervalle ; la fiche du
+service listait **aussi** la dernière révision. On comblait « la dernière
+chose » et une nouvelle demande apparaissait derrière — deux impasses au lieu
+d'une demande.
+
+`manquesRevision()` (`lib/auto/echeances.js`) compte tout en une fois, et
+`lib/auto/entretien.js` en tire le libellé, la raison et le geste de chaque
+manque. Les trois écrans lisent la même source :
+
+| Écran | Avant | Maintenant |
+| --- | --- | --- |
+| Formulaire (fiche) | « Il manque une seule chose » | « Il manque deux choses… » + la liste, chacune avec son geste |
+| Échéance « À prévoir » | « Nexora ne connaît pas encore l'intervalle » | « … il lui manque la date de la dernière, et l'intervalle du carnet » |
+| Fiche du service | « Une information manque » | « Des informations manquent » (`nbManques`) |
+
+Quand plusieurs choses manquent, le geste le plus court passe devant : une
+facture de révision porte la date, le kilométrage et souvent l'intervalle.
+
+### R49 — « Entretenir ma voiture » n'était qu'un classement
+
+L'entrée menait à Révision, Vidange, Freinage, Batterie, Climatisation : la
+voiture choisie ne changeait que l'en-tête. `etatEntretien()` fait maintenant
+parler le dossier en premier, et le catalogue reste dessous, entier.
+
+| Dossier | Ce que l'entrée dit d'abord |
+| --- | --- |
+| Rien de connu (Corsa) | « Votre suivi d'entretien reste à préciser. » + les manques + deux gestes |
+| Révision proche (Clio) | l'échéance calculée, avec son explication |
+| Révision lointaine (Golf) | « Prochaine révision : avant le 1er mars 2028. » |
+
+### R50 — « J'ai un problème » produisait une note peu utilisable
+
+Quatre corrections.
+
+1. **Une question adaptée au constat.** « À quel moment ? — tout le temps / à
+   froid / en roulant / en freinant / en tournant » était posée à l'identique
+   après « un voyant allumé » comme après « une fuite ». Chaque constat pose
+   désormais la sienne (`PRECISIONS`) : *à quoi ressemble-t-il ?* pour un
+   voyant, *de quelle couleur est la tache ?* pour une fuite, *que se passe-t-il
+   quand vous tournez la clé ?* pour un démarrage. Toutes décrivent ce qui se
+   voit, s'entend ou se sent : un banc refuse tout nom de pièce, dans les
+   libellés comme dans les phrases.
+2. **Une phrase, pas des choix recollés.** « Quelque chose a changé au freinage,
+   depuis quelques jours, en freinant. » → « Un bruit au freinage, depuis
+   quelques jours. » Chaque réponse porte le sujet entier de la phrase.
+3. **Le résumé se copie.** C'est la façon dont il sert : on le colle dans un
+   message, on le lit au téléphone. Mesuré le 18 sept. : dans un navigateur
+   embarqué, `writeText` rend « Write permission denied » — l'échec **sélectionne
+   le texte** et le dit, au lieu de laisser recopier à la main. L'écran de
+   confirmation propose la copie en premier.
+4. **Un message de sécurité cohérent.** « Ne prenez pas la route » s'affichait
+   sur « la voiture démarre mal » — où il n'y a pas de route à prendre — et pas
+   sur « quelque chose a changé au freinage ». `immobilise` (l'assistance
+   correspond) et `securite` (rappel de prudence) sont maintenant deux attributs
+   indépendants ; la réponse peut rendre prudent ce que le constat ne disait pas
+   (« un voyant » non, « rouge » ou « il clignote » oui). Aucun des deux messages
+   n'énonce de règle mécanique.
+
+**Sur un téléphone**, une question répondue se replie en une ligne avec
+« Modifier » : huit constats puis quatre moments puis cinq précisions ne font
+plus trois écrans de défilement pour trois clics.
+
+### R51 — la lecture documentaire était annoncée trop largement
+
+« Une facture PDF est lue automatiquement » promettait plus que ce qui se
+produit : la lecture gratuite extrait le **texte** contenu dans le PDF
+(`lib/auto/lecture/texte-pdf.js`), donc une facture scannée ou photographiée
+est conservée, pas lue. Les trois annonces le disent — l'accueil, l'écran
+d'import, et `phraseLimites()` qui reste calculée sur les limites réelles et
+s'adaptera seule le jour où une photo sera lue.
+
+### Recette du lot H
+
+Sur Test, avec le jeu de recette (compte fictif, cinq voitures) — **la voiture
+personnelle du fondateur n'a pas servi**.
+
+| Situation | Résultat |
+| --- | --- |
+| Dossier vide (Corsa) : formulaire d'intervalle | « Il manque deux choses » + raccourci facture + les deux gestes |
+| « Je ne sais pas » | le formulaire disparaît, la sortie tient en une phrase et deux commandes |
+| Fiche du service Révision, Corsa | « Des informations manquent », même phrase que l'échéance |
+| Fiche du service Révision, Golf | « Déjà suivi dans À prévoir » |
+| « Entretenir ma voiture » : Corsa / Clio / Golf | à préciser / échéance / prochaine révision datée |
+| « J'ai un problème » : freinage | alerte de prudence, question « Qu'est-ce qui a changé ? », phrase « Un bruit au freinage, depuis quelques jours. » |
+| « J'ai un problème » : voyant puis « Rouge » | pas d'alerte au constat, alerte après la réponse ; « Un voyant rouge allumé au tableau de bord. » |
+| « J'ai un problème » : démarrage | plus de « ne prenez pas la route » ; « c'est une assistance qu'il faut, pas un rendez-vous » |
+| Copie du résumé | refusée par le navigateur embarqué → texte sélectionné et message affiché (vérifié : `window.getSelection()` rend la phrase) |
+| Enregistrement puis « À prévoir » | la description y figure, avec sa voiture |
+| Écran d'import | « … des factures PDF contenant du texte ; un scan, une photo ou un autre document est conservé dans votre dossier, sans lecture » |
+
+**Bancs** : 720 tests (dont 184 pour Nexora Auto), `lint:auto` sans
+avertissement, `next build` réussi, parcours dégradés **40/40**, accès croisés
+**55/55**, fermeture **14/14**. Audits d'écrans à 320, 375 et 390 px et texte
+agrandi à 150 % et 200 % sur les quatre écrans modifiés : sans défaut ; aucun
+débordement horizontal à 320 px, ligne repliée comprise. Aucune erreur de
+console sur un onglet neuf.
+
+**Non prouvé** : la copie dans le presse-papiers elle-même. Le panneau de
+recette la refuse par politique ; seul le repli a pu être vérifié.

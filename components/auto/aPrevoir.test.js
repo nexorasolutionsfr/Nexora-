@@ -107,6 +107,30 @@ test("Révision : le compteur de la révision compte comme relevé, l'estimation
   assert.equal(el.demandeActualisation, false);
 });
 
+test("Révision : dossier vide, l'échéance annonce les DEUX manques et un seul geste", () => {
+  // Le défaut du 18 sept. 2026 : on annonçait l'intervalle seul, on le
+  // saisissait, et la dernière révision était réclamée juste après.
+  const el = elementRevision({ ...clio, intervalle_entretien_km: null, intervalle_entretien_mois: null, releves: [], historique: [] }, { aujourdhui: AUJOURDHUI });
+  assert.equal(el.etat, "a_completer");
+  assert.match(el.explication, /la date de la dernière, et l'intervalle du carnet/);
+  assert.deepEqual(el.actions.map((a) => a.code), ["intervalle"]);
+  assert.deepEqual(el.actions.map((a) => a.libelle), ["Compléter le suivi d'entretien"]);
+  // Compté, pour que la fiche du service n'annonce pas « une information ».
+  assert.equal(el.nbManques, 2);
+});
+
+test("Révision : la dernière est connue, seul l'intervalle manque — la demande reste simple", () => {
+  const el = elementRevision({ ...clio, intervalle_entretien_km: null, intervalle_entretien_mois: null }, { aujourdhui: AUJOURDHUI });
+  assert.equal(el.explication, "Nexora ne connaît pas encore l'intervalle de révision de cette voiture.");
+  assert.deepEqual(el.actions.map((a) => a.libelle), ["Renseigner l'intervalle"]);
+});
+
+test("Révision : l'intervalle est connu, la dernière manque — on demande la dernière", () => {
+  const el = elementRevision({ ...clio, historique: [] }, { aujourdhui: AUJOURDHUI });
+  assert.match(el.explication, /Enregistrez votre dernière révision/);
+  assert.deepEqual(el.actions.map((a) => a.code), ["revision"]);
+});
+
 test("Révision : enregistrée sans kilométrage, avec un intervalle en km seulement", () => {
   const el = elementRevision({ ...clio, intervalle_entretien_mois: null, releves: [], historique: [{ type: "revision", realise_le: "2026-09-01", kilometrage: null }] }, { aujourdhui: AUJOURDHUI });
   assert.equal(el.etat, "a_completer");

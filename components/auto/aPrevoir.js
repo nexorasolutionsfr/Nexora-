@@ -19,6 +19,7 @@
 // affichent les mêmes phrases.
 
 import { KM_ALERTE, JOURS_ALERTE, aujourdhuiIso, joursEntre, prochainControleTechnique, prochainEntretien } from "../../lib/auto/echeances.js";
+import { manquesEntretien } from "../../lib/auto/entretien.js";
 import { estimerKilometrage } from "../../lib/auto/kilometrage.js";
 import { delaiLisible, formaterDate, formaterKm } from "./format.js";
 
@@ -181,18 +182,31 @@ export function elementRevision(vehicule, { aujourdhui } = {}) {
   const base = { genre: "revision", serviceCode: "revision", vehicule: identite(vehicule), titre: "Révision" };
 
   if (e.etat !== "calcule") {
+    // On dit ce qui manque ; c'est le formulaire qui accompagne. « Recopiez
+    // l'intervalle de votre carnet » était un ordre adressé à quelqu'un qui
+    // ne sait pas encore où chercher.
+    //
+    // Et on dit TOUT ce qui manque : annoncer l'intervalle seul, puis réclamer
+    // la dernière révision une fois l'intervalle saisi, faisait deux impasses
+    // au lieu d'une demande (constat du 18 sept. 2026).
+    const manques = manquesEntretien(vehicule);
     const aCompleter =
-      e.etat === "intervalle_a_renseigner"
-        // On dit ce qui manque ; c'est le formulaire qui accompagne. « Recopiez
-        // l'intervalle de votre carnet » était un ordre adressé à quelqu'un qui
-        // ne sait pas encore où chercher.
-        ? { explication: "Nexora ne connaît pas encore l'intervalle de révision de cette voiture.", actions: [action("intervalle", "Renseigner l'intervalle")] }
-        : { explication: "Enregistrez votre dernière révision, avec son kilométrage. Une vidange seule ne compte pas comme une révision.", actions: [action("revision", "Enregistrer une révision")] };
+      manques.length > 1
+        ? {
+            explication: "Nexora ne sait pas encore quand la prochaine révision arrive : il lui manque la date de la dernière, et l'intervalle du carnet.",
+            actions: [action("intervalle", "Compléter le suivi d'entretien")],
+          }
+        : e.etat === "intervalle_a_renseigner"
+          ? { explication: "Nexora ne connaît pas encore l'intervalle de révision de cette voiture.", actions: [action("intervalle", "Renseigner l'intervalle")] }
+          : { explication: "Enregistrez votre dernière révision, avec son kilométrage. Une vidange seule ne compte pas comme une révision.", actions: [action("revision", "Enregistrer une révision")] };
     return {
       ...base,
       ...aCompleter,
       cle: `revision:${vehicule.id}:a_completer:${e.etat}`,
       etat: "a_completer",
+      // Combien il en manque : « Une information manque » se lisait au-dessus
+      // d'une liste de deux.
+      nbManques: Math.max(manques.length, 1),
       quand: "Pas encore calculé",
       delai: null,
       niveau: "neutre",
