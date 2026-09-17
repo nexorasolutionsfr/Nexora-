@@ -16,7 +16,7 @@ export default function BlocDepenses({ historique }) {
   const r = resumerDepenses(historique);
 
   return (
-    <section className={carte} aria-labelledby="titre-depenses">
+    <section id="depenses" className={`${carte} scroll-mt-28`} aria-labelledby="titre-depenses">
       <div className="flex items-start gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
           <Receipt className="size-5" aria-hidden="true" />

@@ -1009,3 +1009,32 @@ relance technique ne peut pas envoyer deux fois.
 
 **Rien n'a été activé cette nuit**, et rien ne le sera sans décision : ni canal,
 ni destinataire, ni envoi d'essai.
+
+## Lot F — qualité mobile (19 septembre 2026)
+
+Le gros du travail visuel avait été fait par les lots précédents : une action
+dominante quand elle sert, des résumés courts, des boutons qui annoncent leur
+résultat, un vocabulaire unique. Restaient deux choses concrètes.
+
+**La fiche d'une voiture fait plusieurs écrans de haut.** Atteindre l'historique
+ou les documents demandait de faire défiler à l'aveugle. Les ancres existaient
+déjà (`#kilometrage`, `#echeance-ct`, `#historique`, `#documents`) : elles sont
+maintenant visibles, en une barre de pastilles sous l'en-tête, et les dépenses
+ont reçu la leur. Vérifié : les cinq liens pointent sur une section qui existe.
+
+**Les actions rares le restent.** « Modifier », « Archiver », « Exporter » sont
+des liens discrets en haut, « Supprimer ce véhicule » est en bas derrière une
+confirmation qui énonce ce qui sera effacé. Rien à déplacer.
+
+**L'ajout d'une voiture était déjà minimal** : marque et modèle suffisent, le
+reste est marqué « facultatif », et les informations d'échéance sont derrière
+un dépliant (« Calculer les échéances dès maintenant »). Vérifié à l'écran,
+laissé en l'état — ajouter un clic pour masquer trois champs facultatifs
+n'aurait rien simplifié.
+
+**Ce qui n'a pas été fait, et pourquoi.** Une navigation basse sur mobile : la
+barre d'onglets haute tient sur une ligne à 375 px, elle ne masque rien, et
+elle est déjà atteinte au pouce sur un écran de cette taille. La déplacer aurait
+été un changement de forme sans gain mesuré — et aurait demandé de vérifier à
+nouveau clavier, focus et clavier virtuel sur tous les écrans. À rouvrir si
+l'usage réel montre le contraire.

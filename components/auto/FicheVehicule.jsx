@@ -389,6 +389,27 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
         </div>
       ) : null}
 
+      {/* La fiche fait plusieurs écrans de haut sur un téléphone : de quoi
+          atteindre l'historique ou les documents sans faire défiler à
+          l'aveugle. Les ancres sont déjà là, on les rend visibles. */}
+      <nav aria-label="Sections du dossier" className="mt-3 flex flex-wrap gap-1.5">
+        {[
+          { id: "kilometrage", libelle: "Kilométrage" },
+          { id: "echeance-ct", libelle: "Échéances" },
+          { id: "historique", libelle: "Historique" },
+          { id: "documents", libelle: "Documents" },
+          { id: "depenses", libelle: "Dépenses" },
+        ].map((s) => (
+          <a
+            key={s.id}
+            href={`#${s.id}`}
+            className="inline-flex min-h-9 items-center rounded-full border border-border bg-card px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          >
+            {s.libelle}
+          </a>
+        ))}
+      </nav>
+
       {!archive && !premiersPasMasques && historique.length === 0 && documents.length === 0 ? (
         <PremiersPas vehicule={vehicule} kilometrageConnu={Boolean(km)} onAction={(code) => faireAction(code, { defiler: true })} onMasquer={masquerPremiersPas} />
       ) : null}
