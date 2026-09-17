@@ -956,3 +956,56 @@ créneau, aucun professionnel : rien de tout cela n'existe encore.
 information à compléter) étaient déjà courtes : la fiche d'une prestation
 propose « Compléter » qui ouvre directement le bon formulaire, voiture
 sélectionnée. Vérifié, rien à défaire.
+
+## Lot G — la proactivité, inventaire avant promesse (19 septembre 2026)
+
+**Ce qui existe vraiment, relevé dans le code avant d'y toucher :**
+
+| Mécanisme | État | Canal |
+| --- | --- | --- |
+| Échéances calculées (contrôle technique, révision) | **actif** | dans l'application |
+| Tâches personnelles datées | **actif** | dans l'application |
+| Reports (`auto_rappels_reports`) | **actif** | dans l'application |
+| Horizon d'affichage (`auto_preferences.horizon_jours`) | **actif** | réglage |
+| `auto_preferences.rappels_externes` | colonne créée, **jamais lue** | — |
+| `palierRappel` / `rappelsADeclencher` | fonctions pures et testées, **branchées à rien** | — |
+| `auto_rappels_envois` | table créée, **jamais écrite** | — |
+
+**Conclusion, et elle est courte : Nexora n'envoie rien.** Aucun e-mail, aucun
+SMS, aucune notification. Les échéances se voient dans l'application, et
+l'interface ne dit nulle part le contraire — vérifié en cherchant les
+formulations de promesse dans tous les écrans : aucune.
+
+### Chaque rappel, ligne par ligne
+
+| | Échéance calculée | Tâche personnelle |
+| --- | --- | --- |
+| **Déclencheur** | une date ou un compteur tirés du dossier | une date que la personne a posée |
+| **Utilité** | dire ce qui arrive, sans le deviner | ne pas oublier ce qu'on s'est dit |
+| **Canal** | l'application, quand on l'ouvre | idem |
+| **Fréquence maximale** | sans objet : rien n'est envoyé | sans objet |
+| **Report** | « Plus tard » (30 jours) ou « Ne plus me le demander » (1 an), en base | « Reporter », à une date choisie |
+| **Annulation** | l'information complétée ou corrigée fait disparaître le rappel | « C'est fait » |
+
+### Les recalculs, éprouvés
+
+Sept contrôles de plus dans `scripts/recette/parcours-degrades.mjs`
+(**40 au total**) :
+
+- sans intervalle, la révision est « à compléter » ;
+- un rappel reporté se tait ;
+- **l'information complétée rend l'échéance calculable**, et le report de
+  l'ancienne situation **ne muselle pas** la nouvelle : la clé du rappel change
+  avec la situation, donc un report ne survit jamais à ce qu'il visait ;
+- une tâche datée entre dans les prochaines actions, une tâche terminée en sort
+  aussitôt ;
+- le journal des envois est **refusé en lecture comme en écriture** à une
+  personne connectée (`permission denied`) : il est réservé au service, pour le
+  jour où un envoi existera.
+
+**Pas de doublon possible** le jour où un envoi existera : `auto_rappels_envois`
+porte une contrainte d'unicité `(personne, échéance, palier, canal)`. Une
+relance technique ne peut pas envoyer deux fois.
+
+**Rien n'a été activé cette nuit**, et rien ne le sera sans décision : ni canal,
+ni destinataire, ni envoi d'essai.
