@@ -659,3 +659,29 @@ voiture, avec l'échéance et son délai ; un geste pour basculer dessus. Ni les
 échéances lointaines, ni celles à compléter, ni les rappels que la personne a
 demandé de repousser : ce serait du bruit. Trois contrôles de plus dans
 `lib/auto/aujourdhui.test.js` (11 au total).
+
+## La plaque lue reconnaît la bonne voiture
+
+Trouvé pendant la recette finale, en conditions réelles : une facture portant
+la plaque `AB-123-CD` a été enregistrée sur la **Toyota Yaris**, alors que la
+plaque est celle de la **Peugeot 308** du même garage. L'écran n'a rien dit.
+
+Pourquoi : l'avertissement existant compare la plaque lue à celle de la voiture
+regardée (`plaqueDifferente`). Quand cette voiture **n'a pas de plaque
+enregistrée**, il n'y a rien à comparer — et le silence est le pire des cas,
+parce que c'est justement la voiture qu'on vient d'ajouter à la hâte.
+
+`voitureDeLaPlaque(vehicules, plaqueLue, voitureCouranteId)` cherche désormais
+la plaque lue dans **tout le garage** et nomme la voiture concernée :
+
+> Cette facture porte la plaque AB-123-CD, celle de votre Peugeot 308. Vous
+> êtes sur le point de l'enregistrer sur Toyota Yaris.
+
+Pure et testée (six cas : voiture sans plaque, formats différents, déjà la
+bonne voiture, plaque inconnue du garage, rien de lu, pas de garage). Les deux
+messages affichent maintenant la plaque en clair (`AB-123-CD`, pas `AB123CD`).
+
+Piège de recette au passage : le premier scénario ne montrait rien parce que
+la Peugeot n'avait **pas été créée** — `auto_ajouter_vehicule` avait refusé la
+plaque `AB-123-CD` et le script ne lisait pas l'erreur. Un scénario qui ne
+vérifie pas ses propres écritures teste le vide.
