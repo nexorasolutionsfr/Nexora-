@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { construireAPrevoir, elementControle, elementRevision, elementTache, palierRappel, pastilleElement, rappelsADeclencher } from "./aPrevoir.js";
+import {
+  construireAPrevoir,
+  elementControle,
+  elementRevision,
+  elementTache,
+  libelleFondement,
+  palierRappel,
+  pastilleElement,
+  rappelsADeclencher,
+} from "./aPrevoir.js";
 
 const F = "\u202F";
 const AUJOURDHUI = "2026-09-16";
@@ -273,4 +282,26 @@ test("Tâches terminées : toutes retrouvables, les plus récentes d'abord", () 
   const r = construireAPrevoir({ vehicules: [clio], taches, aujourdhui: AUJOURDHUI });
   assert.equal(r.terminees.length, 14);
   assert.equal(r.terminees[0].cle, "tache:t13");
+});
+
+test("libelleFondement dit d'où vient la date, sans prétendre l'avoir vérifiée", () => {
+  assert.equal(libelleFondement({ fondement: "officiel" }), "Date du procès-verbal");
+  assert.equal(libelleFondement({ fondement: "officiel", provenance: "proprietaire" }), "Date du procès-verbal, renseignée par vous");
+  assert.equal(libelleFondement({ fondement: "officiel", provenance: "prestation" }), "Date du procès-verbal, lue sur votre document");
+  assert.equal(libelleFondement({ fondement: "calcul" }), "Calcul selon la règle");
+  assert.equal(libelleFondement({}), "Calcul selon la règle");
+  assert.equal(libelleFondement(null), "Calcul selon la règle");
+});
+
+test("le contrôle technique porte la provenance de la ligne qui l'a fondé", () => {
+  const vehicule = {
+    id: "v1",
+    date_mise_en_circulation: "2019-03-15",
+    historique: [
+      { type: "controle_technique", realise_le: "2026-06-10", resultat_controle: "favorable", controle_valable_jusqu_au: "2028-06-09", source: "proprietaire" },
+    ],
+  };
+  assert.equal(elementControle(vehicule, { aujourdhui: "2026-09-18" }).provenance, "proprietaire");
+  vehicule.historique[0].source = "prestation";
+  assert.equal(elementControle(vehicule, { aujourdhui: "2026-09-18" }).provenance, "prestation");
 });

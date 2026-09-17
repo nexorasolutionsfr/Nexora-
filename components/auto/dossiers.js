@@ -8,7 +8,9 @@ import { HORIZON_PAR_DEFAUT } from "@/components/auto/aPrevoir";
 
 const COLONNES_VEHICULE =
   "id, immatriculation, marque, modele, annee, energie, motorisation, date_mise_en_circulation, intervalle_entretien_km, intervalle_entretien_mois, principal, archive_le, created_at";
-const COLONNES_HISTORIQUE = "id, vehicule_id, type, realise_le, kilometrage, resultat_controle, nature_controle, controle_valable_jusqu_au";
+// `source` sert à dire d'où vient une date : saisie par la personne, ou lue
+// sur un document qu'elle a déposé. L'écran ne doit pas les confondre.
+const COLONNES_HISTORIQUE = "id, vehicule_id, type, realise_le, kilometrage, resultat_controle, nature_controle, controle_valable_jusqu_au, source";
 
 export async function chargerDossiers() {
   const [vehicules, releves, historique, taches, reports, preferences] = await Promise.all([

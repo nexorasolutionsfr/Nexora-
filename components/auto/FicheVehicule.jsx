@@ -41,7 +41,7 @@ import { supabase } from "@/lib/supabase";
 import { RESULTATS_DEFAVORABLES, aujourdhuiIso, dernierKilometrage } from "@/lib/auto/echeances";
 import { estimerKilometrage, lignesKilometrage } from "@/lib/auto/kilometrage";
 import { incoherencesKilometrage } from "@/lib/auto/factures";
-import { FONDEMENTS, elementControle, elementRevision, pastilleElement } from "@/components/auto/aPrevoir";
+import { elementControle, elementRevision, libelleFondement, pastilleElement } from "@/components/auto/aPrevoir";
 import {
   Alerte,
   Chargement,
@@ -662,7 +662,7 @@ function CarteEcheance({ id, icone, element, lienService = null, onAction, actio
           </div>
           <p className="mt-1 text-[15px] leading-snug text-foreground">{element.quand}</p>
           <p className={aide}>
-            <span className="font-semibold text-foreground/80">{FONDEMENTS[element.fondement]}.</span> {element.explication}
+            <span className="font-semibold text-foreground/80">{libelleFondement(element)}.</span> {element.explication}
           </p>
           {element.alerte ? (
             <p className="mt-2 flex items-start gap-1.5 text-[13px] font-medium leading-snug text-red-800">

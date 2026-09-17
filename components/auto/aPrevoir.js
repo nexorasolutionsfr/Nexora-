@@ -26,13 +26,24 @@ export const HORIZONS_JOURS = [30, 60, 90];
 export const HORIZON_PAR_DEFAUT = 60;
 
 export const FONDEMENTS = {
-  officiel: "Date officielle",
+  officiel: "Date du procès-verbal",
   calcul: "Calcul selon la règle",
   intervalle: "Selon l'intervalle renseigné",
   estimation: "Estimation",
   tache: "Votre tâche",
   manquant: "À compléter",
 };
+
+// D'où vient l'information, dit en toutes lettres. « Date officielle » laissait
+// croire que Nexora avait vérifié le document : elle n'a vérifié personne. Une
+// date saisie par la personne et une date lue sur un justificatif ne se
+// présentent donc pas de la même façon (constat de Baptiste, 18 sept. 2026).
+export function libelleFondement(element) {
+  const base = FONDEMENTS[element?.fondement] ?? FONDEMENTS.calcul;
+  if (element?.provenance === "proprietaire") return `${base}, renseignée par vous`;
+  if (element?.provenance === "prestation") return `${base}, lue sur votre document`;
+  return base;
+}
 
 const RANG = { depasse: 3, proche: 2, ok: 1, neutre: 0 };
 const plusUrgent = (...niveaux) => niveaux.filter(Boolean).sort((a, b) => RANG[b] - RANG[a])[0] ?? "neutre";
@@ -115,6 +126,12 @@ export function elementControle(vehicule, { aujourdhui } = {}) {
     };
   }
 
+  // D'où vient la ligne d'historique qui a servi de base : saisie, ou lue sur
+  // un document déposé. `source` vaut 'proprietaire' ou 'prestation'.
+  const provenance = ct.dernierLe
+    ? (vehicule.historique ?? []).find((h) => h?.type === "controle_technique" && h?.realise_le?.slice(0, 10) === ct.dernierLe)?.source ?? null
+    : null;
+
   const explications = {
     proces_verbal: `Date inscrite sur le procès-verbal du contrôle du ${formaterDate(ct.dernierLe)}.`,
     dernier_controle: `Validité de 2 ans du contrôle du ${formaterDate(ct.dernierLe)}, règle d'une voiture particulière. La date du procès-verbal fait foi.`,
@@ -138,6 +155,7 @@ export function elementControle(vehicule, { aujourdhui } = {}) {
     delai: delaiLisible(ct.joursRestants),
     niveau: ct.niveau,
     fondement: ct.fondement,
+    provenance,
     explication: explications[ct.source],
     actions: actions[ct.source],
     tri: ct.joursRestants,

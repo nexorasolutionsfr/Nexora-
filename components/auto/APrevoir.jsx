@@ -13,7 +13,7 @@ import { BellOff, Calculator, CalendarCheck, Car, ChevronRight, CircleAlert, Cir
 import { supabase } from "@/lib/supabase";
 import { ajouterJours, aujourdhuiIso } from "@/lib/auto/echeances";
 import { Alerte, PageAuto, Pastille, Plaque, SqueletteVehicules, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, deconnexionVolontaire, etiquette, puce, puceEtat, useSessionAuto } from "@/components/auto/elements";
-import { FONDEMENTS, HORIZONS_JOURS, construireAPrevoir, pastilleElement } from "@/components/auto/aPrevoir";
+import { HORIZONS_JOURS, construireAPrevoir, libelleFondement, pastilleElement } from "@/components/auto/aPrevoir";
 import { chargerDossiers } from "@/components/auto/dossiers";
 import { formaterDate, messageErreurAuto } from "@/components/auto/format";
 
@@ -300,7 +300,7 @@ function CarteElement({ element, actions, aujourdhui }) {
       <p className="mt-2 flex items-start gap-1.5 text-[13px] leading-snug text-muted-foreground">
         <IconeFondement className="mt-px size-3.5 shrink-0" aria-hidden="true" />
         <span>
-          <span className="font-semibold text-foreground/80">{FONDEMENTS[element.fondement]}.</span>
+          <span className="font-semibold text-foreground/80">{libelleFondement(element)}.</span>
           {element.explication ? ` ${element.explication}` : ""}
         </span>
       </p>
