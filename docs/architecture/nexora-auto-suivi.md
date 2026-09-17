@@ -821,3 +821,80 @@ Recette : 189 tests, `lint:auto` sans avertissement, `next build` réussi,
 parcours dégradés **32/32** (dépôt, doublons, lectures en échec, import
 abandonné), audits d'écrans et de texte agrandi sans défaut sur l'entrée et la
 vérification.
+
+## Lot C — un entretien accompagné (18-19 septembre 2026)
+
+**L'impasse retirée.** « Recopiez l'intervalle de révision de votre carnet »
+était un ordre adressé à quelqu'un qui ne sait pas encore où chercher. Et les
+raccourcis « 15 000 km / 1 an », « 20 000 km / 2 ans », « 30 000 km / 2 ans »
+ont **disparu du produit** : trois valeurs génériques offertes en choix se
+lisent comme une préconisation adaptée à la voiture. Elles ne l'étaient pas.
+La table `INTERVALLES_COURANTS` est supprimée, avec la raison écrite à sa
+place pour qu'on ne la remette pas.
+
+**Le formulaire accompagne, en cinq situations :**
+
+| Situation | Ce que l'écran propose |
+| --- | --- |
+| Une facture exploitable | « C'est sur une facture : l'ajouter » → l'entrée documents, qui lit et préremplit |
+| La dernière intervention est connue | Nexora le dit en tête : « votre dernière révision date du 22 oct. 2025, à 61 000 km » — on ne redemande pas ce qui est au dossier |
+| Le carnet est sous les yeux | Les deux champs, sans suggestion : tous les … km ou tous les … mois |
+| « Je ne sais pas » | Ce que Nexora fait quand même (contrôle technique, historique, documents, dépenses) et ce qu'il ne peut pas faire, puis « Ne plus me le demander » |
+| « Plus tard » | Report d'un mois, en base |
+
+**Ce qui reste distingué, comme demandé :** date de la dernière intervention,
+opérations réellement effectuées, kilométrage à cette date, intervalle
+d'entretien, et **source** de cet intervalle. Une vidange ne devient pas une
+révision ; une facture ne fournit pas une préconisation constructeur.
+
+**L'accueil s'adapte à ce qui manque.** Proposer « ajoutez une facture » pour
+une date de mise en circulation aurait été une fausse promesse : aucun
+document n'est lu automatiquement pour ça. La carte « Préparons la suite »
+part du document **seulement pour l'entretien** ; ailleurs elle demande
+directement la donnée qui débloque.
+
+**Et un écran calme ne ment plus.** Quand rien ne presse, les échéances
+**inconnues** sont listées avec les échéances connues, sous « Ce que Nexora
+sait de cette voiture » : « Révision — inconnue — Nexora ne connaît pas encore
+l'intervalle de révision de cette voiture ». Un report tait le rappel, pas le
+trou.
+
+## Lot D — un kilométrage qui demande moins (18-19 septembre 2026)
+
+**Presque tout existait déjà**, et bien : relevé daté distinct de l'estimation
+(« Estimation. Environ 75 600 km d'après le rythme de vos relevés. Ce n'est pas
+un relevé. »), suspension de l'estimation quand deux compteurs se
+contredisent, saisie manuelle toujours accessible depuis la fiche, priorité du
+relevé le plus récent. La consigne était de vérifier avant d'ajouter du code :
+c'est ce qui a été fait.
+
+**Ce qui manquait : une seule règle.** L'accueil appliquait un délai de
+fraîcheur de 14 jours, la fiche appliquait « ce compteur sert-il à une
+échéance ? » (`demandeActualisation`). Deux règles pour une question. Le délai
+réclamait le compteur d'une voiture dont **aucune échéance ne dépend du
+compteur**.
+
+`sollicitationKilometrage` unifie, et tient en une phrase : **on ne demande le
+compteur que s'il sert à une échéance, et jamais tant que deux relevés se
+contredisent** — dans ce cas c'est une clarification qu'il faut, pas un chiffre
+de plus. Trois comportements, vérifiés à l'écran sur le jeu de recette :
+
+| Voiture | Ce que l'accueil propose |
+| --- | --- |
+| Corsa, aucune échéance au compteur | rien — le raccourci disparaît |
+| Clio, révision dans environ 400 km | « Mettre à jour le kilométrage — votre prochaine révision se suit au compteur » |
+| Golf, deux relevés contradictoires | « Vérifier vos kilométrages — tant qu'ils ne concordent pas, la révision n'est pas suivie au compteur » |
+
+## Un jeu de recette pour Nexora Auto
+
+`scripts/recette/jeu-auto.mjs` (Test seulement) crée un compte fictif et cinq
+voitures, une par situation à couvrir : dossier vide, contrôle technique
+lointain avec entretien inconnu, révision qui approche au compteur, contrôle
+technique dépassé, kilométrages contradictoires. Les dates sont relatives au
+jour d'exécution, donc le jeu reste valable demain. `jeu-auto.mjs supprimer`
+efface tout.
+
+**Piège rencontré** : `verifier(moi.rpc(...))` sans `await` vérifie une
+promesse — jamais en erreur — et rend `undefined`. L'insertion suivante partait
+sans voiture, et c'est la règle d'accès qui la refusait. Un script qui ne lit
+pas ses propres erreurs teste le vide.
