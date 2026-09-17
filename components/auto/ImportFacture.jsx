@@ -199,7 +199,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
           ? "Facture, procès-verbal, carte grise : le document est rangé dans le dossier de la voiture, et vous renseignez ce qu'il faut."
           : lecture.formats.some((f) => f.startsWith("image/"))
             ? "Facture, procès-verbal, carte grise. Nexora lit ce qu'il peut et vous propose les informations : vous vérifiez, puis vous confirmez."
-            : "Facture, procès-verbal, carte grise. Une facture PDF est lue automatiquement et Nexora vous propose les informations ; tout autre document est simplement rangé."}
+            : "Facture, procès-verbal, carte grise. Nexora préremplit les informations des factures PDF contenant du texte ; un scan, une photo ou un autre document est conservé dans votre dossier, sans lecture."}
       </p>
 
       {vehicules.length === 0 ? (

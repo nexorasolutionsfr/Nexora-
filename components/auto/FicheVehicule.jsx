@@ -39,6 +39,7 @@ import {
 
 import { supabase } from "@/lib/supabase";
 import { RESULTATS_DEFAVORABLES, ajouterJours, aujourdhuiIso, dernierKilometrage } from "@/lib/auto/echeances";
+import { MANQUES, factureDAbord, manquesEntretien, phraseManques } from "@/lib/auto/entretien";
 import { estimerKilometrage, lignesKilometrage } from "@/lib/auto/kilometrage";
 import { incoherencesKilometrage } from "@/lib/auto/factures";
 import { elementControle, elementRevision, libelleFondement, pastilleElement } from "@/components/auto/aPrevoir";
@@ -525,6 +526,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
               onAnnuler={() => setOuvert(null)}
               onEnregistre={() => apresEnregistrement("Intervalle de révision enregistré.")}
               onReporte={(texte) => apresEnregistrement(texte)}
+              onAutreGeste={(code) => faireAction(code)}
             />
           ) : ouvert === "entretien" ? (
             <FormulaireIntervention vehiculeId={vehicule.id} typeFixe="revision" onAnnuler={() => setOuvert(null)} onEnregistre={() => apresEnregistrement("Révision ajoutée à l'historique.")} />
@@ -1130,7 +1132,7 @@ function FormulaireIntervention({ vehiculeId, typeFixe, typeDefaut = "", natureI
   );
 }
 
-// L'intervalle d'entretien, accompagné plutôt que réclamé.
+// Le suivi d'entretien, accompagné plutôt que réclamé.
 //
 // « Recopiez l'intervalle de votre carnet » était une impasse : il fallait
 // déjà savoir où chercher et quoi comprendre. Et les raccourcis « 15 000 km /
@@ -1138,9 +1140,15 @@ function FormulaireIntervention({ vehiculeId, typeFixe, typeDefaut = "", natureI
 // présentées comme des choix ressemblent à une préconisation adaptée à la
 // voiture, ce qu'elles ne sont pas (constat du 18 sept. 2026).
 //
-// Trois sorties, et chacune mène quelque part : je l'ai sous les yeux, c'est
-// sur une facture, je ne sais pas.
-function FormulaireIntervalle({ vehicule, element, proprietaireId, onAnnuler, onEnregistre, onReporte }) {
+// Deux défauts corrigés le 18 sept. 2026, après une navigation du fondateur :
+//   1. « Il manque une seule chose » était écrit en dur alors que le dossier
+//      en attendait deux : on comblait « la dernière », et une nouvelle
+//      demande apparaissait derrière. Les manques viennent maintenant de
+//      manquesEntretien(), la même source que la fiche du service.
+//   2. « Je ne sais pas » AJOUTAIT du texte et deux boutons sous les champs
+//      restés ouverts : plus à lire, juste après avoir dit qu'on ne savait
+//      pas. C'est désormais une sortie, qui remplace le formulaire.
+function FormulaireIntervalle({ vehicule, element, proprietaireId, onAnnuler, onEnregistre, onReporte, onAutreGeste }) {
   const [saisie, setSaisie] = useState({
     km: vehicule.intervalle_entretien_km ? String(vehicule.intervalle_entretien_km) : "",
     mois: vehicule.intervalle_entretien_mois ? String(vehicule.intervalle_entretien_mois) : "",
@@ -1154,6 +1162,11 @@ function FormulaireIntervalle({ vehicule, element, proprietaireId, onAnnuler, on
   const derniere = [...(vehicule.historique ?? [])]
     .filter((h) => h?.type === "revision")
     .sort((a, b) => (a.realise_le < b.realise_le ? 1 : -1))[0];
+
+  // Ce qui manque VRAIMENT, compté en une fois.
+  const manques = manquesEntretien(vehicule);
+  const demandeIntervalle = manques.length === 0 || manques.some((m) => m.cle === "intervalle");
+  const autresManques = manques.filter((m) => m.cle !== "intervalle");
 
   async function soumettre(evenement) {
     evenement.preventDefault();
@@ -1170,8 +1183,7 @@ function FormulaireIntervalle({ vehicule, element, proprietaireId, onAnnuler, on
     else onEnregistre();
   }
 
-  // « Plus tard » et « je ne sais pas » ne diffèrent que par la durée : le
-  // report vit en base, donc il tient d'un appareil à l'autre.
+  // Le report vit en base, donc il tient d'un appareil à l'autre.
   async function reporter(jours, texte) {
     if (!element?.cle || !proprietaireId) return onAnnuler();
     setEnCours(true);
@@ -1183,6 +1195,29 @@ function FormulaireIntervalle({ vehicule, element, proprietaireId, onAnnuler, on
     onReporte?.(texte);
   }
 
+  // La sortie : elle REMPLACE le formulaire. Une phrase, un retour, et la
+  // possibilité de ne plus être sollicité — rien de plus à lire.
+  if (sansReponse) {
+    return (
+      <div className="mt-4 space-y-4 border-t border-border pt-4">
+        <p className="text-[15px] leading-relaxed text-foreground">
+          Votre suivi reste disponible : contrôle technique, historique, documents et dépenses. La prochaine révision sera calculée le jour où vous aurez ces
+          informations.
+        </p>
+        {erreurEnvoi ? <Alerte>{erreurEnvoi}</Alerte> : null}
+        <button type="button" onClick={onAnnuler} className={boutonPrincipal}>
+          Revenir à ma voiture
+        </button>
+        <div className="space-y-1 border-t border-border pt-3">
+          <p className={aide}>Vous retrouverez cette demande sur cette fiche, et dans « À prévoir ».</p>
+          <button type="button" onClick={() => reporter(365, "Entendu. Nexora ne vous le redemandera pas.")} disabled={enCours} className={boutonLien}>
+            Ne plus me le demander
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-4 space-y-4 border-t border-border pt-4">
       {derniere ? (
@@ -1191,66 +1226,78 @@ function FormulaireIntervalle({ vehicule, element, proprietaireId, onAnnuler, on
           {derniere.kilometrage ? `, à ${formaterKm(derniere.kilometrage)}` : ""}.
         </p>
       ) : null}
-      <p className="text-[15px] leading-snug text-foreground">
-        Il manque une seule chose : <strong className="font-semibold">tous les combien</strong> votre {vehicule.marque} {vehicule.modele} doit être révisée.
-      </p>
-      <p className="text-sm leading-snug text-muted-foreground">
-        C'est écrit sur le carnet d'entretien, et souvent repris sur la facture de la dernière révision. Nexora ne le devine pas : les intervalles dépendent de la
-        motorisation, et une valeur approchée ferait une échéance fausse.
-      </p>
+      {manques.length > 0 ? <p className="text-[15px] leading-snug text-foreground">{phraseManques(manques)}</p> : null}
 
-      <form onSubmit={soumettre} noValidate className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label htmlFor="intervalle-km" className={etiquette}>
-              Tous les
-            </label>
-            <div className="relative">
-              <input id="intervalle-km" inputMode="numeric" value={saisie.km} onChange={(e) => setSaisie((s) => ({ ...s, km: e.target.value }))} className={`${champ} pr-10`} aria-invalid={erreurs.km ? true : undefined} aria-describedby={erreurs.km ? "intervalle-erreur" : undefined} />
-              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">km</span>
-            </div>
-          </div>
-          <div>
-            <label htmlFor="intervalle-mois" className={etiquette}>
-              ou tous les
-            </label>
-            <div className="relative">
-              <input id="intervalle-mois" inputMode="numeric" value={saisie.mois} onChange={(e) => setSaisie((s) => ({ ...s, mois: e.target.value }))} className={`${champ} pr-14`} aria-invalid={erreurs.mois ? true : undefined} aria-describedby={erreurs.mois ? "intervalle-erreur" : undefined} />
-              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">mois</span>
-            </div>
-          </div>
+      {/* Plusieurs manques : une facture de révision les porte souvent tous.
+          C'est le geste le plus court, donc il passe devant. */}
+      {factureDAbord(manques) ? (
+        <div className="rounded-xl border border-primary/30 bg-secondary/40 px-4 py-3">
+          <p className="text-sm font-semibold text-foreground">Le plus court</p>
+          <p className="mt-1 text-sm leading-snug text-muted-foreground">
+            Votre facture de révision porte la date, le kilométrage, et souvent l'intervalle préconisé. Nexora lit le PDF et vous propose les informations.
+          </p>
+          <Link href={`/auto/factures/nouvelle?vehicule=${vehicule.id}`} className={`${boutonSecondaire} mt-3`}>
+            <ReceiptText className="size-4" aria-hidden="true" />
+            Ajouter la facture
+          </Link>
         </div>
-        <Erreur id="intervalle-erreur" texte={erreurs.km || erreurs.mois} />
-        {erreurEnvoi ? <Alerte>{erreurEnvoi}</Alerte> : null}
-        <BoutonsFormulaire enCours={enCours} onAnnuler={onAnnuler} />
-      </form>
+      ) : null}
+
+      {/* Chaque manque autre que l'intervalle mène au formulaire qui le comble,
+          sans quitter la fiche. */}
+      {autresManques.map((manque) => (
+        <div key={manque.cle}>
+          <p className="text-[15px] font-semibold leading-snug text-foreground">{manque.libelle}</p>
+          <p className="mt-0.5 text-sm leading-snug text-muted-foreground">{manque.pourquoi}</p>
+          <button type="button" onClick={() => onAutreGeste?.(manque.action)} className={`${boutonSecondaire} mt-2`}>
+            {manque.geste}
+          </button>
+        </div>
+      ))}
+
+      {demandeIntervalle ? (
+        <div>
+          <p className="text-[15px] font-semibold leading-snug text-foreground">{MANQUES.intervalle.libelle}</p>
+          <p className="mt-0.5 text-sm leading-snug text-muted-foreground">{MANQUES.intervalle.pourquoi}</p>
+          <form onSubmit={soumettre} noValidate className="mt-3 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="intervalle-km" className={etiquette}>
+                  Tous les
+                </label>
+                <div className="relative">
+                  <input id="intervalle-km" inputMode="numeric" value={saisie.km} onChange={(e) => setSaisie((s) => ({ ...s, km: e.target.value }))} className={`${champ} pr-10`} aria-invalid={erreurs.km ? true : undefined} aria-describedby={erreurs.km ? "intervalle-erreur" : undefined} />
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">km</span>
+                </div>
+              </div>
+              <div>
+                <label htmlFor="intervalle-mois" className={etiquette}>
+                  ou tous les
+                </label>
+                <div className="relative">
+                  <input id="intervalle-mois" inputMode="numeric" value={saisie.mois} onChange={(e) => setSaisie((s) => ({ ...s, mois: e.target.value }))} className={`${champ} pr-14`} aria-invalid={erreurs.mois ? true : undefined} aria-describedby={erreurs.mois ? "intervalle-erreur" : undefined} />
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">mois</span>
+                </div>
+              </div>
+            </div>
+            <Erreur id="intervalle-erreur" texte={erreurs.km || erreurs.mois} />
+            {erreurEnvoi ? <Alerte>{erreurEnvoi}</Alerte> : null}
+            <BoutonsFormulaire enCours={enCours} onAnnuler={onAnnuler} />
+          </form>
+        </div>
+      ) : null}
 
       <div className="space-y-1 border-t border-border pt-3">
-        <Link href={`/auto/factures/nouvelle?vehicule=${vehicule.id}`} className={boutonLien}>
-          <ReceiptText className="size-4" aria-hidden="true" />
-          C'est sur une facture : l'ajouter
-        </Link>
-        <button type="button" onClick={() => setSansReponse((v) => !v)} aria-expanded={sansReponse} className={boutonLien}>
+        {factureDAbord(manques) ? null : (
+          <Link href={`/auto/factures/nouvelle?vehicule=${vehicule.id}`} className={boutonLien}>
+            <ReceiptText className="size-4" aria-hidden="true" />
+            C'est sur une facture : l'ajouter
+          </Link>
+        )}
+        <button type="button" onClick={() => setSansReponse(true)} className={boutonLien}>
           Je ne sais pas
         </button>
       </div>
-
-      {sansReponse ? (
-        <div className="rounded-xl border border-border bg-muted/40 px-4 py-3">
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            Sans cet intervalle, Nexora suit quand même votre contrôle technique, votre historique, vos documents et vos dépenses. La seule chose qu'il ne peut pas
-            faire, c'est vous dire quand la prochaine révision arrive. Vous pourrez l'ajouter le jour où vous l'aurez sous les yeux.
-          </p>
-          <div className="mt-3 space-y-1">
-            <button type="button" onClick={() => reporter(30, "Entendu. Nexora n'y reviendra pas avant un mois.")} disabled={enCours} className={boutonSecondaire}>
-              Me le redemander dans un mois
-            </button>
-            <button type="button" onClick={() => reporter(365, "Entendu. Nexora ne vous le redemandera pas.")} disabled={enCours} className={boutonLien}>
-              Ne plus me le demander
-            </button>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -392,7 +392,7 @@ function Resume({ elements, aCompleter = [], vehicule, avecAction }) {
 // Les gestes, dits en toutes lettres — et seulement ceux qui servent.
 function Acces({ etat, vehicule, compteur }) {
   const gestes = [
-    { href: `/auto/factures/nouvelle?vehicule=${vehicule.id}`, icone: ReceiptText, titre: "Ajouter un document", texte: "Facture, procès-verbal, carte grise. Une facture PDF est lue automatiquement." },
+    { href: `/auto/factures/nouvelle?vehicule=${vehicule.id}`, icone: ReceiptText, titre: "Ajouter un document", texte: "Facture, procès-verbal, carte grise. Nexora préremplit les factures PDF contenant du texte." },
     // Le compteur n'est proposé ici que s'il sert à une échéance. La saisie
     // reste évidemment possible à tout moment depuis la fiche de la voiture.
     ...(compteur === "utile"
