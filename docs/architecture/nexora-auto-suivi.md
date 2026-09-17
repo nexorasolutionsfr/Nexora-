@@ -85,6 +85,11 @@ boutons sans nom, champs sans libellé, cibles tactiles), et situations limites.
 | R36 | Fichiers privés servis derrière un cache d'une heure : après un retrait d'accès, la même session peut encore recevoir un fichier déjà téléchargé | **mesuré et documenté** (préparation) : un autre compte reste refusé, un fichier jamais téléchargé aussi ; `cacheControl: "0"` n'y change rien |
 | R37 | `AUTO_ACCES=ferme` ferme l'application mais pas l'accès direct à la base : une session ouverte lit et écrit encore | **mesuré et documenté** (préparation) : seule la fermeture en base coupe les données |
 | R38 | `preferredRegion` déprécié par Next 16 ; une région par fonction impossible sur l'offre Hobby | **corrigé** (préparation) : `vercel.json` avec une région unique, `dub1` |
+| R39 | Trois onglets, et « Mon garage » servait d'accueil : rien ne disait à l'automobiliste quoi faire maintenant | **corrigé** (B2C) : quatre espaces, écran « Aujourd'hui » avec une seule action mise en avant |
+| R40 | « Rien d'urgent dans les N prochains jours », avec une coche verte, sur la seule absence d'échéance enregistrée | **corrigé** (B2C) : « Aucune échéance …, d'après ce qui est enregistré », sans coche, et ce qui manque est nommé |
+| R41 | La voiture consultée n'était gardée que pour l'onglet du navigateur : elle était reperdue à chaque retour | **corrigé** (B2C) : gardée sur l'appareil, oubliée à la déconnexion |
+| R42 | Aucun texte de confidentialité propre à Nexora Auto, alors que le rôle y est celui de responsable de traitement | **corrigé** (B2C) : `/auto/confidentialite`, lié depuis l'inscription, l'accueil public et « Compte » |
+| R43 | Aucun endroit pour son compte : la déconnexion vivait dans l'en-tête, l'horizon dans « À prévoir » | **corrigé** (B2C) : écran « Compte » |
 
 Vérifié sans défaut : aucune page ne déborde à 320 px ; écrans sans voiture
 (chacun propose d'ajouter une voiture) ; session expirée au chargement
@@ -520,3 +525,58 @@ en attente de l'accord et de l'adresse. Point à vérifier d'abord : sans SMTP
 dédié, l'envoi Supabase n'accepte que les adresses membres du projet, 2 par
 heure.
 
+## Simplification grand public (17 septembre 2026, avant la livraison)
+
+Demandée avant la mise en ligne. Rien de neuf n'est construit : ce qui existait
+est remis dans l'ordre où un automobiliste le cherche.
+
+**Quatre espaces, et pas un de plus.** « Aujourd'hui », « Mon garage »,
+« Services », « Compte ». « À prévoir » et « Ajouter une facture » vivent dans
+« Aujourd'hui » ; la déconnexion et les préférences dans « Compte ». Le garage
+déménage de `/auto` à `/auto/garage`, et les liens « Mon garage » des autres
+écrans suivent. À 375 px, les quatre onglets tiennent sur une ligne ; les
+icônes s'effacent en dessous de 420 px et quand le texte est agrandi.
+
+**« Aujourd'hui » (`/auto`).** La voiture consultée, nommée en haut avec sa
+plaque et son kilométrage. Une seule action mise en avant — la plus urgente,
+une échéance critique d'abord —, avec son bouton en toutes lettres
+(« Renseigner la mise en circulation », « Enregistrer une révision »). Les
+autres échéances tiennent en une ligne cliquable. Quatre raccourcis nommés :
+ajouter une facture, actualiser le kilométrage, enregistrer une révision,
+ouvrir le dossier. Le choix est pur et testé : `lib/auto/aujourdhui.js`,
+8 contrôles (`choisirVoiture`, `etatAujourdhui`).
+
+**Ne jamais rassurer sur ce qu'on ne sait pas.** Un rappel reporté reste
+affiché mais ne reprend pas la première place. Quand aucune échéance n'est
+calculable, l'écran affiche « À compléter pour que Nexora calcule » et
+l'information qui manque, jamais un écran vide ni un bilan. Quand une échéance
+est calculée mais qu'une autre manque, la carte le dit en pied
+(« 2 échéances ne sont pas encore calculées faute d'informations »).
+
+**La voiture consultée** passe du stockage d'onglet au stockage de l'appareil :
+une personne qui n'en a qu'une ne la choisit jamais, et celle qu'elle a ouverte
+la veille est encore là au retour. Elle est oubliée à la déconnexion, avec les
+brouillons de facture.
+
+**« Compte » (`/auto/compte`).** L'adresse du compte, l'horizon de
+« À prévoir » (le même réglage qu'à l'écran « À prévoir », vérifié : changé
+depuis « Compte », il est repris), la confidentialité, l'export, ce qui se
+supprime soi-même, et la sortie. Aucun réglage qui n'agisse sur rien : les
+envois hors de l'application n'existent pas, ils ne sont pas proposés.
+
+**`/auto/confidentialite`.** Écrit à partir des seuls faits vérifiés. Identité
+du responsable et adresse de contact reprises de la politique déjà publiée.
+Aucune durée annoncée : « aucune suppression automatique n'est en place
+aujourd'hui », et les durées pour les comptes inactifs sont dites non arrêtées.
+La page nomme ce que Nexora Auto ne fait pas (aucun envoi hors de l'app, aucun
+service d'IA, aucune identification par plaque) et conseille de ne pas déposer
+de pièce d'identité pendant la bêta.
+
+**Recette.** 157 tests, `lint:auto` sans avertissement, `next build` réussi,
+les dix bancs SQL à 0, accès croisés 55/55, fermeture 14/14, simultanéité des
+factures 80/80 sans doublon involontaire. Audit d'écrans à 320, 375 et 390 px :
+RAS sur les six écrans, sauf les liens e-mail au fil d'une phrase (17 px de
+haut) — les liens en ligne dans un paragraphe font exception (WCAG 2.5.8).
+Texte agrandi à 150 % et 200 % : deux défauts trouvés et corrigés sur
+« Compte » (adresse de contact qui sortait de l'écran, icônes de lignes qui ne
+s'effaçaient pas), puis RAS.

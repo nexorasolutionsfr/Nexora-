@@ -99,7 +99,7 @@ Pour chaque traitement, la **base légale est une proposition** à valider.
 ### T6. Données sur l'appareil
 - **Session :** jeton Supabase dans le stockage local du navigateur, strictement nécessaire.
 - **Brouillon d'une facture en cours de vérification :** stockage local, 7 jours au plus, effacé à l'enregistrement et à la déconnexion.
-- **Préférences d'affichage :** « Pour bien démarrer » masqué dans le stockage local ; voiture consultée pendant la session du navigateur.
+- **Préférences d'affichage :** « Pour bien démarrer » masqué dans le stockage local ; **voiture consultée gardée dans le stockage local de l'appareil** (depuis la simplification grand public du 17 sept. : elle survit à la fermeture de l'onglet, et elle est effacée à la déconnexion, avec les brouillons).
 - **Export :** préparé dans le navigateur, rien n'est envoyé.
 - **Traceurs :** stockage strictement nécessaire au service demandé (exemption de consentement, à confirmer).
 
@@ -132,6 +132,19 @@ Uniquement ce qui est vérifié :
 à Nexora n'est ajouté au chiffrement fourni par Supabase.
 
 ## 6. Projets de textes (à valider, rien n'est publié)
+
+### 6.0 Ce qui est publié (17 septembre 2026)
+
+Une page dédiée existe : **`/auto/confidentialite`**, liée depuis l'écran
+d'inscription, l'accueil public de Nexora Auto et « Compte ». Elle reprend
+l'identité du responsable et l'adresse de contact de la politique déjà
+publiée, décrit les sept traitements réels, dit où tout est traité (Supabase
+Irlande, Vercel Dublin, Brevo), et **n'annonce aucune durée** : elle écrit que
+rien n'est supprimé automatiquement aujourd'hui, et que les durées pour les
+comptes inactifs ne sont pas arrêtées. Elle conseille de ne pas déposer de
+pièce d'identité pendant la bêta (décision D5, option « déconseiller »
+appliquée). Le projet de texte ci-dessous reste la référence pour ce qu'il
+faudra ajouter quand les décisions D1, D3 et D6 seront prises.
 
 ### 6.1 Section à ajouter à la politique de confidentialité
 

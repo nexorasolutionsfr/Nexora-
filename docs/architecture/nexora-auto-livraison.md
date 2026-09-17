@@ -1,13 +1,23 @@
 # Nexora Auto — document de livraison
 
-Mis à jour le 17 septembre 2026, avec la bêta privée. **Procédure préparée,
-rien n'a été exécuté en Production** : aucune fusion dans `main`, aucune
-migration en Production, aucun déploiement, aucune invitation. Chaque étape
-attend une décision explicite.
+Mis à jour le 17 septembre 2026, au soir, **pendant la mise en ligne**
+autorisée par Baptiste.
+
+**Où nous en sommes.**
+
+| Étape | État |
+| --- | --- |
+| Simplification grand public (quatre espaces, « Aujourd'hui », « Compte », confidentialité) | **faite** |
+| Sauvegarde de la Production (schéma, rôles, données) | **faite** |
+| Répétition des onze migrations sur une copie du schéma réel de Production | **faite**, 11/11 |
+| Migrations en Production | **appliquées** le 17 septembre 2026 ; Nexora Auto reste **fermé** (`mode = 'ferme'`) |
+| Fusion unique dans `main` et déploiement | voir section 3 |
+| Ouverture de l'accès | voir section 7 |
+| Variables « Preview » de Vercel | **à faire par Baptiste** (section 2) : aucun jeton d'API Vercel n'est disponible ici |
 
 ## 1. Ce qui est livré
 
-Treize PR en brouillon, empilées : chacune a pour base la précédente, et #110
+Quatorze PR en brouillon, empilées : chacune a pour base la précédente, et #110
 a pour base `main` (`349652e`, ancêtre de toute la pile).
 
 | PR | Lot | Migration |
@@ -26,6 +36,7 @@ a pour base `main` (`349652e`, ancêtre de toute la pile).
 | [#121](https://github.com/nexorasolutionsfr/Nexora-/pull/121) | L — consolidation technique | — |
 | [#122](https://github.com/nexorasolutionsfr/Nexora-/pull/122) | livraison et compte rendu | — |
 | [#123](https://github.com/nexorasolutionsfr/Nexora-/pull/123) | bêta privée : accès contrôlé, lint permanent, recette et données personnelles | `20260922001100` |
+| — (branche `auto/livraison-b2c`) | simplification grand public : quatre espaces, « Aujourd'hui », « Compte », confidentialité | — |
 
 **Hors de l'espace Auto**, la pile ne modifie que :
 - `app/globals.css` : une règle de focus limitée à `.espace-auto` ;
@@ -159,31 +170,63 @@ des états intermédiaires incomplets.
 | Fichiers orphelins | `supabase/tests/auto_fichiers_orphelins.sql` | 0 et 0 |
 | Recette humaine | `nexora-auto-recette-beta.md`, temps A | relevés remplis |
 
-## 5. Migrations en Production
+## 5. Migrations en Production — **appliquées le 17 septembre 2026**
 
 **Ordre** : les onze fichiers, de `20260922000100_auto_mon_vehicule.sql` à
 `20260922001100_auto_acces_beta.sql`, dans l'ordre d'horodatage. `supabase db push`
 les applique dans cet ordre, chacun dans sa transaction.
 
-**Compatibilité.**
+**Compatibilité, vérifiée avant l'application.**
 - Tout est additif : tables et fonctions `auto_*` nouvelles, compartiment privé `auto-documents` nouveau.
-- Aucune table existante n'est modifiée ; `auto_partenaires.garage_id` référence `garages` sans le changer.
-- Le code en Production n'utilise aucun de ces objets.
-- Ne jamais s'arrêter entre `000600` et `000700`, qui resserre les droits par défaut de Supabase.
+- Relevé des instructions : hors de l'espace Auto, les onze fichiers ne contiennent que l'insertion du compartiment `auto-documents` et quatre politiques `auto_documents_stockage_*` sur `storage.objects`. Tous les `grant` et `revoke` portent sur des tables `auto_*`.
+- La politique **restrictive** ajoutée sur `storage.objects` permet tout ce qui n'est pas dans `auto-documents` (`bucket_id <> 'auto-documents' or …`) : les fichiers de Nexora Pro ne sont pas concernés.
+- `auto_partenaires.garage_id` référence `garages` sans le modifier.
+- Le code alors en Production n'utilisait aucun de ces objets.
 - `001100` ferme l'accès par défaut : même si le code arrivait avant la décision d'ouvrir, aucune donnée Nexora Auto ne serait lisible ni modifiable.
 
-**Procédure (sur décision).**
-1. **Sauvegarde.** Vérifier la dernière sauvegarde automatique et l'offre Supabase, puis exporter sur un poste de confiance : `supabase db dump`, et `supabase db dump --data-only`. Ces exports ne vont jamais dans le dépôt.
-2. **État.** `supabase migration list` sur la Production : aucune migration `202609220…` ne doit apparaître.
-3. **Répétition.** Appliquer les onze fichiers sur une base jetable issue du schéma de Production, puis passer les bancs Auto.
-4. **Essai à blanc.** `supabase db push --dry-run` : exactement les onze fichiers.
-5. **Application.** `supabase db push`.
-6. **Contrôles en lecture seule.**
-   - `auto_droits_v1.sql`.
-   - Relevé des fichiers orphelins.
-   - `select mode from public.auto_acces_parametres` doit renvoyer `ferme`.
-   - Compartiment `auto-documents` privé, 10 Mo, 6 types.
-   - Les autres bancs créent des comptes fictifs dans une transaction annulée : ne pas les passer en Production sans décision.
+**Ce qui a été fait, dans cet ordre.**
+
+1. **Sauvegardes.** `supabase backups list --project-ref omphppsmhmyllapdqevn` répond
+   `walg_enabled: true`, `pitr_enabled: false`, et **`backups: []`** — aucune
+   sauvegarde restaurable n'est listée pour ce projet. Trois exports ont donc
+   été pris avant toute écriture : schéma (10 175 lignes), rôles, et données
+   (41 tables, dont `garages`, `clients`, `vehicules`, `factures`, `auth.users`).
+   Ils contiennent des données réelles : ils sont restés **hors du dépôt**, sur
+   le poste de Baptiste, avec leurs empreintes SHA-256. Base de 16 Mo.
+2. **État.** `supabase migration list` : dernière migration `20260921000200`, aucune
+   `202609220…`, et **aucune table `auto_`** (`information_schema.tables` : « AUCUNE »).
+   Le diff local/distant donnait exactement les onze fichiers, et rien d'autre
+   n'était en attente.
+3. **Répétition.** Base jetable neuve (image `supabase/postgres:17.6.1.166`)
+   chargée avec le **schéma réel de la Production** (55 tables, 150 fonctions,
+   90 politiques), maquette `auth.users.email_confirmed_at` et maquette minimale
+   du schéma `storage` (`supabase/tests/prelude_stockage_base_jetable.sql` — l'image
+   n'a pas de schéma `storage`, et le dump du schéma public ne le porte pas),
+   droits ramenés à l'état déclaré par la Production. Résultat : **11 migrations
+   sur 11 appliquées**, 15 tables `auto_`, 33 politiques `auto_`, compartiment
+   privé de 10 Mo et 6 types, mode par défaut `ferme`, **8 bancs SQL Auto à 0**,
+   et Nexora Pro intact (55 tables, 90 politiques). Script rejouable :
+   `repetition-prod.sh` (hors dépôt, décrit ici).
+4. **Essai à blanc.** `supabase db push --dry-run` : exactement les onze fichiers,
+   aucune graine, aucun rôle.
+5. **Application.** `supabase db push` depuis un miroir jetable hors dépôt, dont
+   le dossier `supabase/migrations` a été **vidé juste après**, pour qu'aucun
+   `push` accidentel n'ait de quoi s'appliquer.
+6. **Contrôles en lecture, sur la Production.**
+
+| Contrôle | Attendu | Constaté |
+| --- | --- | --- |
+| Tables `auto_` | 15 | **15** |
+| Politiques `auto_` (schéma public) | 33 | **33** |
+| Politiques `auto_*` sur `storage.objects` | 4 | **4** |
+| Mode d'accès | `ferme` | **`ferme`** |
+| Adresses invitées | 0 | **0** |
+| Compartiment `auto-documents` | privé, 10 Mo, 6 types | **privé, 10 485 760 octets, 6 types** |
+| Banc `auto_droits_v1.sql` | code 0 | **code 0** |
+| Fichiers orphelins | 0 et 0 | **0 et 0** |
+| Tables de Nexora Pro | 57, inchangées | **57** |
+| Politiques de Nexora Pro | 90, inchangées | **90** |
+| Données de Nexora Pro | inchangées | **1 garage, 4 clients, 9 véhicules, 1 facture, 16 devis, 1 compte** |
 
 **Variables d'environnement (Vercel, Production).**
 - Existantes : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
