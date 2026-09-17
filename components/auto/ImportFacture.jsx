@@ -303,12 +303,14 @@ const MESSAGES_LECTURE = {
   echec: "La lecture n'a pas abouti : renseignez les informations, ou réessayez.",
   pdf_sans_texte: "Ce PDF est une image scannée : il n'est pas encore lu automatiquement. Renseignez les informations.",
   pdf_illisible: "Ce PDF n'a pas pu être lu : renseignez les informations.",
+  pdf_trop_long: "Document trop long pour la lecture automatique (4 pages au plus) : renseignez les informations.",
+  delai_depasse: "La lecture a pris trop de temps : renseignez les informations.",
   non_connecte: "Votre session a expiré : la lecture automatique n'a pas pu se faire. Reconnectez-vous, ou renseignez les informations.",
   vide: "Aucune information n'a pu être lue sur ce document : renseignez-les.",
 };
 
 // Échecs qu'une nouvelle tentative ne résoudrait pas.
-const ECHECS_DEFINITIFS = new Set(["pdf_sans_texte", "pdf_illisible", "format_non_lu", "session"]);
+const ECHECS_DEFINITIFS = new Set(["pdf_sans_texte", "pdf_illisible", "pdf_trop_long", "delai_depasse", "format_non_lu", "session"]);
 
 function messageLecture(lecture) {
   if (lecture.etat === "non_connecte") return MESSAGES_LECTURE.non_connecte;

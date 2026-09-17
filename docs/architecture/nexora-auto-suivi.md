@@ -34,7 +34,8 @@ Il est mis à jour à chaque lot. Le contrat détaillé de chaque lot reste dans
 | H — import plus fluide | `auto/lot-h-import-fluide` | `auto/lot-g-premiere-utilisation` | [#117](https://github.com/nexorasolutionsfr/Nexora-/pull/117) | fait sur Test, migration `20260922001000` appliquée sur Test |
 | I — mobile et accessibilité | `auto/lot-i-mobile-accessibilite` | `auto/lot-h-import-fluide` | [#118](https://github.com/nexorasolutionsfr/Nexora-/pull/118) | fait sur Test, sans migration |
 | J — kilométrage et rappels | `auto/lot-j-kilometrage-rappels` | `auto/lot-i-mobile-accessibilite` | [#119](https://github.com/nexorasolutionsfr/Nexora-/pull/119) | fait sur Test, sans migration |
-| K — maîtrise du dossier | `auto/lot-k-maitrise-dossier` | `auto/lot-j-kilometrage-rappels` | à ouvrir | fait sur Test, sans migration |
+| K — maîtrise du dossier | `auto/lot-k-maitrise-dossier` | `auto/lot-j-kilometrage-rappels` | [#120](https://github.com/nexorasolutionsfr/Nexora-/pull/120) | fait sur Test, sans migration |
+| L — consolidation technique | `auto/lot-l-consolidation` | `auto/lot-k-maitrise-dossier` | à ouvrir | fait sur Test, sans migration |
 
 ## Recette globale — constats
 
@@ -73,6 +74,8 @@ boutons sans nom, champs sans libellé, cibles tactiles), et situations limites.
 | R27 | Supprimer une voiture laisse les fichiers déposés depuis un autre appareil et ses rappels reportés | **corrigé** (lot K) |
 | R28 | Pas de moyen de garder ou transmettre le dossier d'une voiture | **corrigé** (lot K) : export imprimable et tableau |
 | R29 | Boutons « Enregistrer / Annuler » hors de l'écran en texte agrandi | **corrigé** (lot K) |
+| R30 | Lecture PDF : un fichier au décompte de pages trompeur est entièrement analysé, sans limite de durée | **corrigé** (lot L) |
+| R31 | Journal serveur d'une erreur de lecture inattendue : message complet, qui pourrait contenir du texte de facture | **corrigé** (lot L) |
 
 Vérifié sans défaut : aucune page ne déborde à 320 px ; écrans sans voiture
 (chacun propose d'ajouter une voiture) ; session expirée au chargement
@@ -360,4 +363,52 @@ production :
 **Limites.**
 - L'export ne couvre qu'une voiture à la fois et n'inclut pas les échéances calculées : elles changent avec le temps et seraient trompeuses une fois imprimées.
 - Les rappels hors application n'existent pas encore : rien à nettoyer de ce côté.
+
+## Lot L — consolidation technique
+
+**Objectif.** Prouver, par la vraie API et non par hypothèse, qu'un compte ne
+touche jamais au dossier d'un autre, que les fichiers et le contenu non fiable
+sont bornés, et qu'aucun échec ne laisse un état trompeur.
+
+**Fait.**
+- **Accès croisés, de bout en bout** (`scripts/recette/acces-croises.mjs`). Deux comptes fictifs créés puis supprimés.
+  - Alice remplit un dossier complet ; Bruno et un visiteur sans session tentent d'y accéder par la base, les fonctions, le stockage privé et la route de lecture.
+  - Deux témoins positifs prouvent que les refus ne sont pas vides de sens : Alice retrouve son fichier et en obtient une adresse signée.
+- **Lecture des PDF** (`lib/auto/lecture/texte-pdf.js`).
+  - Le nombre de pages est revérifié une fois le PDF réellement ouvert : 4 au plus, `pdf_trop_long`.
+  - L'extraction est interrompue après 15 secondes (`delai_depasse`).
+  - Ces deux échecs sont non facturés, définitifs et expliqués à l'écran.
+- **Journal serveur.** Une erreur de lecture inattendue n'écrit plus que l'identifiant de la tentative et le nom de l'erreur, jamais son message ni sa pile.
+- **Relevé des fichiers orphelins** (lot K) rejoué.
+
+**Vérifié.**
+- Accès croisés : **47/47** sur Test, avec le serveur local pour la route de lecture.
+  - Lecture, modification et suppression refusées sur les 5 tables du dossier.
+  - Empreinte et reports invisibles.
+  - Aucune écriture possible dans la voiture d'Alice, et Bruno ne peut pas s'attribuer la voiture.
+  - Refusées aussi : confirmation de sa facture, voiture principale, archivage, réservation de lecture (serveur seulement).
+  - Stockage privé : ni téléchargement, ni adresse signée, ni liste du dossier, ni dépôt, ni effacement.
+  - Un visiteur ne lit rien de 6 tables, ni aucun fichier.
+  - Route de lecture : 401 sans session ou avec un jeton forgé ; 404 pour le document d'un autre ; aucune tentative journalisée.
+  - Le dossier d'Alice reste intact.
+  - Compartiment : type `text/html` refusé, fichier de plus de 10 Mo refusé.
+- Bancs SQL rejoués sur Test : `auto_mon_vehicule_v1`, `auto_mon_garage_consolide_v1`, `auto_a_prevoir_v1`, `auto_services_v1`, `auto_droits_v1`, `auto_factures_v1`, `auto_import_fluide_v1`. Tous passés ; un échec témoin confirme que l'outil rend bien un code d'erreur.
+- Fichiers orphelins sur Test : 0 dans chaque sens.
+- Tests node : lecture (vrai PDF de 5 pages refusé après ouverture ; extraction trop lente interrompue), total 143.
+- Revue du reste :
+  - aucune route de recette dans l'application : les scripts de recette sont hors de `app/` et refusent toute base autre que Test ;
+  - aucun `console.log` dans le code Auto ;
+  - les routes Auto exigent une session ;
+  - la route de configuration ne révèle ni clé, ni budget, ni raison.
+- États d'échec, relus :
+  - dépôt : le fichier est retiré si la fiche échoue ;
+  - confirmation de facture : une seule transaction, verrou par voiture ;
+  - suppression : la fiche d'abord, puis le fichier, avec un second essai ;
+  - voiture : dossier de stockage vidé ;
+  - lecture : chaque tentative est journalisée, réservation comprise ;
+  - boutons désactivés pendant l'envoi ; deux lectures au plus par document.
+
+**Limites et décision à prendre.**
+- Le compartiment se fie au type annoncé : un client modifié peut déposer un contenu qui n'est pas un PDF. Portée limitée : le fichier n'est servi qu'à son propriétaire, par adresse signée, depuis le domaine du stockage et non depuis celui de l'application ; il n'est jamais lu sans contrôle du contenu. Une vérification au dépôt demanderait un passage par le serveur, limité à 4,5 Mo sur Vercel, ou une fonction de stockage : à décider si besoin.
+- **Lint.** Le dépôt n'a pas de configuration ESLint (`npm run lint` échoue aussi sur `main`). Pour ce programme, un lint ponctuel a été passé hors dépôt, avec ESLint 9 et les règles React et Hooks. Il reste 7 alertes `react-hooks/set-state-in-effect`, connues : des chargements lancés dans un effet, sans défaut constaté. Décision : ajouter une configuration limitée à Nexora Auto et un script `lint:auto` ? Cela modifie `package.json` et `pnpm-lock.yaml`, partagés avec Nexora Pro.
 
