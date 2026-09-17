@@ -32,10 +32,10 @@ recevoir une section dédiée avant toute ouverture à une personne extérieure.
 | Élément | Constat | Comment |
 | --- | --- | --- |
 | Base de données (Test et Production) | Supabase, région `eu-west-1` (Irlande) | `supabase projects list`, métadonnées seulement |
-| Exécution des routes serveur en Production | Vercel, région `iad1` (États-Unis) | en-tête `x-vercel-id: cdg1::iad1::…` d'une route dynamique publique |
+| Exécution des routes serveur en Production | Vercel, région **`dub1` (Dublin, Irlande)** depuis le 17 sept. 2026 ; c'était `iad1` (États-Unis) avant | `/api/auto/environnement` et en-tête `x-vercel-id: cdg1::dub1` |
 | Lecture automatique des factures | gratuite, **sur le serveur Nexora** (fonction Vercel) : texte du PDF, aucun prestataire d'IA | `lib/auto/lecture/configuration.js`, `texte-pdf.js` |
-| Conséquence | une facture PDF lue automatiquement serait **traitée aux États-Unis** tant que les fonctions tournent en `iad1` | voir décision D2 |
-| Correction préparée | `vercel.json` fixe la région à `dub1` (Dublin), la même que les bases. Une région par fonction est impossible sur l'offre Hobby : le réglage vaut pour tout le projet, Nexora Pro compris (effets examinés dans `nexora-auto-livraison.md`) | à confirmer au premier déploiement |
+| Conséquence | une facture PDF lue automatiquement est **traitée en Irlande**, dans la même région que la base | découle de la ligne ci-dessus |
+| Correction **appliquée et confirmée** | `vercel.json` fixe la région à `dub1` (Dublin), la même que les bases. Vérifié en Production le 17 sept. 2026 : `/api/auto/environnement` renvoie `"regionFonction":"dub1"` et l'en-tête montre `cdg1::dub1`. Le réglage vaut pour tout le projet, Nexora Pro compris. **La décision D2 est donc réalisée dans l'option (a)** | mesuré en Production |
 | Fichiers privés | servis derrière un cache d'une heure (`Cache-Control: public, max-age=3600`) : après un retrait d'accès, la **même session** peut encore recevoir un fichier déjà téléchargé pendant au plus une heure ; un autre compte est refusé, et un fichier jamais téléchargé aussi | mesuré le 17 sept. 2026, `scripts/recette/fermeture-beta.mjs` |
 | Prévisualisations Vercel | reliées à la base de **Production** | lu dans le code servi, voir `nexora-auto-suivi.md` |
 | E-mails de compte (confirmation, mot de passe) | Supabase Auth, via le SMTP Brevo déjà utilisé | configuration existante (mémoire « envoi des e-mails en Production ») |
@@ -208,11 +208,11 @@ compte lui-même n'existe pas encore (décision D3).
 
 | # | Décision | Options | Recommandation |
 | --- | --- | --- | --- |
-| D1 | Durées de conservation | valider ou corriger le tableau de la section 6 bis, durée par durée, et décider quels mécanismes de suppression construire | valider les durées avant la bêta externe ; ne publier une durée qu'avec son mécanisme |
-| D2 | Lieu de lecture des factures | (a) `vercel.json` avec `regions: ["dub1"]`, **préparé** : tout le projet passe à Dublin, Nexora Pro compris ; (b) garder `iad1` et encadrer le transfert dans la politique | (a), après les quatre contrôles de `nexora-auto-livraison.md` (déploiement, région constatée, facturation, parcours Pro) |
+| D1 | Durées de conservation (**la plus pressante** : la page publiée dit qu'aucune durée n'est arrêtée) | valider ou corriger le tableau de la section 6 bis, durée par durée, et décider quels mécanismes de suppression construire | valider les durées avant la bêta externe ; ne publier une durée qu'avec son mécanisme |
+| D2 | Lieu de lecture des factures | **tranchée et appliquée** le 17 sept. 2026, option (a) : `vercel.json` avec `regions: ["dub1"]`, confirmé en Production (`cdg1::dub1`). Reste à Baptiste : relire la page de facturation Vercel, et dérouler un parcours Pro connecté avec ses identifiants |
 | D3 | Suppression du compte | depuis l'application, ou sur demande par e-mail pendant la bêta ; effacement des fichiers ; sort du journal des lectures ; compte Nexora Pro partagé | sur demande pendant la bêta, traitée à la main avec une procédure écrite |
 | D4 | Accès administrateur aux dossiers | aucun sans demande de la personne, ou accès d'exploitation tracé | aucun accès sans demande, écrit dans la politique |
-| D5 | Pièces d'identité (carte grise…) | autoriser, déconseiller, refuser | déconseiller à l'écran pendant la bêta |
+| D5 | Pièces d'identité (carte grise…) | **appliquée** : `/auto/confidentialite` conseille de ne pas déposer de pièce d'identité pendant la bêta | à confirmer, ou à durcir |
 | D6 | Conditions d'utilisation | à rédiger (service gratuit, bêta, pas de garantie sur les échéances calculées) | nécessaires avant la bêta externe |
 | D7 | Vercel Analytics sur `/auto` | garder ou désactiver pendant la bêta | vérifier sa nature, sinon désactiver sur `/auto` |
-| D8 | Vraies factures sur la base Test | autorisé pour Baptiste seul (ses propres factures) ou non ; suppression après la recette | seulement les vôtres, supprimées après mesure |
+| D8 | Vraies factures sur la base Test | autorisé pour Baptiste seul (ses propres factures) ou non ; suppression après la recette | seulement les vôtres, supprimées après mesure. **Nexora Auto est désormais en ligne sur la Production** : ses propres factures y ont leur place, c'est son dossier |
