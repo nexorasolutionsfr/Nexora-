@@ -63,7 +63,7 @@ function Bienvenue() {
         <div className="mt-8 space-y-3">
           <Link href="/auto/connexion?mode=inscription&suite=/auto/vehicules/nouveau" className={boutonPrincipal}>
             <Plus className="size-5" aria-hidden="true" />
-            Ajouter mon véhicule
+            Ajouter ma voiture
           </Link>
           <Link href="/auto/connexion" className={boutonSecondaire}>
             J'ai déjà un compte

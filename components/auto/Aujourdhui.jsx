@@ -260,7 +260,7 @@ function ActionPrincipale({ etat, vehicule }) {
 function Raccourcis({ vehicule }) {
   const gestes = [
     { href: "/auto/factures/nouvelle", icone: ReceiptText, titre: "Ajouter une facture", texte: "En PDF : Nexora propose l'intervention, vous vérifiez." },
-    { href: `/auto/vehicules/${vehicule.id}?action=releve`, icone: Gauge, titre: "Actualiser le kilométrage", texte: "Ce qui rend les échéances au compteur justes." },
+    { href: `/auto/vehicules/${vehicule.id}?action=releve`, icone: Gauge, titre: "Mettre à jour le kilométrage", texte: "Ce qui rend les échéances au compteur justes." },
     { href: `/auto/vehicules/${vehicule.id}?action=intervention`, icone: Wrench, titre: "Enregistrer une révision", texte: "Ou toute autre intervention déjà réalisée." },
     { href: `/auto/vehicules/${vehicule.id}/dossier`, icone: FileText, titre: "Le dossier de ma voiture", texte: "Historique, documents et dépenses." },
   ];

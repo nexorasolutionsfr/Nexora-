@@ -182,7 +182,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
         <ArrowLeft className="size-4" aria-hidden="true" />
         {vehicule ? `${vehicule.marque} ${vehicule.modele}` : "Mon garage"}
       </Link>
-      <h1 className="mt-2 font-display text-[28px] font-bold leading-tight tracking-tight text-foreground">Ajouter ma facture</h1>
+      <h1 className="mt-2 font-display text-[28px] font-bold leading-tight tracking-tight text-foreground">Ajouter une facture</h1>
       <p className="mt-1 text-[15px] text-muted-foreground">
         {!lecture.disponible
           ? "Votre facture est rangée dans le dossier de la voiture ; vous renseignez ensuite l'intervention."
@@ -196,7 +196,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
           <p className="text-[15px] text-foreground">Ajoutez d'abord votre voiture.</p>
           <Link href="/auto/vehicules/nouveau" className={`${boutonPrincipal} mt-4`}>
             <Plus className="size-5" aria-hidden="true" />
-            Ajouter mon véhicule
+            Ajouter ma voiture
           </Link>
         </div>
       ) : (
@@ -247,7 +247,7 @@ export function NouvelleFacture({ vehiculeId = null }) {
 
           <button type="submit" disabled={enCours || !fichier} className={boutonPrincipal}>
             {enCours ? <LoaderCircle className="size-5 animate-spin" aria-hidden="true" /> : <Upload className="size-5" aria-hidden="true" />}
-            Ajouter ma facture
+            Ajouter une facture
           </button>
         </form>
       )}

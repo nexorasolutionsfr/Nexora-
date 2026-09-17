@@ -74,7 +74,7 @@ function MesVehicules() {
       <div className="mb-5 flex items-end justify-between gap-3">
         <h1 className="font-display text-[28px] font-bold tracking-tight text-foreground">Mon garage</h1>
         {actives.length > 0 ? (
-          <Link href="/auto/vehicules/nouveau" aria-label="Ajouter une voiture" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90">
+          <Link href="/auto/vehicules/nouveau" aria-label="Ajouter ma voiture" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90">
             <Plus className="size-4" aria-hidden="true" />
             Voiture
           </Link>
@@ -91,7 +91,7 @@ function MesVehicules() {
             </button>
           }
         >
-          Impossible de charger vos véhicules. Vérifiez votre connexion.
+          Impossible de charger vos voitures. Vérifiez votre connexion.
         </Alerte>
       ) : actives.length === 0 ? (
         <VoitureAAjouter />

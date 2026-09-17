@@ -242,7 +242,7 @@ export function elementRevision(vehicule, { aujourdhui } = {}) {
   const niveau = plusUrgent(niveauKm, e.parDate?.niveau);
   const tri = Math.min(joursKm, e.parDate ? e.parDate.joursRestants : Number.POSITIVE_INFINITY);
   const actions = [
-    km.aVerifier && e.parKm ? action("verifier_kilometrage", "Vérifier les kilométrages") : action("releve", "Actualiser le kilométrage"),
+    km.aVerifier && e.parKm ? action("verifier_kilometrage", "Vérifier les kilométrages") : action("releve", "Mettre à jour le kilométrage"),
     action("revision", "Enregistrer une révision"),
   ];
   if (!e.parKm) actions.shift();

@@ -119,7 +119,7 @@ export default function APrevoir({ vehiculeFiltre = null, elementCible = null })
           <p className="mt-3 text-[15px] text-foreground">Ajoutez votre voiture : Nexora en tirera ses prochaines échéances.</p>
           <Link href="/auto/vehicules/nouveau" className={`${boutonPrincipal} mt-5`}>
             <Plus className="size-5" aria-hidden="true" />
-            Ajouter mon véhicule
+            Ajouter ma voiture
           </Link>
         </div>
       </PageAuto>
@@ -283,9 +283,11 @@ function CarteElement({ element, actions, aujourdhui }) {
 
   return (
     <article className={`${carte} ${actions.elementCible === element.cle ? "ring-2 ring-primary/40" : ""}`}>
-      <Link href={`/auto/vehicules/${element.vehicule.id}`} className="-my-1 inline-flex min-h-8 max-w-full items-center gap-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground">
+      {/* Un nom long (« Dacia Sandero Stepway ») ne se coupe pas sur un écran
+          de 320 px : il passe à la ligne, et la plaque le suit. */}
+      <Link href={`/auto/vehicules/${element.vehicule.id}`} className="-my-1 inline-flex min-h-8 max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground">
         <Car className="size-4 shrink-0" aria-hidden="true" />
-        <span className="truncate">{element.vehicule.nom}</span>
+        <span className="min-w-0 break-words">{element.vehicule.nom}</span>
         <Plaque valeur={element.vehicule.immatriculation} />
       </Link>
 

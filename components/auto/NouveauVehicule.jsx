@@ -45,11 +45,11 @@ export default function NouveauVehicule() {
             <ArrowLeft className="size-4" aria-hidden="true" />
             Mon garage
           </Link>
-          <h1 className="mt-2 font-display text-[28px] font-bold tracking-tight text-foreground">Ajouter un véhicule</h1>
+          <h1 className="mt-2 font-display text-[28px] font-bold tracking-tight text-foreground">Ajouter ma voiture</h1>
           <p className="mb-6 mt-1.5 text-[15px] leading-relaxed text-muted-foreground">
             La marque et le modèle suffisent pour commencer. Vous compléterez le dossier quand vous voudrez.
           </p>
-          <FormulaireVehicule creation libelleBouton="Ajouter ce véhicule" onEnregistrer={enregistrer} />
+          <FormulaireVehicule creation libelleBouton="Ajouter ma voiture" onEnregistrer={enregistrer} />
         </>
       ) : (
         <Chargement />
