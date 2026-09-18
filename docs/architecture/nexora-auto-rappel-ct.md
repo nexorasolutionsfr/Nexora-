@@ -301,13 +301,16 @@ Le seuil « jusqu'à la veille » se règle en un seul endroit
 3. Appliquer `20260922001200`, `20260922001300`, `20260922001400`
    (`db push --dry-run`, puis `db push`). La première refuse de s'appliquer si
    la file n'est pas vide (vérifié vide le 18 sept.).
-4. **Activer le programmateur** dans l'instance vive :
+4. **Activer le programmateur** dans l'instance vive. Sur ce Mac, la
+   commande `docker` du chemin par défaut est un lien cassé (Docker Desktop
+   est rangé dans `/Applications/AUTOMATISATION/`) : on nomme le vrai binaire.
    ```bash
-   docker cp n8n/rappels-auto/production.json nexora-n8n:/tmp/rappels.json
-   docker exec nexora-n8n n8n import:workflow --input=/tmp/rappels.json
-   docker exec nexora-n8n n8n publish:workflow --id=rappelsautoprod00001
-   docker restart nexora-n8n
-   docker exec nexora-n8n n8n list:workflow --active=true
+   DOCKER=/Applications/AUTOMATISATION/Docker.app/Contents/Resources/bin/docker
+   $DOCKER cp n8n/rappels-auto/production.json nexora-n8n:/tmp/rappels.json
+   $DOCKER exec nexora-n8n n8n import:workflow --input=/tmp/rappels.json
+   $DOCKER exec nexora-n8n n8n publish:workflow --id=rappelsautoprod00001
+   $DOCKER restart nexora-n8n
+   $DOCKER exec nexora-n8n n8n list:workflow --active=true
    ```
    Le redémarrage suspend une vingtaine de secondes les workflows du compte
    garage ; ils sont faits pour reprendre. La dernière commande doit lister
@@ -355,7 +358,8 @@ Effet immédiat, que n8n tourne ou non, quel que soit l'affichage : aucune
 réservation, aucun jeton pris, aucune tentative consommée, **rien d'annulé** —
 à la reprise, les rappels encore utiles partent. Éprouvé en base (banc,
 groupe 14). Deux autres niveaux : dépublier le workflow
-(`n8n unpublish:workflow --id=rappelsautoprod00001`, puis redémarrer) ;
+(`$DOCKER exec nexora-n8n n8n unpublish:workflow --id=rappelsautoprod00001`,
+puis `$DOCKER restart nexora-n8n`) ;
 fermer Nexora Auto (`auto_acces_parametres.mode = 'ferme'`), qui **annule**
 les rappels programmés. Retirer la variable Vercel **ne fait que masquer le
 panneau** : elle n'arrête aucun envoi.
