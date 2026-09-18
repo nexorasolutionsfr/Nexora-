@@ -1201,7 +1201,8 @@ l'application ; commencer par le contrôle technique ; réutiliser le
 fournisseur et les mécanismes existants ; autorisation propre à Nexora Auto ;
 rien d'envoyé à une vraie personne ; aucune promesse affichée en Production.
 Document de référence : `nexora-auto-rappel-ct.md` (parcours, message exact,
-essai réel à autoriser, conditions d'activation, factures réelles).
+variables Preview ciblées, essai isolé, exploitation permanente, activation en
+Production et arrêt d'urgence, factures réelles, demande d'autorisation).
 
 Choix structurants :
 - **une seule vérité pour l'échéance** : le programmateur exécute
@@ -1227,8 +1228,12 @@ Constats de ce lot :
   le lien d'un rappel aurait ramené en haut de la fiche. La destination le
   garde.
 - **R54 — une séquence ouverte à `anon`.** Les droits par défaut de Supabase
-  ouvrent toute nouvelle séquence ; celle du journal des décisions l'était. Le
-  banc des droits l'a relevé ; fermée.
+  ouvrent toute nouvelle séquence ; celle du journal des décisions l'était —
+  un compteur, **aucune donnée**, et **seulement dans la base jetable
+  locale** : le banc des droits l'a relevé, la migration a été corrigée avant
+  Test. Vérifié le 18 sept. : fermée sur Test, absente de la Production (le
+  premier compte rendu parlait à tort d'une « table accessible sans
+  connexion »).
 - **R55 — sur Test, la racine des liens est la Production.**
   `parametres_envois.url_publique` vaut `https://nexora-garage.vercel.app` sur
   Test : un rappel de recette aurait mené à une voiture introuvable. Clé
@@ -1252,7 +1257,33 @@ Pièges de recette, qui ne sont pas des défauts du produit :
 - un devis attendu « pas une facture » ne se compare pas champ par champ : le
   nouvel outil de lecture locale suit la règle de `lecture-essai.mjs`.
 
-**Recette** : banc SQL `auto_rappels_v1` (13 groupes, base jetable puis Test,
+Préparation de l'essai réel (18 septembre, après-midi) :
+
+- **R59 — la garde de l'essai ne compilait pas.** Une apostrophe non échappée
+  (« rien n'est parti ») cassait le nœud après la réservation : ligne restée
+  « en cours d'envoi », **rien d'envoyé, rien de rejoué** — le comportement
+  voulu d'une issue incertaine, mais un défaut. Corrigé, et
+  `n8n/rappels-auto/construire.test.js` compile désormais chaque nœud de code
+  de chaque variante.
+- **R60 — un blocage avant envoi se disait « refus définitif du
+  fournisseur ».** `auto_terminer_rappel` remplaçait le motif. Migration
+  `20260922001400` : le motif exact est gardé.
+- **R61 — le panneau promettait « le prochain matin à 9 h » trop tard.** La
+  veille de l'échéance après 9 h, la base ne programme plus rien ; l'écran le
+  promettait encore. Il dit maintenant « aucun e-mail prévu ».
+- **R62 — aucun arrêt d'urgence indépendant de l'écran.** Retirer la variable
+  Vercel masque le panneau sans arrêter un rappel programmé. Migration
+  `20260922001300` : `parametres_envois.auto_rappels_arret = 'oui'` bloque
+  toute réservation (banc, groupe 14).
+- **R63 — Test n'écrit ses e-mails d'inscription qu'à l'équipe Supabase.**
+  Service par défaut (2 par heure) : toute autre adresse est refusée.
+  L'adresse de l'essai réel en dépend (document de référence, §11).
+- **R64 — une exécution manuelle ne déclenche pas le journaliseur
+  d'erreurs.** Pendant l'essai, le résultat de chaque exécution est lu à la
+  main ; en Production, une requête repère toute ligne restée « en cours
+  d'envoi ».
+
+**Recette** : banc SQL `auto_rappels_v1` (15 groupes, base jetable puis Test,
 témoin d'échec vérifié) et 8 autres bancs Auto à 0 ; parcours complet dans
 une instance n8n isolée, vrai nœud d'envoi, serveur SMTP contrôlé (3
 acceptés, 3 refus temporaires, 1 refus définitif, 1 coupure jamais rejouée,
@@ -1262,5 +1293,12 @@ compilation de production sans drapeau : aucun panneau. 751 tests JS,
 `lint:auto` sans avertissement, audits 320/375/390 px et texte agrandi sans
 défaut.
 
-**Non prouvé** : la remise par Brevo dans une vraie boîte — c'est l'objet de
-l'essai réel à autoriser (§5 du document de référence).
+Répétition de l'essai isolé (sans message réel) : identifiant exporté chiffré
+d'une instance, importé dans une autre partageant le fichier de clé, utilisé
+pour envoyer ; passage à blanc → rappel programmé le lendemain 9 h ; une
+exécution → 1 message ; la suivante → 0 ; autre destinataire → bloqué avant
+l'envoi.
+
+**Non prouvé** : la remise par Brevo dans une vraie boîte, et le lien ouvert
+sur un téléphone — c'est l'objet de l'essai réel à autoriser (§11 du document
+de référence).

@@ -1,6 +1,6 @@
 -- Nexora Auto — rappel du contrôle technique — banc AUTONOME et RÉVERSIBLE.
 --
--- Présuppose 20260922000100 → 20260922001200 appliquées (et le débit commun
+-- Présuppose 20260922000100 → 20260922001400 appliquées (et le débit commun
 -- 20260921000200). Jamais Production. Marqueur « recette-auto-rappel- ».
 -- Transaction jamais validée : rien ne reste, pas même un jeton de débit.
 --
@@ -23,6 +23,8 @@
 --  11. adresse du compte changée → bloqué jusqu'à confirmation ;
 --  12. accès retiré → annulé ; trop tard → annulé ;
 --  13. débit commun atteint → rien ne part, aucune tentative consommée.
+--  14. arrêt d'urgence (parametres_envois) → rien ne part, rien n'est annulé,
+--      aucun jeton pris ; à la levée, le rappel repart.
 
 begin;
 
@@ -642,6 +644,41 @@ begin
   -- Les files du compte garage gardent leur débit : la fonction les accepte toujours.
   v_r := public.prendre_jeton_envoi('devis', gen_random_uuid(), 1000, 1000, 'banc');
   perform pg_temp.assert((v_r->>'ok')::boolean, '13. le débit commun sert toujours les files du compte garage');
+  reset role;
+end;
+$$;
+reset role;
+
+-- =====================================================================
+-- 14. Arrêt d'urgence
+-- =====================================================================
+do $$
+declare
+  v_ligne record;
+  v_n integer;
+  v_jetons integer;
+  v_c3 uuid := pg_temp.fid('c3');
+begin
+  perform pg_temp.service();
+  -- Le rappel de la C3 est dû depuis le groupe 13 (reporté par le débit).
+  insert into public.parametres_envois (cle, valeur) values ('auto_rappels_arret', 'oui')
+  on conflict (cle) do update set valeur = 'oui', maj_le = now();
+  select count(*) into v_jetons from public.envois_debit;
+  select count(*) into v_n from public.auto_reserver_rappel(array[pg_temp.fid('alice')], 1000, 1000, 'banc');
+  perform pg_temp.assert(v_n = 0, '14. arrêt : rien n''est réservé');
+  select count(*) - v_jetons into v_n from public.envois_debit;
+  perform pg_temp.assert(v_n = 0, '14. arrêt : aucun jeton du débit commun pris');
+  select * into v_ligne from public.auto_rappels_envois where vehicule_id = v_c3 and echeance = current_date + 100;
+  perform pg_temp.assert(v_ligne.statut = 'prevu' and v_ligne.tentatives = 0, '14. arrêt : le rappel reste programmé, aucune tentative consommée');
+
+  update public.parametres_envois set valeur = 'non', maj_le = now() where cle = 'auto_rappels_arret';
+  select * into v_ligne from public.auto_reserver_rappel(array[pg_temp.fid('alice')], 1000, 1000, 'banc');
+  perform pg_temp.assert(v_ligne.ref is not null, '14. levée : le rappel repart');
+  -- 15. Bloqué avant l'envoi (garde de l'essai) : le motif dit pourquoi,
+  --     pas « refus du fournisseur » (20260922001400).
+  perform public.auto_terminer_rappel(v_ligne.ref, 'bloque', 'essai : destinataire non autorisé, rien n''est parti');
+  select * into v_ligne from public.auto_rappels_envois where ref = v_ligne.ref;
+  perform pg_temp.assert(v_ligne.statut = 'bloque' and v_ligne.motif = 'essai : destinataire non autorisé, rien n''est parti', '15. motif exact d''un blocage avant envoi — ' || coalesce(v_ligne.motif, '∅'));
   reset role;
 end;
 $$;

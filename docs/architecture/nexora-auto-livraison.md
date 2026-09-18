@@ -60,6 +60,11 @@ reliées à la Production. Les réglages de Production ne changent pas.
 
 ### 2.1 Réglages à faire — la liste exacte, relevée dans Vercel
 
+> **Variante ciblée (18 sept.)** : pour ne relier à Test qu'**une** branche,
+> sans toucher aux autres prévisualisations ni à la Production, des
+> variables propres à cette branche suffisent — manipulation exacte dans
+> `nexora-auto-rappel-ct.md`, §6.
+
 **Relevé le 17 septembre 2026** dans `nexora-dashboard` → Settings →
 Environment Variables, filtre « Preview ». Aucune valeur n'a été lue : seuls
 les noms, les environnements et les dates. **L'environnement Preview compte

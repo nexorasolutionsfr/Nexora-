@@ -11,11 +11,18 @@
 //                       seulement si RECETTE_PROPRIETAIRES est fourni ; écrite
 //                       hors du dépôt (RECETTE_SORTIE) : les identifiants de
 //                       recette changent à chaque jeu.
-//   <sortie>/essai-reel.json : la chaîne de Production (Brevo), sur Supabase
-//                       TEST, bornée à UN compte, déclenchement manuel
-//                       seulement. Pour le premier essai réel que Baptiste
-//                       autorisera. Construite seulement si ESSAI_PROPRIETAIRE
-//                       est fourni.
+//   <sortie>/essai-reel.json : la chaîne de Production (identifiant Brevo
+//                       « envois métier »), sur Supabase TEST, pour le premier
+//                       essai réel que Baptiste autorisera. Elle tourne dans
+//                       une instance n8n de RECETTE — jamais dans l'instance
+//                       qui sert Nexora Pro — et elle est bornée de cinq façons :
+//                       déclenchement manuel seulement (aucune planification),
+//                       un seul compte (p_proprietaires), un seul rappel par
+//                       exécution (aucune boucle), UNE adresse autorisée
+//                       (tout autre destinataire est bloqué avant l'envoi) et
+//                       première tentative seulement (aucune reprise).
+//                       Construite seulement si ESSAI_PROPRIETAIRE et
+//                       ESSAI_DESTINATAIRE sont fournis.
 //
 // À CHAQUE PASSAGE (tous les quarts d'heure) :
 //   1. lire les dossiers abonnés (auto_rappels_a_planifier) ;
@@ -60,16 +67,22 @@ export const REPONDRE_A = "nexorasolutions.france@gmail.com";
 
 const TEST_URL = "https://slawilafseganlbghgwx.supabase.co";
 const PRODUCTION_URL = "https://omphppsmhmyllapdqevn.supabase.co";
+// Créé dans l'instance de RECETTE (Custom Auth, deux en-têtes). NB : dans
+// l'instance vive, l'identifiant de même id est un Header Auth (relevé le
+// 18 sept. 2026, noms et types seulement) — l'essai n'y tourne pas.
 const RPC_TEST = { id: "BmVzKJSWPhAJ5V3Z", name: "RPC Supabase RECETTE (Test)" };
-// Dans l'instance VIVE, l'identifiant de même id est de type Header Auth (un
-// seul en-tête), pas Custom Auth : relevé le 18 sept. 2026 (noms et types
-// seulement, rien de déchiffré). La variante d'essai réel le cite sous son
-// vrai type ; une erreur de type ferait échouer l'essai avant tout envoi.
-const RPC_TEST_VIVE = { id: "BmVzKJSWPhAJ5V3Z", name: "RPC Supabase RECETTE (Test)", type: "httpHeaderAuth" };
 const RPC_PRODUCTION = { id: "fk85N6k6Aea2u0fb", name: "RPC Supabase Production" };
 const SMTP_BREVO = { id: "6opiCKNWBLDnvYKJ", name: "SMTP Brevo — envois métier" };
 const SMTP_CONTROLE = { id: "SmtpRecetteCtrl01", name: "SMTP recette contrôlé (aucun relais)" };
 const JOURNALISEUR_RECETTE = "rappelsautojournal01";
+
+// L'adresse de l'essai : une seule, écrite en clair dans le workflow, et
+// comparée à l'octet près au destinataire que la base a réservé.
+const adresseAutorisee = (texte) => {
+  const a = String(texte || "").trim().toLowerCase();
+  if (!/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(a)) throw new Error("ESSAI_DESTINATAIRE : une adresse e-mail attendue");
+  return a;
+};
 
 const uuids = (texte) => {
   const liste = String(texte || "").split(",").map((x) => x.trim()).filter(Boolean);
@@ -90,9 +103,10 @@ export const VARIANTES = {
     journaliseur: JOURNALISEUR_RECETTE,
   }),
   "essai-reel": () => process.env.ESSAI_PROPRIETAIRE && ({
-    cle: "essai-reel", id: "rappelsautoessai0001", nom: "Rappels Nexora Auto — ESSAI RÉEL (Test, Brevo, un compte, à la main)",
-    supabaseUrl: TEST_URL, rpcCred: RPC_TEST_VIVE, smtpCred: SMTP_BREVO,
-    proprietaires: uuids(process.env.ESSAI_PROPRIETAIRE).slice(0, 1), cron: null, manuel: true, journaliseur: JOURNALISEUR_ID,
+    cle: "essai-reel", id: "rappelsautoessai0001", nom: "Rappels Nexora Auto — ESSAI RÉEL (Test, un compte, une adresse, un message, à la main)",
+    supabaseUrl: TEST_URL, rpcCred: RPC_TEST, smtpCred: SMTP_BREVO,
+    proprietaires: uuids(process.env.ESSAI_PROPRIETAIRE).slice(0, 1), cron: null, manuel: true, journaliseur: JOURNALISEUR_RECETTE,
+    essai: { destinataire: adresseAutorisee(process.env.ESSAI_DESTINATAIRE) },
   }),
 };
 
@@ -174,6 +188,18 @@ export function construireRappels(v) {
     "else if (!String(r.texte || '').trim() || !String(r.objet || '').trim()) motif = 'message vide, rien n\\'est parti';",
     "return [{ json: { ...r, expediteur: EXPEDITEUR, repondreA: REPONDRE_A, pret: motif === null, motif_verification: motif } }];",
   ].join("\n"), [X(6), 0]));
+  if (v.essai) {
+    // ESSAI RÉEL : rien ne part vers une autre adresse que celle autorisée, et
+    // jamais une deuxième tentative. Un écart bloque la ligne AVANT l'envoi.
+    nodes.push(code("Garde de l'essai", [
+      `const AUTORISEE = ${JSON.stringify(v.essai.destinataire)};`,
+      "const r = $json;",
+      "let motif = r.motif_verification;",
+      "if (r.pret && String(r.destinataire || '').trim().toLowerCase() !== AUTORISEE) motif = 'essai : destinataire non autorisé, rien n\\'est parti';",
+      "else if (r.pret && Number(r.tentatives) !== 1) motif = 'essai : une seule tentative autorisée, rien n\\'est reparti';",
+      "return [{ json: { ...r, pret: r.pret && motif === r.motif_verification, motif_verification: motif } }];",
+    ].join("\n"), [X(6), 160]));
+  }
   nodes.push(si("Prêt à envoyer ?", "={{ $json.pret === true ? 'oui' : 'non' }}", "equals", "oui", [X(7), 0]));
   nodes.push({
     parameters: {
@@ -223,8 +249,8 @@ export function construireRappels(v) {
     "={{ JSON.stringify({ p_incident: { categorie: $('Décider l\\'issue').item.json.categorie, workflow_id: $workflow.id, workflow_nom: $workflow.name, execution_id: $execution.id, noeud: $('Décider l\\'issue').item.json.noeud, notification_file: null, notification_id: $('Décider l\\'issue').item.json.ref, intervention_requise: $('Décider l\\'issue').item.json.intervention, message: 'rappels Nexora Auto — ' + ($('Décider l\\'issue').item.json.resultat === 'incertain' ? 'issue incertaine, rien n\\'est clos, vérification humaine : ' : '') + ($('Décider l\\'issue').item.json.motif || '') } }) }}",
     [X(14), 60], { onError: "continueRegularOutput", alwaysOutputData: true }));
   // Après un refus temporaire, on s'arrête : la ligne est reprise plus tard
-  // (30 min, puis 2 h), jamais dans la seconde.
-  nodes.push(si("Encore un ?", `={{ $runIndex < ${RAPPELS_PAR_PASSAGE - 1} && $('Décider l\\'issue').item.json.resultat !== 'a_reprendre' ? 'oui' : 'non' }}`, "equals", "oui", [X(15), 0]));
+  // (30 min, puis 2 h), jamais dans la seconde. L'essai ne boucle jamais.
+  if (!v.essai) nodes.push(si("Encore un ?", `={{ $runIndex < ${RAPPELS_PAR_PASSAGE - 1} && $('Décider l\\'issue').item.json.resultat !== 'a_reprendre' ? 'oui' : 'non' }}`, "equals", "oui", [X(15), 0]));
 
   const depart = [v.cron && "Tous les quarts d'heure", v.manuel && "Lancer à la main"].filter(Boolean);
   for (const d of depart) relier(d, "Lire les dossiers abonnés");
@@ -233,7 +259,12 @@ export function construireRappels(v) {
   relier("Programmer les rappels", "Réserver la file");
   relier("Réserver la file", "Un rappel à la fois");
   relier("Un rappel à la fois", "Vérifier avant envoi");
-  relier("Vérifier avant envoi", "Prêt à envoyer ?");
+  if (v.essai) {
+    relier("Vérifier avant envoi", "Garde de l'essai");
+    relier("Garde de l'essai", "Prêt à envoyer ?");
+  } else {
+    relier("Vérifier avant envoi", "Prêt à envoyer ?");
+  }
   relier("Prêt à envoyer ?", "Notifier le rappel (email)", "Échec avant envoi");
   relier("Notifier le rappel (email)", "Accepté par le fournisseur", "Classer l'échec");
   relier("Accepté par le fournisseur", "Décider l'issue");
@@ -242,9 +273,13 @@ export function construireRappels(v) {
   relier("Décider l'issue", "Issue connue ?");
   relier("Issue connue ?", "Clore le rappel", "Journaliser l'incident");
   relier("Clore le rappel", "Incident à journaliser ?");
-  relier("Incident à journaliser ?", "Journaliser l'incident", "Encore un ?");
-  relier("Journaliser l'incident", "Encore un ?");
-  relier("Encore un ?", "Réserver la file", null);
+  if (v.essai) {
+    relier("Incident à journaliser ?", "Journaliser l'incident", null);
+  } else {
+    relier("Incident à journaliser ?", "Journaliser l'incident", "Encore un ?");
+    relier("Journaliser l'incident", "Encore un ?");
+    relier("Encore un ?", "Réserver la file", null);
+  }
 
   return {
     id: v.id,
@@ -272,7 +307,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (!sortie) throw new Error("RECETTE_SORTIE : dossier hors du dépôt attendu");
     if (resolve(sortie).startsWith(resolve(ICI, "..", ".."))) throw new Error("RECETTE_SORTIE doit être HORS du dépôt");
     ecrire(resolve(sortie, `${cle}.json`), construireRappels(v));
-    if (cle === "recette-smtp") {
+    if (cle === "recette-smtp" || cle === "essai-reel") {
       ecrire(resolve(sortie, "journaliseur.json"), construireJournaliseur({
         cle: "recette", supabaseUrl: TEST_URL, rpcCred: RPC_TEST, journaliseur: JOURNALISEUR_RECETTE, urlJournal: null,
       }));

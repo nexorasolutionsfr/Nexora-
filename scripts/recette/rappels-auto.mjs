@@ -6,6 +6,10 @@
 //   node scripts/recette/rappels-auto.mjs etat <fichier.json>       la file, lisible
 //   node scripts/recette/rappels-auto.mjs geste <fichier.json> <compte> <geste> [voiture] [valeur]
 //   node scripts/recette/rappels-auto.mjs supprimer <fichier.json>  efface les comptes du jeu (et leurs rappels)
+//   node scripts/recette/rappels-auto.mjs preparer-essai <fichier.json> <préfixe>[,<préfixe>…]
+//        comptes fictifs de répétition de l'essai réel : une « Peugeot 208 (essai) »
+//        dont le contrôle tombe dans 16 jours, rappel activé à 15 jours (le jour
+//        prévu est DEMAIN, 9 h : aucun rappel n'est dû avant).
 //
 // Comptes fictifs @nexora-recette.invalid, dont le début d'adresse pilote le
 // serveur SMTP contrôlé (scripts/recette/smtp-controle.mjs) : « accepte. »,
@@ -79,6 +83,26 @@ async function voiture(moi, marque, modele, { plaque = null, valableJusquAu, rea
 }
 
 const lire = () => JSON.parse(readFileSync(fichier, "utf8"));
+
+if (commande === "preparer-essai") {
+  const t = Date.now();
+  const jeu = { cree_le: new Date().toISOString(), comptes: {} };
+  for (const prefixe of String(reste[0] || "").split(",").filter(Boolean)) {
+    if (!/^[a-z]+$/.test(prefixe)) throw new Error(`préfixe invalide : ${prefixe}`);
+    const email = `${prefixe}.essai.${t}@nexora-recette.invalid`;
+    const { data, error } = await admin.auth.admin.createUser({ email, email_confirm: true, user_metadata: { espace: "auto" } });
+    if (error) throw error;
+    verifier(await admin.from("auto_acces_beta").upsert({ email, note: "répétition de l'essai de rappel (Test)" }), `invitation ${prefixe}`);
+    const moi = await session(email);
+    const essai = await voiture(moi, "Peugeot", "208 (essai)", { realiseLe: jour(-714), valableJusquAu: jour(16) });
+    const r = verifier(await moi.rpc("auto_activer_rappel", { p_vehicule_id: essai, p_delai_jours: 15 }), `activation ${prefixe}`);
+    if (!r?.ok) throw new Error(`activation refusée pour ${prefixe} : ${JSON.stringify(r)}`);
+    jeu.comptes[prefixe] = { email, uid: data.user.id, voitures: { essai } };
+  }
+  writeFileSync(fichier, JSON.stringify(jeu, null, 2));
+  console.log(`Jeu d'essai écrit dans ${fichier} : ${Object.keys(jeu.comptes).join(", ")}`);
+  process.exit(0);
+}
 
 if (commande === "preparer") {
   const t = Date.now();
