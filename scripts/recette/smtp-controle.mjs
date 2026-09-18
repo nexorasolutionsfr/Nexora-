@@ -18,6 +18,9 @@
 //   autre @….invalid → 250 ; hors .invalid → 550 (relais refusé)
 //
 // Usage : PORT=2525 JOURNAL=/chemin/journal.jsonl node scripts/recette/smtp-controle.mjs
+//         GARDER_CORPS=1 … : garde aussi le message brut (en-têtes et corps), pour
+//         relire le texte exact d'un rappel en recette. Les destinataires restent
+//         des boîtes @nexora-recette.invalid : rien de réel n'est gardé.
 import { appendFileSync } from "node:fs";
 import net from "node:net";
 
@@ -52,7 +55,7 @@ const serveur = net.createServer((s) => {
         tampon = tampon.slice(fin + 5);
         mode = "commande";
         const dest = pour[0] || "";
-        const trace = { de, pour, from: entete("From"), replyTo: entete("Reply-To"), sujet: entete("Subject"), octets: corps.length };
+        const trace = { de, pour, from: entete("From"), replyTo: entete("Reply-To"), sujet: entete("Subject"), octets: corps.length, ...(process.env.GARDER_CORPS === "1" ? { brut: corps } : {}) };
         if (dest.startsWith("coupure.")) {
           noter({ ...trace, issue: "message reçu puis connexion coupée sans réponse" });
           s.destroy();

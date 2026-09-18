@@ -20,7 +20,8 @@ export const PERIMETRE_AUTO = [
   "app/auto/**/*.{ts,tsx}",
   "app/api/auto/**/*.{ts,tsx}",
   "scripts/recette/factures/**/*.mjs",
-  "scripts/recette/{acces-croises,audit-ecrans,audit-texte-agrandi,beta,compte-auto,fermeture-beta,jeu-auto,parcours-degrades,stockage-auto,telephone}.mjs",
+  "scripts/recette/{acces-croises,audit-ecrans,audit-texte-agrandi,beta,compte-auto,fermeture-beta,jeu-auto,lien-rappel,parcours-degrades,rappels-auto,stockage-auto,telephone}.mjs",
+  "n8n/rappels-auto/**/*.{js,mjs}",
 ];
 
 export default [

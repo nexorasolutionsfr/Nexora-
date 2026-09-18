@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { creerStateSigne, genererNonce } from "@/lib/google-oauth-state";
+import { integrationsSortantes } from "@/lib/integrations";
 
 // SÉCURITÉ (audit 2026-09-01, reconstruction du 2026-09-01) : l'ancienne
 // route acceptait un `garage_id` fourni par l'appelant dans la query string
@@ -22,7 +23,8 @@ const SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 export async function POST(request) {
   const secretState = process.env.GOOGLE_OAUTH_STATE_SECRET;
   const clientId = process.env.GOOGLE_CLIENT_ID;
-  if (!secretState || !clientId) {
+  // Sur une prévisualisation, aucune connexion Google (lib/integrations.js).
+  if (!secretState || !clientId || !integrationsSortantes().actives) {
     return NextResponse.json({ error: "configuration_manquante" }, { status: 503 });
   }
 

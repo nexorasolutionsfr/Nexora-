@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { integrationsSortantes } from "@/lib/integrations"
 
 // Ouverture du portail de facturation Stripe pour le garage connecté.
 //
@@ -54,7 +55,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ erreur: "aucun_abonnement" }, { status: 409 })
   }
 
-  const cle = process.env.STRIPE_SECRET_KEY
+  // Sur une prévisualisation, aucun accès à Stripe (lib/integrations.js).
+  const cle = integrationsSortantes().actives ? process.env.STRIPE_SECRET_KEY : undefined
   if (!cle) {
     return NextResponse.json({ erreur: "paiement_indisponible" }, { status: 503 })
   }

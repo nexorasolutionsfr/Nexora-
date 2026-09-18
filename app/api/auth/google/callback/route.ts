@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { verifierStateSigne, comparerNonces } from "@/lib/google-oauth-state";
+import { integrationsSortantes } from "@/lib/integrations";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://nexora-garage.vercel.app";
 
@@ -28,7 +29,9 @@ export async function GET(request) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const secretState = process.env.GOOGLE_OAUTH_STATE_SECRET;
-  if (!clientId || !clientSecret || !secretState) {
+  // Sur une prévisualisation, aucun échange de jeton avec Google
+  // (lib/integrations.js).
+  if (!clientId || !clientSecret || !secretState || !integrationsSortantes().actives) {
     return errorRedirect("configuration_manquante");
   }
 

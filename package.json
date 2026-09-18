@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "lint:auto": "eslint --config eslint.auto.config.mjs --max-warnings 0 components/auto lib/auto app/auto app/api/auto scripts/recette/factures scripts/recette/acces-croises.mjs scripts/recette/audit-ecrans.mjs scripts/recette/audit-texte-agrandi.mjs scripts/recette/beta.mjs scripts/recette/compte-auto.mjs scripts/recette/fermeture-beta.mjs scripts/recette/jeu-auto.mjs scripts/recette/parcours-degrades.mjs scripts/recette/stockage-auto.mjs scripts/recette/telephone.mjs"
+    "lint:auto": "eslint --config eslint.auto.config.mjs --max-warnings 0 components/auto lib/auto app/auto app/api/auto scripts/recette/factures scripts/recette/acces-croises.mjs scripts/recette/audit-ecrans.mjs scripts/recette/audit-texte-agrandi.mjs scripts/recette/beta.mjs scripts/recette/compte-auto.mjs scripts/recette/fermeture-beta.mjs scripts/recette/jeu-auto.mjs scripts/recette/parcours-degrades.mjs scripts/recette/stockage-auto.mjs scripts/recette/telephone.mjs scripts/recette/rappels-auto.mjs scripts/recette/lien-rappel.mjs n8n/rappels-auto lib/integrations.js lib/integrations.test.js"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
