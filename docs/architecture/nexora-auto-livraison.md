@@ -360,7 +360,7 @@ Baptiste le prouvera en une fois.
 Les commandes SQL se passent dans l'éditeur SQL du projet de Production.
 **Ajouter une adresse n'envoie aucun message.**
 
-**État au 18 septembre 2026** : mode `beta`, deux adresses invitées —
+**État au 17 septembre 2026, au soir** : mode `beta`, deux adresses invitées —
 `nexorasolutions.france@gmail.com` et `baptiste.papoul52@gmail.com`. Aucun
 message n'a été envoyé.
 

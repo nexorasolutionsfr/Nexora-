@@ -88,7 +88,7 @@ export default function BlocDocuments({ vehiculeId, proprietaireId, documents, h
         </h2>
         {/* Une seule entrée. Deux boutons obligeaient à deviner le classement
             interne avant d'avoir ouvert le fichier — et « Autre document »
-            proposait « Facture » par défaut (constat du 18 sept. 2026).
+            proposait « Facture » par défaut (constat du 17 sept. 2026).
             L'écran d'ajout reconnaît ce qu'il peut et oriente tout seul.
             Le dépôt direct reste pour une voiture archivée, qu'on ne veut pas
             renvoyer vers un parcours de facture. */}

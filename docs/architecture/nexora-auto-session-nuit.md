@@ -63,7 +63,7 @@ de Baptiste le prouvera en une fois.
 
 ---
 
-# Nuit du 18 au 19 septembre 2026 — lots C à G
+# Nuit du 17 au 18 septembre 2026 — lots C à G
 
 ## État réel au départ, vérifié
 
