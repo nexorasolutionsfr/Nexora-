@@ -686,7 +686,7 @@ la Peugeot n'avait **pas été créée** — `auto_ajouter_vehicule` avait refus
 plaque `AB-123-CD` et le script ne lisait pas l'erreur. Un scénario qui ne
 vérifie pas ses propres écritures teste le vide.
 
-## Le cul-de-sac de l'inscription (18 septembre 2026)
+## Le cul-de-sac de l'inscription (17 septembre 2026)
 
 **Première inscription réelle, et elle a échoué.** Baptiste a suivi le gros
 bouton de la page d'accueil — « Ajouter ma voiture » —, qui mène à la
@@ -716,7 +716,7 @@ cette nuit partaient d'une adresse **neuve**. Le premier vrai utilisateur,
 lui, avait déjà un compte — le cas le plus banal pour une application greffée
 sur un produit existant, et le seul que personne n'avait joué.
 
-## Lot A — un accueil qui choisit une action utile (18 septembre 2026)
+## Lot A — un accueil qui choisit une action utile (17 septembre 2026)
 
 Après la revue d'interface de Baptiste sur son propre compte. Situation
 reproduite sur Test avec des données fictives (`scenario-corsa`) : Opel Corsa,
@@ -771,7 +771,7 @@ Recette : 187 tests, `lint:auto` sans avertissement, `next build` réussi,
 audits d'écrans (320/375/390 px) et de texte agrandi (150 %/200 %) sans défaut
 sur l'accueil, « À prévoir » et la fiche.
 
-## Lot B — une entrée commune pour les documents (18 septembre 2026)
+## Lot B — une entrée commune pour les documents (17 septembre 2026)
 
 **Trois défauts, un seul parcours.**
 
@@ -822,7 +822,7 @@ parcours dégradés **32/32** (dépôt, doublons, lectures en échec, import
 abandonné), audits d'écrans et de texte agrandi sans défaut sur l'entrée et la
 vérification.
 
-## Lot C — un entretien accompagné (18-19 septembre 2026)
+## Lot C — un entretien accompagné (17 septembre 2026)
 
 **L'impasse retirée.** « Recopiez l'intervalle de révision de votre carnet »
 était un ordre adressé à quelqu'un qui ne sait pas encore où chercher. Et les
@@ -859,7 +859,7 @@ sait de cette voiture » : « Révision — inconnue — Nexora ne connaît pas 
 l'intervalle de révision de cette voiture ». Un report tait le rappel, pas le
 trou.
 
-## Lot D — un kilométrage qui demande moins (18-19 septembre 2026)
+## Lot D — un kilométrage qui demande moins (17 septembre 2026)
 
 **Presque tout existait déjà**, et bien : relevé daté distinct de l'estimation
 (« Estimation. Environ 75 600 km d'après le rythme de vos relevés. Ce n'est pas
@@ -899,7 +899,7 @@ promesse — jamais en erreur — et rend `undefined`. L'insertion suivante part
 sans voiture, et c'est la règle d'accès qui la refusait. Un script qui ne lit
 pas ses propres erreurs teste le vide.
 
-## Lot E — des services accessibles par le besoin (19 septembre 2026)
+## Lot E — des services accessibles par le besoin (17 septembre 2026)
 
 Personne ne se réveille en pensant « géométrie » ou « detailing ». Le
 catalogue reste entier ; **quatre entrées** le précèdent, dans les mots de
@@ -957,7 +957,7 @@ information à compléter) étaient déjà courtes : la fiche d'une prestation
 propose « Compléter » qui ouvre directement le bon formulaire, voiture
 sélectionnée. Vérifié, rien à défaire.
 
-## Lot G — la proactivité, inventaire avant promesse (19 septembre 2026)
+## Lot G — la proactivité, inventaire avant promesse (17 septembre 2026)
 
 **Ce qui existe vraiment, relevé dans le code avant d'y toucher :**
 
@@ -1010,7 +1010,7 @@ relance technique ne peut pas envoyer deux fois.
 **Rien n'a été activé cette nuit**, et rien ne le sera sans décision : ni canal,
 ni destinataire, ni envoi d'essai.
 
-## Lot F — qualité mobile (19 septembre 2026)
+## Lot F — qualité mobile (nuit du 17 au 18 septembre 2026)
 
 Le gros du travail visuel avait été fait par les lots précédents : une action
 dominante quand elle sert, des résumés courts, des boutons qui annoncent leur
@@ -1039,7 +1039,7 @@ elle est déjà atteinte au pouce sur un écran de cette taille. La déplacer au
 nouveau clavier, focus et clavier virtuel sur tous les écrans. À rouvrir si
 l'usage réel montre le contraire.
 
-## Recette de la nuit du 18 au 19 septembre 2026
+## Recette de la nuit du 17 au 18 septembre 2026
 
 Les quatorze situations demandées, sur Test, avec le jeu de recette
 (`scripts/recette/jeu-auto.mjs`) et les bancs.
@@ -1072,7 +1072,7 @@ au premier champ en erreur**.
 10 bancs SQL à 0, parcours dégradés **40/40**, accès croisés **55/55**,
 fermeture **14/14**, simultanéité sans doublon involontaire.
 
-## Lot H — l'aide effectivement apportée (19 septembre 2026)
+## Lot H — l'aide effectivement apportée (18 septembre 2026)
 
 Revue du fondateur après navigation dans Chrome, y compris à 390 px : les lots
 A à G ont amélioré la saisie et la navigation, mais Nexora demandait encore à

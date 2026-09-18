@@ -1138,7 +1138,7 @@ function FormulaireIntervention({ vehiculeId, typeFixe, typeDefaut = "", natureI
 // déjà savoir où chercher et quoi comprendre. Et les raccourcis « 15 000 km /
 // 1 an », « 20 000 km / 2 ans » ont été retirés — trois valeurs génériques
 // présentées comme des choix ressemblent à une préconisation adaptée à la
-// voiture, ce qu'elles ne sont pas (constat du 18 sept. 2026).
+// voiture, ce qu'elles ne sont pas (constat du 17 sept. 2026).
 //
 // Deux défauts corrigés le 18 sept. 2026, après une navigation du fondateur :
 //   1. « Il manque une seule chose » était écrit en dur alors que le dossier
