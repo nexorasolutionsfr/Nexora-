@@ -37,8 +37,17 @@ async function lireServeur() {
 }
 
 const projet = (p) => (p ? `${p} (${libelleProjet(p)})` : "inconnu");
+// La réponse du projet, dite sans la surinterpréter : 401 = clé refusée par le
+// projet ; 403 = clé reconnue, mais la lecture sondée n'est pas permise à ce
+// rôle (constat du 18 sept. : en Production, le rôle de service ne lit pas
+// parametres_envois) — ce n'est ni une panne ni un état de toute la base.
+const reponse = (c) =>
+  c.acceptee ? `acceptée (${c.statut})`
+    : c.statut === 401 ? "refusée par le projet (401)"
+      : c.statut === 403 ? "reconnue, lecture sondée refusée (403)"
+        : c.statut ? `réponse ${c.statut}` : "sans réponse";
 const cle = (c) =>
-  c ? `${c.format === "nouvelle" ? "nouvelle clé, projet non inscrit" : `projet ${projet(c.projet)}`}, rôle ${c.role ?? "inconnu"} — ${c.acceptee ? "acceptée" : "refusée"} (${c.statut ?? "sans réponse"})` : "absente";
+  c ? `${c.format === "nouvelle" ? "nouvelle clé, projet non inscrit" : `projet ${projet(c.projet)}`}, rôle ${c.role ?? "inconnu"} — ${reponse(c)}` : "absente";
 
 function Ligne({ libelle, valeur }) {
   return (

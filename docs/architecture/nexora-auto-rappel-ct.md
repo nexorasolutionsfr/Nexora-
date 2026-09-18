@@ -198,7 +198,21 @@ confirme le projet exact des deux côtés, sans afficher aucune clé :
 
 Éprouvé en local : tout concorde → confirmé ; clé publique d'un autre projet →
 « Pas confirmé », les deux côtés le disent (clé refusée, 401) ; en mode
-Production → page absente (404).
+Production → page absente (404). Sur la vraie Preview, encore reliée à la
+Production (18 sept., soir) : tout vise `omphppsmhmyllapdqevn`, intégrations
+coupées — l'interrupteur agit donc bien sur Vercel. Lire un « 403 » sur la clé
+de service sans l'extrapoler : clé reconnue, mais la table sondée n'est pas
+lisible par ce rôle (en Production, le rôle de service n'a pas le droit de
+lire `parametres_envois` ; sur Test, si). Ce n'est pas un état de toute la base.
+
+**État réel relevé le 18 sept.** (API du tableau de bord Vercel, métadonnées
+seulement) : 30 variables ; pour Preview, 9 variables générales aux valeurs de
+Production et une seule exception de branche
+(`NEXT_PUBLIC_COCKPIT_OPPORTUNITES_ACTIF`, `feature/cockpit-opportunites-v1`) ;
+**aucune** pour `auto/rappel-ct`, aucune `NEXT_PUBLIC_AUTO_RAPPELS`. Supabase
+Test : URL du site `http://localhost:3000`, **aucune** URL de retour autorisée
+— l'adresse de la Preview y a été ajoutée le 18 sept. (étape 4 faite, vérifiée :
+retour accepté vers la Preview, adresse non autorisée → URL du site).
 
 **Manipulation exacte** (vous seul saisissez les clés) :
 
