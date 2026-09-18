@@ -1,6 +1,6 @@
 -- Nexora Auto — droits exacts sur tous les objets `auto_*` — banc en LECTURE SEULE.
 --
--- Présuppose 20260922000100 → 20260922001200 appliquées. N'écrit rien.
+-- Présuppose 20260922000100 → 20260922001500 appliquées. N'écrit rien.
 --
 -- Compare, pour `anon` et `authenticated`, les privilèges effectifs de chaque
 -- table et séquence `auto_*` à la liste attendue ci-dessous. Une table `auto_*`
@@ -42,7 +42,8 @@ language sql immutable as $$
   select array[
     'auto_lecture_reserver',
     'auto_empreinte_ct', 'auto_acces_autorise_pour', 'auto_rappel_neuf_heures',
-    'auto_rappels_a_planifier', 'auto_planifier_rappels', 'auto_reserver_rappel', 'auto_terminer_rappel'
+    'auto_rappels_a_planifier', 'auto_planifier_rappels', 'auto_reserver_rappel', 'auto_terminer_rappel',
+    'auto_confirmer_transmission'
   ]
 $$;
 

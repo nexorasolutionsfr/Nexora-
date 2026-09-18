@@ -1,6 +1,6 @@
 -- Nexora Auto — rappel du contrôle technique — banc AUTONOME et RÉVERSIBLE.
 --
--- Présuppose 20260922000100 → 20260922001400 appliquées (et le débit commun
+-- Présuppose 20260922000100 → 20260922001500 appliquées (et le débit commun
 -- 20260921000200). Jamais Production. Marqueur « recette-auto-rappel- ».
 -- Transaction jamais validée : rien ne reste, pas même un jeton de débit.
 --
@@ -25,6 +25,10 @@
 --  13. débit commun atteint → rien ne part, aucune tentative consommée.
 --  14. arrêt d'urgence (parametres_envois) → rien ne part, rien n'est annulé,
 --      aucun jeton pris ; à la levée, le rappel repart.
+--  15. un blocage avant envoi garde son motif exact.
+--  16. arrêt posé APRÈS la réservation → le dernier contrôle avant la
+--      transmission refuse ; le rappel redevient programmé, tentative et
+--      jeton rendus ; à la levée, le même rappel repart.
 
 begin;
 
@@ -657,6 +661,8 @@ declare
   v_ligne record;
   v_n integer;
   v_jetons integer;
+  v_ref uuid;
+  v_r jsonb;
   v_c3 uuid := pg_temp.fid('c3');
 begin
   perform pg_temp.service();
@@ -672,8 +678,32 @@ begin
   perform pg_temp.assert(v_ligne.statut = 'prevu' and v_ligne.tentatives = 0, '14. arrêt : le rappel reste programmé, aucune tentative consommée');
 
   update public.parametres_envois set valeur = 'non', maj_le = now() where cle = 'auto_rappels_arret';
+  select count(*) into v_jetons from public.envois_debit;
   select * into v_ligne from public.auto_reserver_rappel(array[pg_temp.fid('alice')], 1000, 1000, 'banc');
   perform pg_temp.assert(v_ligne.ref is not null, '14. levée : le rappel repart');
+  v_ref := v_ligne.ref;
+
+  -- 16. Dernier contrôle avant la transmission (20260922001500).
+  v_r := public.auto_confirmer_transmission(v_ref);
+  perform pg_temp.assert((v_r->>'ok')::boolean, '16. sans arrêt : la transmission est confirmée');
+  select * into v_ligne from public.auto_rappels_envois where ref = v_ref;
+  perform pg_temp.assert(v_ligne.statut = 'envoi_en_cours' and v_ligne.tentatives = 1, '16. sans arrêt : rien ne change');
+  -- L'arrêt tombe entre la réservation et la transmission.
+  update public.parametres_envois set valeur = 'oui', maj_le = now() where cle = 'auto_rappels_arret';
+  v_r := public.auto_confirmer_transmission(v_ref);
+  perform pg_temp.assert(not (v_r->>'ok')::boolean, '16. arrêt après la réservation : la transmission est refusée');
+  select * into v_ligne from public.auto_rappels_envois where ref = v_ref;
+  perform pg_temp.assert(v_ligne.statut = 'prevu' and v_ligne.tentatives = 0 and v_ligne.reserve_le is null and v_ligne.destinataire is null
+    and v_ligne.derniere_erreur like 'report : arrêt d''urgence%', '16. le rappel redevient programmé, tentative rendue, report tracé');
+  select count(*) - v_jetons into v_n from public.envois_debit;
+  perform pg_temp.assert(v_n = 0, '16. le jeton du débit commun est rendu');
+  v_r := public.auto_confirmer_transmission(v_ref);
+  perform pg_temp.assert(not (v_r->>'ok')::boolean and v_r->>'raison' like 'rappel plus en cours%', '16. un rappel qui n''est plus en cours n''est jamais confirmé');
+  select count(*) into v_n from public.auto_reserver_rappel(array[pg_temp.fid('alice')], 1000, 1000, 'banc');
+  perform pg_temp.assert(v_n = 0, '16. arrêt toujours posé : rien n''est réservé');
+  update public.parametres_envois set valeur = 'non', maj_le = now() where cle = 'auto_rappels_arret';
+  select * into v_ligne from public.auto_reserver_rappel(array[pg_temp.fid('alice')], 1000, 1000, 'banc');
+  perform pg_temp.assert(v_ligne.ref = v_ref and v_ligne.tentatives = 1, '16. levée : le même rappel repart, en première tentative');
   -- 15. Bloqué avant l'envoi (garde de l'essai) : le motif dit pourquoi,
   --     pas « refus du fournisseur » (20260922001400).
   perform public.auto_terminer_rappel(v_ligne.ref, 'bloque', 'essai : destinataire non autorisé, rien n''est parti');

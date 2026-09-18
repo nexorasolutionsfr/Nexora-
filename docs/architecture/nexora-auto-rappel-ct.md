@@ -1,7 +1,7 @@
 # Nexora Auto — le premier rappel : le contrôle technique, par e-mail
 
 Préparé et éprouvé sur **Test** le 18 septembre 2026. **Rien n'est actif en
-Production** : les trois migrations (`20260922001200` à `001400`) n'y sont pas
+Production** : les quatre migrations (`20260922001200` à `001500`) n'y sont pas
 appliquées, aucun workflow n'est importé dans l'instance n8n vive, et le
 panneau de rappel n'existe que si `NEXT_PUBLIC_AUTO_RAPPELS=actif` (absent de
 Vercel). L'essai réel attend votre autorisation : §11.
@@ -14,20 +14,25 @@ Sous l'échéance du contrôle technique, dans la fiche de la voiture :
   *Activer le rappel* ;
 - **formulaire** : *Rappel par e-mail* · **À** l'adresse du compte (« L'adresse
   de votre compte Nexora ») · **Quand** un des moments encore possibles —
-  deux mois, un mois (par défaut) ou deux semaines avant, **9 h, heure de
-  Paris** · **D'après** l'origine de la date · « Un e-mail avant chaque
+  « 60 jours avant », « 30 jours avant » (par défaut) ou « 15 jours avant »,
+  chacun suivi de sa date exacte, **9 h, heure de Paris** · **D'après** l'origine de la date · « Un e-mail avant chaque
   contrôle technique de cette voiture, rien d'autre. Vous pourrez l'arrêter à
   tout moment. » ;
-- **activé** : « Rappel par e-mail le 3 oct. 2026 à 9 h — À … » · *Modifier* ·
+- **à l'activation** : « Rappel activé : un e-mail le ‹ date › à 9 h,
+  15 jours avant l'échéance du ‹ échéance ›. Destinataire : … » — la date
+  calculée, le calcul et l'adresse ;
+- **activé** : « Rappel par e-mail le ‹ date › à 9 h — À … » · *Modifier* ·
   *Arrêter le rappel* ;
 - **après l'envoi** : « Rappel envoyé le … » ; **adresse du compte changée** :
   « Confirmez pour l'envoyer à … » ; **refusé par le fournisseur** : « Le rappel
   n'a pas pu partir… » · *Réessayer* ; **plus rien à rappeler** (contrôle
   dépassé, contre-visite) : « Rappel actif, aucun e-mail prévu » et la raison.
 
-Un moment qui tomberait aujourd'hui ou avant n'est jamais proposé ; si
-l'échéance est à moins de quinze jours : « L'échéance est trop proche pour un
-rappel par e-mail : elle reste en tête de « Aujourd'hui ». »
+« N jours avant » veut dire exactement : l'échéance moins N jours, à 9 h (un
+libellé « deux semaines » promettait 14 jours pour 15 calculés : corrigé le
+18 sept.). Un moment qui tomberait aujourd'hui ou avant n'est jamais proposé ;
+si l'échéance tombe dans 15 jours ou moins : « L'échéance est trop proche pour
+un rappel par e-mail : elle reste en tête de « Aujourd'hui ». »
 
 ## 2. Le message exact
 
@@ -85,7 +90,9 @@ la fiche s'ouvre défilée jusqu'au contrôle technique.
 
 Migrations (Test seulement) : `20260922001200_auto_rappel_controle_technique.sql`,
 `20260922001300_auto_rappels_arret.sql` (arrêt d'urgence, §9),
-`20260922001400_auto_rappels_motif_exact.sql` (un blocage garde son motif). Workflow : `n8n/rappels-auto/construire.mjs` →
+`20260922001400_auto_rappels_motif_exact.sql` (un blocage garde son motif),
+`20260922001500_auto_rappels_controle_transmission.sql` (dernier contrôle
+avant la transmission, §9). Workflow : `n8n/rappels-auto/construire.mjs` →
 `production.json` (**inactif**) ; variantes de recette et d'essai écrites hors
 du dépôt.
 
@@ -123,7 +130,7 @@ fuseau de la machine UTC), vrai nœud d'envoi SMTP, vraie base Test.
 | Lien après connexion | `scripts/recette/lien-rappel.mjs` (Chrome sans interface) | 3/3 : sans session, après connexion, session ouverte |
 | Aucune promesse en Production | compilation de production **sans** drapeau, `next start` | aucun panneau, aucun mot « Rappel », même avec un rappel en base |
 
-Bancs : `supabase/tests/auto_rappels_v1.sql` (15 groupes de contrôles, arrêt d'urgence et motif exact compris, sur la
+Bancs : `supabase/tests/auto_rappels_v1.sql` (16 groupes de contrôles, arrêt d'urgence, motif exact et contrôle avant transmission compris, sur la
 base jetable puis Test, témoin d'échec vérifié) ; 9 bancs Auto à 0 sur Test ;
 751 tests JS ; `lint:auto` sans avertissement ; audits d'écrans 320/375/390 px
 et texte agrandi 150 %/200 % sans défaut, formulaire ouvert compris.
@@ -145,24 +152,62 @@ Le mécanisme, lui, est réel et durable : les droits par défaut de Supabase
 ouvrent toute nouvelle séquence. Chaque migration qui crée une séquence doit
 la refermer, et le banc `auto_droits_v1` le vérifie.
 
-## 6. Test accessible sur téléphone : la correction ciblée des variables Preview
+## 6. Test accessible sur téléphone : la Preview de cette branche, reliée à Test
 
-Aujourd'hui, toute prévisualisation Vercel lit les variables **de la
-Production** (constat du 17 septembre). Correction **ciblée** : des variables
-propres à la seule branche `auto/rappel-ct`. Vercel les fait primer sur les
-autres variables Preview, pour cette branche seulement ; les autres
-prévisualisations et la Production ne changent pas (documentation Vercel,
-« Preview environment variables », relue le 18 sept.).
+Aujourd'hui, toute prévisualisation lit les variables de la Production.
+Correction ciblée : des variables propres à la seule branche `auto/rappel-ct`,
+qui priment sur les autres variables Preview pour cette branche seulement.
+Aucune variable Production n'est touchée.
 
-**Manipulation exacte** (je ne saisis pas de clés à votre place) :
+**Ce qui coupe les envois et les paiements : le code, pas des valeurs
+factices.** Une clé remplacée par `desactive` ne coupe rien : l'appel part
+quand même et c'est le fournisseur qui le refuse. `lib/integrations.js` coupe
+tout sur un déploiement que Vercel marque « preview » (variable système
+`VERCEL_ENV`, lue à l'exécution ; la Production la lit « production »,
+vérifié le 18 sept.). Les cinq routes qui peuvent écrire à quelqu'un ou faire
+payer — demande de démo (Resend), abonnement et portail (Stripe), connexion
+Gmail aller et retour (Google) — et la lecture payante (Anthropic) refusent
+avant tout appel, quelles que soient les clés présentes. Un test fait échouer
+la recette si un fichier de l'application appelle un service sortant sans
+passer par cet interrupteur (témoin vérifié). Éprouvé sur un serveur local qui
+se croit prévisualisation, clés factices présentes : demande de démo 503
+(« Prévisualisation : demande de démo non transmise »), connexion Google 503,
+retour Google renvoyé avant tout échange. En Production : inchangé.
+
+Ce qui reste possible depuis cette prévisualisation, et ce qui le borne :
+
+| Chemin | Ce qui le borne |
+| --- | --- |
+| E-mails d'authentification (inscription, mot de passe oublié) | envoyés par Supabase Test lui-même, pas par l'application ; service par défaut, qui n'écrit qu'aux membres de l'équipe Supabase, 2 par heure (quota observé sur Test). C'est ce chemin qui enverra la confirmation de votre compte d'essai |
+| Automatisations n8n | aucune des 6 automatisations actives de l'instance vive ne lit Test : identifiants de Production seulement (vérifié le 18 sept., versions publiées) |
+| Base Test | ni `pg_net`, ni webhook, ni fonction Edge ; une seule tâche planifiée, purement SQL |
+| Liens `mailto:`, `tel:`, `sms:`, WhatsApp | ils ouvrent l'application de la personne ; rien ne part sans elle |
+
+**Le contrôle : la page `/environnement`** (absente en Production). Elle
+confirme le projet exact des deux côtés, sans afficher aucune clé :
+
+- **navigateur** : l'adresse Supabase du client de l'application, le projet et
+  le rôle inscrits dans sa clé publique, la réponse de Test à cette clé ;
+- **serveur** : l'adresse du code, celle du client de service, celle des
+  variables d'exécution ; le projet et le rôle de chaque clé ; la réponse de
+  Test à chacune ; l'identifiant du projet qui a répondu (en-tête
+  `sb-project-ref`) ;
+- verdict « Projet Test confirmé : slawilafseganlbghgwx, côté navigateur et
+  côté serveur » seulement si tout concorde, sinon la liste des écarts ; puis
+  l'état de l'interrupteur des intégrations sortantes.
+
+Éprouvé en local : tout concorde → confirmé ; clé publique d'un autre projet →
+« Pas confirmé », les deux côtés le disent (clé refusée, 401) ; en mode
+Production → page absente (404).
+
+**Manipulation exacte** (vous seul saisissez les clés) :
 
 1. Supabase → projet **Test** (`slawilafseganlbghgwx`) → *Project Settings* →
-   *API Keys* : gardez sous les yeux la clé **anon** (publique) et la clé
-   **service_role** (secrète).
+   *API Keys* : la clé **anon** et la clé **service_role**.
 2. Vercel → projet `nexora-dashboard` → *Settings* → *Environment Variables* →
-   *Add Environment Variable*. Pour **chacune** des lignes ci-dessous :
-   environnement **Preview** seulement, puis choisir **la branche
-   `auto/rappel-ct`** (pas « All Preview Branches »), puis *Save*.
+   *Add*. Pour chacune des quatre lignes : environnement **Preview**
+   seulement, puis **la branche `auto/rappel-ct`** (pas « All Preview
+   Branches ») :
 
    | Nom | Valeur |
    | --- | --- |
@@ -170,30 +215,19 @@ prévisualisations et la Production ne changent pas (documentation Vercel,
    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | la clé **anon** de Test |
    | `SUPABASE_SERVICE_ROLE_KEY` | la clé **service_role** de Test |
    | `NEXT_PUBLIC_AUTO_RAPPELS` | `actif` |
-   | `RESEND_API_KEY` | `desactive` |
-   | `STRIPE_SECRET_KEY` | `desactive` |
-   | `STRIPE_WEBHOOK_SECRET` | `desactive` |
 
-   Les trois dernières neutralisent, sur cette branche seulement, les clés de
-   Production héritées : aucune demande de démonstration envoyée, aucun
-   paiement possible. **Aucune ligne « Production » n'est touchée.**
-3. Vercel → *Deployments* → le dernier déploiement de `auto/rappel-ct` →
-   *Redeploy* (une variable ne vaut que pour les déploiements suivants).
+3. *Deployments* → le dernier déploiement de `auto/rappel-ct` → *Redeploy*
+   (une variable ne vaut que pour les déploiements suivants).
 4. Supabase → projet **Test** → *Authentication* → *URL Configuration* →
    *Redirect URLs* → ajouter
-   `https://nexora-dashboard-git-au-fcb83e-nexorasolutionsfr-4999s-projects.vercel.app/**`
-   (l'adresse stable de la branche ; sans elle, un lien de confirmation
-   d'e-mail n'y ramènerait pas).
-5. Contrôle : ouvrir
-   `https://nexora-dashboard-git-au-fcb83e-nexorasolutionsfr-4999s-projects.vercel.app/api/auto/environnement`
-   → attendu `"base":"autre"`, `"projetSupabase":"slawilafseganlbghgwx"`.
-   `"base":"production"` : ne pas s'en servir, revoir l'étape 2.
+   `https://nexora-dashboard-git-au-fcb83e-nexorasolutionsfr-4999s-projects.vercel.app/**`.
+5. Ouvrir
+   `https://nexora-dashboard-git-au-fcb83e-nexorasolutionsfr-4999s-projects.vercel.app/environnement` :
+   les deux bandeaux doivent être verts. Sinon, ne rien créer et m'envoyer
+   la page.
 
-**Sur le téléphone** : l'adresse est protégée par l'authentification Vercel
-(offre Hobby). Le plus simple : s'y connecter une fois avec votre compte
-Vercel, qui a accès au projet ; un cookie est alors posé pour cette adresse.
-Alternative : Vercel permet sur Hobby **un seul** lien de partage par compte
-(*Share* → *Anyone with the link*), révocable.
+**Sur le téléphone** : Vercel demande une fois votre connexion. Laissez cette
+protection active : les autres prévisualisations lisent encore la Production.
 
 ## 7. L'essai d'envoi isolé — comment, et ce qui le borne
 
@@ -222,6 +256,8 @@ qui l'a utilisé pour envoyer. Résultats :
 | Deuxième exécution | rien à réserver, 0 message |
 | Destinataire différent de l'adresse autorisée | bloqué **avant** l'envoi, 0 message, motif exact |
 | Panne dans le workflow après la réservation (défaut trouvé et corrigé) | 0 message, ligne restée « en cours d'envoi », **jamais renvoyée** |
+| Arrêt d'urgence posé **après** la réservation (répétition du 18 sept., soir) | contrôle avant transmission refusé, **0** message, rappel remis « programmé », tentative 0 |
+| Arrêt toujours posé, puis levé | rien de réservé ; après la levée, le même rappel part, **1** message |
 
 **Six bornes, dont aucune ne dépend des autres** : déclenchement **manuel**
 seulement (aucune planification, workflow jamais publié) ; **un** compte
@@ -233,8 +269,9 @@ données — identifiant Brevo compris — sont supprimées.
 
 **Comment le rappel devient dû, sans toucher à aucune horloge ni à aucune
 file de Production** : tout se passe sur **Test**. La voiture fictive a son
-contrôle dans 16 jours ; le seul moment proposé est « Deux semaines avant »,
-c'est-à-dire **le lendemain à 9 h**. Le jour de l'activation, un passage à
+contrôle dans 16 jours ; le seul moment proposé est « 15 jours avant » —
+l'échéance moins 15 jours, donc **le lendemain à 9 h**. La date exacte
+s'affiche dans le formulaire et à l'activation. Le jour de l'activation, un passage à
 blanc programme le rappel (aucun envoi possible : rien n'est dû) ; le
 lendemain après 9 h, **une** exécution manuelle l'envoie. Aucune ligne n'est
 modifiée à la main. (Si vous préférez le jour même : avancer l'heure prévue
@@ -298,8 +335,8 @@ Le seuil « jusqu'à la veille » se règle en un seul endroit
 1. Sauvegarde de la Production (`scripts/sauvegarde/sauvegarder.sh`).
 2. **Poser l'arrêt d'urgence d'abord** (voir plus bas) : tout ce qui suit se
    fait sans qu'aucun rappel puisse partir.
-3. Appliquer `20260922001200`, `20260922001300`, `20260922001400`
-   (`db push --dry-run`, puis `db push`). La première refuse de s'appliquer si
+3. Appliquer `20260922001200`, `20260922001300`, `20260922001400`,
+   `20260922001500` (`db push --dry-run`, puis `db push`). La première refuse de s'appliquer si
    la file n'est pas vide (vérifié vide le 18 sept.).
 4. **Activer le programmateur** dans l'instance vive. Sur ce Mac, la
    commande `docker` du chemin par défaut est un lien cassé (Docker Desktop
@@ -341,27 +378,47 @@ Le seuil « jusqu'à la veille » se règle en un seul endroit
    **Production seulement**, redéployer. En bêta, seules les adresses invitées
    voient le panneau.
 7. Vous activez votre rappel ; sous 15 min, une ligne `prevu` apparaît à la
-   bonne date (requête ci-dessus).
+   date affichée à l'activation (requête ci-dessus).
 8. **Lever l'arrêt d'urgence.**
 
-**Arrêt d'urgence — indépendant du panneau** (migration `20260922001300`) :
+**Arrêt d'urgence — ce qu'il garantit, et sa limite** (migrations
+`20260922001300` et `20260922001500`) :
 
 ```sql
--- arrêter : plus rien n'est réservé, donc plus rien ne part
+-- arrêter
 insert into public.parametres_envois (cle, valeur) values ('auto_rappels_arret', 'oui')
 on conflict (cle) do update set valeur = 'oui', maj_le = now();
 -- reprendre
 update public.parametres_envois set valeur = 'non', maj_le = now() where cle = 'auto_rappels_arret';
 ```
 
-Effet immédiat, que n8n tourne ou non, quel que soit l'affichage : aucune
-réservation, aucun jeton pris, aucune tentative consommée, **rien d'annulé** —
-à la reprise, les rappels encore utiles partent. Éprouvé en base (banc,
-groupe 14). Deux autres niveaux : dépublier le workflow
+Effet immédiat, que n8n tourne ou non, quel que soit l'affichage :
+
+| Où en est le rappel quand l'arrêt tombe | Effet |
+| --- | --- |
+| Il attend son heure, ou il est dû mais pas encore réservé | rien n'est réservé, rien ne part ; rien n'est annulé |
+| Réservé, pas encore transmis | le dernier contrôle, juste avant le nœud d'envoi, refuse : le rappel redevient « programmé », tentative et jeton de débit rendus ; rien ne part |
+| Transmission commencée (échange SMTP en cours) ou message accepté par Brevo | **rien ne peut le retenir** : le message part |
+
+**La limite, sans l'arrondir** : la fenêtre non couverte va du dernier contrôle
+à l'acceptation par Brevo — la durée d'un échange SMTP, de l'ordre de la
+seconde —, pour au plus un message par exécution en cours (le workflow traite
+les rappels un par un). Une fois le message accepté par Brevo, Nexora n'a plus
+aucun moyen de le retenir. Si la base ne répond pas au dernier contrôle, rien
+n'est transmis : l'exécution s'arrête, la ligne reste « en cours d'envoi » et
+l'incident nomme le nœud « Confirmer la transmission » — dans ce cas précis,
+rien n'est parti ; la ligne peut être remise « programmée » à la main.
+
+Éprouvé : banc SQL (groupes 14 et 16, témoin d'échec vérifié) ; répétition n8n
+(instance jetable, serveur SMTP contrôlé, §7) : arrêt posé après la
+réservation → 0 message ; arrêt toujours posé → rien de réservé ; levée → le
+même rappel part, une fois.
+
+Deux autres niveaux : dépublier le workflow
 (`$DOCKER exec nexora-n8n n8n unpublish:workflow --id=rappelsautoprod00001`,
-puis `$DOCKER restart nexora-n8n`) ;
-fermer Nexora Auto (`auto_acces_parametres.mode = 'ferme'`), qui **annule**
-les rappels programmés. Retirer la variable Vercel **ne fait que masquer le
+puis `$DOCKER restart nexora-n8n`) ; fermer Nexora Auto
+(`auto_acces_parametres.mode = 'ferme'`), qui annule chaque rappel au moment
+où il devient dû. Retirer la variable Vercel **ne fait que masquer le
 panneau** : elle n'arrête aucun envoi.
 
 ## 10. Factures réelles — prêtes, en attente de vos fichiers
@@ -391,38 +448,43 @@ m'indiquez. Je relève moi-même, sur chaque facture, les valeurs justes
 trouve, manque, se trompe ou invente. Je ne cherche aucun document ailleurs, et
 aucune facture fictive ne remplace cette validation.
 
-## 11. Demande d'autorisation de l'essai réel
+## 11. L'essai réel — scénario retenu, exécution non autorisée
 
-Rien de ce qui suit n'est engagé : aucun compte à votre adresse, aucun
-message. Tout se passe sur **Test** ; rien ne touche la Production.
+Scénario retenu le 18 sept. : **option A**. L'exécution reste à autoriser,
+séparément, **après** la vérification de la Preview (§6, étape 5). Rien n'est
+engagé : aucun compte à votre adresse, aucune voiture, aucune copie de l'accès
+Brevo, aucun message.
 
-Vérifié le 18 sept. : ni l'une ni l'autre adresse n'a de compte ni d'invitation sur Test.
+**Pourquoi A.** Le projet Test envoie ses e-mails d'inscription par le service
+par défaut de Supabase, qui n'écrit qu'aux membres de l'équipe Supabase (pour
+toute autre adresse : *Email address not authorized*, documentation Supabase).
+`nexorasolutions.france@gmail.com` en est membre : aucun réglage à changer.
+Ni cette adresse ni `baptiste.papoul52@gmail.com` n'ont de compte sur Test
+(vérifié le 18 sept.).
 
-**Un préalable découvert en préparant cette demande.** Le projet Test envoie
-ses e-mails d'inscription par le service par défaut de Supabase (quota de 2
-par heure observé sur Test) ; ce service n'écrit **qu'aux membres de l'équipe
-Supabase** — pour toute autre adresse : *Email address not authorized*
-(documentation Supabase, relue le 18 sept.). L'adresse destinataire décide
-donc du chemin :
+| | A (retenue) — `nexorasolutions.france@gmail.com` |
+| --- | --- |
+| Messages réels | **2** : la confirmation d'inscription (Supabase Test), puis **le rappel** |
+| Réglage à changer | aucun |
 
-| | A — `nexorasolutions.france@gmail.com` (recommandé) | B — `baptiste.papoul52@gmail.com` |
-| --- | --- | --- |
-| Pourquoi | membre de l'équipe Supabase : Test peut lui écrire | adresse personnelle, hors équipe |
-| Ce qu'il faut en plus | rien | couper « Confirm email » sur Test le temps de l'inscription (*Authentication* → *Sign In / Providers* → *Email*), puis le remettre ; l'écran dira « vérifiez vos e-mails » : aucun n'arrivera, se connecter directement |
-| Messages réels | **2** : la confirmation d'inscription (Supabase Test), puis **le rappel** | **1** : le rappel |
+**Les dates** : aucune n'est fixée d'avance. Le jour où la voiture fictive est
+créée (jour J, heure de Paris) : contrôle réalisé à J − 714, valable jusqu'à
+J + 16 ; le seul moment proposé est « 15 jours avant », soit J + 1 à 9 h. La
+date exacte s'affiche dans le formulaire et à l'activation (« Rappel activé :
+un e-mail le …, 15 jours avant l'échéance du … »), et le script de préparation
+l'écrit au même moment, calculée par le même module.
 
-**Le message exact** (dates d'une activation le samedi 19 septembre ; elles
-suivent le jour réel de l'activation, échéance = activation + 16 jours) :
+**Le message exact** (entre chevrons, ce qui dépend du jour J) :
 
 ```
 De       : Nexora Auto <nexorasolutions.france@11919348.brevosend.com>
 Répondre : nexorasolutions.france@gmail.com
-À        : l'adresse choisie (A ou B), et aucune autre
-Objet    : Contrôle technique de votre Peugeot 208 (essai) : avant le 5 oct. 2026
+À        : nexorasolutions.france@gmail.com, et aucune autre adresse
+Objet    : Contrôle technique de votre Peugeot 208 (essai) : avant le <J + 16>
 
 Bonjour,
 
-Le contrôle technique de votre Peugeot 208 (essai) est à faire avant le 5 oct. 2026.
+Le contrôle technique de votre Peugeot 208 (essai) est à faire avant le <J + 16>.
 
 D'où vient cette date : date du procès-verbal, renseignée par vous.
 
@@ -436,46 +498,30 @@ Vous recevez ce message parce que vous avez demandé ce rappel pour cette voitur
 Nexora Auto
 ```
 
-Texte brut, aucune pièce jointe. Produit par le module réel
-(`planifierRappel`) avec les données ci-dessous.
+Texte brut, sans pièce jointe, produit par le module réel ; relu tel que reçu
+par le serveur SMTP contrôlé lors de la répétition du 18 sept.
 
-**Les données fictives** (Test seulement) :
+**Les données fictives** (Test seulement) : un compte Nexora Auto **créé par
+vous** sur la Preview, avec un mot de passe que je ne vois pas ; son
+invitation à la bêta de Test ; une voiture « Peugeot 208 (essai) », sans
+immatriculation, année 2018, contrôle périodique favorable aux dates
+ci-dessus ; le rappel **activé par vous**. Ni votre voiture personnelle, ni
+document, ni facture, ni montant.
 
-- un compte Nexora Auto **créé par vous**, par l'inscription sur l'adresse de
-  prévisualisation, avec un mot de passe **que vous choisissez** et que je ne
-  vois pas ; son invitation à la bêta de Test, posée par moi ;
-- une voiture **« Peugeot 208 (essai) »**, sans immatriculation, année 2018,
-  créée par moi dans ce compte le jour de l'activation ; un contrôle
-  technique périodique favorable **réalisé le 5 oct. 2024, valable jusqu'au
-  5 oct. 2026** (dates d'une activation le 19 sept.). Ni votre voiture
-  personnelle, ni document, ni facture, ni montant ;
-- le rappel, **activé par vous** dans le panneau de la fiche : un seul moment
-  est proposé, « Deux semaines avant — le 20 sept. 2026 à 9 h ».
+**L'environnement du lien** : la Preview de la branche `auto/rappel-ct`, reliée
+à Test et confirmée par `/environnement`, protégée par Vercel. Pour l'essai,
+la racine des liens de Test (`auto_url_publique`) passe de
+`http://localhost:3114` à cette adresse ; elle est remise ensuite.
 
-**L'environnement du lien** : la prévisualisation Vercel de la branche
-`auto/rappel-ct` (le code de la PR #139), reliée à **Test** une fois les
-variables du §6 posées — le contrôle `/api/auto/environnement` doit dire
-`"base":"autre"` **avant** votre inscription, sinon le compte naîtrait en
-Production. Elle reste protégée par l'authentification Vercel : sur le
-téléphone, Vercel demande une fois votre connexion (ne désactivez pas cette
-protection : les autres prévisualisations lisent encore la Production). La
-racine des liens de Test (`auto_url_publique`) passe, pour l'essai, de
-`http://localhost:3114` à cette adresse.
+**L'envoi** : l'instance n8n de recette du §7, déclenchement manuel. Jour J :
+passage à blanc (programme le rappel, n'envoie rien). J + 1 après 9 h, à votre
+signal : **une** exécution → **un** message. Je lis le résultat ; vous ouvrez
+l'e-mail sur le téléphone, touchez le lien, vous connectez, et me dites où
+vous arrivez. Ensuite : instance de recette et copie de l'accès Brevo
+supprimées ; compte d'essai supprimé si vous le souhaitez. Toute anomalie
+arrête l'essai, rien n'est rejoué.
 
-**L'envoi** : l'instance n8n de recette du §7, sur ce Mac, écoutant
-127.0.0.1 seulement ; déclenchement manuel, une exécution. Le 19 : passage à
-blanc (programme le rappel, n'envoie rien). Le 20 après 9 h : **une**
-exécution → **un** message. Je lis le résultat, puis vous ouvrez l'e-mail sur
-le téléphone, touchez le lien, vous connectez, et me dites où vous arrivez.
-
-**Après l'essai** : instance de recette supprimée avec sa copie de
-l'identifiant Brevo ; `auto_url_publique` de Test remis à
-`http://localhost:3114` ; le compte d'essai et sa voiture supprimés si vous le
-souhaitez. Toute anomalie arrête l'essai : rien n'est rejoué, je vous rends
-compte.
-
-**Ce qu'il me faut de vous** : (1) la manipulation du §6 ; (2) le choix A ou
-B ; (3) le jour de l'activation ; (4) votre accord explicite pour : inviter
-l'adresse sur Test, y changer `auto_url_publique`, créer la voiture fictive
-dans votre compte d'essai, exporter chiffré l'identifiant Brevo de l'instance
-vive (une lecture) et envoyer **un** rappel à l'adresse choisie.
+**À autoriser, le moment venu** : inviter l'adresse sur Test ; y changer
+`auto_url_publique` ; créer la voiture fictive dans votre compte d'essai ;
+exporter chiffré l'identifiant Brevo de l'instance vive (une lecture) ;
+envoyer **un** rappel à `nexorasolutions.france@gmail.com`.

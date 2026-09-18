@@ -1283,7 +1283,35 @@ Préparation de l'essai réel (18 septembre, après-midi) :
   main ; en Production, une requête repère toute ligne restée « en cours
   d'envoi ».
 
-**Recette** : banc SQL `auto_rappels_v1` (15 groupes, base jetable puis Test,
+Avant de guider la configuration de la Preview (18 septembre, soir) — quatre
+corrections demandées :
+
+- **R65 — « base : autre » ne prouvait pas le projet.** La route disait
+  seulement « pas la Production ». Page `/environnement` (absente en
+  Production) : projet exact côté navigateur (client de l'application) et
+  côté serveur (code, client de service, variables d'exécution), projet et
+  rôle inscrits dans chaque clé, réponse du projet à chaque clé, identifiant
+  du projet qui a répondu. Aucune clé affichée. Éprouvé : concordant →
+  confirmé ; clé d'un autre projet → « Pas confirmé » des deux côtés.
+- **R66 — des valeurs factices ne sont pas un interrupteur.** Une clé
+  `desactive` laisse partir l'appel ; le fournisseur le refuse. Interrupteur
+  dans le code (`lib/integrations.js`) : toute prévisualisation refuse, avant
+  tout appel, Resend, Stripe (abonnement, portail), Google (aller, retour) et
+  la lecture payante. Un test échoue si un fichier appelle un service sortant
+  sans lui. Inventaire des autres chemins : e-mails d'authentification
+  (Supabase Test, équipe seulement), aucune automatisation n8n active sur
+  Test, aucun appel sortant depuis la base Test.
+- **R67 — « deux semaines » pour 15 jours.** Les libellés disent le calcul
+  (« 60 / 30 / 15 jours avant ») ; l'activation affiche la date calculée et
+  l'échéance ; la procédure ne porte plus de date fixe, le script de
+  préparation écrit la date exacte (heure de Paris, plus UTC).
+- **R68 — l'arrêt d'urgence ne retenait pas un rappel déjà réservé.** Dernier
+  contrôle en base juste avant le nœud d'envoi (migration `20260922001500`) :
+  arrêt posé → rappel remis « programmé », tentative et jeton rendus. Limite
+  écrite : un message dont la transmission a commencé, ou accepté par Brevo,
+  part quand même (au plus un par exécution en cours).
+
+**Recette** : banc SQL `auto_rappels_v1` (16 groupes, base jetable puis Test,
 témoin d'échec vérifié) et 8 autres bancs Auto à 0 ; parcours complet dans
 une instance n8n isolée, vrai nœud d'envoi, serveur SMTP contrôlé (3
 acceptés, 3 refus temporaires, 1 refus définitif, 1 coupure jamais rejouée,

@@ -24,6 +24,9 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+
+import { ajouterJours } from "../../lib/auto/echeances.js";
+import { jourParis, libelleMoment, momentsPossibles } from "../../lib/auto/rappels.js";
 const require = createRequire(new URL("../../package.json", import.meta.url).pathname);
 const { createClient } = require("@supabase/supabase-js");
 
@@ -94,10 +97,16 @@ if (commande === "preparer-essai") {
     if (error) throw error;
     verifier(await admin.from("auto_acces_beta").upsert({ email, note: "répétition de l'essai de rappel (Test)" }), `invitation ${prefixe}`);
     const moi = await session(email);
-    const essai = await voiture(moi, "Peugeot", "208 (essai)", { realiseLe: jour(-714), valableJusquAu: jour(16) });
+    // Dates du jour À PARIS (pas UTC : après minuit, le jour UTC est la veille).
+    const aujourdhui = jourParis();
+    const echeance = ajouterJours(aujourdhui, 16);
+    const essai = await voiture(moi, "Peugeot", "208 (essai)", { realiseLe: ajouterJours(aujourdhui, -714), valableJusquAu: echeance });
     const r = verifier(await moi.rpc("auto_activer_rappel", { p_vehicule_id: essai, p_delai_jours: 15 }), `activation ${prefixe}`);
     if (!r?.ok) throw new Error(`activation refusée pour ${prefixe} : ${JSON.stringify(r)}`);
-    jeu.comptes[prefixe] = { email, uid: data.user.id, voitures: { essai } };
+    // La date exacte, calculée par le même module que l'écran.
+    const moments = momentsPossibles(echeance, { aujourdhui }).map((m) => `${m.libelle} — ${libelleMoment({ jour: m.jour })}`);
+    console.log(`${prefixe} : échéance ${echeance} ; moment(s) proposé(s) : ${moments.join(" | ") || "aucun"}`);
+    jeu.comptes[prefixe] = { email, uid: data.user.id, voitures: { essai }, echeance, moments };
   }
   writeFileSync(fichier, JSON.stringify(jeu, null, 2));
   console.log(`Jeu d'essai écrit dans ${fichier} : ${Object.keys(jeu.comptes).join(", ")}`);
@@ -111,7 +120,7 @@ if (commande === "preparer") {
     const compte = await creerCompte(prefixe, t);
     const moi = await session(compte.email);
     compte.voitures = {};
-    // Échéance dans 40 jours : « un mois avant » tombe dans 10 jours.
+    // Échéance dans 40 jours : « 30 jours avant » tombe dans 10 jours.
     compte.voitures.principale = await voiture(moi, "Opel", "Corsa", { plaque: "AB123CD", realiseLe: jour(-690), valableJusquAu: jour(40) });
     const r = verifier(await moi.rpc("auto_activer_rappel", { p_vehicule_id: compte.voitures.principale, p_delai_jours: 30 }), `activation ${prefixe}`);
     if (!r?.ok) throw new Error(`activation refusée pour ${prefixe} : ${JSON.stringify(r)}`);

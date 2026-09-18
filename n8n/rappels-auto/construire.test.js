@@ -80,6 +80,31 @@ test("la garde de l'essai refuse toute autre adresse et toute deuxième tentativ
   assert.equal(vide.motif_verification, "message vide, rien n'est parti");
 });
 
+// Qui mène à ce nœud ? [[source, numéro de sortie], …]
+function entrees(w, nom) {
+  const r = [];
+  for (const [de, c] of Object.entries(w.connections)) c.main.forEach((sortie, i) => sortie.forEach((l) => l.node === nom && r.push([de, i])));
+  return r;
+}
+
+test("dernier contrôle avant la transmission : seul un « ok » de la base ouvre l'envoi, dans chaque variante", () => {
+  for (const [cle, w] of Object.entries(variantes())) {
+    assert.deepEqual(entrees(w, "Notifier le rappel (email)"), [["Transmission confirmée ?", 0]], `${cle} : l'envoi n'a qu'une entrée, le « oui » du contrôle`);
+    assert.deepEqual(entrees(w, "Transmission confirmée ?"), [["Confirmer la transmission", 0]], cle);
+    assert.deepEqual(entrees(w, "Confirmer la transmission"), [["Prêt à envoyer ?", 0]], `${cle} : le contrôle vient après toutes les vérifications`);
+    assert.deepEqual(w.connections["Transmission confirmée ?"].main[1], [], `${cle} : un refus ne mène nulle part`);
+    const controle = w.nodes.find((n) => n.name === "Confirmer la transmission");
+    assert.match(controle.parameters.url, /\/rest\/v1\/rpc\/auto_confirmer_transmission$/);
+    assert.equal(controle.parameters.jsonBody, "={\"p_ref\": \"{{ $('Prêt à envoyer ?').item.json.ref }}\"}", `${cle} : le contrôle porte sur le rappel réservé`);
+    assert.equal(controle.onError, undefined, `${cle} : une panne du contrôle arrête l'exécution`);
+    assert.ok(!controle.retryOnFail, `${cle} : pas de reprise automatique du contrôle`);
+    const si = w.nodes.find((n) => n.name === "Transmission confirmée ?");
+    assert.equal(si.parameters.conditions.conditions[0].leftValue, "={{ $json.ok === true ? 'oui' : 'non' }}");
+    const envoi = w.nodes.find((n) => n.name === "Notifier le rappel (email)");
+    for (const champ of ["fromEmail", "toEmail", "subject", "text"]) assert.match(envoi.parameters[champ], /^=\{\{ \$\('Prêt à envoyer \?'\)\.item\.json\./, `${cle} : ${champ} vient du rappel réservé`);
+  }
+});
+
 // La procédure d'activation importe production.json tel quel : il doit être la
 // sortie exacte du constructeur, embarquement de lib/auto/rappels.js compris.
 // Sinon : node n8n/rappels-auto/construire.mjs, puis relire la différence.

@@ -201,31 +201,41 @@ export function construireRappels(v) {
     ].join("\n"), [X(6), 160]));
   }
   nodes.push(si("Prêt à envoyer ?", "={{ $json.pret === true ? 'oui' : 'non' }}", "equals", "oui", [X(7), 0]));
+  // DERNIER CONTRÔLE, juste avant la transmission (20260922001500) : un arrêt
+  // d'urgence posé après la réservation remet le rappel en attente, et seul un
+  // « ok » de la base ouvre le nœud d'envoi. Une panne ici arrête l'exécution
+  // (ni reprise, ni suite) : rien n'est transmis, la ligne reste « en cours
+  // d'envoi » et l'incident nomme ce nœud.
+  nodes.push(rpc("Confirmer la transmission", v, "auto_confirmer_transmission", "={\"p_ref\": \"{{ $('Prêt à envoyer ?').item.json.ref }}\"}", [X(8), -120]));
+  nodes.push(si("Transmission confirmée ?", "={{ $json.ok === true ? 'oui' : 'non' }}", "equals", "oui", [X(9), -120]));
+  // Le message vient du rappel réservé (sortie de « Prêt à envoyer ? »), pas de
+  // la réponse du contrôle.
+  const rappel = (champ) => `={{ $('Prêt à envoyer ?').item.json.${champ} }}`;
   nodes.push({
     parameters: {
-      fromEmail: "={{ $json.expediteur }}",
-      toEmail: "={{ $json.destinataire }}",
-      subject: "={{ $json.objet }}",
+      fromEmail: rappel("expediteur"),
+      toEmail: rappel("destinataire"),
+      subject: rappel("objet"),
       emailFormat: "text",
-      text: "={{ $json.texte }}",
-      options: { appendAttribution: false, replyTo: "={{ $json.repondreA }}" },
+      text: rappel("texte"),
+      options: { appendAttribution: false, replyTo: rappel("repondreA") },
     },
     name: "Notifier le rappel (email)",
     type: "n8n-nodes-base.emailSend",
     typeVersion: 2.1,
-    position: [X(8), -120],
+    position: [X(10), -120],
     credentials: { smtp: v.smtpCred },
     onError: "continueErrorOutput",
   });
-  nodes.push(code("Accepté par le fournisseur", "return [{ json: { resultat: 'envoye', motif: null, categorie: null, noeud: 'Notifier le rappel (email)' } }];", [X(9), -200]));
+  nodes.push(code("Accepté par le fournisseur", "return [{ json: { resultat: 'envoye', motif: null, categorie: null, noeud: 'Notifier le rappel (email)' } }];", [X(11), -200]));
   nodes.push(code("Classer l'échec", [
     CLASSER_ECHEC,
     "const brut = $json.error && typeof $json.error === 'object' ? $json.error : { message: $json.error || $json.message || '' };",
     "const c = classerEchec({ message: brut.message || $json.message || '', description: brut.description, code: brut.code || $json.code, responseCode: brut.responseCode ?? $json.responseCode, command: brut.command || $json.command });",
     "const categorie = { a_reprendre: 'refus_temporaire', bloque: 'refus_definitif', incertain: 'envoi_incertain' }[c.resultat];",
     "return [{ json: { resultat: c.resultat, motif: c.motif, categorie, noeud: 'Notifier le rappel (email)' } }];",
-  ].join("\n"), [X(9), -40]));
-  nodes.push(code("Échec avant envoi", "return [{ json: { resultat: 'bloque', motif: $json.motif_verification, categorie: 'donnees_invalides', noeud: 'Vérifier avant envoi' } }];", [X(9), 120]));
+  ].join("\n"), [X(11), -40]));
+  nodes.push(code("Échec avant envoi", "return [{ json: { resultat: 'bloque', motif: $json.motif_verification, categorie: 'donnees_invalides', noeud: 'Vérifier avant envoi' } }];", [X(11), 120]));
   nodes.push(code("Décider l'issue", [
     EXPURGER,
     "// Le plafond de trois tentatives est tenu en base (auto_terminer_rappel) ;",
@@ -239,18 +249,18 @@ export function construireRappels(v) {
     "  motif: motif === null || motif === undefined ? null : expurger(motif, 300),",
     "  intervention: ['bloque', 'incertain'].includes(resultat) || (resultat === 'a_reprendre' && tentatives >= 3),",
     "} }];",
-  ].join("\n"), [X(10), 0]));
-  nodes.push(si("Issue connue ?", "={{ $json.resultat }}", "notEquals", "incertain", [X(11), 0]));
+  ].join("\n"), [X(12), 0]));
+  nodes.push(si("Issue connue ?", "={{ $json.resultat }}", "notEquals", "incertain", [X(13), 0]));
   nodes.push(rpc("Clore le rappel", v, "auto_terminer_rappel",
     "={\"p_ref\": \"{{ $json.ref }}\", \"p_resultat\": \"{{ $json.resultat }}\", \"p_motif\": {{ $json.motif === null ? 'null' : JSON.stringify($json.motif) }}}",
-    [X(12), -100], { retryOnFail: true, maxTries: 3, waitBetweenTries: 5000, alwaysOutputData: true }));
-  nodes.push(si("Incident à journaliser ?", "={{ $('Décider l\\'issue').item.json.resultat }}", "notEquals", "envoye", [X(13), -100]));
+    [X(14), -100], { retryOnFail: true, maxTries: 3, waitBetweenTries: 5000, alwaysOutputData: true }));
+  nodes.push(si("Incident à journaliser ?", "={{ $('Décider l\\'issue').item.json.resultat }}", "notEquals", "envoye", [X(15), -100]));
   nodes.push(rpc("Journaliser l'incident", v, "journaliser_incident",
     "={{ JSON.stringify({ p_incident: { categorie: $('Décider l\\'issue').item.json.categorie, workflow_id: $workflow.id, workflow_nom: $workflow.name, execution_id: $execution.id, noeud: $('Décider l\\'issue').item.json.noeud, notification_file: null, notification_id: $('Décider l\\'issue').item.json.ref, intervention_requise: $('Décider l\\'issue').item.json.intervention, message: 'rappels Nexora Auto — ' + ($('Décider l\\'issue').item.json.resultat === 'incertain' ? 'issue incertaine, rien n\\'est clos, vérification humaine : ' : '') + ($('Décider l\\'issue').item.json.motif || '') } }) }}",
-    [X(14), 60], { onError: "continueRegularOutput", alwaysOutputData: true }));
+    [X(16), 60], { onError: "continueRegularOutput", alwaysOutputData: true }));
   // Après un refus temporaire, on s'arrête : la ligne est reprise plus tard
   // (30 min, puis 2 h), jamais dans la seconde. L'essai ne boucle jamais.
-  if (!v.essai) nodes.push(si("Encore un ?", `={{ $runIndex < ${RAPPELS_PAR_PASSAGE - 1} && $('Décider l\\'issue').item.json.resultat !== 'a_reprendre' ? 'oui' : 'non' }}`, "equals", "oui", [X(15), 0]));
+  if (!v.essai) nodes.push(si("Encore un ?", `={{ $runIndex < ${RAPPELS_PAR_PASSAGE - 1} && $('Décider l\\'issue').item.json.resultat !== 'a_reprendre' ? 'oui' : 'non' }}`, "equals", "oui", [X(17), 0]));
 
   const depart = [v.cron && "Tous les quarts d'heure", v.manuel && "Lancer à la main"].filter(Boolean);
   for (const d of depart) relier(d, "Lire les dossiers abonnés");
@@ -265,7 +275,11 @@ export function construireRappels(v) {
   } else {
     relier("Vérifier avant envoi", "Prêt à envoyer ?");
   }
-  relier("Prêt à envoyer ?", "Notifier le rappel (email)", "Échec avant envoi");
+  relier("Prêt à envoyer ?", "Confirmer la transmission", "Échec avant envoi");
+  relier("Confirmer la transmission", "Transmission confirmée ?");
+  // Refus (arrêt d'urgence, rappel clos ailleurs) : la base a déjà tout remis
+  // en ordre, rien d'autre à faire dans ce passage.
+  relier("Transmission confirmée ?", "Notifier le rappel (email)", null);
   relier("Notifier le rappel (email)", "Accepté par le fournisseur", "Classer l'échec");
   relier("Accepté par le fournisseur", "Décider l'issue");
   relier("Classer l'échec", "Décider l'issue");

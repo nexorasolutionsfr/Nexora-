@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { integrationsSortantes } from "@/lib/integrations"
 import { offre, prix, type Periodicite } from "@/lib/tarifs"
 
 // Ouverture d'une session de paiement Stripe pour l'abonnement à Nexora.
@@ -96,7 +97,9 @@ export async function POST(request: Request) {
   // Placé plus haut, ce test répondait « paiement indisponible » à un jeton
   // invalide — une réponse fausse, et une information gratuite donnée à qui
   // n'est pas connecté.
-  const cle = process.env.STRIPE_SECRET_KEY
+  // Sur une prévisualisation, aucun paiement, quelle que soit la clé présente
+  // (lib/integrations.js).
+  const cle = integrationsSortantes().actives ? process.env.STRIPE_SECRET_KEY : undefined
   if (!cle) {
     // La page tarifaire est en ligne avant que le paiement ne le soit. On le
     // dit franchement plutôt que d'afficher un bouton qui ne fait rien :

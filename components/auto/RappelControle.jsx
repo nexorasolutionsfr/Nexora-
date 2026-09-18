@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Bell, BellOff, LoaderCircle } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
-import { etatRappel, jourParis, libelleMoment, momentParDefaut, momentsPossibles, origineDate, rappelPossible } from "@/lib/auto/rappels";
+import { etatRappel, jourParis, libelleMoment, momentParDefaut, momentsPossibles, origineDate, rappelPossible, texteActivation } from "@/lib/auto/rappels";
 import { Alerte, aide, boutonLien, boutonPrincipal, boutonSecondaire, etiquette } from "@/components/auto/elements";
 import { messageErreurAuto } from "@/components/auto/format";
 
@@ -95,10 +95,7 @@ export default function RappelControle({ vehiculeId, element }) {
           delaiActuel={lu.abonnement?.actif ? lu.abonnement.delai_jours : null}
           enCours={enCours}
           onAnnuler={() => setFormulaire(false)}
-          onValider={(delai) => {
-            const moment = possibles.find((m) => m.jours === delai);
-            activer(delai, (data) => `Rappel activé : un e-mail ${libelleMoment({ jour: moment?.jour })}, à ${data.adresse}.`);
-          }}
+          onValider={(delai) => activer(delai, (data) => texteActivation({ echeance: element.date, delaiJours: delai, adresse: data.adresse }))}
         />
       ) : (
         <Etat etat={etat} possibles={possibles} enCours={enCours} onOuvrir={() => setFormulaire(true)} onArreter={arreter} onConfirmer={() => activer(etat.delaiJours, (data) => `Adresse confirmée : le rappel partira à ${data.adresse}.`)} />
