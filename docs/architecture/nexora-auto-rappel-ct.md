@@ -396,6 +396,8 @@ aucune facture fictive ne remplace cette validation.
 Rien de ce qui suit n'est engagé : aucun compte à votre adresse, aucun
 message. Tout se passe sur **Test** ; rien ne touche la Production.
 
+Vérifié le 18 sept. : ni l'une ni l'autre adresse n'a de compte ni d'invitation sur Test.
+
 **Un préalable découvert en préparant cette demande.** Le projet Test envoie
 ses e-mails d'inscription par le service par défaut de Supabase (quota de 2
 par heure observé sur Test) ; ce service n'écrit **qu'aux membres de l'équipe
@@ -406,7 +408,7 @@ donc du chemin :
 | | A — `nexorasolutions.france@gmail.com` (recommandé) | B — `baptiste.papoul52@gmail.com` |
 | --- | --- | --- |
 | Pourquoi | membre de l'équipe Supabase : Test peut lui écrire | adresse personnelle, hors équipe |
-| Ce qu'il faut en plus | rien | couper « Confirm email » sur Test le temps de l'inscription (*Authentication* → *Sign In / Providers* → *Email*), puis le remettre |
+| Ce qu'il faut en plus | rien | couper « Confirm email » sur Test le temps de l'inscription (*Authentication* → *Sign In / Providers* → *Email*), puis le remettre ; l'écran dira « vérifiez vos e-mails » : aucun n'arrivera, se connecter directement |
 | Messages réels | **2** : la confirmation d'inscription (Supabase Test), puis **le rappel** | **1** : le rappel |
 
 **Le message exact** (dates d'une activation le samedi 19 septembre ; elles
