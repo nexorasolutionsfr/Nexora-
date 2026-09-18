@@ -1193,3 +1193,74 @@ console sur un onglet neuf.
 
 **Non prouvé** : la copie dans le presse-papiers elle-même. Le panneau de
 recette la refuse par politique ; seul le repli a pu être vérifié.
+
+## Lot I — le premier rappel utile, préparé sur Test (18 septembre 2026)
+
+Demande : pouvoir être prévenu avant une échéance connue sans consulter
+l'application ; commencer par le contrôle technique ; réutiliser le
+fournisseur et les mécanismes existants ; autorisation propre à Nexora Auto ;
+rien d'envoyé à une vraie personne ; aucune promesse affichée en Production.
+Document de référence : `nexora-auto-rappel-ct.md` (parcours, message exact,
+essai réel à autoriser, conditions d'activation, factures réelles).
+
+Choix structurants :
+- **une seule vérité pour l'échéance** : le programmateur exécute
+  `elementControle()`, celui de l'écran ; n8n embarque ce code à l'identique
+  (`n8n/rappels-auto/embarquer.mjs`, équivalence testée sur sept cas et trois
+  instants). Rien n'est recopié en SQL ;
+- **la base refuse d'envoyer sur un dossier changé** : chaque rappel
+  programmé porte l'empreinte des données lues ; au moment de partir, un écart
+  l'annule, même si le programmateur n'est pas repassé ;
+- **le socle du compte garage est réutilisé**, pas imité : même forme de file,
+  même classement des échecs, même journal, **même débit commun** — les
+  rappels consomment le quota Brevo partagé comme les autres envois.
+
+Constats de ce lot :
+
+- **R52 — une date calculée se disait « renseignée par vous ».**
+  `libelleFondement()` ajoutait la provenance de la ligne d'historique à toute
+  date, y compris calculée : « Calcul selon la règle, renseignée par vous ».
+  La provenance ne qualifie plus que la date du procès-verbal. Visible aussi
+  dans l'écran actuel (fiche, « À prévoir », « Aujourd'hui »).
+- **R53 — la connexion perdait le geste demandé.** Sans session, la fiche
+  renvoyait à `?suite=/auto/vehicules/<id>` : le `?action=…` disparaissait, et
+  le lien d'un rappel aurait ramené en haut de la fiche. La destination le
+  garde.
+- **R54 — une séquence ouverte à `anon`.** Les droits par défaut de Supabase
+  ouvrent toute nouvelle séquence ; celle du journal des décisions l'était. Le
+  banc des droits l'a relevé ; fermée.
+- **R55 — sur Test, la racine des liens est la Production.**
+  `parametres_envois.url_publique` vaut `https://nexora-garage.vercel.app` sur
+  Test : un rappel de recette aurait mené à une voiture introuvable. Clé
+  propre `auto_url_publique` (Test : `http://localhost:3114`).
+- **R56 — l'instance n8n vive n'a pas les mêmes types d'identifiants que la
+  recette.** « RPC Supabase RECETTE (Test) » y est un *Header Auth*. La
+  variante d'essai réel le cite sous son vrai type.
+- **R57 — l'envoi dépend de ce Mac.** L'instance n8n vive tourne en local :
+  Mac éteint, aucun rappel. Condition d'activation, écrite.
+- **R58 — la promesse du formulaire était inexacte.** « Un seul e-mail pour
+  cette échéance » : l'abonnement suit pourtant les contrôles suivants. Dit
+  tel quel : « Un e-mail avant chaque contrôle technique de cette voiture ».
+
+Pièges de recette, qui ne sont pas des défauts du produit :
+- `n8n execute` dans un conteneur déjà lancé se heurte au port du courtier de
+  tâches : `N8N_RUNNERS_BROKER_PORT` distinct par exécution ;
+- un panneau de navigateur **masqué** suspend `requestAnimationFrame` : la
+  fiche n'y défile pas. Vérifié dans Chrome sans interface, page visible ;
+- revenir sur la même adresse en ne changeant que l'ancre ne recharge pas
+  l'application : un jeton de session dans l'ancre n'y est pas lu ;
+- un devis attendu « pas une facture » ne se compare pas champ par champ : le
+  nouvel outil de lecture locale suit la règle de `lecture-essai.mjs`.
+
+**Recette** : banc SQL `auto_rappels_v1` (13 groupes, base jetable puis Test,
+témoin d'échec vérifié) et 8 autres bancs Auto à 0 ; parcours complet dans
+une instance n8n isolée, vrai nœud d'envoi, serveur SMTP contrôlé (3
+acceptés, 3 refus temporaires, 1 refus définitif, 1 coupure jamais rejouée,
+rien pour les voitures sans rappel, désactivée ou archivée) ; 8 réservations
+simultanées → 1 ; deux exécutions simultanées → 1 message ; lien 3/3 ;
+compilation de production sans drapeau : aucun panneau. 751 tests JS,
+`lint:auto` sans avertissement, audits 320/375/390 px et texte agrandi sans
+défaut.
+
+**Non prouvé** : la remise par Brevo dans une vraie boîte — c'est l'objet de
+l'essai réel à autoriser (§5 du document de référence).

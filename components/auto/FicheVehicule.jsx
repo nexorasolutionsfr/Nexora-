@@ -66,6 +66,7 @@ import {
 import FormulaireVehicule from "@/components/auto/FormulaireVehicule";
 import BlocDepenses from "@/components/auto/Depenses";
 import BlocDocuments, { ouvrirDocument } from "@/components/auto/Documents";
+import RappelControle, { RAPPELS_ACTIFS } from "@/components/auto/RappelControle";
 import EditeurOperations from "@/components/auto/EditeurOperations";
 import { COMPARTIMENT } from "@/lib/auto/documents";
 import { avecOperations, colonnesModifiees, donneesCorrection, saisieDepuisIntervention, signalementsCorrection } from "@/lib/auto/corrections";
@@ -95,7 +96,16 @@ const FORMULAIRE_PAR_ACTION = {
   modifier: "modifier",
   intervention: "intervention",
 };
-const SECTION_PAR_ACTION = { releve: "kilometrage", verifier_kilometrage: "kilometrage", revision: "echeance-revision", intervalle: "echeance-revision", modifier: "haut-fiche", intervention: "historique" };
+const SECTION_PAR_ACTION = {
+  releve: "kilometrage",
+  verifier_kilometrage: "kilometrage",
+  revision: "echeance-revision",
+  intervalle: "echeance-revision",
+  modifier: "haut-fiche",
+  intervention: "historique",
+  // Le lien du rappel par e-mail : l'échéance, sans formulaire ouvert.
+  echeance_ct: "echeance-ct",
+};
 
 const ICONES = {
   revision: Wrench,
@@ -119,8 +129,12 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
   const [actionEnCours, setActionEnCours] = useState(false);
 
   useEffect(() => {
-    if (session === null && !deconnexionVolontaire()) router.replace(`/auto/connexion?suite=/auto/vehicules/${vehiculeId}`);
-  }, [session, router, vehiculeId]);
+    // Le geste demandé (?action=…) fait partie de la destination : le lien d'un
+    // rappel par e-mail doit ramener à l'échéance APRÈS la connexion, pas en
+    // haut de la fiche (constat du 18 sept. 2026, recette du rappel).
+    const suite = `/auto/vehicules/${vehiculeId}${actionInitiale ? `?action=${encodeURIComponent(actionInitiale)}` : ""}`;
+    if (session === null && !deconnexionVolontaire()) router.replace(`/auto/connexion?suite=${encodeURIComponent(suite)}`);
+  }, [session, router, vehiculeId, actionInitiale]);
 
   const charger = useCallback(async () => {
     const [vehicule, releves, historique, documents] = await Promise.all([
@@ -168,10 +182,13 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
     if (actionAppliquee.current || etat.chargement || !etat.vehicule || !actionInitiale) return;
     actionAppliquee.current = true;
     window.history.replaceState(window.history.state, "", window.location.pathname);
-    if (!FORMULAIRE_PAR_ACTION[actionInitiale] || etat.vehicule.archive_le) return;
+    const formulaire = FORMULAIRE_PAR_ACTION[actionInitiale];
+    const section = SECTION_PAR_ACTION[actionInitiale];
+    // Un geste sans formulaire (le lien d'un rappel) ne fait qu'amener à la section.
+    if ((!formulaire && !section) || etat.vehicule.archive_le) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- geste demandé par l'adresse (?action=), appliqué une seule fois après le chargement du dossier.
-    setOuvert(FORMULAIRE_PAR_ACTION[actionInitiale]);
-    requestAnimationFrame(() => document.getElementById(SECTION_PAR_ACTION[actionInitiale] ?? "echeance-ct")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    if (formulaire) setOuvert(formulaire);
+    requestAnimationFrame(() => document.getElementById(section ?? "echeance-ct")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }, [etat.chargement, etat.vehicule, actionInitiale]);
 
   // Juste après l'ajout de la voiture : un mot d'accueil, une seule fois.
@@ -505,6 +522,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
           lienService={archive ? null : `/auto/services/controle_technique?vehicule=${vehicule.id}`}
           onAction={faireAction}
           actionPossible={(code) => code !== "proces_verbal" || dernierControle?.source === "proprietaire"}
+          complement={RAPPELS_ACTIFS && !archive && !ouvert ? <RappelControle vehiculeId={vehicule.id} element={elementCt} /> : null}
         >
           {ouvert === "mise_en_circulation" ? (
             <FormulaireMiseEnCirculation vehiculeId={vehicule.id} onAnnuler={() => setOuvert(null)} onEnregistre={() => apresEnregistrement("Date de mise en circulation enregistrée.")} />
@@ -674,7 +692,7 @@ function IconeRonde({ icone: Icone }) {
 // Une échéance, avec les phrases communes à « À prévoir » : quoi, pour quand,
 // sur quelles informations. Un petit formulaire remplace les gestes quand il
 // est ouvert.
-function CarteEcheance({ id, icone, element, lienService = null, onAction, actionPossible = () => true, children }) {
+function CarteEcheance({ id, icone, element, lienService = null, onAction, actionPossible = () => true, complement = null, children }) {
   const pastille = pastilleElement(element, { avecSujet: false });
   return (
     <section id={id} className={`${carte} scroll-mt-28`} aria-labelledby={`${id}-titre`}>
@@ -717,6 +735,9 @@ function CarteEcheance({ id, icone, element, lienService = null, onAction, actio
           ) : null}
         </div>
       )}
+      {/* Sous les gestes, jamais à leur place : `children` remplace les
+          boutons quand un formulaire est ouvert, le complément s'ajoute. */}
+      {complement}
     </section>
   );
 }

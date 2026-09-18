@@ -265,13 +265,19 @@ begin
   perform pg_temp.assert_echec('envois : lecture par une personne connectée', v_state, v_msg, '42501', 'permission denied');
   reset role;
 
-  insert into public.auto_rappels_envois (proprietaire_id, cle, palier, canal) values (pg_temp.fid('alice'), 'controle_technique:x:2027-04-29', 'j30', 'email');
-  v_state := null;
-  begin
+  -- Depuis 20260922001200, la table est une file dont chaque ligne porte son
+  -- abonnement, son texte et son empreinte : l'unicité est éprouvée, sur des
+  -- lignes complètes, par supabase/tests/auto_rappels_v1.sql.
+  if not exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'auto_rappels_envois' and column_name = 'abonnement_id') then
     insert into public.auto_rappels_envois (proprietaire_id, cle, palier, canal) values (pg_temp.fid('alice'), 'controle_technique:x:2027-04-29', 'j30', 'email');
-  exception when others then v_state := sqlstate; v_msg := sqlerrm;
-  end;
-  perform pg_temp.assert_echec('envois : même palier deux fois', v_state, v_msg, '23505', 'auto_rappels_envois_une_fois');
+    v_state := null;
+    begin
+      insert into public.auto_rappels_envois (proprietaire_id, cle, palier, canal) values (pg_temp.fid('alice'), 'controle_technique:x:2027-04-29', 'j30', 'email');
+    exception when others then v_state := sqlstate; v_msg := sqlerrm;
+    end;
+    perform pg_temp.assert_echec('envois : même palier deux fois', v_state, v_msg, '23505', 'auto_rappels_envois_une_fois');
+  end if;
 end;
 $$;
 
