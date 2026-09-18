@@ -214,7 +214,24 @@ Test : URL du site `http://localhost:3000`, **aucune** URL de retour autorisée
 — l'adresse de la Preview y a été ajoutée le 18 sept. (étape 4 faite, vérifiée :
 retour accepté vers la Preview, adresse non autorisée → URL du site).
 
-**Manipulation exacte** (vous seul saisissez les clés) :
+**Fait le 18 sept. 2026, soir** (CLI Vercel 59.23.2, connecté par Baptiste,
+compte `nexorasolutionsfr`, équipe `nexorasolutionsfr-4999s-projects`, projet
+`nexora-dashboard` `prj_kboLUFbmih8il6LBpcayjFl92pmD`) : les quatre variables
+posées pour **Preview / `auto/rappel-ct` seulement** — adresse et clé publique
+de Test en *Config* (Vercel refuse le type *Secret* pour un nom
+`NEXT_PUBLIC_…`, exposé au navigateur par nature), clé de service de Test en
+*Secret*, `NEXT_PUBLIC_AUTO_RAPPELS=actif` en *Config* ; valeurs passées par
+l'entrée standard, jamais affichées. Relu après coup : 34 variables = 30
+inchangées (Production 11, Preview générales 9) + 4. Redéploiement
+`dpl_3Ljq2TokU2E5bwkhyuWk5oW9No6z`, servi par l'adresse de la branche ;
+Production inchangée (`dpl_3VFvMes8…`, 16 h). `/environnement` sur ce
+déploiement : **Projet Test confirmé : slawilafseganlbghgwx, côté navigateur et
+côté serveur**, intégrations sortantes coupées, accès Nexora Auto « bêta » ; le
+navigateur n'a contacté que la Preview et Supabase Test. Pages de connexion et
+d'inscription : affichées en mode bêta, tous les liens sur la Preview ; aucune
+inscription, aucun e-mail.
+
+**Manipulation exacte** (historique : faite ci-dessus par le CLI) :
 
 1. Supabase → projet **Test** (`slawilafseganlbghgwx`) → *Project Settings* →
    *API Keys* : la clé **anon** et la clé **service_role**.
