@@ -1353,6 +1353,14 @@ Vérifié sur le déploiement réellement servi par l'adresse de la branche :
 sortantes coupées, accès « bêta » ; pages de connexion et d'inscription
 affichées, liens restant sur la Preview, aucune inscription, aucun e-mail.
 
-**Non prouvé** : la remise par Brevo dans une vraie boîte, et le lien ouvert
-sur un téléphone — c'est l'objet de l'essai réel à autoriser (§11 du document
-de référence).
+**Prouvé le 20 septembre 2026** : l'essai réel a envoyé **un** message à
+l'adresse personnelle de Baptiste, Brevo l'a accepté (`250 … queued as`), il
+l'a reçu et **le lien fonctionne**. Tout s'est passé sur Test, avec l'arrêt
+d'urgence posé pendant la préparation et reposé aussitôt après l'envoi ;
+l'instance jetable et sa copie chiffrée de l'accès Brevo ont été supprimées.
+Détail dans `nexora-auto-rappel-ct.md`, §11.
+
+- **R73 — la règle des 9 h interdit de rendre un rappel dû le jour même.**
+  `auto_rappel_neuf_heures` reprogramme au prochain 9 h : changer la date de
+  l'échéance ne suffit pas. Pour un essai en journée, il faut avancer l'heure
+  prévue de la seule ligne concernée (Test).
