@@ -1327,6 +1327,32 @@ pour envoyer ; passage à blanc → rappel programmé le lendemain 9 h ; une
 exécution → 1 message ; la suivante → 0 ; autre destinataire → bloqué avant
 l'envoi.
 
+Preview de la branche reliée à Test (18 septembre, soir) :
+
+- **R69 — la Preview lisait la Production, faute d'exception.** Relevé dans
+  Vercel : 30 variables, dont 9 générales pour Preview aux valeurs de
+  Production et **une seule** exception de branche, sur une autre branche.
+  Rien pour `auto/rappel-ct`. Quatre variables propres à cette branche
+  (adresse, clé publique, clé de service de Test, drapeau des rappels) ;
+  relecture après coup : 34 = 30 inchangées + 4.
+- **R70 — Vercel refuse le type « Secret » pour un nom `NEXT_PUBLIC_…`.**
+  C'est cohérent : ces valeurs partent dans le navigateur. La clé publique de
+  Test est donc en *Config*, la clé de service en *Secret*.
+- **R71 — Supabase Test n'autorisait aucune URL de retour.** Un lien de
+  confirmation serait retombé sur `http://localhost:3000`. L'adresse de la
+  Preview a été ajoutée (la seule de la liste), vérifiée en sondant
+  `/auth/v1/verify` avec un jeton invalide : retour accepté vers la Preview,
+  adresse non autorisée → URL du site. Aucun e-mail.
+- **R72 — aucun accès Vercel n'existait sur ce Mac** (ni CLI, ni jeton). Le
+  CLI officiel a été connecté par Baptiste lui-même (code d'appareil) ; les
+  valeurs ne passent que par l'entrée standard, jamais en argument ni à
+  l'écran.
+
+Vérifié sur le déploiement réellement servi par l'adresse de la branche :
+« Projet Test confirmé, côté navigateur et côté serveur », intégrations
+sortantes coupées, accès « bêta » ; pages de connexion et d'inscription
+affichées, liens restant sur la Preview, aucune inscription, aucun e-mail.
+
 **Non prouvé** : la remise par Brevo dans une vraie boîte, et le lien ouvert
 sur un téléphone — c'est l'objet de l'essai réel à autoriser (§11 du document
 de référence).
