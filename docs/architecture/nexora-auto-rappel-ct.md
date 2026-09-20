@@ -479,24 +479,27 @@ m'indiquez. Je relève moi-même, sur chaque facture, les valeurs justes
 trouve, manque, se trompe ou invente. Je ne cherche aucun document ailleurs, et
 aucune facture fictive ne remplace cette validation.
 
-## 11. L'essai réel — scénario retenu, exécution non autorisée
+## 11. L'essai réel — destinataire retenu, exécution non autorisée
 
-Scénario retenu le 18 sept. : **option A**. L'exécution reste à autoriser,
-séparément, **après** la vérification de la Preview (§6, étape 5). Rien n'est
-engagé : aucun compte à votre adresse, aucune voiture, aucune copie de l'accès
-Brevo, aucun message.
+Destinataire retenu le 20 sept. : **`baptiste.papoul52@gmail.com`**, l'adresse
+personnelle. L'exécution reste à autoriser séparément. Rien n'est engagé :
+aucune voiture, aucune copie de l'accès Brevo, aucun message.
 
-**Pourquoi A.** Le projet Test envoie ses e-mails d'inscription par le service
-par défaut de Supabase, qui n'écrit qu'aux membres de l'équipe Supabase (pour
-toute autre adresse : *Email address not authorized*, documentation Supabase).
-`nexorasolutions.france@gmail.com` en est membre : aucun réglage à changer.
-Ni cette adresse ni `baptiste.papoul52@gmail.com` n'ont de compte sur Test
-(vérifié le 18 sept.).
+**Ce qu'il a fallu, et pourquoi.** Le projet Test envoie ses e-mails
+d'inscription par le service par défaut de Supabase, qui n'écrit qu'aux
+membres de l'équipe Supabase (pour toute autre adresse : *Email address not
+authorized*). L'équipe n'en compte que deux, sans l'adresse personnelle.
+Plutôt que d'y toucher, la confirmation d'e-mail de Test a été coupée le temps
+de l'inscription (20 sept., 11 h 03 → 11 h 11, heure de Paris), puis remise ;
+un seul compte a été créé pendant cette fenêtre, celui de Baptiste. Le compte
+de Test existe donc depuis le 20 sept. 11 h 07, confirmé, accès Nexora Auto
+autorisé, sans aucune voiture. Le compte du tableau de bord, lui, vit dans la
+base de **Production** : il n'ouvre pas la Preview, qui est branchée sur Test.
 
-| | A (retenue) — `nexorasolutions.france@gmail.com` |
+| | Retenu — `baptiste.papoul52@gmail.com` |
 | --- | --- |
-| Messages réels | **2** : la confirmation d'inscription (Supabase Test), puis **le rappel** |
-| Réglage à changer | aucun |
+| Messages réels | **1** : le rappel (l'inscription n'en a demandé aucun) |
+| Réglage changé | confirmation d'e-mail de Test, coupée puis remise (vérifié) |
 
 **Les dates** : aucune n'est fixée d'avance. Le jour où la voiture fictive est
 créée (jour J, heure de Paris) : contrôle réalisé à J − 714, valable jusqu'à
@@ -510,7 +513,7 @@ l'écrit au même moment, calculée par le même module.
 ```
 De       : Nexora Auto <nexorasolutions.france@11919348.brevosend.com>
 Répondre : nexorasolutions.france@gmail.com
-À        : nexorasolutions.france@gmail.com, et aucune autre adresse
+À        : baptiste.papoul52@gmail.com, et aucune autre adresse
 Objet    : Contrôle technique de votre Peugeot 208 (essai) : avant le <J + 16>
 
 Bonjour,
@@ -532,9 +535,9 @@ Nexora Auto
 Texte brut, sans pièce jointe, produit par le module réel ; relu tel que reçu
 par le serveur SMTP contrôlé lors de la répétition du 18 sept.
 
-**Les données fictives** (Test seulement) : un compte Nexora Auto **créé par
-vous** sur la Preview, avec un mot de passe que je ne vois pas ; son
-invitation à la bêta de Test ; une voiture « Peugeot 208 (essai) », sans
+**Les données fictives** (Test seulement) : le compte Nexora Auto **créé par
+vous** sur la Preview le 20 sept., avec un mot de passe que je ne vois pas ;
+son invitation à la bêta de Test (posée le 20 sept.) ; une voiture « Peugeot 208 (essai) », sans
 immatriculation, année 2018, contrôle périodique favorable aux dates
 ci-dessus ; le rappel **activé par vous**. Ni votre voiture personnelle, ni
 document, ni facture, ni montant.
@@ -555,4 +558,4 @@ arrête l'essai, rien n'est rejoué.
 **À autoriser, le moment venu** : inviter l'adresse sur Test ; y changer
 `auto_url_publique` ; créer la voiture fictive dans votre compte d'essai ;
 exporter chiffré l'identifiant Brevo de l'instance vive (une lecture) ;
-envoyer **un** rappel à `nexorasolutions.france@gmail.com`.
+envoyer **un** rappel à `baptiste.papoul52@gmail.com`.
