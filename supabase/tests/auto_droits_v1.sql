@@ -1,6 +1,6 @@
 -- Nexora Auto — droits exacts sur tous les objets `auto_*` — banc en LECTURE SEULE.
 --
--- Présuppose 20260922000100 → 20260922001100 appliquées. N'écrit rien.
+-- Présuppose 20260922000100 → 20260922001500 appliquées. N'écrit rien.
 --
 -- Compare, pour `anon` et `authenticated`, les privilèges effectifs de chaque
 -- table et séquence `auto_*` à la liste attendue ci-dessous. Une table `auto_*`
@@ -29,7 +29,23 @@ insert into _droits_attendus (objet, anon, authenticated) values
   ('auto_acces_parametres',      '', ''),
   ('auto_acces_beta',            '', ''),
   -- Droits par colonne seulement (contrôlés plus bas) : aucun droit de table.
-  ('auto_lectures',              '', '');
+  ('auto_lectures',              '', ''),
+  -- Rappels (20260922001200) : la personne LIT son abonnement et ses
+  -- décisions ; elle n'écrit que par auto_activer_rappel / auto_desactiver_rappel.
+  ('auto_rappels_abonnements',      '', 'SELECT'),
+  ('auto_rappels_decisions',        '', 'SELECT'),
+  ('auto_rappels_decisions_id_seq', '', '');
+
+-- Les fonctions du SERVEUR : jamais exécutables par une personne connectée.
+create function pg_temp.fonctions_serveur() returns text[]
+language sql immutable as $$
+  select array[
+    'auto_lecture_reserver',
+    'auto_empreinte_ct', 'auto_acces_autorise_pour', 'auto_rappel_neuf_heures',
+    'auto_rappels_a_planifier', 'auto_planifier_rappels', 'auto_reserver_rappel', 'auto_terminer_rappel',
+    'auto_confirmer_transmission'
+  ]
+$$;
 
 create temporary view _droits_effectifs as
 select c.relname as objet,
@@ -96,7 +112,8 @@ end;
 $$;
 
 -- Fonctions : les déclencheurs ne s'appellent pas directement ; les fonctions
--- métier sont réservées aux personnes connectées, sauf celles du serveur.
+-- métier sont réservées aux personnes connectées, sauf celles du serveur
+-- (lecture de facture, et le service d'envoi des rappels, 20260922001200).
 do $$
 declare
   v_ecarts text;
@@ -110,8 +127,8 @@ begin
     and (
       has_function_privilege('anon', p.oid, 'EXECUTE')
       or (p.prorettype = 'trigger'::regtype and has_function_privilege('authenticated', p.oid, 'EXECUTE'))
-      or (p.proname in ('auto_lecture_reserver') and has_function_privilege('authenticated', p.oid, 'EXECUTE'))
-      or (p.proname not in ('auto_lecture_reserver') and p.prorettype <> 'trigger'::regtype and not has_function_privilege('authenticated', p.oid, 'EXECUTE'))
+      or (p.proname = any(pg_temp.fonctions_serveur()) and has_function_privilege('authenticated', p.oid, 'EXECUTE'))
+      or (p.proname <> all(pg_temp.fonctions_serveur()) and p.prorettype <> 'trigger'::regtype and not has_function_privilege('authenticated', p.oid, 'EXECUTE'))
     );
   if v_ecarts is not null then
     raise exception 'ASSERTION FAILED: droits d''exécution inattendus : %', v_ecarts;

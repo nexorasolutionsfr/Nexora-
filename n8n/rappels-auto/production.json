@@ -1,0 +1,779 @@
+{
+  "id": "rappelsautoprod00001",
+  "name": "Rappels Nexora Auto (contrôle technique) — INACTIF",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        }
+      },
+      "name": "Tous les quarts d'heure",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/auto_rappels_a_planifier",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"p_proprietaires\": null}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "Lire les dossiers abonnés",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Les règles du contrôle technique et le texte du message viennent du dépôt\n// (lib/auto/rappels.js et ce qu'il importe), embarqués à l'identique par\n// n8n/rappels-auto/embarquer.mjs. Ne rien corriger ici : corriger le dépôt et\n// reconstruire.\n// ---- Modules embarqués depuis le dépôt Nexora (n8n/rappels-auto/embarquer.mjs). Ne pas modifier ici. ----\nconst __fabriques = {};\nconst __caches = {};\nfunction __definir(cle, fabrique) { __fabriques[cle] = fabrique; }\nfunction __module(cle) {\n  if (!(cle in __caches)) {\n    if (!__fabriques[cle]) throw new Error('module embarqué absent : ' + cle);\n    __caches[cle] = __fabriques[cle]();\n  }\n  return __caches[cle];\n}\n\n__definir(\"lib/auto/echeances.js\", () => {\n// Échéances d'une voiture d'automobiliste : kilométrage connu, contrôle\n// technique, entretien.\n//\n// Règle de conduite : aucune précision inventée. Une échéance ne se calcule\n// qu'à partir de ce que la personne a renseigné ; sinon on dit ce qui manque.\n// Chaque résultat porte sa source, pour que l'écran puisse l'expliquer.\n//\n// Les dates sont des chaînes « AAAA-MM-JJ », comme la base les renvoie, et\n// se calculent en UTC pour qu'aucun fuseau ne décale un jour.\n\nconst JOUR_MS = 24 * 60 * 60 * 1000;\n\n// Seule une révision remet à zéro l'échéance de révision : l'intervalle\n// recopié du carnet est celui de la révision, et une vidange seule ne la\n// remplace pas.\nconst TYPES_ENTRETIEN = [\"revision\"];\n\n// Contrôle technique d'une VOITURE PARTICULIÈRE (catégorie M1, 3,5 t au plus).\n// Règles relues sur service-public.fr (F2878) le 16 septembre 2026 :\n// - premier contrôle au cours des 6 mois avant le 4e anniversaire de la mise\n//   en circulation (mise en circulation le 1er oct. 2022 : entre le 1er avril\n//   et le 30 septembre 2026) ;\n// - résultat favorable : valable 2 ans (contrôle du 14 mai 2025 : valable\n//   jusqu'au 13 mai 2027) ;\n// - défavorable pour défaillance majeure : valable 2 mois (14 mai 2026 :\n//   jusqu'au 13 juillet 2026) ;\n// - défavorable pour défaillance critique : validité limitée au jour même ;\n// - dans les deux cas défavorables, contre-visite au plus tard 2 mois après\n//   (13 juillet 2026) ;\n// - contre-visite favorable : valable 2 ans à compter du contrôle défavorable\n//   qui l'a motivée (5 juin 2026 : jusqu'au 4 juin 2028).\n// La date inscrite sur le procès-verbal prime toujours sur ce calcul, et c'est\n// elle qu'on demande dès que la règle ne suffit pas.\nconst CT_PREMIER_ANS = 4;\nconst CT_FENETRE_MOIS = 6;\nconst CT_VALIDITE_FAVORABLE_MOIS = 24;\nconst CT_DELAI_CONTRE_VISITE_MOIS = 2;\nconst RESULTATS_DEFAVORABLES = [\"defavorable_majeure\", \"defavorable_critique\"];\n\n// Seuil à partir duquel une échéance est signalée comme proche.\nconst JOURS_ALERTE = 60;\nconst KM_ALERTE = 1500;\n\nfunction versDate(iso) {\n  if (!iso || typeof iso !== \"string\") return null;\n  const m = iso.match(/^(\\d{4})-(\\d{2})-(\\d{2})/);\n  if (!m) return null;\n  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));\n  return Number.isNaN(d.getTime()) ? null : d;\n}\n\nfunction versIso(date) {\n  return date.toISOString().slice(0, 10);\n}\n\n// Ajoute des mois en restant dans le mois visé : 29 février + 1 an donne le\n// 28 février, jamais le 1er mars.\nfunction ajouterMois(iso, mois) {\n  const d = versDate(iso);\n  if (!d) return null;\n  const annee = d.getUTCFullYear();\n  const moisCible = d.getUTCMonth() + mois;\n  const dernierJour = new Date(Date.UTC(annee, moisCible + 1, 0)).getUTCDate();\n  const jour = Math.min(d.getUTCDate(), dernierJour);\n  return versIso(new Date(Date.UTC(annee, moisCible, jour)));\n}\n\nfunction joursEntre(debutIso, finIso) {\n  const debut = versDate(debutIso);\n  const fin = versDate(finIso);\n  if (!debut || !fin) return null;\n  return Math.round((fin.getTime() - debut.getTime()) / JOUR_MS);\n}\n\nfunction aujourdhuiIso(maintenant = new Date()) {\n  const y = maintenant.getFullYear();\n  const m = String(maintenant.getMonth() + 1).padStart(2, \"0\");\n  const j = String(maintenant.getDate()).padStart(2, \"0\");\n  return `${y}-${m}-${j}`;\n}\n\nfunction plusRecent(a, b) {\n  if (a.date !== b.date) return a.date > b.date ? a : b;\n  return (a.kilometrage ?? -1) >= (b.kilometrage ?? -1) ? a : b;\n}\n\n// Le kilométrage le plus récent parmi les relevés et les interventions qui en\n// portent un. Le plus récent par date ; à date égale, le plus élevé.\nfunction dernierKilometrage({ releves = [], historique = [] } = {}) {\n  const candidats = [\n    ...releves\n      .filter((r) => Number.isFinite(r?.kilometrage) && versDate(r?.releve_le))\n      .map((r) => ({ kilometrage: r.kilometrage, date: r.releve_le.slice(0, 10), origine: \"releve\" })),\n    ...historique\n      .filter((h) => Number.isFinite(h?.kilometrage) && versDate(h?.realise_le))\n      .map((h) => ({ kilometrage: h.kilometrage, date: h.realise_le.slice(0, 10), origine: \"intervention\" })),\n  ];\n  if (candidats.length === 0) return null;\n  return candidats.reduce(plusRecent);\n}\n\nfunction derniereIntervention(historique, types) {\n  const retenues = historique.filter((h) => types.includes(h?.type) && versDate(h?.realise_le));\n  if (retenues.length === 0) return null;\n  return retenues.reduce((a, b) => {\n    const da = a.realise_le.slice(0, 10);\n    const db = b.realise_le.slice(0, 10);\n    if (da !== db) return da > db ? a : b;\n    return (a.kilometrage ?? -1) >= (b.kilometrage ?? -1) ? a : b;\n  });\n}\n\nfunction niveau(joursRestants) {\n  if (joursRestants < 0) return \"depasse\";\n  if (joursRestants <= JOURS_ALERTE) return \"proche\";\n  return \"ok\";\n}\n\n// Dernier jour d'une durée qui court à partir d'une date : la veille du même\n// quantième, n mois plus tard (14 mai 2025 + 24 mois : 13 mai 2027). Si ce\n// quantième n'existe pas (29 février, 31), la durée finit le dernier jour du\n// mois atteint.\nfunction dateLimiteValidite(iso, mois) {\n  const atteint = ajouterMois(iso, mois);\n  if (!atteint) return null;\n  if (atteint.slice(8, 10) !== iso.slice(8, 10)) return atteint;\n  return ajouterJours(atteint, -1);\n}\n\nfunction ajouterJours(iso, jours) {\n  const d = versDate(iso);\n  if (!d) return null;\n  return versIso(new Date(d.getTime() + jours * JOUR_MS));\n}\n\nconst defavorable = (controle) => RESULTATS_DEFAVORABLES.includes(controle?.resultat_controle);\nconst estContreVisite = (controle) => controle?.nature_controle === \"contre_visite\";\n\n// Prochain contrôle technique.\n//\n// Retour, toujours avec `fondement` quand une date est donnée :\n// \"officiel\" (procès-verbal) ou \"calcul\" (règle ci-dessus) :\n// - { etat: \"a_renseigner\", manque: \"mise_en_circulation\" | \"dernier_controle\" | \"date_proces_verbal\" }\n// - { etat: \"contre_visite\", resultat, date (limite de la contre-visite), valableJusquAu,\n//     dernierLe, initialLe, joursRestants, niveau, fondement }\n// - { etat: \"calcule\", source: \"proces_verbal\" | \"dernier_controle\" | \"contre_visite_favorable\" | \"mise_en_circulation\",\n//     date, joursRestants, niveau, fondement, dernierLe?, initialLe?, fenetreOuverteLe? }\nfunction prochainControleTechnique({ dateMiseEnCirculation, historique = [], aujourdhui }) {\n  const jour = aujourdhui ?? aujourdhuiIso();\n  const controles = historique\n    .filter((h) => h?.type === \"controle_technique\" && versDate(h?.realise_le))\n    .map((h) => ({ ...h, realise_le: h.realise_le.slice(0, 10) }))\n    .sort((a, b) => (a.realise_le < b.realise_le ? 1 : a.realise_le > b.realise_le ? -1 : 0));\n  const dernier = controles[0];\n  const delai = (date) => {\n    const joursRestants = joursEntre(jour, date);\n    return { date, joursRestants, niveau: niveau(joursRestants) };\n  };\n  const officielle = (controle) => (versDate(controle?.controle_valable_jusqu_au) ? controle.controle_valable_jusqu_au.slice(0, 10) : null);\n\n  // Le contrôle périodique défavorable qui a motivé une contre-visite passée\n  // à `date` : le plus récent avant elle, dont le délai de 2 mois court encore.\n  const initialAvant = (date) =>\n    controles.find(\n      (c) => c.realise_le < date && !estContreVisite(c) && defavorable(c) && date <= dateLimiteValidite(c.realise_le, CT_DELAI_CONTRE_VISITE_MOIS),\n    );\n\n  if (dernier) {\n    const dernierLe = dernier.realise_le;\n\n    // 1. Résultat défavorable : une contre-visite est à faire.\n    if (defavorable(dernier)) {\n      const initial = estContreVisite(dernier) ? initialAvant(dernierLe) : dernier;\n      if (!initial) return { etat: \"a_renseigner\", manque: \"date_proces_verbal\", dernierLe };\n      const limite = dateLimiteValidite(initial.realise_le, CT_DELAI_CONTRE_VISITE_MOIS);\n      const valableJusquAu =\n        officielle(dernier) ?? (dernier.resultat_controle === \"defavorable_critique\" ? dernierLe : dateLimiteValidite(dernierLe, CT_DELAI_CONTRE_VISITE_MOIS));\n      return {\n        etat: \"contre_visite\",\n        resultat: dernier.resultat_controle,\n        valableJusquAu,\n        dernierLe,\n        initialLe: initial.realise_le,\n        fondement: officielle(dernier) ? \"officiel\" : \"calcul\",\n        ...delai(limite),\n      };\n    }\n\n    // 2. La date du procès-verbal fait foi.\n    if (officielle(dernier)) {\n      return { etat: \"calcule\", source: \"proces_verbal\", fondement: \"officiel\", dernierLe, ...delai(officielle(dernier)) };\n    }\n\n    // 3. Contre-visite favorable : 2 ans à compter du contrôle initial.\n    if (estContreVisite(dernier)) {\n      const initial = initialAvant(dernierLe);\n      if (!initial) return { etat: \"a_renseigner\", manque: \"date_proces_verbal\", dernierLe };\n      return {\n        etat: \"calcule\",\n        source: \"contre_visite_favorable\",\n        fondement: \"calcul\",\n        dernierLe,\n        initialLe: initial.realise_le,\n        ...delai(dateLimiteValidite(initial.realise_le, CT_VALIDITE_FAVORABLE_MOIS)),\n      };\n    }\n\n    // 4. Un contrôle « périodique » qui tombe dans le délai de contre-visite\n    //    d'un contrôle défavorable est peut-être la contre-visite : on ne\n    //    devine pas, on demande la date du procès-verbal.\n    if (initialAvant(dernierLe)) {\n      return { etat: \"a_renseigner\", manque: \"date_proces_verbal\", dernierLe };\n    }\n\n    // 5. Contrôle favorable (ou résultat non précisé) : 2 ans.\n    return {\n      etat: \"calcule\",\n      source: \"dernier_controle\",\n      fondement: \"calcul\",\n      dernierLe,\n      ...delai(dateLimiteValidite(dernierLe, CT_VALIDITE_FAVORABLE_MOIS)),\n    };\n  }\n\n  if (!versDate(dateMiseEnCirculation)) {\n    return { etat: \"a_renseigner\", manque: \"mise_en_circulation\" };\n  }\n\n  const miseEnCirculation = dateMiseEnCirculation.slice(0, 10);\n  const premier = dateLimiteValidite(miseEnCirculation, CT_PREMIER_ANS * 12);\n  if (jour > premier) {\n    // La voiture a passé l'âge du premier contrôle : sans le dernier, on ne\n    // sait pas quand tombe le prochain.\n    return { etat: \"a_renseigner\", manque: \"dernier_controle\" };\n  }\n  return {\n    etat: \"calcule\",\n    source: \"mise_en_circulation\",\n    fondement: \"calcul\",\n    fenetreOuverteLe: ajouterMois(miseEnCirculation, CT_PREMIER_ANS * 12 - CT_FENETRE_MOIS),\n    ...delai(premier),\n  };\n}\n\n// Tout ce qui manque pour calculer la prochaine révision — pas seulement la\n// première chose rencontrée.\n//\n// Le formulaire annonçait « il manque une seule chose » alors que la fiche du\n// service, elle, listait aussi la dernière révision : on renseignait « la\n// dernière chose » et une nouvelle demande apparaissait derrière (constat du\n// 18 sept. 2026). Les manques se comptent donc en une fois, ici, et les deux\n// écrans lisent la même liste.\n//\n// Codes rendus, dans l'ordre où on les demande :\n// - \"derniere_intervention\" : aucune révision enregistrée (le point de départ) ;\n// - \"intervalle\"            : tous les combien elle revient ;\n// - \"kilometrage_revision\"  : intervalle au compteur seul, et dernière révision\n//                             enregistrée sans kilométrage.\nfunction manquesRevision({ intervalleKm, intervalleMois, historique = [] } = {}) {\n  const km = Number.isFinite(intervalleKm) && intervalleKm > 0 ? intervalleKm : null;\n  const mois = Number.isFinite(intervalleMois) && intervalleMois > 0 ? intervalleMois : null;\n  const dernier = derniereIntervention(historique, TYPES_ENTRETIEN);\n\n  const manques = [];\n  if (!dernier) manques.push(\"derniere_intervention\");\n  if (!km && !mois) manques.push(\"intervalle\");\n  // Ce troisième manque ne se constate que si l'intervalle est connu ET au\n  // compteur seul : tant qu'on ignore l'intervalle, on ignore si le\n  // kilométrage de la dernière révision servira.\n  if (dernier && km && !mois && !Number.isFinite(dernier.kilometrage)) manques.push(\"kilometrage_revision\");\n  return manques;\n}\n\n// Prochaine révision, d'après l'intervalle recopié du carnet.\n//\n// Retour :\n// - { etat: \"intervalle_a_renseigner\" }\n// - { etat: \"dernier_entretien_a_renseigner\" }   — aucune révision passée\n// - { etat: \"calcule\", depuis: { date, kilometrage, type },\n//     parKm?: { limite, restants, niveau }, parDate?: { limite, joursRestants, niveau },\n//     niveau }   — niveau global : le plus urgent des deux.\nfunction prochainEntretien({ intervalleKm, intervalleMois, historique = [], releves = [], aujourdhui }) {\n  const jour = aujourdhui ?? aujourdhuiIso();\n  const km = Number.isFinite(intervalleKm) && intervalleKm > 0 ? intervalleKm : null;\n  const mois = Number.isFinite(intervalleMois) && intervalleMois > 0 ? intervalleMois : null;\n  if (!km && !mois) return { etat: \"intervalle_a_renseigner\" };\n\n  const dernier = derniereIntervention(historique, TYPES_ENTRETIEN);\n  if (!dernier) return { etat: \"dernier_entretien_a_renseigner\" };\n\n  // La source est toujours l'intervalle renseigné par la personne : l'écran\n  // doit le dire, ce n'est pas une préconisation du constructeur.\n  const resultat = {\n    etat: \"calcule\",\n    source: \"intervalle_renseigne\",\n    intervalle: { km, mois },\n    depuis: { date: dernier.realise_le.slice(0, 10), kilometrage: dernier.kilometrage ?? null, type: dernier.type },\n  };\n  const urgences = [];\n\n  if (mois) {\n    const limite = ajouterMois(dernier.realise_le.slice(0, 10), mois);\n    const joursRestants = joursEntre(jour, limite);\n    resultat.parDate = { limite, joursRestants, niveau: niveau(joursRestants) };\n    urgences.push(resultat.parDate.niveau);\n  }\n\n  const actuel = dernierKilometrage({ releves, historique });\n  if (km && Number.isFinite(dernier.kilometrage)) {\n    const limite = dernier.kilometrage + km;\n    const parKm = { limite, restants: null, niveau: null };\n    // Un compteur relevé AVANT l'entretien ne dit rien de ce qui reste.\n    if (actuel && actuel.date >= resultat.depuis.date) {\n      parKm.restants = limite - actuel.kilometrage;\n      parKm.niveau = parKm.restants < 0 ? \"depasse\" : parKm.restants <= KM_ALERTE ? \"proche\" : \"ok\";\n      urgences.push(parKm.niveau);\n    }\n    resultat.parKm = parKm;\n  }\n\n  resultat.niveau = urgences.includes(\"depasse\") ? \"depasse\" : urgences.includes(\"proche\") ? \"proche\" : urgences.length ? \"ok\" : null;\n  return resultat;\n}\n\nreturn { TYPES_ENTRETIEN, CT_PREMIER_ANS, CT_FENETRE_MOIS, CT_VALIDITE_FAVORABLE_MOIS, CT_DELAI_CONTRE_VISITE_MOIS, RESULTATS_DEFAVORABLES, JOURS_ALERTE, KM_ALERTE, ajouterMois, joursEntre, aujourdhuiIso, dernierKilometrage, dateLimiteValidite, ajouterJours, prochainControleTechnique, manquesRevision, prochainEntretien };\n});\n\n__definir(\"lib/auto/immatriculation.js\", () => {\n// Plaques d'immatriculation, telles qu'un automobiliste les tape.\n//\n// La base ne stocke que la forme normalisée (majuscules, sans espace ni\n// tiret) : c'est ce que vérifie la contrainte\n// auto_vehicules_immatriculation_normalisee. L'affichage remet les tirets.\n\nconst SIV = /^[A-Z]{2}\\d{3}[A-Z]{2}$/;\nconst FNI = /^\\d{1,4}[A-Z]{1,3}(\\d{2}|2A|2B|97\\d)$/;\nconst NORMALISEE = /^[A-Z0-9]{2,12}$/;\n\nfunction normaliserImmatriculation(saisie) {\n  if (typeof saisie !== \"string\") return null;\n  const brute = saisie.toUpperCase().replace(/[\\s.\\-_/]/g, \"\");\n  return brute === \"\" ? null : brute;\n}\n\n// « siv » (AB-123-CD, depuis 2009), « fni » (1234 AB 56, ancien système),\n// « autre » (plaque étrangère ou saisie inhabituelle, acceptée), ou\n// « invalide » (caractères interdits ou longueur impossible).\nfunction formatImmatriculation(normalisee) {\n  if (!normalisee || !NORMALISEE.test(normalisee)) return \"invalide\";\n  if (SIV.test(normalisee)) return \"siv\";\n  if (FNI.test(normalisee)) return \"fni\";\n  return \"autre\";\n}\n\nfunction afficherImmatriculation(normalisee) {\n  if (!normalisee) return \"\";\n  if (SIV.test(normalisee)) {\n    return `${normalisee.slice(0, 2)}-${normalisee.slice(2, 5)}-${normalisee.slice(5)}`;\n  }\n  const fni = normalisee.match(/^(\\d{1,4})([A-Z]{1,3})(\\d{2}|2A|2B|97\\d)$/);\n  if (fni) return `${fni[1]} ${fni[2]} ${fni[3]}`;\n  return normalisee;\n}\n\nreturn { normaliserImmatriculation, formatImmatriculation, afficherImmatriculation };\n});\n\n__definir(\"lib/auto/entretien.js\", () => {\n// Ce qu'il manque au suivi d'entretien d'une voiture, dit en une fois.\n//\n// Deux écrans posaient la même question autrement, et se contredisaient :\n// le formulaire d'intervalle annonçait « il manque une seule chose », la fiche\n// du service listait en plus la dernière révision (constat du 18 sept. 2026).\n// Les deux lisent maintenant `manquesRevision`, qui compte tout.\n//\n// Module pur, testé (entretien.test.js). Aucun intervalle constructeur, aucune\n// valeur « courante » : Nexora ne devine pas ce que dit un carnet.\n\nconst { manquesRevision } = __module(\"lib/auto/echeances.js\");\n\n// Chaque manque porte son libellé, la raison pour laquelle Nexora ne le devine\n// pas, et le geste qui le comble. `action` est le code lu par la fiche véhicule\n// (?action=…), pas une adresse : ce module ne connaît pas les écrans.\nconst MANQUES = {\n  derniere_intervention: {\n    libelle: \"La date de votre dernière révision\",\n    pourquoi: \"C'est le point de départ du calcul. Une vidange seule ne compte pas comme une révision.\",\n    action: \"revision\",\n    geste: \"Enregistrer ma dernière révision\",\n  },\n  intervalle: {\n    libelle: \"Tous les combien elle doit être révisée\",\n    pourquoi: \"C'est écrit sur le carnet d'entretien, et souvent repris sur la facture de la dernière révision. Les intervalles dépendent de la motorisation : une valeur approchée ferait une échéance fausse.\",\n    action: \"intervalle\",\n    geste: \"Renseigner l'intervalle\",\n  },\n  kilometrage_revision: {\n    libelle: \"Le kilométrage de votre dernière révision\",\n    pourquoi: \"Votre intervalle est au compteur : sans ce point de départ, l'échéance ne se situe pas.\",\n    action: \"revision\",\n    geste: \"Enregistrer une révision avec son compteur\",\n  },\n};\n\n// [{ cle, libelle, pourquoi, action, geste }] — vide quand rien ne manque.\nfunction manquesEntretien(vehicule) {\n  if (!vehicule) return [];\n  return manquesRevision({\n    intervalleKm: vehicule.intervalle_entretien_km,\n    intervalleMois: vehicule.intervalle_entretien_mois,\n    historique: vehicule.historique ?? [],\n  }).map((cle) => ({ cle, ...MANQUES[cle] }));\n}\n\n// « Il manque une seule chose » ne s'écrit que s'il n'en manque qu'une.\nfunction phraseManques(manques = []) {\n  if (manques.length === 0) return null;\n  if (manques.length === 1) return \"Il manque une seule chose pour calculer votre prochaine révision :\";\n  const nombres = { 2: \"deux\", 3: \"trois\" };\n  return `Il manque ${nombres[manques.length] ?? manques.length} choses pour calculer votre prochaine révision :`;\n}\n\n// Une facture de révision porte souvent la date, le kilométrage ET l'intervalle\n// préconisé : quand plusieurs choses manquent, c'est le geste le plus court.\nfunction factureDAbord(manques = []) {\n  return manques.length > 1;\n}\n\n// ---------------------------------------------------------------------------\n// Ce que « Entretenir ma voiture » doit dire de CETTE voiture\n// ---------------------------------------------------------------------------\n//\n// L'entrée menait à cinq prestations à choisir soi-même : un classement, pas\n// une aide. Elle commence désormais par l'état réel du dossier.\n//\n// Rend { cas, titre, texte, manques, element } :\n// - \"a_preciser\" : le suivi ne se calcule pas encore, et on dit quoi faire ;\n// - \"echeance\"   : une révision est dépassée ou approche ;\n// - \"suivi\"      : elle est calculée et lointaine ;\n// - \"sans_voiture\" : aucune voiture choisie.\nfunction etatEntretien({ vehicule = null, elements = [] } = {}) {\n  if (!vehicule) return { cas: \"sans_voiture\", manques: [], element: null };\n\n  const manques = manquesEntretien(vehicule);\n  const element = elements.find((el) => el.genre === \"revision\" && el.vehicule?.id === vehicule.id) ?? null;\n\n  if (manques.length > 0) {\n    return {\n      cas: \"a_preciser\",\n      titre: \"Votre suivi d'entretien reste à préciser.\",\n      texte: \"Retrouvez votre dernière intervention, ou ajoutez son justificatif : Nexora calculera la suite.\",\n      manques,\n      element,\n    };\n  }\n\n  if (element?.niveau === \"depasse\" || element?.niveau === \"proche\") {\n    return { cas: \"echeance\", titre: element.titre, texte: element.quand, manques, element };\n  }\n\n  return { cas: \"suivi\", titre: \"Votre suivi d'entretien est à jour.\", texte: element?.quand ?? null, manques, element };\n}\n\nreturn { MANQUES, manquesEntretien, phraseManques, factureDAbord, etatEntretien };\n});\n\n__definir(\"lib/auto/kilometrage.js\", () => {\n// Kilométrage d'une voiture : le dernier compteur relevé, et une estimation\n// qui ne s'y substitue jamais.\n//\n// - Le relevé garde sa date et sa source (relevé saisi, ou intervention).\n// - L'estimation part du rythme observé entre deux points éloignés d'au moins\n//   30 jours ; elle n'est proposée que si le dernier relevé a plus de 14 jours\n//   et moins d'un an (au-delà, on ne prolonge pas une tendance : on demande\n//   le compteur).\n// - Un relevé de plus de 60 jours est « ancien » : l'écran propose de\n//   l'actualiser seulement quand le kilométrage sert à une échéance.\n// - Des kilométrages qui se contredisent (compteur qui recule, rythme\n//   impossible) sont montrés à la personne, jamais corrigés. Tant qu'ils ne\n//   sont pas levés, aucune estimation n'est faite et les échéances au compteur\n//   sont « à vérifier ».\n\nconst { aujourdhuiIso, joursEntre } = __module(\"lib/auto/echeances.js\");\n\nconst JOURS_RELEVE_ANCIEN = 60;\nconst JOURS_AVANT_ESTIMATION = 14;\nconst JOURS_MAX_ESTIMATION = 365;\nconst JOURS_MIN_RYTHME = 30;\nconst JOURS_MAX_RYTHME = 3 * 365;\n// Au-delà, deux compteurs ne peuvent pas appartenir à la même voiture : une\n// journée entière sur autoroute fait environ 1 500 km.\nconst KM_PAR_JOUR_MAX = 1500;\n\nconst dateDe = (valeur) => (typeof valeur === \"string\" && /^\\d{4}-\\d{2}-\\d{2}/.test(valeur) ? valeur.slice(0, 10) : null);\n\n// Tous les points connus, du plus ancien au plus récent ; à date égale, le\n// compteur le plus haut.\nfunction pointsKilometrage({ releves = [], historique = [] } = {}) {\n  const parDate = new Map();\n  const ajouter = (date, kilometrage, origine) => {\n    if (!date || !Number.isFinite(kilometrage)) return;\n    const existant = parDate.get(date);\n    if (!existant || kilometrage > existant.kilometrage) parDate.set(date, { date, kilometrage, origine });\n  };\n  for (const r of releves) ajouter(dateDe(r?.releve_le), r?.kilometrage, r?.source === \"prestation\" ? \"prestation\" : \"releve\");\n  for (const h of historique) ajouter(dateDe(h?.realise_le), h?.kilometrage, \"intervention\");\n  return [...parDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1));\n}\n\n// Chaque kilométrage enregistré, tel quel (pour le montrer et le corriger),\n// du plus récent au plus ancien : { cle, date, kilometrage, origine,\n// releveId?, historiqueId?, type? }.\nfunction lignesKilometrage({ releves = [], historique = [] } = {}) {\n  const lignes = [\n    ...releves\n      .filter((r) => dateDe(r?.releve_le) && Number.isFinite(r?.kilometrage))\n      .map((r) => ({ cle: `releve:${r.id}`, releveId: r.id, date: dateDe(r.releve_le), kilometrage: r.kilometrage, origine: r.source === \"prestation\" ? \"prestation\" : \"releve\" })),\n    ...historique\n      .filter((h) => dateDe(h?.realise_le) && Number.isFinite(h?.kilometrage))\n      .map((h) => ({ cle: `intervention:${h.id}`, historiqueId: h.id, type: h.type, date: dateDe(h.realise_le), kilometrage: h.kilometrage, origine: \"intervention\" })),\n  ];\n  return lignes.sort((a, b) => (a.date === b.date ? b.kilometrage - a.kilometrage : a.date < b.date ? 1 : -1));\n}\n\n// Paires de kilométrages qui se contredisent, en comparant chaque ligne à la\n// précédente dans le temps : { avant, apres, motif: \"recul\" | \"rythme\" |\n// \"meme_jour\" }. Deux lignes du même jour ne se contredisent que si l'écart\n// dépasse une journée de route.\nfunction incoherencesDuKilometrage({ releves = [], historique = [] } = {}) {\n  const chronologie = lignesKilometrage({ releves, historique }).reverse();\n  const incoherences = [];\n  for (let i = 1; i < chronologie.length; i += 1) {\n    const avant = chronologie[i - 1];\n    const apres = chronologie[i];\n    const jours = Math.max(1, joursEntre(avant.date, apres.date));\n    if (avant.date === apres.date) {\n      if (Math.abs(apres.kilometrage - avant.kilometrage) > KM_PAR_JOUR_MAX) incoherences.push({ avant, apres, motif: \"meme_jour\" });\n    } else if (apres.kilometrage < avant.kilometrage) {\n      incoherences.push({ avant, apres, motif: \"recul\" });\n    } else if ((apres.kilometrage - avant.kilometrage) / jours > KM_PAR_JOUR_MAX) {\n      incoherences.push({ avant, apres, motif: \"rythme\" });\n    }\n  }\n  return incoherences;\n}\n\n// Retour :\n// - { etat: \"inconnu\" }\n// - { etat: \"releve\", dernier: { date, kilometrage, origine }, joursDepuis, ancien,\n//     parJour?, estimation?: { kilometrage, auJour },\n//     aVerifier?: true, incoherences? }   — aVerifier : ni rythme ni estimation\nfunction estimerKilometrage({ releves = [], historique = [], aujourdhui } = {}) {\n  const jour = aujourdhui ?? aujourdhuiIso();\n  const points = pointsKilometrage({ releves, historique });\n  const dernier = points.at(-1);\n  if (!dernier) return { etat: \"inconnu\" };\n\n  const joursDepuis = Math.max(0, joursEntre(dernier.date, jour));\n  const resultat = { etat: \"releve\", dernier, joursDepuis, ancien: joursDepuis > JOURS_RELEVE_ANCIEN };\n\n  const incoherences = incoherencesDuKilometrage({ releves, historique });\n  if (incoherences.length) return { ...resultat, aVerifier: true, incoherences };\n\n  const premier = points.find((p) => {\n    const ecart = joursEntre(p.date, dernier.date);\n    return ecart >= JOURS_MIN_RYTHME && ecart <= JOURS_MAX_RYTHME;\n  });\n  if (!premier) return resultat;\n  const parcourus = dernier.kilometrage - premier.kilometrage;\n  if (parcourus <= 0) return resultat;\n  resultat.parJour = parcourus / joursEntre(premier.date, dernier.date);\n\n  if (joursDepuis >= JOURS_AVANT_ESTIMATION && joursDepuis <= JOURS_MAX_ESTIMATION) {\n    resultat.estimation = {\n      kilometrage: Math.round((dernier.kilometrage + resultat.parJour * joursDepuis) / 100) * 100,\n      auJour: jour,\n    };\n  }\n  return resultat;\n}\n\nreturn { JOURS_RELEVE_ANCIEN, JOURS_AVANT_ESTIMATION, JOURS_MAX_ESTIMATION, JOURS_MIN_RYTHME, JOURS_MAX_RYTHME, KM_PAR_JOUR_MAX, pointsKilometrage, lignesKilometrage, incoherencesDuKilometrage, estimerKilometrage };\n});\n\n__definir(\"components/auto/format.js\", () => {\n// Mise en forme des écrans Nexora Auto : libellés, dates, kilomètres,\n// montants, délais et messages d'erreur. Pur et testé (format.test.js) :\n// les écrans ne font qu'appeler.\n\nconst ENERGIES = [\n  { valeur: \"essence\", libelle: \"Essence\" },\n  { valeur: \"diesel\", libelle: \"Diesel\" },\n  { valeur: \"hybride\", libelle: \"Hybride\" },\n  { valeur: \"hybride_rechargeable\", libelle: \"Hybride rechargeable\" },\n  { valeur: \"electrique\", libelle: \"Électrique\" },\n  { valeur: \"gpl\", libelle: \"GPL\" },\n  { valeur: \"ethanol\", libelle: \"Superéthanol E85\" },\n  { valeur: \"autre\", libelle: \"Autre\" },\n];\n\nconst TYPES_INTERVENTION = [\n  { valeur: \"revision\", libelle: \"Révision\" },\n  { valeur: \"vidange\", libelle: \"Vidange\" },\n  { valeur: \"controle_technique\", libelle: \"Contrôle technique\" },\n  { valeur: \"pneus\", libelle: \"Pneus\" },\n  { valeur: \"freinage\", libelle: \"Freinage\" },\n  { valeur: \"batterie\", libelle: \"Batterie\" },\n  { valeur: \"distribution\", libelle: \"Distribution\" },\n  { valeur: \"climatisation\", libelle: \"Climatisation\" },\n  { valeur: \"carrosserie\", libelle: \"Carrosserie\" },\n  { valeur: \"reparation\", libelle: \"Réparation\" },\n  { valeur: \"lavage\", libelle: \"Lavage\" },\n  { valeur: \"autre\", libelle: \"Autre intervention\" },\n];\n\n// Intervalles fréquents dans les carnets, proposés en raccourci. Ce ne sont\n// que des raccourcis de saisie : c'est la personne qui choisit celui de SON\n// carnet, jamais l'application qui le suppose.\n// Les « intervalles courants » (15 000 km / 1 an…) ont été retirés le\n// 18 septembre 2026 : proposés en raccourcis, ils se lisaient comme une\n// préconisation adaptée à la voiture. Ils ne l'étaient pas. Tant qu'une source\n// identifiable et une variante précise de véhicule ne sont pas disponibles,\n// Nexora demande l'intervalle plutôt que de le suggérer.\n\nconst MARQUES_COURANTES = [\n  \"Peugeot\", \"Renault\", \"Citroën\", \"Dacia\", \"Volkswagen\", \"Toyota\", \"Ford\", \"Opel\",\n  \"Fiat\", \"Skoda\", \"Seat\", \"Kia\", \"Hyundai\", \"Nissan\", \"BMW\", \"Mercedes-Benz\", \"Audi\",\n  \"DS\", \"MG\", \"Tesla\", \"Suzuki\", \"Mini\", \"Volvo\", \"Cupra\",\n];\n\nfunction libelleDe(liste, valeur) {\n  return liste.find((e) => e.valeur === valeur)?.libelle ?? \"\";\n}\n\nconst MOIS_COURTS = [\"janv.\", \"févr.\", \"mars\", \"avr.\", \"mai\", \"juin\", \"juil.\", \"août\", \"sept.\", \"oct.\", \"nov.\", \"déc.\"];\n\n// « 2027-03-12 » → « 12 mars 2027 ». Lu comme une date calendaire, sans fuseau.\nfunction formaterDate(iso) {\n  const m = typeof iso === \"string\" ? iso.match(/^(\\d{4})-(\\d{2})-(\\d{2})/) : null;\n  if (!m) return \"\";\n  const jour = Number(m[3]);\n  return `${jour === 1 ? \"1er\" : jour} ${MOIS_COURTS[Number(m[2]) - 1]} ${m[1]}`;\n}\n\nconst ESPACE_FINE = \"\\u202F\";\n\nfunction formaterNombre(n) {\n  if (!Number.isFinite(n)) return \"\";\n  const signe = n < 0 ? \"-\" : \"\";\n  return signe + String(Math.trunc(Math.abs(n))).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ESPACE_FINE);\n}\n\nfunction formaterKm(n) {\n  return Number.isFinite(n) ? `${formaterNombre(n)}${ESPACE_FINE}km` : \"\";\n}\n\nfunction formaterEuros(montant) {\n  const n = typeof montant === \"string\" ? Number(montant) : montant;\n  if (!Number.isFinite(n)) return \"\";\n  const centimes = Math.round(Math.abs(n) * 100);\n  const entiers = formaterNombre(Math.trunc(centimes / 100));\n  const decimales = String(centimes % 100).padStart(2, \"0\");\n  return `${n < 0 ? \"-\" : \"\"}${entiers},${decimales}${ESPACE_FINE}€`;\n}\n\n// Un délai en jours, dit comme on le dirait. Au-delà de 60 jours, en mois.\n// « En retard » plutôt que « dépassé » : la tournure s'accorde avec tous les\n// sujets (le CT, la révision, la contre-visite).\nfunction delaiLisible(jours) {\n  if (!Number.isFinite(jours)) return \"\";\n  if (jours === 0) return \"aujourd'hui\";\n  if (jours === 1) return \"demain\";\n  if (jours === -1) return \"en retard d'un jour\";\n  const absolu = Math.abs(jours);\n  const texte = absolu < 60 ? `${absolu} jours` : `${Math.round(absolu / 30.44)} mois`;\n  return jours > 0 ? `dans ${texte}` : `en retard de ${texte}`;\n}\n\n// Un entier tapé par une personne : « 61 400 », « 61400 km », « 61.400 ».\nfunction lireEntier(saisie) {\n  if (typeof saisie === \"number\") return Number.isInteger(saisie) ? saisie : null;\n  if (typeof saisie !== \"string\") return null;\n  const brut = saisie.replace(/[\\s\\u00A0\\u202F.]/g, \"\").replace(/km$/i, \"\");\n  if (!/^\\d+$/.test(brut)) return null;\n  return Number(brut);\n}\n\n// « 79,90 » ou « 79.90 » → 79.9 ; vide → null ; invalide → NaN.\nfunction lireMontant(saisie) {\n  if (typeof saisie !== \"string\" || saisie.trim() === \"\") return null;\n  const brut = saisie.replace(/[\\s\\u00A0\\u202F€]/g, \"\").replace(\",\", \".\");\n  return /^\\d+(\\.\\d{1,2})?$/.test(brut) ? Number(brut) : Number.NaN;\n}\n\n// Le chemin où revenir après la connexion. Toujours interne à Nexora Auto :\n// un paramètre d'adresse ne doit jamais envoyer ailleurs.\nfunction cheminSuite(valeur) {\n  if (typeof valeur !== \"string\") return \"/auto\";\n  if (!valeur.startsWith(\"/auto\") || valeur.startsWith(\"//\") || valeur.includes(\"\\\\\")) return \"/auto\";\n  return valeur;\n}\n\n// Erreur d'enregistrement rendue par Supabase → phrase pour la personne.\nfunction messageErreurAuto(erreur) {\n  if (!erreur) return \"\";\n  const texte = `${erreur.message || \"\"} ${erreur.details || \"\"}`;\n  if (texte.includes(\"auto_vehicules_plaque_par_proprietaire\")) return \"Cette plaque est déjà enregistrée dans votre garage.\";\n  if (texte.includes(\"auto_doublon_potentiel\")) return \"Une intervention ressemblante existe déjà : choisissez de rattacher la facture ou de créer une autre intervention.\";\n  if (texte.includes(\"auto_facture_deja_enregistree\")) return \"Cette facture est déjà enregistrée.\";\n  if (texte.includes(\"auto_documents_empreinte_unique\")) return \"Ce fichier est déjà dans le dossier de cette voiture.\";\n  if (texte.includes(\"auto_document_introuvable\")) return \"Cette facture est introuvable. Elle a peut-être été supprimée.\";\n  if (texte.includes(\"auto_intervention_introuvable\")) return \"Cette intervention est introuvable pour cette voiture.\";\n  if (texte.includes(\"auto_facture_incomplete\")) return \"Indiquez la date et le type d'intervention.\";\n  if (texte.includes(\"auto_taches_service_une_ouverte\")) return \"Cette prestation figure déjà dans vos prochaines actions pour cette voiture.\";\n  if (texte.includes(\"auto_service_non_ajoutable\")) return \"Cette prestation est déjà suivie automatiquement dans « À prévoir ».\";\n  if (texte.includes(\"motorisation\")) return \"La motorisation ne doit pas dépasser 80 caractères.\";\n  if (texte.includes(\"auto_date_future\")) return \"La date ne peut pas être dans le futur.\";\n  if (texte.includes(\"immatriculation\")) return \"Cette plaque n'est pas valide.\";\n  if (texte.includes(\"intervalle\")) return \"Cet intervalle d'entretien ne semble pas correct.\";\n  if (texte.includes(\"km_borne\")) return \"Ce kilométrage ne semble pas correct.\";\n  if (texte.includes(\"annee_bornee\")) return \"Cette année ne semble pas correcte.\";\n  if (texte.includes(\"montant_positif\")) return \"Le montant ne peut pas être négatif.\";\n  if (erreur.code === \"42501\" || erreur.code === \"28000\") return \"Votre session a expiré. Reconnectez-vous.\";\n  return \"L'enregistrement n'a pas abouti. Vérifiez votre connexion et réessayez.\";\n}\n\n// Erreur de connexion ou d'inscription → phrase pour la personne. Ne dit\n// jamais si une adresse possède déjà un compte, sauf quand Supabase le dit.\nfunction messageConnexion(erreur) {\n  if (!erreur) return \"\";\n  const code = erreur.code || \"\";\n  const brut = erreur.message || \"\";\n  if (code === \"invalid_credentials\" || /invalid login credentials/i.test(brut)) return \"Adresse e-mail ou mot de passe incorrect.\";\n  if (code === \"email_not_confirmed\" || /email not confirmed/i.test(brut)) return \"Confirmez d'abord votre adresse : ouvrez le lien reçu par e-mail.\";\n  if (code === \"weak_password\" || /password/i.test(brut) && /(weak|short|least)/i.test(brut)) return \"Mot de passe trop faible : au moins 8 caractères.\";\n  if (code === \"email_address_invalid\" || /email address .* invalid/i.test(brut)) return \"Cette adresse e-mail n'est pas acceptée. Vérifiez-la.\";\n  if (code === \"over_email_send_rate_limit\" || erreur.status === 429 || /rate limit/i.test(brut)) return \"Trop de demandes en peu de temps. Réessayez dans une heure.\";\n  if (code === \"user_already_exists\" || /already registered/i.test(brut)) return \"Cette adresse a déjà un compte : connectez-vous.\";\n  return \"La demande n'a pas abouti. Réessayez dans un instant.\";\n}\n\nreturn { ENERGIES, TYPES_INTERVENTION, MARQUES_COURANTES, libelleDe, formaterDate, formaterNombre, formaterKm, formaterEuros, delaiLisible, lireEntier, lireMontant, cheminSuite, messageErreurAuto, messageConnexion };\n});\n\n__definir(\"components/auto/aPrevoir.js\", () => {\n// « À prévoir » : ce que Nexora tire de ce qui est déjà enregistré.\n//\n// Rien n'est à recréer par la personne : le contrôle technique et la révision\n// se calculent à partir du dossier de chaque voiture active ; les tâches\n// personnelles s'y ajoutent, facultatives. Chaque élément répond à trois\n// questions — quoi faire, pour quand, sur quelles informations — et propose\n// les gestes utiles. Une voiture archivée ne produit plus rien.\n//\n// Rappels sobres :\n// - « Me le rappeler plus tard » masque le rappel, jamais l'échéance : sa date\n//   et son urgence restent affichées.\n// - Un contrôle technique qui n'est plus valable est « critique » : il ne se\n//   reporte pas et reste en tête des prochaines actions.\n// - Le kilométrage n'est demandé que s'il sert à une échéance, et une\n//   échéance au compteur n'est jamais calculée sur des kilométrages qui se\n//   contredisent.\n//\n// Pur et testé (aPrevoir.test.js) : la fiche véhicule et l'écran « À prévoir »\n// affichent les mêmes phrases.\n\nconst { KM_ALERTE, JOURS_ALERTE, aujourdhuiIso, joursEntre, prochainControleTechnique, prochainEntretien } = __module(\"lib/auto/echeances.js\");\nconst { manquesEntretien } = __module(\"lib/auto/entretien.js\");\nconst { estimerKilometrage } = __module(\"lib/auto/kilometrage.js\");\nconst { delaiLisible, formaterDate, formaterKm } = __module(\"components/auto/format.js\");\n\nconst HORIZONS_JOURS = [30, 60, 90];\nconst HORIZON_PAR_DEFAUT = 60;\n\nconst FONDEMENTS = {\n  officiel: \"Date du procès-verbal\",\n  calcul: \"Calcul selon la règle\",\n  intervalle: \"Selon l'intervalle renseigné\",\n  estimation: \"Estimation\",\n  tache: \"Votre tâche\",\n  manquant: \"À compléter\",\n};\n\n// D'où vient l'information, dit en toutes lettres. « Date officielle » laissait\n// croire que Nexora avait vérifié le document : elle n'a vérifié personne. Une\n// date saisie par la personne et une date lue sur un justificatif ne se\n// présentent donc pas de la même façon (constat de Baptiste, 18 sept. 2026).\n//\n// La provenance ne qualifie que la date du procès-verbal : c'est ELLE qui a été\n// renseignée ou lue. Une date calculée ne l'a été par personne — seul le\n// contrôle dont elle part l'a été, et l'explication le nomme. « Calcul selon\n// la règle, renseignée par vous » confondait les deux (constat du 18 sept.\n// 2026, en préparant le rappel par e-mail, qui doit garder la distinction\n// entre date déclarée, lue et calculée).\nfunction libelleFondement(element) {\n  const base = FONDEMENTS[element?.fondement] ?? FONDEMENTS.calcul;\n  if (element?.fondement !== \"officiel\") return base;\n  if (element?.provenance === \"proprietaire\") return `${base}, renseignée par vous`;\n  if (element?.provenance === \"prestation\") return `${base}, lue sur votre document`;\n  return base;\n}\n\nconst RANG = { depasse: 3, proche: 2, ok: 1, neutre: 0 };\nconst plusUrgent = (...niveaux) => niveaux.filter(Boolean).sort((a, b) => RANG[b] - RANG[a])[0] ?? \"neutre\";\n\nfunction identite(vehicule) {\n  return { id: vehicule.id, nom: `${vehicule.marque} ${vehicule.modele}`, immatriculation: vehicule.immatriculation ?? null };\n}\n\nconst action = (code, libelle) => ({ code, libelle });\n\n// ---------------------------------------------------------------------------\n// Contrôle technique\n// ---------------------------------------------------------------------------\n\nfunction elementControle(vehicule, { aujourdhui } = {}) {\n  const jour = aujourdhui ?? aujourdhuiIso();\n  const ct = prochainControleTechnique({ dateMiseEnCirculation: vehicule.date_mise_en_circulation, historique: vehicule.historique ?? [], aujourdhui: jour });\n  const base = { genre: \"controle_technique\", serviceCode: \"controle_technique\", vehicule: identite(vehicule) };\n\n  if (ct.etat === \"a_renseigner\") {\n    const manques = {\n      mise_en_circulation: {\n        explication: \"Indiquez la date de première mise en circulation (case B de la carte grise) pour le calculer.\",\n        actions: [action(\"mise_en_circulation\", \"Renseigner la mise en circulation\")],\n      },\n      dernier_controle: {\n        explication: \"La voiture a plus de 4 ans : indiquez la date de son dernier contrôle.\",\n        actions: [action(\"controle\", \"Ajouter le dernier contrôle\")],\n      },\n      date_proces_verbal: {\n        explication: `La date du prochain contrôle ne peut pas être déduite du contrôle du ${formaterDate(ct.dernierLe)} : indiquez celle du procès-verbal.`,\n        actions: [action(\"proces_verbal\", \"Indiquer la date du procès-verbal\")],\n      },\n    };\n    return {\n      ...base,\n      ...manques[ct.manque],\n      cle: `controle_technique:${vehicule.id}:a_completer:${ct.manque}`,\n      etat: \"a_completer\",\n      titre: \"Contrôle technique\",\n      quand: \"Pas encore calculé\",\n      delai: null,\n      niveau: \"neutre\",\n      fondement: \"manquant\",\n      tri: Number.POSITIVE_INFINITY,\n    };\n  }\n\n  // Plus de contrôle valable : défaillance critique (validité limitée au jour\n  // du contrôle), ou date de validité dépassée. Règles relues sur\n  // service-public.gouv.fr (F2878, page vérifiée le 1er janvier 2026) le\n  // 17 septembre 2026 : circuler sans contrôle valide expose à une amende et\n  // à l'immobilisation de la voiture.\n  const plusValable = (ct.etat === \"contre_visite\" && ct.valableJusquAu && ct.valableJusquAu < jour) || ct.niveau === \"depasse\";\n  const critique = plusValable\n    ? { critique: true, alerte: \"Le contrôle technique n'est plus valable : circuler sans contrôle valide expose à une amende et à l'immobilisation de la voiture.\" }\n    : {};\n\n  if (ct.etat === \"contre_visite\") {\n    const origine = ct.dernierLe !== ct.initialLe\n      ? `Contre-visite défavorable du ${formaterDate(ct.dernierLe)} : le délai court depuis le contrôle du ${formaterDate(ct.initialLe)}.`\n      : ct.resultat === \"defavorable_critique\"\n        ? `Défaillance critique au contrôle du ${formaterDate(ct.dernierLe)} : sa validité était limitée à ce jour-là.`\n        : `Défaillance majeure au contrôle du ${formaterDate(ct.dernierLe)} : contrôle valable jusqu'au ${formaterDate(ct.valableJusquAu)}.`;\n    return {\n      ...base,\n      cle: `contre_visite:${vehicule.id}:${ct.date}`,\n      etat: \"a_faire\",\n      titre: \"Contre-visite du contrôle technique\",\n      date: ct.date,\n      joursRestants: ct.joursRestants,\n      quand: `Au plus tard le ${formaterDate(ct.date)}`,\n      delai: delaiLisible(ct.joursRestants),\n      niveau: ct.niveau,\n      fondement: ct.fondement,\n      explication: `${origine} Contre-visite dans les 2 mois suivant le contrôle.`,\n      actions: [action(\"contre_visite\", \"Enregistrer la contre-visite\")],\n      tri: ct.joursRestants,\n      ...critique,\n    };\n  }\n\n  // D'où vient la ligne d'historique qui a servi de base : saisie, ou lue sur\n  // un document déposé. `source` vaut 'proprietaire' ou 'prestation'.\n  const provenance = ct.dernierLe\n    ? (vehicule.historique ?? []).find((h) => h?.type === \"controle_technique\" && h?.realise_le?.slice(0, 10) === ct.dernierLe)?.source ?? null\n    : null;\n\n  const explications = {\n    proces_verbal: `Date inscrite sur le procès-verbal du contrôle du ${formaterDate(ct.dernierLe)}.`,\n    dernier_controle: `Validité de 2 ans du contrôle du ${formaterDate(ct.dernierLe)}, règle d'une voiture particulière. La date du procès-verbal fait foi.`,\n    contre_visite_favorable: `Contre-visite favorable du ${formaterDate(ct.dernierLe)} : 2 ans à compter du contrôle initial du ${formaterDate(ct.initialLe)}. La date du procès-verbal fait foi.`,\n    mise_en_circulation: `Premier contrôle d'une voiture particulière : dans les 6 mois avant les 4 ans de sa mise en circulation (${formaterDate(vehicule.date_mise_en_circulation)}).`,\n  };\n  const actions = {\n    proces_verbal: [action(\"controle\", \"Enregistrer un contrôle\")],\n    dernier_controle: [action(\"proces_verbal\", \"Indiquer la date du procès-verbal\"), action(\"controle\", \"Enregistrer un contrôle\")],\n    contre_visite_favorable: [action(\"proces_verbal\", \"Indiquer la date du procès-verbal\"), action(\"controle\", \"Enregistrer un contrôle\")],\n    mise_en_circulation: [action(\"controle\", \"Enregistrer le contrôle\")],\n  };\n  return {\n    ...base,\n    cle: `controle_technique:${vehicule.id}:${ct.date}`,\n    etat: \"a_faire\",\n    titre: \"Contrôle technique\",\n    date: ct.date,\n    joursRestants: ct.joursRestants,\n    quand: ct.source === \"mise_en_circulation\" ? `Entre le ${formaterDate(ct.fenetreOuverteLe)} et le ${formaterDate(ct.date)}` : `Avant le ${formaterDate(ct.date)}`,\n    delai: delaiLisible(ct.joursRestants),\n    niveau: ct.niveau,\n    fondement: ct.fondement,\n    provenance,\n    explication: explications[ct.source],\n    actions: actions[ct.source],\n    tri: ct.joursRestants,\n    ...critique,\n  };\n}\n\n// ---------------------------------------------------------------------------\n// Révision\n// ---------------------------------------------------------------------------\n\nfunction elementRevision(vehicule, { aujourdhui } = {}) {\n  const jour = aujourdhui ?? aujourdhuiIso();\n  const historique = vehicule.historique ?? [];\n  const releves = vehicule.releves ?? [];\n  const e = prochainEntretien({\n    intervalleKm: vehicule.intervalle_entretien_km,\n    intervalleMois: vehicule.intervalle_entretien_mois,\n    historique,\n    releves,\n    aujourdhui: jour,\n  });\n  const base = { genre: \"revision\", serviceCode: \"revision\", vehicule: identite(vehicule), titre: \"Révision\" };\n\n  if (e.etat !== \"calcule\") {\n    // On dit ce qui manque ; c'est le formulaire qui accompagne. « Recopiez\n    // l'intervalle de votre carnet » était un ordre adressé à quelqu'un qui\n    // ne sait pas encore où chercher.\n    //\n    // Et on dit TOUT ce qui manque : annoncer l'intervalle seul, puis réclamer\n    // la dernière révision une fois l'intervalle saisi, faisait deux impasses\n    // au lieu d'une demande (constat du 18 sept. 2026).\n    const manques = manquesEntretien(vehicule);\n    const aCompleter =\n      manques.length > 1\n        ? {\n            explication: \"Nexora ne sait pas encore quand la prochaine révision arrive : il lui manque la date de la dernière, et l'intervalle du carnet.\",\n            actions: [action(\"intervalle\", \"Compléter le suivi d'entretien\")],\n          }\n        : e.etat === \"intervalle_a_renseigner\"\n          ? { explication: \"Nexora ne connaît pas encore l'intervalle de révision de cette voiture.\", actions: [action(\"intervalle\", \"Renseigner l'intervalle\")] }\n          : { explication: \"Enregistrez votre dernière révision, avec son kilométrage. Une vidange seule ne compte pas comme une révision.\", actions: [action(\"revision\", \"Enregistrer une révision\")] };\n    return {\n      ...base,\n      ...aCompleter,\n      cle: `revision:${vehicule.id}:a_completer:${e.etat}`,\n      etat: \"a_completer\",\n      // Combien il en manque : « Une information manque » se lisait au-dessus\n      // d'une liste de deux.\n      nbManques: Math.max(manques.length, 1),\n      quand: \"Pas encore calculé\",\n      delai: null,\n      niveau: \"neutre\",\n      fondement: \"manquant\",\n      tri: Number.POSITIVE_INFINITY,\n    };\n  }\n\n  // Intervalle en kilomètres seulement, et révision enregistrée sans compteur :\n  // rien ne permet de situer l'échéance. On le dit, sans rien supposer.\n  if (!e.parKm && !e.parDate) {\n    return {\n      ...base,\n      cle: `revision:${vehicule.id}:a_completer:kilometrage_revision`,\n      etat: \"a_completer\",\n      quand: \"Pas encore calculé\",\n      delai: null,\n      niveau: \"neutre\",\n      fondement: \"manquant\",\n      explication: `Votre dernière révision (le ${formaterDate(e.depuis.date)}) a été enregistrée sans kilométrage : enregistrez la prochaine avec son compteur pour suivre l'échéance.`,\n      actions: [action(\"revision\", \"Enregistrer une révision\")],\n      tri: Number.POSITIVE_INFINITY,\n    };\n  }\n\n  const km = estimerKilometrage({ releves, historique, aujourdhui: jour });\n  const intervalle = [e.intervalle.km ? formaterKm(e.intervalle.km) : null, e.intervalle.mois ? `${e.intervalle.mois} mois` : null].filter(Boolean).join(\" ou \");\n  const derniere = `dernière révision le ${formaterDate(e.depuis.date)}${e.depuis.kilometrage != null ? ` à ${formaterKm(e.depuis.kilometrage)}` : \"\"}`;\n\n  let fondement = \"intervalle\";\n  let kmTexte = null;\n  let kmDetail = \"\";\n  let niveauKm = null;\n  let joursKm = Number.POSITIVE_INFINITY;\n  let actualiser = false;\n\n  if (e.parKm && km.aVerifier) {\n    // Aucune échéance au compteur sur des kilométrages qui se contredisent :\n    // l'urgence ne se fonde que sur la date, s'il y en a une.\n    const [premiere] = km.incoherences;\n    kmDetail = ` Deux kilométrages se contredisent (${formaterKm(premiere.avant.kilometrage)} le ${formaterDate(premiere.avant.date)}, puis ${formaterKm(premiere.apres.kilometrage)} le ${formaterDate(premiere.apres.date)}) : corrigez celui qui est faux pour suivre l'échéance au compteur.`;\n  } else if (e.parKm) {\n    if (e.parKm.restants == null) {\n      kmTexte = `vers ${formaterKm(e.parKm.limite)}`;\n      kmDetail = \" Actualisez le kilométrage pour savoir ce qu'il reste.\";\n      actualiser = true;\n    } else if (km.estimation && km.dernier.date >= e.depuis.date) {\n      const restants = e.parKm.limite - km.estimation.kilometrage;\n      fondement = \"estimation\";\n      niveauKm = restants < 0 ? \"depasse\" : restants <= KM_ALERTE ? \"proche\" : \"ok\";\n      kmTexte = restants < 0 ? `en retard d'environ ${formaterKm(-restants)}` : `dans environ ${formaterKm(restants)}`;\n      kmDetail = ` Kilométrage estimé à ${formaterKm(km.estimation.kilometrage)} d'après votre rythme ; dernier compteur relevé : ${formaterKm(km.dernier.kilometrage)} le ${formaterDate(km.dernier.date)}.`;\n      joursKm = km.parJour ? Math.floor(restants / km.parJour) : joursKm;\n      actualiser = km.ancien;\n    } else {\n      const restants = e.parKm.restants;\n      niveauKm = e.parKm.niveau;\n      kmTexte = restants < 0 ? `en retard de ${formaterKm(-restants)}` : `dans environ ${formaterKm(restants)}`;\n      kmDetail = ` Dernier kilométrage enregistré : ${formaterKm(km.dernier?.kilometrage ?? 0)} le ${formaterDate(km.dernier?.date)}.`;\n      if (km.parJour) joursKm = Math.floor(restants / km.parJour);\n      else if (niveauKm !== \"ok\") joursKm = restants < 0 ? -1 : 0;\n      actualiser = Boolean(km.ancien);\n    }\n  }\n\n  const dateTexte = e.parDate ? `avant le ${formaterDate(e.parDate.limite)}` : null;\n  const quand = [kmTexte, dateTexte].filter(Boolean).join(\" ou \");\n  const niveau = plusUrgent(niveauKm, e.parDate?.niveau);\n  const tri = Math.min(joursKm, e.parDate ? e.parDate.joursRestants : Number.POSITIVE_INFINITY);\n  const actions = [\n    km.aVerifier && e.parKm ? action(\"verifier_kilometrage\", \"Vérifier les kilométrages\") : action(\"releve\", \"Mettre à jour le kilométrage\"),\n    action(\"revision\", \"Enregistrer une révision\"),\n  ];\n  if (!e.parKm) actions.shift();\n\n  // Seule l'échéance au compteur à vérifier : rien à dater, à compléter.\n  if (e.parKm && km.aVerifier && !e.parDate) {\n    return {\n      ...base,\n      cle: `revision:${vehicule.id}:a_completer:kilometrage_a_verifier`,\n      etat: \"a_completer\",\n      quand: \"Kilométrage à vérifier\",\n      delai: null,\n      niveau: \"neutre\",\n      fondement: \"intervalle\",\n      explication: `Tous les ${intervalle} ; ${derniere}.${kmDetail}`,\n      actions,\n      demandeActualisation: false,\n      tri: Number.POSITIVE_INFINITY,\n    };\n  }\n\n  return {\n    ...base,\n    cle: `revision:${vehicule.id}:${e.depuis.date}`,\n    etat: \"a_faire\",\n    date: e.parDate?.limite ?? null,\n    joursRestants: Number.isFinite(tri) ? tri : null,\n    quand: quand.charAt(0).toUpperCase() + quand.slice(1),\n    delai: e.parDate && tri === e.parDate.joursRestants ? delaiLisible(e.parDate.joursRestants) : null,\n    niveau,\n    fondement,\n    explication: `Tous les ${intervalle} ; ${derniere}.${kmDetail}`,\n    actions,\n    demandeActualisation: actualiser,\n    tri,\n  };\n}\n\n// ---------------------------------------------------------------------------\n// Tâches personnelles\n// ---------------------------------------------------------------------------\n\nfunction elementTache(tache, vehicule, { aujourdhui } = {}) {\n  const jour = aujourdhui ?? aujourdhuiIso();\n  const jours = tache.echeance ? joursEntre(jour, tache.echeance) : null;\n  const niveau = jours == null ? \"neutre\" : jours < 0 ? \"depasse\" : jours <= JOURS_ALERTE ? \"proche\" : \"ok\";\n  return {\n    genre: \"tache\",\n    cle: `tache:${tache.id}`,\n    tacheId: tache.id,\n    serviceCode: tache.service_code ?? null,\n    vehicule: identite(vehicule),\n    etat: tache.statut === \"terminee\" ? \"terminee\" : \"a_faire\",\n    titre: tache.titre,\n    date: tache.echeance ?? null,\n    joursRestants: jours,\n    quand: tache.echeance ? `Pour le ${formaterDate(tache.echeance)}` : \"Sans date\",\n    delai: jours == null ? null : delaiLisible(jours),\n    niveau,\n    fondement: \"tache\",\n    explication: tache.note || \"\",\n    actions: [action(\"terminer\", \"C'est fait\"), action(\"reporter\", \"Reporter\")],\n    termineeLe: tache.terminee_le ?? null,\n    tri: jours ?? Number.POSITIVE_INFINITY,\n  };\n}\n\n// Une pastille courte pour un élément, avec le sujet quand l'écran ne le\n// porte pas déjà (« CT dans 7 mois », « Révision : dans environ 600 km »).\nfunction pastilleElement(element, { avecSujet = true } = {}) {\n  const sujet =\n    element.genre === \"controle_technique\" ? (element.cle.startsWith(\"contre_visite\") ? \"Contre-visite\" : \"CT\") : element.genre === \"revision\" ? \"Révision\" : element.titre;\n  const majuscule = (texte) => texte.charAt(0).toUpperCase() + texte.slice(1);\n  if (element.etat === \"a_completer\") return { ton: \"neutre\", texte: avecSujet ? `${sujet} à compléter` : \"À compléter\" };\n  if (element.delai) return { ton: element.niveau, texte: avecSujet ? `${sujet} ${element.delai}` : majuscule(element.delai) };\n  if (!avecSujet) {\n    // L'écran affiche déjà la phrase complète juste en dessous : la pastille\n    // ne dit que l'urgence.\n    return { ton: element.niveau, texte: { depasse: \"En retard\", proche: \"Bientôt\", ok: \"À venir\", neutre: \"À actualiser\" }[element.niveau] };\n  }\n  const court = element.quand.split(\" ou \")[0];\n  return { ton: element.niveau, texte: `${sujet} : ${court.charAt(0).toLowerCase()}${court.slice(1)}` };\n}\n\n// ---------------------------------------------------------------------------\n// L'ensemble\n// ---------------------------------------------------------------------------\n\n// vehicules : avec `releves` et `historique` ; taches : lignes auto_taches ;\n// reports : lignes auto_rappels_reports ({ cle, reporte_jusqu_au }).\nfunction construireAPrevoir({ vehicules = [], taches = [], reports = [], horizonJours = HORIZON_PAR_DEFAUT, aujourdhui } = {}) {\n  const jour = aujourdhui ?? aujourdhuiIso();\n  const actives = vehicules.filter((v) => !v.archive_le);\n  const parId = new Map(actives.map((v) => [v.id, v]));\n  const reportes = new Map(reports.filter((r) => r.reporte_jusqu_au > jour).map((r) => [r.cle, r.reporte_jusqu_au]));\n\n  const elements = [\n    ...actives.flatMap((v) => [elementControle(v, { aujourdhui: jour }), elementRevision(v, { aujourdhui: jour })]),\n    ...taches.filter((t) => t.statut !== \"terminee\" && parId.has(t.vehicule_id)).map((t) => elementTache(t, parId.get(t.vehicule_id), { aujourdhui: jour })),\n  ].map((el) => (reportes.has(el.cle) && !el.critique ? { ...el, reporteJusquau: reportes.get(el.cle) } : el));\n\n  const parUrgence = (a, b) => a.tri - b.tri || RANG[b.niveau] - RANG[a.niveau] || a.vehicule.nom.localeCompare(b.vehicule.nom);\n  const groupes = { enRetard: [], bientot: [], plusTard: [], sansDate: [], aCompleter: [] };\n  for (const el of elements) {\n    if (el.etat === \"a_completer\") groupes.aCompleter.push(el);\n    else if (el.niveau === \"depasse\") groupes.enRetard.push(el);\n    else if (el.niveau === \"proche\" || el.tri <= horizonJours) groupes.bientot.push(el);\n    else if (el.genre === \"tache\" && !el.date) groupes.sansDate.push(el);\n    else groupes.plusTard.push(el);\n  }\n  for (const liste of Object.values(groupes)) liste.sort(parUrgence);\n\n  const terminees = taches\n    .filter((t) => t.statut === \"terminee\" && parId.has(t.vehicule_id))\n    .map((t) => elementTache(t, parId.get(t.vehicule_id), { aujourdhui: jour }))\n    .sort((a, b) => (a.termineeLe < b.termineeLe ? 1 : -1));\n\n  // Le rappel dans l'app : trois actions au plus, jamais celles reportées ;\n  // une échéance critique passe en premier.\n  const prochaines = [...groupes.enRetard, ...groupes.bientot]\n    .filter((el) => !el.reporteJusquau)\n    .sort((a, b) => Number(Boolean(b.critique)) - Number(Boolean(a.critique)))\n    .slice(0, 3);\n\n  return { elements, groupes, terminees, prochaines };\n}\n\n// ---------------------------------------------------------------------------\n// Envois externes (préparés, non branchés)\n// ---------------------------------------------------------------------------\n\n// Paliers d'un rappel envoyé hors de l'app : 30 jours, 7 jours, retard. Un\n// palier ne part qu'une fois par échéance et par canal (`dejaEnvoyes` :\n// lignes auto_rappels_envois) ; une échéance reportée, à compléter ou sans\n// date n'envoie rien.\nfunction palierRappel(joursRestants) {\n  if (!Number.isFinite(joursRestants)) return null;\n  if (joursRestants < 0) return \"retard\";\n  if (joursRestants <= 7) return \"j7\";\n  if (joursRestants <= 30) return \"j30\";\n  return null;\n}\n\nfunction rappelsADeclencher(elements, { canal, dejaEnvoyes = [] } = {}) {\n  const envoyes = new Set(dejaEnvoyes.filter((e) => e.canal === canal).map((e) => `${e.cle}|${e.palier}`));\n  return elements\n    .filter((el) => el.etat === \"a_faire\" && !el.reporteJusquau && Number.isFinite(el.joursRestants))\n    .map((el) => ({ cle: el.cle, palier: palierRappel(el.joursRestants), canal }))\n    .filter((r) => r.palier && !envoyes.has(`${r.cle}|${r.palier}`));\n}\n\nreturn { HORIZONS_JOURS, HORIZON_PAR_DEFAUT, FONDEMENTS, libelleFondement, elementControle, elementRevision, elementTache, pastilleElement, construireAPrevoir, palierRappel, rappelsADeclencher };\n});\n\n__definir(\"lib/auto/rappels.js\", () => {\n// Rappel du contrôle technique : ce qui se décide avant tout envoi.\n//\n// Un seul endroit décide QUAND et QUOI rappeler, pour l'écran comme pour\n// l'envoi : l'échéance vient de elementControle() (components/auto/aPrevoir.js),\n// la même qui s'affiche dans la fiche. Le workflow n8n embarque ce module tel\n// quel (n8n/rappels-auto/embarquer.mjs) : aucune règle n'est recopiée.\n//\n// Ce que la base fait, et pas ce module (20260922001200) : convertir « 9 h à\n// Paris » en instant, garantir l'unicité, refuser d'envoyer sur un dossier\n// qui a changé depuis la programmation.\n//\n// Pur et testé (rappels.test.js). Aucun envoi ici.\n\nconst { ajouterJours } = __module(\"lib/auto/echeances.js\");\nconst { afficherImmatriculation } = __module(\"lib/auto/immatriculation.js\");\nconst { elementControle, libelleFondement } = __module(\"components/auto/aPrevoir.js\");\nconst { formaterDate } = __module(\"components/auto/format.js\");\n\n// Les moments proposés. Trois, pas plus : assez pour prendre rendez-vous,\n// pas assez pour devoir réfléchir. Le libellé dit le calcul, au jour près\n// (échéance moins N jours) : « deux semaines » aurait promis 14 jours pour 15\n// calculés — écart relevé le 18 sept. 2026. La date exacte s'affiche à côté.\nconst MOMENTS_RAPPEL = [\n  { jours: 60, libelle: \"60 jours avant\" },\n  { jours: 30, libelle: \"30 jours avant\" },\n  { jours: 15, libelle: \"15 jours avant\" },\n];\nconst DELAI_PAR_DEFAUT = 30;\nconst HEURE_RAPPEL = \"9 h\";\n\n// La date du jour À PARIS, quel que soit le fuseau de la machine : un\n// navigateur à l'étranger, un serveur n8n réglé sur UTC.\nfunction jourParis(maintenant = new Date()) {\n  const parties = new Intl.DateTimeFormat(\"fr-FR\", { timeZone: \"Europe/Paris\", year: \"numeric\", month: \"2-digit\", day: \"2-digit\" }).formatToParts(maintenant);\n  const valeur = (type) => parties.find((p) => p.type === type)?.value;\n  return `${valeur(\"year\")}-${valeur(\"month\")}-${valeur(\"day\")}`;\n}\n\n// L'heure qu'il est à Paris pour un instant donné (0 à 23). En français,\n// l'heure seule se formate « 09 h » : on lit la partie « heure », pas le texte.\nfunction heureParis(instant) {\n  const parties = new Intl.DateTimeFormat(\"fr-FR\", { timeZone: \"Europe/Paris\", hour: \"numeric\", hourCycle: \"h23\" }).formatToParts(new Date(instant));\n  return Number(parties.find((p) => p.type === \"hour\")?.value);\n}\n\n// « le 19 mai 2028 à 9 h » : depuis un jour (le rappel n'est pas encore\n// programmé) ou depuis l'instant enregistré en base, lu à l'heure de Paris.\nfunction libelleMoment({ jour = null, instant = null } = {}) {\n  if (instant) return `le ${formaterDate(jourParis(new Date(instant)))} à ${heureParis(instant)} h`;\n  if (jour) return `le ${formaterDate(jour)} à ${HEURE_RAPPEL}`;\n  return \"\";\n}\n\n// Le prochain « 9 h à Paris » après `maintenant` : aujourd'hui s'il n'est pas\n// encore 9 h, sinon demain. Même règle que auto_rappel_neuf_heures() en base,\n// qui programme ainsi un rappel dont le jour idéal est déjà passé.\nfunction prochainJourNeufHeures(maintenant = new Date()) {\n  const jour = jourParis(maintenant);\n  return heureParis(maintenant) < 9 ? jour : ajouterJours(jour, 1);\n}\n\n// Un rappel a-t-il un sens pour cette échéance ? Rend { possible, raison }.\n// Première version : le contrôle technique périodique ou le premier contrôle,\n// dès qu'une date est calculable — déclarée, lue sur un document ou calculée\n// selon la règle ; la phrase du message dit laquelle.\nfunction rappelPossible(element) {\n  if (!element) return { possible: false, raison: \"aucune échéance\" };\n  if (element.etat === \"a_completer\" || !element.date) return { possible: false, raison: \"date du prochain contrôle inconnue\" };\n  if (String(element.cle).startsWith(\"contre_visite:\")) return { possible: false, raison: \"contre-visite à faire : pas de rappel dans cette première version\" };\n  if (element.critique) return { possible: false, raison: \"contrôle technique plus valable\" };\n  return { possible: true, raison: null };\n}\n\n// Le jour du rappel, pour un délai donné.\nfunction jourRappel(echeance, delaiJours) {\n  return ajouterJours(echeance, -delaiJours);\n}\n\n// Les moments encore possibles : ceux dont le jour est APRÈS aujourd'hui.\n// Proposer « 30 jours avant » quand l'échéance est dans vingt jours ferait\n// partir un message aussitôt activé, qui ne rappellerait rien.\nfunction momentsPossibles(echeance, { aujourdhui } = {}) {\n  const jour = aujourdhui ?? jourParis();\n  return MOMENTS_RAPPEL.map((m) => ({ ...m, jour: jourRappel(echeance, m.jours) })).filter((m) => m.jour > jour);\n}\n\n// Ce que la personne lit en activant : la date calculée, le calcul, l'adresse.\n// « Rappel activé : un e-mail le 20 sept. 2026 à 9 h, 15 jours avant\n// l'échéance du 5 oct. 2026. Destinataire : … »\nfunction texteActivation({ echeance, delaiJours, adresse }) {\n  const jour = jourRappel(echeance, delaiJours);\n  return `Rappel activé : un e-mail ${libelleMoment({ jour })}, ${delaiJours} jours avant l'échéance du ${formaterDate(echeance)}. Destinataire : ${adresse}.`;\n}\n\nfunction momentParDefaut(possibles) {\n  return possibles.find((m) => m.jours === DELAI_PAR_DEFAUT) ?? possibles[possibles.length - 1] ?? null;\n}\n\n// D'où vient la date, dit comme l'écran le dit. Une date calculée porte sa\n// règle : elle n'a pas la valeur d'un procès-verbal, et le message le dit.\nfunction origineDate(element) {\n  const base = libelleFondement(element);\n  const phrase = `${base.charAt(0).toUpperCase()}${base.slice(1)}.`;\n  return element.fondement === \"calcul\" && element.explication ? `${phrase} ${element.explication}` : phrase;\n}\n\nconst minusculeInitiale = (texte) => (texte ? texte.charAt(0).toLowerCase() + texte.slice(1) : texte);\n\nfunction lienEcheance(urlBase, vehiculeId) {\n  const racine = String(urlBase || \"\").replace(/\\/+$/, \"\");\n  return `${racine}/auto/vehicules/${vehiculeId}?action=echeance_ct`;\n}\n\n// Le message. Court, en texte brut : il nomme la voiture, dit la date et son\n// origine, ramène à l'échéance, et dit comment arrêter. Aucun document, aucun\n// montant, aucune autre donnée du dossier.\nfunction composerRappel({ vehicule, element, urlBase }) {\n  const nom = `${vehicule.marque} ${vehicule.modele}`.trim();\n  const plaque = afficherImmatriculation(vehicule.immatriculation);\n  const quand = minusculeInitiale(element.quand);\n  const objet = `Contrôle technique de votre ${nom} : ${quand}`;\n  const texte = [\n    \"Bonjour,\",\n    \"\",\n    `Le contrôle technique de votre ${nom}${plaque ? ` (${plaque})` : \"\"} est à faire ${quand}.`,\n    \"\",\n    `D'où vient cette date : ${minusculeInitiale(origineDate(element))}`,\n    \"\",\n    \"Voir l'échéance dans Nexora Auto :\",\n    lienEcheance(urlBase, vehicule.id),\n    \"\",\n    \"Une fois le contrôle fait, enregistrez-le au même endroit : Nexora calculera le suivant.\",\n    \"\",\n    \"Vous recevez ce message parce que vous avez demandé ce rappel pour cette voiture. Pour le modifier ou l'arrêter : même lien, rubrique « Rappel par e-mail ».\",\n    \"\",\n    \"Nexora Auto\",\n  ].join(\"\\n\");\n  return { objet, texte };\n}\n\n// Ce que le panneau « Rappel par e-mail » doit dire, d'après ce que rend\n// auto_etat_rappel et l'échéance affichée. Rend { cas, … } :\n//   masque              : ni rappel possible, ni rappel actif — rien à montrer ;\n//   proposable          : rappel possible, pas activé ;\n//   programme           : activé ; `moment` dit quand (l'instant en base s'il\n//                         vaut pour CETTE échéance, sinon le calcul du\n//                         programmateur, qui passera dans le quart d'heure) ;\n//   en_cours            : remis au fournisseur, issue pas encore connue ;\n//   envoye              : parti pour cette échéance ;\n//   adresse_a_confirmer : l'adresse du compte a changé depuis l'activation ;\n//   echec               : n'a pas pu partir (refus, trois tentatives) ;\n//   sans_envoi          : activé, mais aucune échéance à rappeler (`raison`).\nfunction etatRappel({ lu, element, aujourdhui, maintenant = new Date() } = {}) {\n  const jour = aujourdhui ?? jourParis(maintenant);\n  const possible = rappelPossible(element);\n  const abonnement = lu?.abonnement;\n  if (!abonnement || !abonnement.actif) return { cas: possible.possible ? \"proposable\" : \"masque\" };\n\n  const base = { adresse: abonnement.adresse_consentie, adresseCompte: lu.adresse_compte ?? null, delaiJours: abonnement.delai_jours };\n  const prochain = lu.prochain;\n  // Seule l'adresse CHANGÉE depuis l'activation se règle par une confirmation ;\n  // une adresse inutilisable est un échec (motif exact depuis 20260922001400).\n  if (prochain?.statut === \"bloque\") return { ...base, cas: /^adresse du compte changée/.test(prochain.motif ?? \"\") ? \"adresse_a_confirmer\" : \"echec\" };\n  if (prochain?.statut === \"envoi_en_cours\") return { ...base, cas: \"en_cours\" };\n  if (!possible.possible) return { ...base, cas: \"sans_envoi\", raison: possible.raison };\n  if (prochain?.statut === \"prevu\" && prochain.echeance === element.date) return { ...base, cas: \"programme\", moment: libelleMoment({ instant: prochain.prevu_le }) };\n\n  const envoye = lu.dernier_envoye;\n  if (envoye && envoye.echeance === element.date) return { ...base, cas: \"envoye\", moment: libelleMoment({ instant: envoye.envoye_le }) };\n\n  const jourPrevu = jourRappel(element.date, abonnement.delai_jours);\n  if (jourPrevu > jour) return { ...base, cas: \"programme\", moment: libelleMoment({ jour: jourPrevu }) };\n\n  // Le jour idéal est passé (date corrigée, programmateur arrêté) : la base\n  // rattrape au prochain 9 h — sauf si ce 9 h tombe le jour de l'échéance ou\n  // après, où elle ne programme plus rien. L'écran ne doit pas le promettre\n  // (constat du 18 sept. 2026 : il annonçait « le prochain matin à 9 h »).\n  const rattrapage = prochainJourNeufHeures(maintenant);\n  if (rattrapage >= element.date) return { ...base, cas: \"sans_envoi\", raison: \"échéance trop proche pour un rappel utile\" };\n  return { ...base, cas: \"programme\", moment: libelleMoment({ jour: rattrapage }) };\n}\n\n// Un dossier lu par auto_rappels_a_planifier → le rappel qui doit exister,\n// ou { aucun: true } pour annuler ce qui était programmé.\nfunction planifierRappel(dossier, { aujourdhui } = {}) {\n  const jour = aujourdhui ?? jourParis();\n  const vehicule = { ...dossier.vehicule, historique: dossier.historique ?? [] };\n  const element = elementControle(vehicule, { aujourdhui: jour });\n  const { possible, raison } = rappelPossible(element);\n  if (!possible) return { abonnement_id: dossier.abonnement_id, aucun: true, raison };\n\n  const { objet, texte } = composerRappel({ vehicule, element, urlBase: dossier.url_base });\n  return {\n    abonnement_id: dossier.abonnement_id,\n    cle: element.cle,\n    echeance: element.date,\n    jour: jourRappel(element.date, dossier.delai_jours),\n    palier: `j${dossier.delai_jours}`,\n    fondement: element.fondement,\n    provenance: element.provenance ?? null,\n    objet,\n    texte,\n    empreinte: dossier.empreinte,\n  };\n}\n\nfunction planifierRappels(dossiers = [], { maintenant = new Date() } = {}) {\n  const aujourdhui = jourParis(maintenant);\n  return dossiers.filter((d) => d && d.abonnement_id).map((d) => planifierRappel(d, { aujourdhui }));\n}\n\nreturn { MOMENTS_RAPPEL, DELAI_PAR_DEFAUT, HEURE_RAPPEL, jourParis, heureParis, libelleMoment, prochainJourNeufHeures, rappelPossible, jourRappel, momentsPossibles, texteActivation, momentParDefaut, origineDate, lienEcheance, composerRappel, etatRappel, planifierRappel, planifierRappels };\n});\nconst { planifierRappels } = __module('lib/auto/rappels.js');\nconst dossiers = $input.all().map((i) => i.json).filter((d) => d && d.abonnement_id);\nreturn [{ json: { p_plans: planifierRappels(dossiers, { maintenant: new Date() }), dossiers: dossiers.length } }];"
+      },
+      "name": "Décider avec les règles de l'écran",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/auto_planifier_rappels",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_plans: $json.p_plans, p_proprietaires: null }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "Programmer les rappels",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        0
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/auto_reserver_rappel",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_proprietaires\": null, \"p_limite_heure\": 40, \"p_limite_jour\": 120, \"p_workflow_id\": \"{{ $workflow.id }}\"}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "Réserver la file",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        0
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Une seule ligne réservée par tour : une panne ne laisse qu'une ligne incertaine.\n// Rien de dû (ou débit commun atteint) : aucun élément, le passage s'arrête ici.\nreturn $input.all().filter((i) => i.json && i.json.ref).slice(0, 1).map((i) => ({ json: i.json, pairedItem: { item: 0 } }));"
+      },
+      "name": "Un rappel à la fois",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Rien n'est encore parti : une adresse inutilisable ou un message vide se\n// disent maintenant, au lieu de laisser le fournisseur échouer en « incertain ».\nconst EXPEDITEUR = \"\\\"Nexora Auto\\\" <nexorasolutions.france@gmail.com>\";\nconst REPONDRE_A = \"nexorasolutions.france@gmail.com\";\nconst r = $json;\nconst adresse = String(r.destinataire || '');\nlet motif = null;\nif (!/^[^\\s@<>\"]+@[^\\s@<>\"]+\\.[^\\s@<>\"]+$/.test(adresse)) motif = 'adresse du compte absente ou invalide, rien n\\'est parti';\nelse if (!String(r.texte || '').trim() || !String(r.objet || '').trim()) motif = 'message vide, rien n\\'est parti';\nreturn [{ json: { ...r, expediteur: EXPEDITEUR, repondreA: REPONDRE_A, pret: motif === null, motif_verification: motif } }];"
+      },
+      "name": "Vérifier avant envoi",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "Prêt à envoyer ?",
+              "leftValue": "={{ $json.pret === true ? 'oui' : 'non' }}",
+              "rightValue": "oui",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Prêt à envoyer ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/auto_confirmer_transmission",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_ref\": \"{{ $('Prêt à envoyer ?').item.json.ref }}\"}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "Confirmer la transmission",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1920,
+        -120
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "Transmission confirmée ?",
+              "leftValue": "={{ $json.ok === true ? 'oui' : 'non' }}",
+              "rightValue": "oui",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Transmission confirmée ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $('Prêt à envoyer ?').item.json.expediteur }}",
+        "toEmail": "={{ $('Prêt à envoyer ?').item.json.destinataire }}",
+        "subject": "={{ $('Prêt à envoyer ?').item.json.objet }}",
+        "emailFormat": "text",
+        "text": "={{ $('Prêt à envoyer ?').item.json.texte }}",
+        "options": {
+          "appendAttribution": false,
+          "replyTo": "={{ $('Prêt à envoyer ?').item.json.repondreA }}"
+        }
+      },
+      "name": "Notifier le rappel (email)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2400,
+        -120
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "6opiCKNWBLDnvYKJ",
+          "name": "SMTP Brevo — envois métier"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { resultat: 'envoye', motif: null, categorie: null, noeud: 'Notifier le rappel (email)' } }];"
+      },
+      "name": "Accepté par le fournisseur",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Classement d'un échec d'envoi SMTP (nœud « Envoyer la relance (email) »).\n//\n// Source unique : `construire.mjs` recopie cette fonction dans le nœud Code\n// « Classer l'échec » ; `classerEchec.test.js` la vérifie.\n//\n// RÈGLE : on ne déduit la nature d'un échec QUE de ce qu'on sait situer dans\n// l'échange SMTP. Un nombre à trois chiffres trouvé n'importe où dans un\n// message (« 550 € », un numéro de rue, un identifiant) ne veut rien dire.\n//\n//   - Aucune connexion établie (refus, nom introuvable)      → a_reprendre\n//   - Authentification refusée                                → a_reprendre\n//   - Réponse du serveur à MAIL FROM, RCPT TO ou à la\n//     commande DATA, AVANT la transmission du message :\n//       4xx → a_reprendre            5xx → bloque\n//   - Réponse du serveur APRÈS la transmission du message\n//     (« Message failed ») : le serveur dit explicitement\n//     qu'il n'a pas pris le message :\n//       4xx → a_reprendre            5xx → bloque\n//   - Tout le reste — connexion coupée, délai dépassé, erreur\n//     inconnue — peut survenir après que le fournisseur a\n//     accepté le message                                      → incertain\n//\n// `incertain` n'est jamais clos ni repris : la relance reste `envoi_en_cours`\n// et l'écran dit « envoi à vérifier ».\n\nfunction classerEchec(erreur) {\n  const e = erreur && typeof erreur === \"object\" ? erreur : { message: erreur };\n  const message = String(e.message || e.description || \"\").trim();\n  const code = String(e.code || \"\").toUpperCase();\n  const commande = String(e.command || \"\").toUpperCase();\n  const reponse = Number.isInteger(e.responseCode) ? e.responseCode : null;\n  const extrait = message.slice(0, 200);\n  const issue = (resultat, motif) => ({ resultat, motif: `${motif}${extrait ? \" : \" + extrait : \"\"}` });\n\n  // 1. Pas de connexion : rien n'a pu partir.\n  if ([\"ECONNREFUSED\", \"ENOTFOUND\", \"EAI_AGAIN\", \"EDNS\"].includes(code)\n      || /^(?:connect ECONNREFUSED|getaddrinfo (?:ENOTFOUND|EAI_AGAIN))\\b/.test(message)) {\n    return issue(\"a_reprendre\", \"connexion au fournisseur impossible, rien n'est parti\");\n  }\n  // 1 bis. Formulations de n8n lui-même (il réécrit les erreurs de connexion du\n  // nœud d'envoi) : la connexion n'a pas été établie, rien n'a pu partir.\n  // Vérifié le 16 sept. 2026 sur n8n 2.37.7.\n  if (/^(?:The service refused the connection|The connection (?:cannot be established|was refused))/i.test(message)) {\n    return issue(\"a_reprendre\", \"connexion au fournisseur impossible, rien n'est parti\");\n  }\n  // 1 ter. Message incomplet refusé par nodemailer AVANT toute connexion :\n  // aucun destinataire transmis. Certain — et c'est un défaut à corriger, pas\n  // une panne passagère : la reprise est bornée par le plafond de tentatives.\n  if (/^(?:No recipients defined|Message has no recipients)/i.test(message)) {\n    return issue(\"a_reprendre\", \"aucun destinataire transmis au fournisseur, rien n'est parti\");\n  }\n  // 2. Authentification refusée : rien n'a pu partir.\n  if (code === \"EAUTH\" || /^(?:Invalid login|Authentication (?:failed|not supported))\\b/i.test(message)) {\n    return issue(\"a_reprendre\", \"authentification refusée par le fournisseur, rien n'est parti\");\n  }\n\n  // 3. Réponse SMTP située dans l'échange : champs structurés d'abord…\n  let etape = null;\n  let classe = null;\n  if (reponse !== null && reponse >= 400 && reponse < 600) {\n    classe = Math.floor(reponse / 100);\n    if ([\"MAIL FROM\", \"RCPT TO\", \"DATA\"].includes(commande)) etape = \"avant\";\n    else if (commande === \"DATA END\" || commande === \".\") etape = \"apres\";\n  }\n  // … sinon les formulations exactes de nodemailer, ancrées en début de message.\n  if (etape === null) {\n    const avant = message.match(/^(?:Can't send mail - all recipients were rejected|Mail command failed|Recipient command failed|Data command failed):\\s*([45])\\d\\d\\b/);\n    const apres = message.match(/^Message failed:\\s*([45])\\d\\d\\b/);\n    if (avant) { etape = \"avant\"; classe = Number(avant[1]); }\n    else if (apres) { etape = \"apres\"; classe = Number(apres[1]); }\n  }\n  if (etape === \"avant\") {\n    return classe === 5\n      ? issue(\"bloque\", \"refus définitif du fournisseur avant le message\")\n      : issue(\"a_reprendre\", \"refus temporaire du fournisseur avant le message\");\n  }\n  if (etape === \"apres\") {\n    return classe === 5\n      ? issue(\"bloque\", \"refus définitif du fournisseur après le message\")\n      : issue(\"a_reprendre\", \"refus temporaire du fournisseur après le message, non accepté\");\n  }\n\n  // 4. Tout le reste : le message a pu être accepté. On ne rejoue pas.\n  return issue(\"incertain\", \"issue inconnue, le message a pu être accepté\");\n}\n\n\nconst brut = $json.error && typeof $json.error === 'object' ? $json.error : { message: $json.error || $json.message || '' };\nconst c = classerEchec({ message: brut.message || $json.message || '', description: brut.description, code: brut.code || $json.code, responseCode: brut.responseCode ?? $json.responseCode, command: brut.command || $json.command });\nconst categorie = { a_reprendre: 'refus_temporaire', bloque: 'refus_definitif', incertain: 'envoi_incertain' }[c.resultat];\nreturn [{ json: { resultat: c.resultat, motif: c.motif, categorie, noeud: 'Notifier le rappel (email)' } }];"
+      },
+      "name": "Classer l'échec",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { resultat: 'bloque', motif: $json.motif_verification, categorie: 'donnees_invalides', noeud: 'Vérifier avant envoi' } }];"
+      },
+      "name": "Échec avant envoi",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Expurgation d'un texte d'erreur avant de le journaliser.\n//\n// Source unique : `construire.mjs` recopie cette fonction dans les nœuds Code\n// du socle et du journaliseur ; `expurger.test.js` la vérifie.\n//\n// Le journal des incidents est lu par des humains et survit aux lignes de\n// file : il ne doit contenir ni adresse e-mail, ni lien (un lien public porte\n// un jeton), ni clé, ni en-tête d'autorisation. On garde ce qui aide à\n// comprendre : le code SMTP, le code réseau, le nom de l'étape.\n\nfunction expurger(texte, longueur) {\n  const max = Number.isInteger(longueur) ? longueur : 300;\n  let t = texte === null || texte === undefined ? \"\" : String(texte);\n  t = t\n    .replace(/\\b(?:https?|wss?):\\/\\/\\S+/gi, \"<lien>\")\n    .replace(/\\b(?:Bearer|Basic)\\s+[A-Za-z0-9._~+\\/=-]+/gi, \"<autorisation>\")\n    .replace(/\\b(apikey|api_key|authorization|password|pass|token|jeton|secret)([\"']?\\s*[:=]\\s*[\"']?)[^\\s\"',;}]+/gi, \"$1$2<masqué>\")\n    .replace(/\\beyJ[A-Za-z0-9_-]{8,}(?:\\.[A-Za-z0-9_-]+){1,2}/g, \"<jeton>\")\n    .replace(/\\b(?:xkeysib|xsmtpsib|sk_live|sk_test|sb_secret)[-_][A-Za-z0-9_-]+/gi, \"<clé>\")\n    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/g, \"<e-mail>\")\n    .replace(/\\b[0-9a-f]{32,}\\b/gi, \"<empreinte>\")\n    .replace(/\\s+/g, \" \")\n    .trim();\n  return t.length > max ? t.slice(0, max - 1) + \"…\" : t;\n}\n\n\n// Le plafond de trois tentatives est tenu en base (auto_terminer_rappel) ;\n// ici, on ne fait que nommer l'incident.\nconst r = $('Un rappel à la fois').item.json;\nlet { resultat, motif, categorie, noeud } = $json;\nconst tentatives = Number(r.tentatives);\nif (resultat === 'a_reprendre' && tentatives >= 3) categorie = 'refus_temporaire_repete';\nreturn [{ json: {\n  ref: r.ref, resultat, categorie, noeud, tentatives,\n  motif: motif === null || motif === undefined ? null : expurger(motif, 300),\n  intervention: ['bloque', 'incertain'].includes(resultat) || (resultat === 'a_reprendre' && tentatives >= 3),\n} }];"
+      },
+      "name": "Décider l'issue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "Issue connue ?",
+              "leftValue": "={{ $json.resultat }}",
+              "rightValue": "incertain",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Issue connue ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/auto_terminer_rappel",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_ref\": \"{{ $json.ref }}\", \"p_resultat\": \"{{ $json.resultat }}\", \"p_motif\": {{ $json.motif === null ? 'null' : JSON.stringify($json.motif) }}}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "Clore le rappel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3360,
+        -100
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "Incident à journaliser ?",
+              "leftValue": "={{ $('Décider l\\'issue').item.json.resultat }}",
+              "rightValue": "envoye",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Incident à journaliser ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://omphppsmhmyllapdqevn.supabase.co/rest/v1/rpc/journaliser_incident",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_incident: { categorie: $('Décider l\\'issue').item.json.categorie, workflow_id: $workflow.id, workflow_nom: $workflow.name, execution_id: $execution.id, noeud: $('Décider l\\'issue').item.json.noeud, notification_file: null, notification_id: $('Décider l\\'issue').item.json.ref, intervention_requise: $('Décider l\\'issue').item.json.intervention, message: 'rappels Nexora Auto — ' + ($('Décider l\\'issue').item.json.resultat === 'incertain' ? 'issue incertaine, rien n\\'est clos, vérification humaine : ' : '') + ($('Décider l\\'issue').item.json.motif || '') } }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "Journaliser l'incident",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3840,
+        60
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "fk85N6k6Aea2u0fb",
+          "name": "RPC Supabase Production"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "Encore un ?",
+              "leftValue": "={{ $runIndex < 2 && $('Décider l\\'issue').item.json.resultat !== 'a_reprendre' ? 'oui' : 'non' }}",
+              "rightValue": "oui",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Encore un ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4080,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Tous les quarts d'heure": {
+      "main": [
+        [
+          {
+            "node": "Lire les dossiers abonnés",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lire les dossiers abonnés": {
+      "main": [
+        [
+          {
+            "node": "Décider avec les règles de l'écran",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Décider avec les règles de l'écran": {
+      "main": [
+        [
+          {
+            "node": "Programmer les rappels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Programmer les rappels": {
+      "main": [
+        [
+          {
+            "node": "Réserver la file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Réserver la file": {
+      "main": [
+        [
+          {
+            "node": "Un rappel à la fois",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Un rappel à la fois": {
+      "main": [
+        [
+          {
+            "node": "Vérifier avant envoi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vérifier avant envoi": {
+      "main": [
+        [
+          {
+            "node": "Prêt à envoyer ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prêt à envoyer ?": {
+      "main": [
+        [
+          {
+            "node": "Confirmer la transmission",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Échec avant envoi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmer la transmission": {
+      "main": [
+        [
+          {
+            "node": "Transmission confirmée ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transmission confirmée ?": {
+      "main": [
+        [
+          {
+            "node": "Notifier le rappel (email)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Notifier le rappel (email)": {
+      "main": [
+        [
+          {
+            "node": "Accepté par le fournisseur",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Classer l'échec",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accepté par le fournisseur": {
+      "main": [
+        [
+          {
+            "node": "Décider l'issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classer l'échec": {
+      "main": [
+        [
+          {
+            "node": "Décider l'issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Échec avant envoi": {
+      "main": [
+        [
+          {
+            "node": "Décider l'issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Décider l'issue": {
+      "main": [
+        [
+          {
+            "node": "Issue connue ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Issue connue ?": {
+      "main": [
+        [
+          {
+            "node": "Clore le rappel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Journaliser l'incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clore le rappel": {
+      "main": [
+        [
+          {
+            "node": "Incident à journaliser ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Incident à journaliser ?": {
+      "main": [
+        [
+          {
+            "node": "Journaliser l'incident",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Encore un ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Journaliser l'incident": {
+      "main": [
+        [
+          {
+            "node": "Encore un ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Encore un ?": {
+      "main": [
+        [
+          {
+            "node": "Réserver la file",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "errorWorkflow": "erroralerts000000000000000001",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "tags": []
+}

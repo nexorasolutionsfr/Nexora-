@@ -39,8 +39,16 @@ export const FONDEMENTS = {
 // croire que Nexora avait vérifié le document : elle n'a vérifié personne. Une
 // date saisie par la personne et une date lue sur un justificatif ne se
 // présentent donc pas de la même façon (constat de Baptiste, 18 sept. 2026).
+//
+// La provenance ne qualifie que la date du procès-verbal : c'est ELLE qui a été
+// renseignée ou lue. Une date calculée ne l'a été par personne — seul le
+// contrôle dont elle part l'a été, et l'explication le nomme. « Calcul selon
+// la règle, renseignée par vous » confondait les deux (constat du 18 sept.
+// 2026, en préparant le rappel par e-mail, qui doit garder la distinction
+// entre date déclarée, lue et calculée).
 export function libelleFondement(element) {
   const base = FONDEMENTS[element?.fondement] ?? FONDEMENTS.calcul;
+  if (element?.fondement !== "officiel") return base;
   if (element?.provenance === "proprietaire") return `${base}, renseignée par vous`;
   if (element?.provenance === "prestation") return `${base}, lue sur votre document`;
   return base;

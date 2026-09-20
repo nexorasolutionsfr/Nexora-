@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 
+import { integrationsSortantes } from "@/lib/integrations"
+
 // Réception des demandes de démo du site vitrine.
 //
 // CE QUE CETTE ROUTE REMPLACE
@@ -66,11 +68,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true })
   }
 
-  const cle = process.env.RESEND_API_KEY
+  // Sur une prévisualisation, rien ne part, quelle que soit la clé présente
+  // (lib/integrations.js).
+  const sortantes = integrationsSortantes()
+  const cle = sortantes.actives ? process.env.RESEND_API_KEY : undefined
   if (!cle) {
     // La route existe mais n'est pas configurée. On le dit franchement plutôt
     // que de faire croire à un envoi : l'interface rendra le lien direct.
-    console.error("RESEND_API_KEY absente : demande de démo non transmise")
+    console.error(sortantes.actives ? "RESEND_API_KEY absente : demande de démo non transmise" : "Prévisualisation : demande de démo non transmise")
     return NextResponse.json({ erreur: "envoi_indisponible" }, { status: 503 })
   }
 

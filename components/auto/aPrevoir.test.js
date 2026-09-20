@@ -313,6 +313,10 @@ test("libelleFondement dit d'où vient la date, sans prétendre l'avoir vérifi�
   assert.equal(libelleFondement({ fondement: "officiel", provenance: "proprietaire" }), "Date du procès-verbal, renseignée par vous");
   assert.equal(libelleFondement({ fondement: "officiel", provenance: "prestation" }), "Date du procès-verbal, lue sur votre document");
   assert.equal(libelleFondement({ fondement: "calcul" }), "Calcul selon la règle");
+  // Une date calculée n'a été ni renseignée ni lue : seul le contrôle dont
+  // elle part l'a été.
+  assert.equal(libelleFondement({ fondement: "calcul", provenance: "proprietaire" }), "Calcul selon la règle");
+  assert.equal(libelleFondement({ fondement: "calcul", provenance: "prestation" }), "Calcul selon la règle");
   assert.equal(libelleFondement({}), "Calcul selon la règle");
   assert.equal(libelleFondement(null), "Calcul selon la règle");
 });
