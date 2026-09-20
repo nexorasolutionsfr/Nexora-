@@ -916,6 +916,12 @@ function AtelierCarte({
 // Le destinataire affiché est renvoyé à la base au moment de confirmer. S'il a
 // changé entre-temps, l'autorisation est refusée plutôt que d'écrire à
 // quelqu'un d'autre — la vérification est en base, pas ici.
+//
+// PENDANT L'APPEL, LE BOUTON DIT « Autorisation en cours… »
+// Il disait « Envoi autorisé… » : une confirmation annoncée AVANT la réponse
+// du serveur. C'est ce qui a fait croire, le 20 septembre, que le geste avait
+// abouti alors qu'aucune requête n'était partie. On n'affirme l'autorisation
+// qu'une fois la base d'accord.
 function PrevenirLeClient({ appt, apercu, chargement, erreur, enCours, onAnnuler, onConfirmer, blocage = null }) {
   return (
     <div className="nx-voile fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4" onClick={onAnnuler}>
@@ -976,14 +982,22 @@ function PrevenirLeClient({ appt, apercu, chargement, erreur, enCours, onAnnuler
           >
             Annuler
           </button>
+          {/* LA CIBLE PART D'ICI, EXPLICITEMENT
+              La fenêtre sait quel rendez-vous et quelle adresse elle affiche.
+              Aller les relire ailleurs au moment du clic, c'est le défaut du
+              20 septembre : la lecture arrivait trop tard et rien ne partait.
+
+              Et une erreur ne condamne plus le bouton : avant, la moindre
+              erreur le désactivait pour de bon et il ne restait qu'Annuler.
+              Une panne de réseau doit pouvoir se réessayer sur place. */}
           <button
             type="button"
-            disabled={enCours || chargement || Boolean(erreur) || !apercu?.destinataire}
-            onClick={() => onConfirmer(apercu?.destinataire)}
+            disabled={enCours || chargement || !apercu?.destinataire}
+            onClick={() => onConfirmer({ rendezVousId: appt?.id, destinataire: apercu?.destinataire })}
             className="flex-1 min-h-[44px] rounded-xl text-[13.5px] font-semibold text-white disabled:opacity-50"
             style={{ backgroundColor: ACCENT }}
           >
-            {enCours ? "Envoi autorisé…" : "Envoyer le message"}
+            {enCours ? "Autorisation en cours…" : "Envoyer le message"}
           </button>
         </div>
       </div>
@@ -1871,7 +1885,7 @@ function TravailDiffereModal({ clients = [], devisList = [], defaultClientId, de
   );
 }
 
-function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, ordresReparation = [], onPrevenirClient, onAgirSurPriorite, stats, propositions, demandes, devisList = [], vehicules = [], onOuvrirDossierVehicule, setView, onAllerConfigurer, onGererAbonnement, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection, onCompteAujourdhui }) {
+function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, ordresReparation = [], onPrevenirClient, etatsEnvoiFrais = null, onAgirSurPriorite, stats, propositions, demandes, devisList = [], vehicules = [], onOuvrirDossierVehicule, setView, onAllerConfigurer, onGererAbonnement, onSelectAppt, loading, rendezVous, clients, garageData, mecaniciens = [], prestations = [], factures = [], aiStats, preparedDemandeIds = [], onToast, rappelsManques = [], onAjouterRappel, onChangerStatutRappel, travauxDifferes = [], onOuvrirTravailDiffereModal, onMarquerContacteTravail, onReprogrammerTravail, onMarquerRecupereTravail, onCloturerRefusTravail, garageId, onSelectDemande, onOuvrirInspection, onCompteAujourdhui }) {
   const [periodePilote, setPeriodePilote] = useState(garageData?.pilote_debut ? "pilote" : "7j");
   const [cockpitCompteurs, setCockpitCompteurs] = useState(null);
 
@@ -2049,6 +2063,7 @@ function AujourdhuiView({ monRole = ROLE_DIRIGEANT, erreurChargement = false, or
           onOuvrirImport={peutVoir(monRole, "parametres") ? () => onAllerConfigurer?.("parametres", "import") : null}
           onOuvrirAtelier={() => setView("atelier")}
           onPrevenirClient={onPrevenirClient}
+          etatsEnvoiFrais={etatsEnvoiFrais}
           onAgirSurPriorite={onAgirSurPriorite}
           opportunites={opportunites}
           journalDisponible={journalDisponible}
@@ -7870,7 +7885,7 @@ if (updateError) {
         )}
 
         <div key={view} className="nx-vue p-5 md:p-8">
-          {view === "aujourdhui" && <AujourdhuiView monRole={monRole} vehicules={tousLesVehicules} onOuvrirDossierVehicule={ouvrirDossierDepuisRecherche} stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} erreurChargement={erreurDonnees} ordresReparation={ordresReparation} onPrevenirClient={ouvrirPrevenir} onAgirSurPriorite={agirSurPriorite} onCompteAujourdhui={setCompteAujourdhui} />}
+          {view === "aujourdhui" && <AujourdhuiView monRole={monRole} vehicules={tousLesVehicules} onOuvrirDossierVehicule={ouvrirDossierDepuisRecherche} stats={stats} onAllerConfigurer={allerConfigurer} onGererAbonnement={ouvrirPortailAbonnement} propositions={propositions} demandes={demandes} devisList={devisList} setView={setView} onSelectAppt={setSelectedAppt} loading={loading} rendezVous={rendezVous} clients={clients} garageData={garageData} mecaniciens={mecaniciens} prestations={prestations} factures={factures} aiStats={aiStats} preparedDemandeIds={preparedDemandeIds} onToast={flashToast} rappelsManques={rappelsManques} onAjouterRappel={() => setShowAjouterRappel(true)} onChangerStatutRappel={handleChangerStatutRappel} travauxDifferes={travauxDifferes} onOuvrirTravailDiffereModal={() => setTravailDiffereModal({})} onMarquerContacteTravail={handleMarquerContacteTravail} onReprogrammerTravail={handleReprogrammerTravail} onMarquerRecupereTravail={handleMarquerRecupereTravail} onCloturerRefusTravail={handleCloturerRefusTravail} garageId={garageId} onSelectDemande={setSelectedDemande} onOuvrirInspection={(id) => { setInspectionCibleCockpit(id); setView("inspections"); }} erreurChargement={erreurDonnees} ordresReparation={ordresReparation} onPrevenirClient={ouvrirPrevenir} etatsEnvoiFrais={etatsPrevenirAujourdhui} onAgirSurPriorite={agirSurPriorite} onCompteAujourdhui={setCompteAujourdhui} />}
           {view === "statistiques" && <StatistiquesView garageData={garageData} aiStats={aiStats} timeline={activityTimeline} automationEvents={automationEvents} factures={factures} devisList={devisList} rendezVous={rendezVous} />}
           {view === "atelier" && <AtelierView rendezVous={rendezVous} onSelectAppt={setSelectedAppt} garageData={garageData} mecaniciens={mecaniciens} atelierLiens={atelierLiens} atelierQr={atelierQr} atelierJetonsActifs={atelierJetonsActifs} onGenererEtiquettes={genererEtiquettesAtelier} onGenererLienAtelier={genererLienAtelier} atelierBusyId={atelierBusyId} onOuvrirDossierVehicule={ouvrirDossierVehicule} onUpdateStatutAtelier={updateStatutAtelier} onAllerAgenda={() => setView("agenda")} onToast={flashToast} etatVue={etatAtelier} onEtatVue={setEtatAtelier} />}
           {view === "valider" && <ValiderView propositions={propositions} onAccept={handleAccept} onRefuse={handleRefuse} onReschedule={handleReschedule} garageId={garageId} />}

@@ -161,6 +161,12 @@ export default function AujourdhuiJour({
   chargement = false,
   erreurChargement = false,
   peutVoirLesEnvois = false,
+  // Les états relus par le module « Prévenir le client » après une
+  // autorisation. Cet écran fait sa propre lecture au chargement, mais elle ne
+  // se rejoue qu'au changement de la liste des voitures prêtes : sans ce
+  // relais, la ligne restait affichée « non envoyé » après une autorisation,
+  // jusqu'à un rechargement à la main.
+  etatsEnvoiFrais = null,
   onOuvrirDossierVehicule,
   onOuvrirAgenda,
   onOuvrirClients,
@@ -242,10 +248,13 @@ export default function AujourdhuiJour({
     return () => { annule = true; };
   }, [pretsIds, peutVoirLesEnvois]);
 
+  // Le plus frais gagne, et c'est toujours une réponse de la base : ni l'un ni
+  // l'autre n'est déduit. `etat` est recopié tel quel — « en_attente_envoi »
+  // reste « autorisée, départ en attente », jamais « envoyée ».
   const dossiersAvecEnvoi = useMemo(() => dossiers.map((d) => {
-    const e = etatsEnvoi[d.id];
+    const e = (etatsEnvoiFrais && etatsEnvoiFrais[d.id]) || etatsEnvoi[d.id];
     return e ? { ...d, etatNotification: e.etat, notificationMotif: e.motif, notificationDepuis: e.depuis } : d;
-  }), [dossiers, etatsEnvoi]);
+  }), [dossiers, etatsEnvoi, etatsEnvoiFrais]);
 
   const priorites = useMemo(() => classerPriorites(dossiersAvecEnvoi, maintenant), [dossiersAvecEnvoi]);
   // UNE LIGNE DE DEVIS DOIT MENER À SA VOITURE
