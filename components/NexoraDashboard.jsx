@@ -976,10 +976,18 @@ function PrevenirLeClient({ appt, apercu, chargement, erreur, enCours, onAnnuler
           >
             Annuler
           </button>
+          {/* LA CIBLE PART D'ICI, EXPLICITEMENT
+              La fenêtre sait quel rendez-vous et quelle adresse elle affiche.
+              Aller les relire ailleurs au moment du clic, c'est le défaut du
+              20 septembre : la lecture arrivait trop tard et rien ne partait.
+
+              Et une erreur ne condamne plus le bouton : avant, la moindre
+              erreur le désactivait pour de bon et il ne restait qu'Annuler.
+              Une panne de réseau doit pouvoir se réessayer sur place. */}
           <button
             type="button"
-            disabled={enCours || chargement || Boolean(erreur) || !apercu?.destinataire}
-            onClick={() => onConfirmer(apercu?.destinataire)}
+            disabled={enCours || chargement || !apercu?.destinataire}
+            onClick={() => onConfirmer({ rendezVousId: appt?.id, destinataire: apercu?.destinataire })}
             className="flex-1 min-h-[44px] rounded-xl text-[13.5px] font-semibold text-white disabled:opacity-50"
             style={{ backgroundColor: ACCENT }}
           >
