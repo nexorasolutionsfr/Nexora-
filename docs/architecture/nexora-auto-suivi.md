@@ -1469,3 +1469,31 @@ rectifiées. Les deux premières sont reprises dans R74 et R75 ci-dessus.
   mécanisme existant (rattrapage, revalidation avant envoi, absence de
   doublon) ; la quatrième manque — **détecter un passage manqué**, car
   aujourd'hui le silence ressemble à « rien à envoyer ».
+
+### Stabilisation du 20 septembre 2026 (soir)
+
+- **R87 — la page Tesla ne revendique aucun marché.** Son adresse porte la
+  locale `fr_fr`, mais le texte ne nomme aucun pays et mentionne la Chine
+  comme variante locale : c'est une liste internationale à variantes. La
+  portée enregistrée dans `sources.js` dit désormais exactement cela, et rien
+  de plus. Les conditions d'utilisation de Tesla n'ont **pas** pu être
+  consultées : `tesla.com` refuse les requêtes automatisées (HTTP 403). Un
+  accès public ne vaut pas autorisation de redistribution — c'est écrit dans
+  la source, et Nexora ne cite que des faits avec un lien vers la page.
+- **R88 — un programme publié n'est pas un calendrier personnel.** Un
+  intervalle dit « tous les 2 ans » ; il ne dit pas « le 4 mars prochain ».
+  La carte porte désormais cette phrase en évidence, non repliée, et la
+  condition Tesla « fabriqués avant 2021 environ » est **affichée sans être
+  appliquée** : elle porte sur une date de fabrication que Nexora n'a pas, et
+  « environ » n'est pas une date.
+- **R89 — une classe Crit'Air obtenue par la date est une estimation.**
+  L'étiquette dit « Estimation », la phrase passe au conditionnel
+  (« relèverait de »), et la réserve explique ce que cela peut coûter. Une
+  classe obtenue par l'énergie (colonnes E et 1) n'est pas une estimation :
+  l'arrêté la donne directement.
+- **R90 — « non publié » disait plus que ce qu'on avait vérifié.** Partout où
+  l'absence n'est pas démontrée, l'écran et les documents disent désormais
+  « non trouvé dans les sources examinées ». De même, « fournisseur
+  incompatible » est devenu « licence B2C à confirmer » : non confirmée ne
+  veut pas dire impossible, et TecAlliance présente publiquement des
+  intégrations pour le commerce en ligne.

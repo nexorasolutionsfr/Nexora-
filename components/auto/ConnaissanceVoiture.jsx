@@ -41,8 +41,8 @@ const ETATS = {
   applicable: { libelle: "Publié par le constructeur", classe: "border-primary/30 bg-secondary/60 text-foreground" },
   a_preciser: { libelle: "Repère de marque", classe: "border-border bg-muted text-foreground" },
   donnees_insuffisantes: { libelle: "À compléter", classe: "border-border bg-muted text-foreground" },
-  indisponible: { libelle: "Non publié", classe: "border-border bg-muted text-muted-foreground" },
-  non_applicable: { libelle: "Rien de publié", classe: "border-border bg-muted text-muted-foreground" },
+  indisponible: { libelle: "Non trouvé", classe: "border-border bg-muted text-muted-foreground" },
+  non_applicable: { libelle: "Aucune fiche", classe: "border-border bg-muted text-muted-foreground" },
   source_a_relire: { libelle: "Source à relire", classe: "border-border bg-muted text-muted-foreground" },
 };
 
@@ -53,10 +53,12 @@ const LIBELLES_PAR_CARTE = {
   campagnes_rappel: { non_applicable: "Aucune fiche" },
 };
 
-function Etiquette({ carteCle, etat }) {
+function Etiquette({ carteCle, etat, estimation = false }) {
   const e = ETATS[etat] ?? ETATS.non_applicable;
-  const libelle = LIBELLES_PAR_CARTE[carteCle]?.[etat] ?? e.libelle;
-  return <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[12px] font-medium ${e.classe}`}>{libelle}</span>;
+  // Une estimation ne porte jamais l'étiquette d'un fait établi.
+  const libelle = estimation ? "Estimation" : (LIBELLES_PAR_CARTE[carteCle]?.[etat] ?? e.libelle);
+  const classe = estimation ? ETATS.donnees_insuffisantes.classe : e.classe;
+  return <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[12px] font-medium ${classe}`}>{libelle}</span>;
 }
 
 function Provenance({ connaissance }) {
@@ -176,6 +178,13 @@ function Programme({ valeur }) {
   );
 }
 
+// La phrase qui sépare un programme publié d'un calendrier personnel. Elle
+// reste visible : repliée, elle ne protégerait personne.
+function Avertissement({ texte }) {
+  if (!texte) return null;
+  return <p className="mt-2.5 rounded-xl border border-dashed border-border px-3 py-2 text-[14px] leading-snug text-foreground">{texte}</p>;
+}
+
 // ---------------------------------------------------------------------------
 // Campagnes de rappel
 // ---------------------------------------------------------------------------
@@ -258,6 +267,9 @@ function Campagnes({ valeur }) {
   if (!valeur) return null;
   return (
     <>
+      {valeur.retenues.length > 0 ? (
+        <p className="mt-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Fiches qui nomment votre modèle</p>
+      ) : null}
       <Liste fiches={valeur.retenues} libelleDeplier="Voir les autres fiches" />
       {valeur.ecartees.length > 0 ? (
         <>
@@ -347,7 +359,7 @@ export default function ConnaissanceVoiture({ vehicule, onAction = null }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                     <h3 className="font-semibold text-foreground">{c.titre}</h3>
-                    {enRecherche ? null : <Etiquette carteCle={c.cle} etat={c.etat} />}
+                    {enRecherche ? null : <Etiquette carteCle={c.cle} etat={c.etat} estimation={Boolean(c.valeur?.estimation)} />}
                   </div>
 
                   {enRecherche ? (
@@ -361,6 +373,7 @@ export default function ConnaissanceVoiture({ vehicule, onAction = null }) {
                       {c.cle === "critair" ? <ClasseCritair valeur={c.valeur} /> : null}
                       {c.cle === "critair" ? <Alternatives alternatives={c.alternatives} /> : null}
                       {c.cle === "programme_entretien" ? <Programme valeur={c.valeur} /> : null}
+                      <Avertissement texte={c.avertissement} />
                       {c.cle === "campagnes_rappel" ? <Campagnes valeur={c.valeur} /> : null}
                       <Demandes items={c.manques} onAction={onAction} />
                       <Demandes items={c.precision ? [c.precision] : null} ton="reserve" />

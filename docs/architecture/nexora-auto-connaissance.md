@@ -111,7 +111,7 @@ l'erreur qu'on vient de corriger :
 - **L'identification par VIN chez TecRMI.** La doc REST mentionne un « Vin
   filter » comme clé de filtre, pas un décodeur. Un service VIN séparé existe,
   mais son accès s'obtient sur demande écrite.
-- **Les tarifs** d'autobiz, TecRMI et HaynesPro : non publiés, devis.
+- **Les tarifs** d'autobiz, TecRMI et HaynesPro : non trouvés sur les pages examinées ; un devis est le chemin annoncé.
 
 ### Ce qui exige une RÉPONSE FOURNISSEUR
 
@@ -123,16 +123,19 @@ l'erreur qu'on vient de corriger :
 
 **Conclusion corrigée : TecRMI n'est pas à écarter pour la France.** Ce qui
 bloque n'est pas le pays — c'est que nous n'avons, sur leurs pages publiques,
-ni chiffre de couverture, ni prix, ni droit d'affichage B2C. Ces trois
-réponses s'obtiennent en une demande écrite, qui reste à décider.
+ni chiffre de couverture, ni prix, ni **licence B2C confirmée**. Non confirmée
+ne veut pas dire impossible : TecAlliance présente publiquement des
+intégrations pour le commerce en ligne et les places de marché. Ces trois
+réponses s'obtiennent en une demande écrite — elle est rédigée, voir
+`nexora-auto-demande-donnees.md`.
 
-| Fournisseur | Ce qu'il rendrait | Tarif publié | Utilisable aujourd'hui |
+| Fournisseur | Ce qu'il rendrait | Tarif trouvé | Ce qui reste à lever |
 |---|---|---|---|
-| autobizVIN | VIN → caractéristiques, finition, équipements | non publié — devis | Non : aucune API publiée |
-| autobiz API Match | VIN / plaque → marque, modèle, version | Essai « Free » 50 appels/jour ; payant « Custom » | Non : essai conditionné à un compte |
-| Auto Ways | Plaque / VIN → 100+ champs, correspondance TecDoc | **49 → 1 399 €/mois TTC** | Non sans compte — seul fournisseur entièrement chiffrable sans contact |
-| TecRMI (TecAlliance) | Plan d'entretien constructeur | non publié — devis | Non : contrat. **Deux intégrateurs français existent.** |
-| HaynesPro | Plans d'entretien OEM, temps de réparation | non publié — devis | Non : démo sur demande |
+| autobizVIN | VIN → caractéristiques, finition, équipements | non trouvé — devis | Aucune API trouvée sur leurs pages ; licence B2C à confirmer |
+| autobiz API Match | VIN / plaque → marque, modèle, version | Essai « Free » 50 appels/jour ; payant « Custom » | Essai conditionné à un compte ; licence B2C à confirmer |
+| Auto Ways | Plaque / VIN → 100+ champs, correspondance TecDoc | **49 → 1 399 €/mois TTC** | Compte requis ; seul fournisseur entièrement chiffrable sans contact ; licence B2C à confirmer |
+| TecRMI (TecAlliance) | Plan d'entretien constructeur | non trouvé — devis | Contrat à négocier. **Deux intégrateurs français existent.** Licence B2C à confirmer |
+| HaynesPro | Plans d'entretien OEM, temps de réparation | non trouvé — devis | Démo sur demande ; licence B2C à confirmer |
 
 ---
 
@@ -162,7 +165,7 @@ pas :**
 2. **Repère de marque** — Volkswagen : affiché comme un repère, **jamais
    converti en échéance**, avec cette phrase à l'écran : « ce n'est pas la
    préconisation de VOTRE voiture ; votre carnet fait foi ».
-3. **Non publié** — les autres : la carte le dit, **nomme la barrière
+3. **Non trouvé** — les autres : la carte le dit, **nomme la barrière
    rencontrée** (carnet papier, VIN, abonnement) et passe en dernier dans la
    section. Elle ne domine jamais l'écran.
 
@@ -340,13 +343,86 @@ e-mail) :
 
 ## 11. Ce qui reste ouvert
 
-1. **Le programme d'entretien personnalisé** reste bloqué faute de source
-   autorisée. Le débloquer suppose un contrat *et* un droit d'affichage grand
-   public obtenu par écrit. Rien ne presse : le carnet de la personne fait foi,
-   et Nexora sait déjà s'en servir.
-2. **L'identification par plaque** reste absente, pour la même raison. La
-   sélection marque/modèle n'est pas un repli honteux : elle suffit aux
-   campagnes de rappel, qui sont la valeur immédiate.
-3. **L'hébergement du programmateur de rappels** (voir
+1. **Couverture actuelle de l'entretien : deux modèles** (Tesla Model 3 et
+   Model Y), plus un repère de marque (Volkswagen). C'est un état, pas une
+   fatalité : d'autres constructeurs publient peut-être ce que nous n'avons
+   pas cherché, et la recherche a été volontairement bornée.
+2. **La licence d'affichage grand public reste à confirmer** chez les cinq
+   fournisseurs examinés. Non confirmée n'est pas démontrée impossible. La
+   demande est rédigée et prête (`nexora-auto-demande-donnees.md`) ; elle
+   couvre d'un seul tenant la faisabilité technique, la licence, le coût et la
+   possibilité d'un pilote.
+3. **L'identification par plaque** reste absente, faute de fournisseur
+   accessible sans compte. La sélection marque/modèle suffit aux campagnes de
+   rappel et, quand elle existe, au programme d'entretien.
+4. **La norme Euro n'est pas collectée.** Le moteur sait s'en servir et
+   applique l'ordre prévu par l'arrêté, mais sans elle la classe affichée est
+   une **estimation**, présentée comme telle, avec un renvoi au simulateur
+   officiel.
+5. **L'hébergement du programmateur de rappels** (voir
    `nexora-auto-rappel-ct.md`, §8) reste la décision qui bloque une
    proactivité réelle. Elle est indépendante de ce chantier.
+
+---
+
+## 12. La livraison — ce qui est prêt, et ce qui ne l'est pas
+
+*Préparé le 20 septembre 2026. **Rien n'est fusionné.** L'instruction « ne
+fusionne pas la PR » n'a jamais été levée, et aucune autorisation existante ne
+nomme précisément cette livraison. Ce qui suit est donc une procédure prête,
+pas une procédure exécutée.*
+
+### Les deux PR et leur ordre
+
+| PR | Contenu | Migrations | Fusion |
+|---|---|---|---|
+| **#139** `auto/rappel-ct` | Le rappel par e-mail, l'interrupteur des intégrations, la page de contrôle d'environnement | **4**, appliquées sur Test | En premier |
+| **#140** `auto/connaissance-vehicule` | La connaissance véhicule : rappels officiels, Crit'Air, entretien | **aucune** | Ensuite |
+
+### Dépendances réelles, vérifiées
+
+Plus étroites qu'attendu. **Le seul lien dur de #140 vers #139 est la
+modification de `lib/integrations.test.js`** — un fichier né dans #139, où est
+déclarée l'exception de la lecture publique des rappels. Aucun module de
+`lib/auto/connaissance/` n'importe quoi que ce soit de #139.
+
+Conséquence pratique : si #139 devait rester en attente, #140 pourrait être
+rebasée sur `main` au prix d'un seul ajustement — déplacer cette exception
+dans un garde-fou créé pour l'occasion. Ce n'est pas la voie recommandée, mais
+elle existe.
+
+### Environnement
+
+Les deux branches ont leurs **quatre variables de prévisualisation limitées à
+la branche**, pointant sur Test. Vérifié sur le déploiement réellement servi :
+« Projet Test confirmé, côté navigateur **et** côté serveur », intégrations
+sortantes coupées, accès `beta`.
+
+Adresse de recette :
+`https://nexora-dashboard-git-au-a4f1f9-nexorasolutionsfr-4999s-projects.vercel.app/auto`
+
+Parcours de trois minutes : se connecter avec un compte de Test, ouvrir une
+voiture. Pour voir un programme d'entretien, ajouter une « Tesla / Model 3 ».
+
+### Retour arrière — ce qu'un `git revert` fait, et ce qu'il ne fait pas
+
+**#140 seul.** Révocation de code pure. Aucune migration, aucune ligne écrite
+en base, aucun envoi, aucune dépense. Les quatre variables de prévisualisation
+de la branche restent à supprimer à la main le jour où la branche disparaît.
+
+**#139.** Un `git revert` **ne défait pas** ses quatre migrations : elles
+restent appliquées sur Test. Chacune porte sa propre procédure d'annulation en
+tête de fichier, à exécuter dans l'ordre inverse. Un revert ne défait pas non
+plus les lignes de rappel créées sur Test pendant l'essai du 20 septembre, ni
+l'e-mail réellement envoyé ce jour-là.
+
+**L'ensemble.** Le retour arrière de la paire n'est donc pas « deux reverts » :
+c'est deux reverts **plus** quatre annulations SQL sur Test, dans l'ordre
+inverse, plus la décision de ce qu'on fait des lignes de rappel existantes.
+C'est précisément pour cela que l'absence de migration dans #140 ne suffisait
+pas à établir le retour arrière de l'ensemble.
+
+### Ce qui n'est pas activé, et ne le sera pas sans instruction
+
+Aucun programmateur, aucun envoi nouveau, aucune extension de la bêta, aucune
+modification de la Production, aucune souscription.
