@@ -23,6 +23,7 @@ import { estimerKilometrage } from "@/lib/auto/kilometrage";
 import { choisirVoiture, etatAujourdhui, sollicitationKilometrage } from "@/lib/auto/aujourdhui";
 import { construireAPrevoir, libelleFondement, pastilleElement } from "@/components/auto/aPrevoir";
 import { chargerDossiers } from "@/components/auto/dossiers";
+import { SignalCampagnes } from "@/components/auto/ConnaissanceVoiture";
 import { VoitureAAjouter } from "@/components/auto/MonGarage";
 import {
   Alerte,
@@ -156,6 +157,8 @@ function MaJournee({ session }) {
       ) : etat.principale ? (
         <ActionPrincipale etat={etat} vehicule={vehicule} />
       ) : null}
+
+      <SignalCampagnes vehicule={vehicule} />
 
       {etat.lointaines.length > 0 || (!etat.principale && etat.aCompleter.length > 0) ? (
         <Resume elements={etat.lointaines} aCompleter={etat.aCompleter} vehicule={vehicule} avecAction={Boolean(etat.principale)} />
