@@ -337,6 +337,86 @@ Brevo ailleurs : c'est un chantier à décider, pas une bascule. La seule façon
 de garder le mécanisme actuel tel quel, en continu, est un hébergement
 permanent de n8n (OVH : payant).
 
+### Ce que les documentations disent vraiment (relues le 20 septembre 2026)
+
+Le tableau ci-dessus reposait sur des ordres de grandeur. Les quatre options
+ont été relues sur leurs pages officielles, et **deux faits changent le
+classement** :
+
+**1. GitHub Actions sait viser « 9 h, heure de Paris » sans qu'on s'en occupe —
+mais viser n'est pas garantir.**
+La documentation publie la prise en charge d'un fuseau IANA dans la
+planification : « By default, scheduled workflows run in UTC. You can
+optionally specify a timezone using an IANA timezone string ». Un
+`cron: '0 9 * * *'` accompagné de `timezone: "Europe/Paris"` tient donc toute
+l'année, heure d'été comprise — et le passage à l'heure d'été est lui-même
+documenté (une heure escamotée avance au créneau valide suivant). Une
+exécution par jour représente de l'ordre de **30 minutes par mois** sur les
+2 000 incluses, pas 720.
+
+**2. L'offre gratuite de Supabase met le projet en pause.** « Free projects
+are paused after 1 week of inactivity. » Que les exécutions de `pg_cron`
+comptent comme de l'activité n'est **pas publié**. Fonder une proactivité sur
+une base susceptible d'être mise en pause demande au minimum une vérification
+préalable — c'est le risque le plus lourd des quatre.
+
+Les autres constats, à leur place :
+
+- **Vercel Cron sur Hobby** est bien inclus (« Cron jobs are included in all
+  plans »), mais l'offre est limitée à **une exécution par jour**, et une
+  expression plus fréquente « fail[s] during deployment ». L'astuce habituelle
+  — tourner toutes les heures et tester l'heure de Paris dans le code — y est
+  donc **impossible**. Le fuseau « is always UTC » : il faudrait modifier
+  l'expression et redéployer **deux fois par an**. Et l'heure n'est pas
+  garantie : un `0 8 * * *` se déclenche « anytime between 08:00:00 and
+  08:59:59 ». Enfin, « Vercel will not retry an invocation if a cron job
+  fails », et les journaux d'exécution ne sont conservés qu'**une heure** sur
+  Hobby.
+- **GitHub Actions** n'est pas garanti non plus : « The `schedule` event can be
+  delayed during periods of high loads… some queued jobs may be dropped ».
+  Pour un rappel à 9 h qui reste utile plusieurs heures, c'est acceptable — le
+  mécanisme de reprise décrit plus bas rattrape le lendemain.
+- **Une contrainte à ne pas oublier** : « Scheduled workflows will only run on
+  the default branch. » Le programmateur devra donc vivre sur `main`, c'est-à-dire
+  **après** une fusion — pas depuis une branche de chantier.
+- La désactivation automatique après 60 jours sans activité est publiée pour
+  les dépôts **publics** ; pour un dépôt privé comme le nôtre, ce n'est pas
+  publié. À vérifier avant de s'y fier seul.
+
+### Aucune de ces options ne garantit une heure — ce qu'il faut donc prévoir
+
+*Rectifié le 20 septembre 2026.* Il ne faut promettre « 9 h précises » avec
+aucune des quatre. GitHub documente lui-même que l'événement planifié « can be
+delayed during periods of high loads… some queued jobs may be dropped » :
+un déclenchement peut arriver en retard, ou **ne pas arriver du tout**. Vercel
+Hobby annonce une fenêtre d'une heure et aucune reprise après échec.
+
+La bonne formulation pour un automobiliste n'est donc pas « vous recevrez votre
+rappel à 9 h », mais **« le matin »** — ce que le message dit déjà, puisqu'il
+donne une date absolue (« avant le 4 oct. ») et jamais « dans N jours ».
+
+Quatre exigences pour le programmateur, quel qu'il soit. Les trois premières
+sont **déjà tenues** par le mécanisme existant ; la quatrième manque :
+
+| Exigence | État |
+|---|---|
+| **Rattraper les rappels dus** après un passage manqué | Tenue : rien n'est perdu, les rappels restent programmés en base et le passage suivant prend les plus anciens d'abord. |
+| **Revalider avant d'envoyer** | Tenue : `auto_confirmer_transmission` est appelée juste avant la remise au fournisseur, et un rappel dont l'échéance est atteinte est annulé avec son motif plutôt qu'envoyé trop tard. |
+| **Ne pas produire de doublon** | Tenue : l'empreinte et la contrainte d'unicité `(proprietaire, clé, palier, canal)` l'interdisent, et un rappel réservé dont l'issue est inconnue n'est jamais renvoyé. |
+| **Détecter un passage manqué** | **Manque.** Aujourd'hui, si le programmateur ne tourne pas, personne ne le sait : le silence ressemble à « rien à envoyer ». Il faudra une trace de dernier passage réussi et une alerte au-delà d'un seuil. |
+
+**Recommandation, à votre décision.** GitHub Actions reste la seule option
+gratuite qui vise l'heure de Paris de façon déclarative, avec des secrets
+gérés et des journaux durables — à condition d'accepter le retard possible et
+d'ajouter la détection du passage manqué. Deux contraintes à retenir : un
+workflow planifié **ne tourne que sur la branche par défaut**, donc après une
+fusion ; et la désactivation automatique après inactivité n'est publiée que
+pour les dépôts publics, ce qui reste à vérifier pour le nôtre.
+
+Ce n'est pas un réglage : c'est un petit chantier, à ouvrir quand vous le
+voudrez. Rien n'est fait, rien n'est publié, et aucune de ces options n'a été
+activée.
+
 **Après une interruption** (programmateur arrêté, Mac en veille) :
 
 - rien n'est perdu : les rappels restent programmés en base ;
