@@ -174,7 +174,7 @@ la date de sa dernière relecture humaine.
 
 ## 6. Le moteur
 
-`lib/auto/connaissance/` — modules purs, 33 tests.
+`lib/auto/connaissance/` — modules purs, 44 tests.
 
 | Fichier | Rôle |
 |---|---|
@@ -314,7 +314,7 @@ atteindrait cette adresse ferait échouer le test.
 
 ## 10. Recette
 
-**Automatique** — 333 tests au vert, dont 33 nouveaux. Les cas de référence de
+**Automatique** — 344 tests au vert, dont 44 nouveaux. Les cas de référence de
 Crit'Air ne rejouent pas la formule : ce sont les **dates charnières lues dans
 l'annexe I** avec la classe attendue. Un test balaie tous les mois de 1990 à
 2026 pour vérifier qu'aucune période ne se chevauche ni ne laisse de trou. Les
@@ -331,7 +331,10 @@ e-mail) :
 | Diesel plus ancien | Opel Corsa 2014 diesel | Crit'Air 2 — conforme au tableau |
 | Sans date de mise en circulation | VW Golf 2018 diesel | Crit'Air « à compléter » ; la même date est demandée par le contrôle technique, et le pourquoi le dit |
 | Base indisponible | — | Couvert par test : « Rien n'est affirmé », le reste de la page continue |
-| Mobile 375 px | Citroën C3 | Lisible, pas de débordement, trois campagnes visibles |
+| Mobile 375 px | Citroën C3 | Lisible, pas de débordement, trois fiches visibles |
+| Programme publié | Tesla Model 3 (Test) | 6 opérations, leurs intervalles, leurs conditions, la portée citée par Tesla ; Crit'Air E ; une fiche nommant exactement le modèle |
+| Repère de marque | VW Golf | « Repère de marque », aucune échéance dérivée, « votre carnet fait foi » |
+| Version voisine | VW Golf | La fiche « golf a7 » est marquée « nomme une version voisine » |
 
 ---
 
