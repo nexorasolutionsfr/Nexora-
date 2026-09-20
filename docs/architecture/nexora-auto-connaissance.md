@@ -368,6 +368,30 @@ n'existent que sur Test, et elles s'affichent.
 
 ---
 
+### Ce que la recette réelle a corrigé (20 septembre 2026, en Production)
+
+Baptiste a ouvert Nexora avec **son compte et sa vraie voiture** — une Opel
+Corsa diesel 1.3 CDTI de 2007 — sur `nexora-garage.vercel.app`. Rien n'a été
+enregistré. Quatre écarts produit en sont sortis, tous corrigés ici.
+
+| Écart constaté | Ce qui a changé |
+|---|---|
+| **La facture restait l'action principale.** Le gros bouton de l'accueil était « Ajouter une facture », et « Entretenir ma voiture » remettait le justificatif au premier plan. Pour une voiture dont le programme n'est pas publié, le parcours dominant restait manuel. | L'entrée **sans document** passe devant, aux deux endroits : « Voir ce que Nexora sait ». Préciser le suivi vient ensuite, le justificatif en dernier — c'est un enrichissement, pas un péage d'entrée. |
+| **Les rappels voisins occupaient le premier plan.** Trié par date seule, « Corsa F, Corsa E » (version voisine) s'affichait avant deux fiches nommant « Corsa ». | Classement par **pertinence d'abord, date ensuite**. Les versions voisines sont **repliées dans un groupe à part**, jamais supprimées. Sur la Corsa : 2 fiches au premier plan, 1 repliée, 5 hors période. |
+| **« Exactement ce modèle »** pouvait se lire comme une compatibilité plus forte qu'une concordance de nom. | Le détail par niveau a quitté le résumé ; les comptes vivent sur les boutons qui déplient chaque groupe. Le résumé dit « N fiches nomment « corsa » », puis que Nexora ne peut pas savoir si cette voiture est concernée. |
+| **Les limites prenaient trop de place.** La carte Crit'Air répétait l'estimation, sa méthode et une réserve détaillée. | Résultat et limite essentielle visibles ; la réserve détaillée rejoint « D'où vient cette information ? ». Les majuscules insistantes (« VOTRE ») sont retirées. |
+
+**Audit demandé, et il a trouvé quelque chose.** Il fallait vérifier que la
+logique « hors période de fabrication » ne confond pas date d'immatriculation
+et date de fabrication. Elle ne les confond pas — la fenêtre est élargie de
+douze mois par la fin, précisément parce que les deux ne coïncident pas. Mais
+une **date isolée** dans le champ (« à partir du 01.01.2020 ») produisait une
+fenêtre d'un seul jour, qui pouvait écarter à tort une voiture concernée. Il
+faut désormais **deux dates** pour former une période ; sinon elle est dite
+« non précisée » et la fiche reste au premier plan.
+
+---
+
 ## 11. Ce qui reste ouvert
 
 1. **Couverture actuelle de l'entretien : deux modèles** (Tesla Model 3 et

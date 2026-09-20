@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { CalendarClock, ChevronRight, CircleAlert, FileText, Gauge, Plus, ReceiptText, Wrench } from "lucide-react";
+import { BookOpen, CalendarClock, ChevronRight, CircleAlert, FileText, Gauge, Plus, ReceiptText, Wrench } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { ajouterJours, aujourdhuiIso, dernierKilometrage, joursEntre } from "@/lib/auto/echeances";
@@ -239,10 +239,10 @@ function Preparer({ etat, vehicule, onPlusTard }) {
       {parLeDocument ? (
         <>
           <p className="mt-1 text-[15px] leading-snug text-foreground">
-            Ajoutez une facture de garage : Nexora y cherchera la date, le kilométrage et ce qui a été fait.
+            Nexora ne peut pas encore calculer votre prochaine révision. En attendant, elle a regardé ce qui concerne cette voiture.
           </p>
           <p className="mt-2 text-[13px] leading-snug text-muted-foreground">
-            Une facture ne porte pas toujours l'intervalle prévu par le constructeur. Si elle manque, Nexora vous le dira plutôt que de l'inventer.
+            Rappels de sécurité publiés, classe Crit'Air, et ce que le constructeur publie pour ce modèle : rien de tout cela ne demande un document.
           </p>
         </>
       ) : (
@@ -252,18 +252,29 @@ function Preparer({ etat, vehicule, onPlusTard }) {
       <div className="mt-4 space-y-2">
         {parLeDocument ? (
           <>
-            <Link href={`/auto/factures/nouvelle?vehicule=${vehicule.id}`} className={boutonPrincipal}>
-              <ReceiptText className="size-5" aria-hidden="true" />
-              Ajouter une facture
+            {/* L'entrée utile d'abord : elle ne demande aucun document. Le
+                justificatif était le bouton principal, et rendait le parcours
+                dominant manuel pour une voiture dont le programme n'est pas
+                publié (constat de Baptiste sur sa Corsa, le 20 sept. 2026). */}
+            <Link href={`/auto/vehicules/${vehicule.id}#connaissance`} className={boutonPrincipal}>
+              <BookOpen className="size-5" aria-hidden="true" />
+              Voir ce que Nexora sait
             </Link>
             {premiere ? (
               <Link
                 href={`/auto/vehicules/${vehicule.id}?action=${premiere.code}`}
                 className="flex min-h-11 items-center justify-center rounded-xl px-3 text-sm font-semibold text-primary transition hover:bg-secondary"
               >
-                Je n'ai pas de facture : {premiere.libelle.charAt(0).toLowerCase()}{premiere.libelle.slice(1)}
+                {premiere.libelle}
               </Link>
             ) : null}
+            <Link
+              href={`/auto/factures/nouvelle?vehicule=${vehicule.id}`}
+              className="flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted"
+            >
+              <ReceiptText className="size-4" aria-hidden="true" />
+              Ajouter une facture
+            </Link>
           </>
         ) : premiere ? (
           <Link href={`/auto/vehicules/${vehicule.id}?action=${premiere.code}`} className={boutonPrincipal}>
