@@ -28,7 +28,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { MOTIFS_REFUS, cibleDEnvoi, suiteDeConfirmation } from "./prevenirClient";
+import { MOTIFS_REFUS, cibleDEnvoi, leverLeDoute, suiteDeConfirmation } from "./prevenirClient";
 
 export { MOTIFS_REFUS };
 
@@ -107,7 +107,7 @@ export function usePrevenirClient({ onToast } = {}) {
     } catch (e) {
       // `supabase-js` rend d'ordinaire l'échec dans `error`, mais une coupure
       // peut rejeter la promesse. Une exception ne doit pas laisser la fenêtre
-      // figée sur « Envoi autorisé… ».
+      // figée sur « Autorisation en cours… ».
       reponse = { data: null, error: { message: String(e?.message || e) } };
     } finally {
       enVol.current = false;
@@ -115,10 +115,25 @@ export function usePrevenirClient({ onToast } = {}) {
 
     const suite = suiteDeConfirmation(reponse);
     if (suite.fermer) setPrevenir(null);
+    // La fenêtre redevient utilisable TOUT DE SUITE, avant même la relecture :
+    // si l'état ne répond pas non plus, on ne veut pas d'un écran figé.
     else setPrevenir((p) => (p ? { ...p, enCours: false, erreur: suite.erreur } : p));
-    // L'état affiché repart de la base, jamais d'une supposition — sauf quand
-    // la requête n'est jamais partie : il n'a alors pas pu changer.
-    if (suite.relireEtat) await lireEtat(visee.rendezVousId);
+    const etat = suite.relireEtat ? await lireEtat(visee.rendezVousId) : null;
+
+    // UNE RÉPONSE PERDUE SE TRANCHE PAR L'ÉTAT, PAS PAR UNE SUPPOSITION
+    //
+    // On ne réautorise jamais tout seul : on relit, et on dit ce qu'on a lu.
+    // Si l'autorisation était passée, la relecture le montre et on ferme ; si
+    // elle n'était pas passée, on le dit aussi ; si l'état reste inconnu, le
+    // doute reste affiché. `autoriser_envoi_atelier` garde de son côté son
+    // refus de réarmer une ligne déjà `en_attente` ou `envoi_en_cours`.
+    if (suite.doute) {
+      const leve = leverLeDoute(etat);
+      if (leve.fermer) setPrevenir(null);
+      else setPrevenir((p) => (p ? { ...p, enCours: false, erreur: leve.erreur } : p));
+      if (leve.toast) onToast?.(leve.toast);
+      return;
+    }
     if (suite.toast) onToast?.(suite.toast);
   }, [lireEtat, onToast]);
 

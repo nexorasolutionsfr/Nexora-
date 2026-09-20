@@ -47,22 +47,23 @@ Trois faits, dans cet ordre :
    répondait `{"ok":true}` en 100–140 ms : ni la fonction, ni les droits, ni les données
    n'étaient en cause.
 
-## 3. La Production était touchée — c'est prouvé, pas déduit
+## 3. Jusqu'où va la preuve
 
 Le journal ci-dessus a été relevé **deux fois** :
 
 | Mode | Passages de la fonction de mise à jour | Retour anticipé | RPC émise |
 |---|---|---|---|
 | `next dev` (StrictMode) | 2, tous **après** le retour | oui | non |
-| `next build` + `next start` | **1**, après le retour | oui | non |
+| `next build` + `next start`, **en local**, relié à Test | **1**, après le retour | oui | non |
 
-Le second est le même pipeline de compilation que celui servi par Vercel. Le passage
-unique de la fonction confirme l'absence de StrictMode, donc un vrai build de production.
-Le défaut ne vient pas du mode développement.
+**Ce qui est établi** : le défaut se reproduit en **build de production local relié à
+Test**. Le passage unique de la fonction confirme l'absence de StrictMode — ce n'est donc
+pas un artefact du mode développement.
 
-**Limite du contrôle** : build de production **local**, servi par `next start`. L'écran n'a
-pas été cliqué sur `nexora-garage.vercel.app` — cela demanderait une session sur le garage
-réel, hors périmètre de ce lot.
+**Ce qui ne l'est pas** : l'**impact sur le site déployé n'a pas été vérifié directement.**
+L'écran n'a pas été cliqué sur `nexora-garage.vercel.app` : cela demanderait une session
+sur le garage réel, hors périmètre de ce lot. Le code servi est le même, mais ce n'est pas
+une observation — c'est une déduction, et elle n'est pas présentée autrement ici.
 
 ## 4. Le correctif
 
@@ -138,11 +139,41 @@ déclencheur, comme chez un garage.
 | 4a | **Refus serveur** | voiture repassée « en intervention » pendant que la fenêtre est ouverte, puis clic souris | « Cette voiture n'est plus notée prête. Aucun message n'a été envoyé. » — **bouton actif** | `sans_lien` — rien d'armé |
 | 4b | **Panne de réseau** | requête `autoriser_envoi_atelier` bloquée, puis clic sur le vrai bouton | « La connexion a échoué. Rien n'a été envoyé — réessayez. » — **`disabled=false`** | `sans_lien` — rien d'armé |
 | 5 | **Après rechargement** | rechargement de la page | les deux voitures autorisées ont quitté « À traiter », les trois autres y restent | conforme à la base, ligne par ligne |
+| 6 | **Réponse perdue après enregistrement** | la réponse du POST est jetée en vol, le POST ayant abouti (200) | aucun message d'erreur, fenêtre fermée, la voiture quitte la liste ; **jamais « rien envoyé »** | **1 seule** notification, `en_attente`, bon destinataire |
+| 7 | **Rafraîchissement sans rechargement** | clic souris, BF-606-FF | compteur **12 → 11 actions, 10 → 9 voitures**, la ligne part | `en_attente` |
+| 8 | **Le mot juste dans l'Atelier** | écran Atelier | « Message autorisé, départ en attente de traitement. » sur les 4 cartes ; **aucune** occurrence de « envoyé » | — |
 
-Aucun appel direct à la RPC n'a remplacé un clic. Les scénarios 1 à 4a sont joués à la
-**souris** dans le navigateur ; le 4b l'est par un clic programmatique **sur le vrai bouton**,
-parce que couper une requête demande le protocole DevTools — le parcours React est le même,
-seule la façon d'appuyer diffère. Capture : `captures/prevenir-client-2026-09-20/`.
+Aucun appel direct à la RPC n'a remplacé un clic. Les scénarios 1 à 4a et 7 sont joués à la
+**souris** ; les 4b, 6 et 8 le sont par un clic programmatique **sur le vrai bouton**, parce
+que couper une requête demande le protocole DevTools — le parcours React est identique,
+seule la façon d'appuyer diffère. Captures : `captures/prevenir-client-2026-09-20/`.
+
+### Le scénario 6 en détail — celui qui manquait
+
+Pour qu'il soit vrai, il faut que **le serveur enregistre** et que **seule la réponse se
+perde**. Deux pièges rencontrés :
+
+1. bloquer l'URL (`Network.setBlockedURLs`) empêche la requête de partir : c'est le
+   scénario 4b, pas celui-ci ;
+2. intercepter au stade `Response` avec un motif `requestMethod: "POST"` attrape quand même
+   la **pré-vérification CORS** (OPTIONS) : le POST ne part jamais. Chrome ignore ce filtre
+   dans le motif — le tri doit se faire dans le gestionnaire.
+
+La bonne recette : `Fetch.enable` au stade `Response` sans filtre de méthode, puis, à
+chaque interception, `Fetch.continueResponse` pour OPTIONS et `Fetch.failRequest`
+(`ConnectionAborted`) pour le POST. Journal de l'exécution :
+
+```
+requêtes interceptées : [{"methode":"OPTIONS","statut":200},{"methode":"POST","statut":200}]
+libellés observés sur le bouton : Autorisation en cours… | Envoyer le message
+message à l'écran : AUCUN
+fenêtre encore ouverte : false
+compteur : 12 actions à traiter  (13 avant)
+```
+
+Le POST a bien été servi (200) avant que sa réponse ne soit jetée. Le navigateur a vu une
+coupure, a relu l'état, a constaté que l'autorisation était là, a fermé la fenêtre — et
+**n'a pas réautorisé** : la base ne porte qu'une seule ligne pour cette voiture.
 
 ## 8. Isolation des envois, revérifiée avant la recette
 
@@ -157,18 +188,21 @@ Quatre vérifications, toutes en lecture seule, **sans toucher à `reserver_noti
 
 ## 9. Notifications armées sur Test — à ne jamais laisser partir
 
-La recette en a ajouté **4** (2 atelier, issues des scénarios 2 et 3 ; 2 devis, semées par
-`jeu-atelier.mjs`). Aucune n'a disparu.
+Les deux passes de recette en ont ajouté **6** (4 atelier, issues des scénarios 2, 3, 6 et 7 ;
+2 devis, semées par `jeu-atelier.mjs`). **Aucune n'a disparu**, aucune n'a été supprimée ni
+réactivée.
 
-Relevé du 2026-09-20T14:09:36.785Z — projet Test.
+Relevé du 2026-09-20T14:27:47.606Z — projet Test.
 
-**`notifications_atelier`** — 4 `en_attente`, 1 `envoi_en_cours`
+**`notifications_atelier`** — 6 `en_attente`, 1 `envoi_en_cours`
 
-<details><summary>4 × en_attente</summary>
+<details><summary>6 × en_attente</summary>
 
 - `27ef1aff-ad94-4bc3-93a4-daf801119003` — créée 2026-09-20
 - `15204c8f-9421-4d7f-9226-60439046f549` — créée 2026-09-20
 - `e190c734-bed2-498e-9ae8-c906787b697c` — créée 2026-09-20
+- `ddb518b9-6160-48fb-b02e-ee44233c7f14` — créée 2026-09-20
+- `e808a9b2-afa8-4352-905e-386bd057429c` — créée 2026-09-20
 - `773e86d9-6485-4b79-8159-7a43e17a1183` — créée 2026-09-20
 
 </details>
@@ -259,15 +293,34 @@ Relevé du 2026-09-20T14:09:36.785Z — projet Test.
 
 </details>
 
-**Total : 61 lignes armées.** Aucune ne doit partir.
+**Total : 63 lignes armées.** Aucune ne doit partir.
 
 ---
 
-## 10. Hors lot, relevé au passage
+## 10. Seconde passe — trois corrections de plus
 
-- **Le libellé du bouton pendant l'appel dit « Envoi autorisé… »** alors que rien n'est
-  encore autorisé. C'est ce qui a fait croire, la veille, que le geste avait abouti.
-  « Autorisation en cours… » serait exact. Non touché : hors sujet de ce lot.
-- **La liste « À traiter » ne se rafraîchit pas après une autorisation** : la ligne reste
-  affichée jusqu'au rechargement. `AujourdhuiJour` lit les états d'envoi pour son compte et
-  ne partage pas ceux du module. Comportement antérieur à ce lot, non touché.
+**a. Le libellé pendant l'appel.** Le bouton affichait « Envoi autorisé… » *avant* la
+réponse du serveur : une confirmation annoncée d'avance, et c'est précisément ce qui a fait
+croire que le geste avait abouti. Il dit désormais **« Autorisation en cours… »**.
+L'autorisation n'est affirmée qu'une fois la base d'accord. Vérifié dans le bundle servi :
+« Autorisation en cours » présent, **« Envoi autorisé » absent**.
+
+**b. Une réponse perdue n'est plus un échec.** Le message disait « La connexion a échoué.
+Rien n'a été envoyé — réessayez. » C'était une affirmation gratuite : la requête a pu
+aboutir et seule la réponse se perdre. Désormais :
+
+- on affiche **« Impossible de confirmer l'autorisation. Vérifiez l'état avant de
+  réessayer. »** ;
+- puis on relit l'état avec **le mécanisme existant** (`etat_envoi_atelier`, via `lireEtat`),
+  et c'est lui qui tranche : autorisation présente → on ferme et on le dit ; absente → on le
+  dit aussi et on peut réessayer ; état illisible → le doute reste affiché, tel quel.
+
+**Rien n'est réautorisé automatiquement**, et `autoriser_envoi_atelier` garde son refus de
+réarmer une ligne déjà `en_attente` ou `envoi_en_cours`.
+
+**c. La liste se rafraîchit sans rechargement.** `AujourdhuiJour` lisait les états d'envoi
+pour son compte, et sa lecture ne se rejouait qu'au changement de la liste des voitures
+prêtes. Les états relus par le module partagé lui sont maintenant passés (`etatsEnvoiFrais`)
+et le plus frais gagne. Les deux valeurs viennent de la même fonction de base : aucune n'est
+déduite, et `etat` est recopié tel quel — **`en_attente_envoi` reste « autorisé / en
+attente », jamais « envoyé »** (vérifié à l'écran, scénario 8).

@@ -5,6 +5,7 @@ import {
   MOTIFS_REFUS,
   cibleDEnvoi,
   estUnePanneReseau,
+  leverLeDoute,
   suiteDeConfirmation,
 } from "./prevenirClient.js";
 
@@ -96,11 +97,24 @@ test("un refus inconnu laisse réessayer plutôt que de bloquer l'écran", () =>
   assert.equal(s.fermer, false);
 });
 
-test("panne de réseau : phrase de réseau, rien n'est parti, et on peut réessayer", () => {
+// UNE RÉPONSE PERDUE N'EST PAS UN ÉCHEC
+//
+// Le serveur a pu enregistrer l'autorisation et la réponse se perdre en
+// chemin. Dire « rien n'a été envoyé » serait faux une fois sur deux, et
+// pousserait à recommencer un geste déjà fait.
+test("panne de réseau : on annonce un DOUTE, jamais « rien n'a été envoyé »", () => {
   const s = suiteDeConfirmation({ error: { message: "TypeError: Failed to fetch" } });
   assert.equal(s.fermer, false);
-  assert.equal(s.erreur, ERREURS.reseau);
-  // On ne relit pas la base : la requête n'est jamais partie, l'état n'a pas bougé.
+  assert.equal(s.erreur, ERREURS.doute);
+  assert.equal(s.doute, true);
+  // Et on relit l'état : c'est lui qui tranchera.
+  assert.equal(s.relireEtat, true);
+  assert.ok(!/rien n'a été envoyé/i.test(s.erreur));
+});
+
+test("un refus du serveur n'est pas un doute : la réponse est arrivée", () => {
+  const s = suiteDeConfirmation({ error: { code: "42501", message: "permission denied" } });
+  assert.equal(s.doute, false);
   assert.equal(s.relireEtat, false);
 });
 
@@ -108,6 +122,58 @@ test("refus du serveur : on parle de droits, pas de réseau", () => {
   const s = suiteDeConfirmation({ error: { code: "42501", message: "permission denied" } });
   assert.equal(s.erreur, ERREURS.droits);
   assert.equal(s.fermer, false);
+});
+
+// --- Lever le doute avec l'état relu ---------------------------------------
+
+// LE CAS QUI COMPTE : le serveur a enregistré, la réponse s'est perdue.
+test("réponse perdue mais autorisation enregistrée : on le reconnaît, on ferme, rien n'est réautorisé", () => {
+  const perdue = suiteDeConfirmation({ error: { message: "Failed to fetch" } });
+  assert.equal(perdue.erreur, ERREURS.doute, "aucun faux « rien envoyé »");
+  assert.equal(perdue.relireEtat, true);
+
+  const leve = leverLeDoute({ ok: true, etat: "en_attente_envoi" });
+  assert.equal(leve.fermer, true);
+  assert.equal(leve.toast, "Message autorisé");
+  assert.equal(leve.erreur, null);
+  assert.equal(leve.resolu, true);
+  // Et surtout : aucune consigne de réautoriser. Ce module ne rend jamais de
+  // « réessayer tout seul » — la seconde notification ne peut pas naître ici.
+  assert.equal("reautoriser" in leve, false);
+});
+
+test("le doute se lève aussi quand l'envoi est déjà parti ou en cours", () => {
+  for (const etat of ["envoi_en_cours", "envoye"]) {
+    const leve = leverLeDoute({ ok: true, etat });
+    assert.equal(leve.fermer, true, etat);
+    // « autorisé », jamais « envoyé » : on ne promet pas plus que ce qu'on sait.
+    assert.equal(leve.toast, "Message autorisé", etat);
+  }
+});
+
+test("réponse perdue ET autorisation absente : on le dit, et on peut réessayer", () => {
+  for (const etat of ["aucune", "a_valider"]) {
+    const leve = leverLeDoute({ ok: true, etat });
+    assert.equal(leve.fermer, false, etat);
+    assert.equal(leve.erreur, ERREURS.doutePasArmee, etat);
+    assert.equal(leve.resolu, true, etat);
+  }
+});
+
+test("état introuvable : le doute reste un doute", () => {
+  for (const etat of [null, undefined, { ok: false }, { ok: true, etat: "bloque" }, {}]) {
+    const leve = leverLeDoute(etat);
+    assert.equal(leve.fermer, false, JSON.stringify(etat));
+    assert.equal(leve.erreur, ERREURS.doute, JSON.stringify(etat));
+    assert.equal(leve.resolu, false, JSON.stringify(etat));
+  }
+});
+
+test("aucune issue du doute ne laisse la fenêtre ouverte et muette", () => {
+  for (const etat of [null, { ok: true, etat: "aucune" }, { ok: true, etat: "en_attente_envoi" }]) {
+    const leve = leverLeDoute(etat);
+    assert.ok(leve.fermer || leve.erreur, JSON.stringify(etat));
+  }
 });
 
 // UNE SORTIE MUETTE EST UN DÉFAUT
@@ -123,6 +189,7 @@ test("aucune réponse possible ne laisse la fenêtre ouverte et muette", () => {
     { data: { ok: false, raison: "inconnue" } },
     { error: { message: "Failed to fetch" } },
     { error: { code: "42501", message: "permission denied" } },
+    { data: { ok: false } },
     { data: null },
     {},
   ];

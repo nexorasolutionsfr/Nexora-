@@ -41,11 +41,27 @@ export const MOTIFS_REFUS = {
 
 export const ERREURS = {
   cible: "Le message à envoyer n'a pas pu être identifié. Fermez cette fenêtre, rouvrez le message, puis confirmez.",
-  reseau: "La connexion a échoué. Rien n'a été envoyé — réessayez.",
+  // UNE RÉPONSE PERDUE NE PROUVE RIEN
+  // Si la réponse n'arrive pas, la requête a pu aboutir quand même : le
+  // serveur peut avoir enregistré l'autorisation. Annoncer « rien n'a été
+  // envoyé » serait une affirmation gratuite, et la pire : elle pousse à
+  // recommencer un geste peut-être déjà fait.
+  doute: "Impossible de confirmer l'autorisation. Vérifiez l'état avant de réessayer.",
+  doutePasArmee: "La connexion a échoué et l'autorisation n'a pas été enregistrée. Vous pouvez réessayer.",
   droits: "Envoi refusé. Vérifiez vos droits, puis réessayez.",
   refus: "Envoi refusé.",
-  inattendu: "Réponse inattendue du serveur. Rien n'a été envoyé — réessayez.",
+  inattendu: "Réponse inattendue du serveur. L'autorisation n'a pas été confirmée — vérifiez l'état avant de réessayer.",
 };
+
+/**
+ * Les états dans lesquels l'autorisation a BIEN été enregistrée.
+ *
+ * Ce sont les clés rendues par `etat_envoi_atelier`. `aucune` et `a_valider`
+ * disent le contraire ; tout le reste — y compris `null` — est un inconnu, et
+ * un inconnu ne se range d'aucun côté.
+ */
+const ETATS_AUTORISES = new Set(["en_attente_envoi", "envoi_en_cours", "envoye"]);
+const ETATS_NON_AUTORISES = new Set(["aucune", "a_valider"]);
 
 /**
  * La cible d'un envoi, déterminée explicitement.
@@ -89,13 +105,13 @@ export function estUnePanneReseau(error) {
  */
 export function suiteDeConfirmation({ error = null, data = null } = {}) {
   if (error) {
-    const reseau = estUnePanneReseau(error);
-    return {
-      fermer: false,
-      erreur: reseau ? ERREURS.reseau : ERREURS.droits,
-      toast: null,
-      relireEtat: false,
-    };
+    // Une panne de réseau laisse un DOUTE, pas un échec. On relit donc l'état
+    // — c'est lui, et lui seul, qui tranchera (voir `leverLeDoute`).
+    if (estUnePanneReseau(error)) {
+      return { fermer: false, erreur: ERREURS.doute, toast: null, relireEtat: true, doute: true };
+    }
+    // Un refus du serveur, lui, est une réponse : elle est arrivée, et elle dit non.
+    return { fermer: false, erreur: ERREURS.droits, toast: null, relireEtat: false, doute: false };
   }
   if (data && data.ok === false) {
     return {
@@ -103,6 +119,7 @@ export function suiteDeConfirmation({ error = null, data = null } = {}) {
       erreur: MOTIFS_REFUS[data.raison] || ERREURS.refus,
       toast: null,
       relireEtat: true,
+      doute: false,
     };
   }
   if (data && data.ok === true) {
@@ -111,9 +128,34 @@ export function suiteDeConfirmation({ error = null, data = null } = {}) {
       erreur: null,
       toast: data.deja_autorise ? "Message déjà autorisé" : "Message autorisé",
       relireEtat: true,
+      doute: false,
     };
   }
-  // Ni erreur ni réponse lisible : on ne ferme pas, on ne prétend pas que
-  // c'est parti, et on laisse réessayer.
-  return { fermer: false, erreur: ERREURS.inattendu, toast: null, relireEtat: true };
+  // Ni erreur ni réponse lisible : on ne ferme pas, on ne prétend rien, et on
+  // relit l'état comme pour une réponse perdue.
+  return { fermer: false, erreur: ERREURS.inattendu, toast: null, relireEtat: true, doute: true };
+}
+
+/**
+ * Lever le doute après une réponse perdue — avec l'état relu, jamais autrement.
+ *
+ * @param etat  la réponse de `etat_envoi_atelier`, ou `null` si elle n'est pas
+ *              venue non plus.
+ *
+ * Trois issues, et aucune ne réautorise quoi que ce soit : ce module ne décide
+ * d'aucun envoi. Si l'autorisation est là, on le dit et on ferme ; si elle n'y
+ * est pas, on le dit aussi ; et si l'état reste inconnu, on garde le doute
+ * plutôt que d'en inventer la résolution.
+ */
+export function leverLeDoute(etat) {
+  const cle = etat && etat.ok !== false ? etat.etat ?? null : null;
+  if (ETATS_AUTORISES.has(cle)) {
+    // La requête avait bien abouti. Le message n'est pas « envoyé » pour
+    // autant : il est autorisé, et il partira au traitement suivant.
+    return { fermer: true, erreur: null, toast: "Message autorisé", resolu: true };
+  }
+  if (ETATS_NON_AUTORISES.has(cle)) {
+    return { fermer: false, erreur: ERREURS.doutePasArmee, toast: null, resolu: true };
+  }
+  return { fermer: false, erreur: ERREURS.doute, toast: null, resolu: false };
 }
