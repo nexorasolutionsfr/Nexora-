@@ -15,6 +15,9 @@ import { CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { PROJET_TEST, analyserCle, libelleProjet, projetDepuisAdresse, verdictProjet } from "@/lib/auto/environnement";
 import { carte } from "@/components/auto/elements";
+// La MÊME constante que le panneau de rappel : si elle est fausse ici, le
+// panneau n'existe nulle part dans le code servi à cet appareil.
+import { RAPPELS_ACTIFS } from "@/components/auto/RappelControle";
 
 async function controleNavigateur() {
   const adresse = String(supabase.supabaseUrl || "");
@@ -130,6 +133,7 @@ export default function ControleEnvironnement() {
         <dl className="mt-2 divide-y divide-border">
           <Ligne libelle="Adresse Supabase" valeur={projet(navigateur.projetAdresse)} />
           <Ligne libelle="Clé publique" valeur={cle(navigateur.clePublique)} />
+          <Ligne libelle="Panneau « Rappel par e-mail »" valeur={RAPPELS_ACTIFS ? "affiché (NEXT_PUBLIC_AUTO_RAPPELS = actif)" : "masqué"} />
         </dl>
       </section>
 
