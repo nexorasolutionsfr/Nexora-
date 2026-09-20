@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
+import ConnaissanceVoiture from "./ConnaissanceVoiture";
 import { RESULTATS_DEFAVORABLES, ajouterJours, aujourdhuiIso, dernierKilometrage } from "@/lib/auto/echeances";
 import { MANQUES, factureDAbord, manquesEntretien, phraseManques } from "@/lib/auto/entretien";
 import { estimerKilometrage, lignesKilometrage } from "@/lib/auto/kilometrage";
@@ -414,6 +415,7 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
         {[
           { id: "kilometrage", libelle: "Kilométrage" },
           { id: "echeance-ct", libelle: "Échéances" },
+          { id: "connaissance", libelle: "Ce que Nexora sait" },
           { id: "historique", libelle: "Historique" },
           { id: "documents", libelle: "Documents" },
           { id: "depenses", libelle: "Dépenses" },
@@ -551,6 +553,8 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
           ) : null}
         </CarteEcheance>
       </div>
+
+      <ConnaissanceVoiture vehicule={vehicule} onAction={(code) => faireAction(code, { defiler: true })} />
 
       {!archive ? (
         <Link href={`/auto/services?vehicule=${vehicule.id}`} className={`${carte} mt-3 flex items-center gap-3 transition hover:border-primary/40`}>

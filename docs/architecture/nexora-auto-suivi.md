@@ -1364,3 +1364,57 @@ Détail dans `nexora-auto-rappel-ct.md`, §11.
   `auto_rappel_neuf_heures` reprogramme au prochain 9 h : changer la date de
   l'échéance ne suffit pas. Pour un essai en journée, il faut avancer l'heure
   prévue de la seule ligne concernée (Test).
+
+## Lot J — ce que l'application sait d'une voiture (20 septembre 2026)
+
+Branche `auto/connaissance-vehicule`, empilée sur `auto/rappel-ct`. Détail
+complet dans `nexora-auto-connaissance.md`. Aucune migration, aucune dépense,
+rien en Production.
+
+Le but : qu'une voiture apporte quelque chose à son propriétaire **avant** que
+lui n'ait rien apporté. Obtenu avec marque et modèle seuls — les campagnes de
+rappel officielles — puis, avec l'énergie et la date de mise en circulation, la
+classe Crit'Air et le contrôle technique.
+
+- **R74 — aucun constructeur ne publie son programme d'entretien par version.**
+  Renault, Dacia et Peugeot ouvrent leurs notices sans VIN ni connexion, mais
+  la périodicité n'y est pas : elles renvoient toutes au « document d'entretien
+  du véhicule », c'est-à-dire au carnet papier. Les chiffres des pages de
+  marque (Renault « essence tous les 10 000 km, diesel tous les 15 000 km »,
+  Dacia « tous les ans ou chaque 20 000 km ») valent pour la marque entière,
+  sans distinction de motorisation : exactement l'approximation retirée le
+  18 septembre. Le programme personnalisé est donc **déclaré indisponible à
+  l'écran**, avec sa raison — pas passé sous silence.
+- **R75 — le trou d'identification de TecRMI est structurel, pas
+  contractuel.** Son énumération `kindOfNationalVehicleNo` est publiée et
+  fermée sur l'Allemagne et la Suisse : une plaque française n'entre pas dans
+  leur arbre véhicule, quel que soit le contrat. Et leur séquence impose une
+  étape de variante obligatoire (`bodyQualColId`) qu'aucun appel ne contourne —
+  le métier confirme lui-même qu'un programme d'entretien sans variante précise
+  n'existe pas.
+- **R76 — aucun des cinq fournisseurs ne publie de droit d'affichage grand
+  public, de cache ni de redistribution.** Tous ciblent des professionnels.
+  C'est le risque juridique n° 1 d'une application B2C, à lever par écrit avant
+  même de parler de prix. Seul Auto Ways publie une grille complète (49 €/mois
+  TTC pour 400 requêtes → 1 399 €/mois pour 100 000) ; les autres sont sur
+  devis.
+- **R77 — « 208 » attrape « 2008 » si on ne cherche pas un mot entier.** Le
+  modèle est cherché avec des bornes de mot. Inversement, « 208 v2 » **est**
+  une 208 : les fiches officielles numérotent les générations, et ce marqueur
+  est reconnu au lieu d'être pris pour un autre modèle.
+- **R78 — le champ « modèles » des fiches officielles est du texte libre qui
+  nomme souvent une dizaine de voitures.** Chercher « C3 » y trouve aussi
+  « C3 Aircross ». On n'essaie pas de trancher : la fiche s'affiche avec **son
+  propre libellé**, signalée « plusieurs modèles », et c'est la personne qui
+  reconnaît sa voiture.
+- **R79 — la période publiée est une période de FABRICATION, pas
+  d'immatriculation.** Une voiture faite en décembre s'immatricule en janvier.
+  La fenêtre est élargie de douze mois par la fin, jamais par le début, et une
+  fiche hors période est écartée de la liste principale sans être supprimée.
+- **R80 — une source non relue depuis plus d'un an doit cesser d'affirmer.**
+  Chaque source porte la date de sa dernière relecture humaine ; passé un an,
+  la connaissance bascule en « source à relire » et l'écran se tait. Testé.
+
+Ce qui reste bloqué et pourquoi est écrit noir sur blanc dans le produit
+lui-même : `PROGRAMMES` est vide dans `lib/auto/connaissance/moteur.js`, et y
+ajouter une ligne sera une décision documentée, pas une amélioration discrète.
