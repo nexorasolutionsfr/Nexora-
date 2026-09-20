@@ -121,7 +121,20 @@ export default function FormulaireVehicule({ vehicule, creation = false, libelle
             </select>
             {erreurDe("energie")}
           </div>
-          <p className={`${aide} col-span-2 -mt-1`}>L'énergie adapte les fiches d'entretien et de services.</p>
+          <p className={`${aide} col-span-2 -mt-1`}>L'énergie adapte les fiches de services, et donne la classe Crit'Air.</p>
+        </div>
+        {/* La date de première mise en circulation était repliée avec les
+            échéances. Elle en est sortie le 20 septembre 2026 : c'est le champ
+            facultatif qui débloque le plus de réponses d'un coup — la date du
+            contrôle technique ET la classe Crit'Air. La demander ici évite de
+            la redemander deux fois plus tard. */}
+        <div>
+          <label htmlFor="auto-dateMiseEnCirculation" className={etiquette}>
+            Première mise en circulation <span className="font-normal text-muted-foreground">(facultatif)</span>
+          </label>
+          <input {...attributs("dateMiseEnCirculation")} type="date" max={aujourdhui} className={champ} />
+          {erreurDe("dateMiseEnCirculation")}
+          <p className={aide}>Case B de la carte grise. Elle situe votre contrôle technique et donne la classe Crit'Air.</p>
         </div>
         {!creation ? (
           <div>
@@ -151,7 +164,10 @@ export default function FormulaireVehicule({ vehicule, creation = false, libelle
         </div>
       </fieldset>
 
-      {!echeancesOuvertes ? (
+      {/* Ce repli ne concerne plus que la création : en modification, la fiche
+          de la voiture a ses propres formulaires pour le contrôle technique et
+          le kilométrage, et un bloc vide n'a rien à dire. */}
+      {!creation ? null : !echeancesOuvertes ? (
         <button
           type="button"
           onClick={() => setEcheancesOuvertes(true)}
@@ -159,53 +175,41 @@ export default function FormulaireVehicule({ vehicule, creation = false, libelle
           className="flex w-full items-center justify-between gap-3 rounded-xl border border-dashed border-border px-3.5 py-3 text-left text-sm text-foreground transition hover:bg-muted"
         >
           <span>
-            <span className="block font-semibold">Calculer les échéances dès maintenant</span>
-            <span className="block text-[13px] text-muted-foreground">Carte grise, dernier contrôle, kilométrage : facultatif, possible plus tard.</span>
+            <span className="block font-semibold">Ajouter le contrôle technique et le kilométrage</span>
+            <span className="block text-[13px] text-muted-foreground">Facultatif, et possible plus tard depuis la fiche de la voiture.</span>
           </span>
           <ChevronDown className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
         </button>
       ) : (
-      <fieldset className="space-y-4">
-        <legend className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pour calculer vos échéances</legend>
-        <div>
-          <label htmlFor="auto-dateMiseEnCirculation" className={etiquette}>
-            Première mise en circulation <span className="font-normal text-muted-foreground">(facultatif)</span>
-          </label>
-          <input {...attributs("dateMiseEnCirculation")} type="date" max={aujourdhui} className={champ} />
-          {erreurDe("dateMiseEnCirculation")}
-          <p className={aide}>Case B de la carte grise.</p>
-        </div>
-        {creation ? (
-          <>
-            <div>
-              <label htmlFor="auto-dernierControle" className={etiquette}>
-                Dernier contrôle technique <span className="font-normal text-muted-foreground">(facultatif)</span>
-              </label>
-              <input {...attributs("dernierControle")} type="date" max={aujourdhui} className={champ} />
-              {erreurDe("dernierControle")}
-              <p className={aide}>Laissez vide si la voiture a moins de 4 ans.</p>
+        <fieldset className="space-y-4">
+          <legend className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Contrôle technique et kilométrage</legend>
+          <div>
+            <label htmlFor="auto-dernierControle" className={etiquette}>
+              Dernier contrôle technique <span className="font-normal text-muted-foreground">(facultatif)</span>
+            </label>
+            <input {...attributs("dernierControle")} type="date" max={aujourdhui} className={champ} />
+            {erreurDe("dernierControle")}
+            <p className={aide}>Laissez vide si la voiture a moins de 4 ans.</p>
+          </div>
+          <div>
+            <label htmlFor="auto-controleValableJusquAu" className={etiquette}>
+              Prochain contrôle avant le <span className="font-normal text-muted-foreground">(facultatif)</span>
+            </label>
+            <input {...attributs("controleValableJusquAu")} type="date" className={champ} />
+            {erreurDe("controleValableJusquAu")}
+            <p className={aide}>Date inscrite sur le procès-verbal du dernier contrôle. Elle prime sur tout calcul.</p>
+          </div>
+          <div>
+            <label htmlFor="auto-kilometrage" className={etiquette}>
+              Kilométrage actuel <span className="font-normal text-muted-foreground">(facultatif)</span>
+            </label>
+            <div className="relative">
+              <input {...attributs("kilometrage")} inputMode="numeric" className={`${champ} pr-12`} placeholder="61 400" />
+              <span className="pointer-events-none absolute inset-y-0 right-3.5 flex items-center text-sm text-muted-foreground">km</span>
             </div>
-            <div>
-              <label htmlFor="auto-controleValableJusquAu" className={etiquette}>
-                Prochain contrôle avant le <span className="font-normal text-muted-foreground">(facultatif)</span>
-              </label>
-              <input {...attributs("controleValableJusquAu")} type="date" className={champ} />
-              {erreurDe("controleValableJusquAu")}
-              <p className={aide}>Date inscrite sur le procès-verbal du dernier contrôle. Elle prime sur tout calcul.</p>
-            </div>
-            <div>
-              <label htmlFor="auto-kilometrage" className={etiquette}>
-                Kilométrage actuel <span className="font-normal text-muted-foreground">(facultatif)</span>
-              </label>
-              <div className="relative">
-                <input {...attributs("kilometrage")} inputMode="numeric" className={`${champ} pr-12`} placeholder="61 400" />
-                <span className="pointer-events-none absolute inset-y-0 right-3.5 flex items-center text-sm text-muted-foreground">km</span>
-              </div>
-              {erreurDe("kilometrage")}
-            </div>
-          </>
-        ) : null}
-      </fieldset>
+            {erreurDe("kilometrage")}
+          </div>
+        </fieldset>
       )}
 
       {erreurEnvoi ? <Alerte>{erreurEnvoi}</Alerte> : null}

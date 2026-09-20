@@ -1193,3 +1193,136 @@ console sur un onglet neuf.
 
 **Non prouvé** : la copie dans le presse-papiers elle-même. Le panneau de
 recette la refuse par politique ; seul le repli a pu être vérifié.
+
+## Lot J — ce que l'application sait d'une voiture (20 septembre 2026)
+
+Branche `auto/connaissance-vehicule`, empilée sur `auto/rappel-ct`. Détail
+complet dans `nexora-auto-connaissance.md`. Aucune migration, aucune dépense,
+rien en Production.
+
+Le but : qu'une voiture apporte quelque chose à son propriétaire **avant** que
+lui n'ait rien apporté. Obtenu avec marque et modèle seuls — les campagnes de
+rappel officielles — puis, avec l'énergie et la date de mise en circulation, la
+classe Crit'Air et le contrôle technique.
+
+- **R74 — « aucun constructeur ne publie son programme » était trop
+  catégorique** *(corrigé le 20 septembre, après relecture de Baptiste)*.
+  Examiner trois marques n'autorise pas à conclure pour toutes. **Tesla publie
+  un vrai programme par modèle nommé**, en français, sur une page publique et
+  sans VIN ni compte : opérations, intervalles et conditions. Volkswagen publie
+  un calendrier, mais pour « votre Volkswagen » — sans nommer de modèle ni de
+  motorisation. Et quatre problèmes distincts se cachaient sous un seul mot :
+  *données non trouvées* (Toyota), *renvoi au carnet papier* (Renault, Dacia),
+  *VIN exigé* (Peugeot), *VIN + abonnement* (Citroën), auxquels s'ajoute le
+  *droit de réutilisation* non établi. Le produit affiche donc trois niveaux
+  qui ne se confondent pas — programme, repère de marque, non publié — et
+  nomme la barrière rencontrée.
+- **R75 — « TecRMI n'a aucune entrée française » était faux** *(corrigé le
+  20 septembre)*. L'erreur : avoir confondu la liste des codes
+  d'immatriculation nationaux acceptés par UN point d'entrée avec la couverture
+  des données d'entretien. Sont confirmés : l'identification par
+  marque/modèle/type, l'étape de variante obligatoire (`bodyQualColId`), et
+  **deux intégrateurs TecRMI dont le siège est en France** sur la liste
+  officielle des partenaires. Ne sont pas vérifiés : la couverture
+  géographique (le dépliant produit renvoie une **erreur 404**) et
+  l'identification par VIN. Exigent une réponse du fournisseur : les droits
+  d'affichage grand public, le cache et la redistribution — **aucun des cinq
+  n'en publie un mot**, et c'est le vrai blocage, avant le prix.
+- **R76 — aucun des cinq fournisseurs ne publie de droit d'affichage grand
+  public, de cache ni de redistribution.** Tous ciblent des professionnels.
+  C'est le risque juridique n° 1 d'une application B2C, à lever par écrit avant
+  même de parler de prix. Seul Auto Ways publie une grille complète (49 €/mois
+  TTC pour 400 requêtes → 1 399 €/mois pour 100 000) ; les autres sont sur
+  devis.
+- **R77 — « 208 » attrape « 2008 » si on ne cherche pas un mot entier.** Le
+  modèle est cherché avec des bornes de mot. Inversement, « 208 v2 » **est**
+  une 208 : les fiches officielles numérotent les générations, et ce marqueur
+  est reconnu au lieu d'être pris pour un autre modèle.
+- **R78 — le champ « modèles » des fiches officielles est du texte libre qui
+  nomme souvent une dizaine de voitures.** Chercher « C3 » y trouve aussi
+  « C3 Aircross ». On n'essaie pas de trancher : la fiche s'affiche avec **son
+  propre libellé**, signalée « plusieurs modèles », et c'est la personne qui
+  reconnaît sa voiture.
+- **R79 — la période publiée est une période de FABRICATION, pas
+  d'immatriculation.** Une voiture faite en décembre s'immatricule en janvier.
+  La fenêtre est élargie de douze mois par la fin, jamais par le début, et une
+  fiche hors période est écartée de la liste principale sans être supprimée.
+- **R80 — une source non relue depuis plus d'un an doit cesser d'affirmer.**
+  Chaque source porte la date de sa dernière relecture humaine ; passé un an,
+  la connaissance bascule en « source à relire » et l'écran se tait. Testé.
+
+Ce qui reste bloqué et pourquoi est écrit noir sur blanc dans le produit
+lui-même : `PROGRAMMES` est vide dans `lib/auto/connaissance/moteur.js`, et y
+ajouter une ligne sera une décision documentée, pas une amélioration discrète.
+
+- **R81 — un libellé de voiture n'est pas un nom de catalogue.** La voiture
+  fictive de l'essai s'appelle « Peugeot 208 (essai) » : chercher ce libellé
+  entier dans les fiches officielles ne trouvait rien, et l'écran aurait
+  conclu « aucune campagne » — faux, et exactement ce qu'on ne veut pas dire.
+  La recherche va maintenant du plus précis au plus large (libellé nettoyé de
+  ses parenthèses, puis premier mot), et un élargissement est **affiché**.
+  Constat fait en préparant le lien de vérification pour Baptiste, pas par un
+  test : le jeu de recette, lui, nommait ses voitures proprement.
+
+### Relecture du 20 septembre 2026 — ce que Baptiste a corrigé
+
+Quatre affirmations du compte rendu ont été vérifiées dans les sources et
+rectifiées. Les deux premières sont reprises dans R74 et R75 ci-dessus.
+
+- **R82 — Yaris, Yaris Cross et GR Yaris ne sont pas la même voiture.** Une
+  fiche est désormais classée *exacte*, *génération* ou *voisine* selon ce qui
+  entoure le nom dans son texte, et seul un mot collé par une espace compte :
+  dans « aygo, aygo x, yaris, gr yaris », la virgule clôt le nom, donc la fiche
+  nomme bien la Yaris **en plus** de la GR Yaris. Le voisin peut être devant
+  (« gr yaris ») comme derrière (« yaris cross ») : les deux côtés sont lus.
+- **R83 — élargir une recherche ne doit jamais élever la certitude.** Le
+  libellé de la personne est maintenant *lu* et non découpé : une annotation
+  entre parenthèses ne part jamais dans une recherche, et descendre d'un palier
+  s'affiche comme une recherche **moins précise**.
+- **R84 — trois absences qu'il ne faut pas confondre.** « Aucune fiche ne
+  nomme ce modèle », « la base n'a pas répondu » et « aucun rappel ne concerne
+  votre voiture » sont trois choses différentes, et la troisième ne peut
+  **jamais** être affirmée. Dans tous les cas, la carte propose le seul geste
+  qui tranche : le numéro de série, case E, auprès du réseau de la marque.
+- **R85 — Crit'Air : la norme Euro prime, la date n'est que le repli.**
+  L'article 1 de l'arrêté le dit dans cet ordre, et l'inverse donne parfois une
+  classe **trop favorable** — un diesel Euro 4 immatriculé en janvier 2011 est
+  Crit'Air 3, pas 2. Le moteur applique désormais les deux critères dans le bon
+  ordre. Nexora ne collecte pas la norme Euro (ce serait un champ de plus) :
+  elle dit sur quoi elle s'appuie, ce que cela peut coûter, et renvoie au
+  simulateur officiel. Une lecture de la nomenclature n'est pas une
+  certification.
+- **R86 — aucun programmateur ne garantit une heure.** GitHub Actions accepte
+  bien un fuseau IANA, mais documente des exécutions retardées « voire
+  abandonnées » en période de charge. Trois exigences sont déjà tenues par le
+  mécanisme existant (rattrapage, revalidation avant envoi, absence de
+  doublon) ; la quatrième manque — **détecter un passage manqué**, car
+  aujourd'hui le silence ressemble à « rien à envoyer ».
+
+### Stabilisation du 20 septembre 2026 (soir)
+
+- **R87 — la page Tesla ne revendique aucun marché.** Son adresse porte la
+  locale `fr_fr`, mais le texte ne nomme aucun pays et mentionne la Chine
+  comme variante locale : c'est une liste internationale à variantes. La
+  portée enregistrée dans `sources.js` dit désormais exactement cela, et rien
+  de plus. Les conditions d'utilisation de Tesla n'ont **pas** pu être
+  consultées : `tesla.com` refuse les requêtes automatisées (HTTP 403). Un
+  accès public ne vaut pas autorisation de redistribution — c'est écrit dans
+  la source, et Nexora ne cite que des faits avec un lien vers la page.
+- **R88 — un programme publié n'est pas un calendrier personnel.** Un
+  intervalle dit « tous les 2 ans » ; il ne dit pas « le 4 mars prochain ».
+  La carte porte désormais cette phrase en évidence, non repliée, et la
+  condition Tesla « fabriqués avant 2021 environ » est **affichée sans être
+  appliquée** : elle porte sur une date de fabrication que Nexora n'a pas, et
+  « environ » n'est pas une date.
+- **R89 — une classe Crit'Air obtenue par la date est une estimation.**
+  L'étiquette dit « Estimation », la phrase passe au conditionnel
+  (« relèverait de »), et la réserve explique ce que cela peut coûter. Une
+  classe obtenue par l'énergie (colonnes E et 1) n'est pas une estimation :
+  l'arrêté la donne directement.
+- **R90 — « non publié » disait plus que ce qu'on avait vérifié.** Partout où
+  l'absence n'est pas démontrée, l'écran et les documents disent désormais
+  « non trouvé dans les sources examinées ». De même, « fournisseur
+  incompatible » est devenu « licence B2C à confirmer » : non confirmée ne
+  veut pas dire impossible, et TecAlliance présente publiquement des
+  intégrations pour le commerce en ligne.
