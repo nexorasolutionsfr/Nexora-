@@ -707,12 +707,21 @@ function SuiviEntretien({ vehicule, elements }) {
             </li>
           ))}
         </ul>
+        {/* L'entrée sans document passe devant. Le justificatif reste offert,
+            en dessous : c'est un enrichissement, pas le péage d'entrée
+            (constat de Baptiste sur sa Corsa, en Production, le 20 sept. 2026). */}
         <div className="mt-4 space-y-2">
-          <Link href={`/auto/factures/nouvelle?vehicule=${vehicule.id}`} className={boutonPrincipal}>
-            Ajouter le justificatif de la dernière révision
+          <Link href={`/auto/vehicules/${vehicule.id}#connaissance`} className={boutonPrincipal}>
+            Voir ce que Nexora sait de cette voiture
           </Link>
           <Link href={`/auto/vehicules/${vehicule.id}?action=${geste.action}`} className={boutonSecondaire}>
             {geste.geste}
+          </Link>
+          <Link
+            href={`/auto/factures/nouvelle?vehicule=${vehicule.id}`}
+            className="flex min-h-11 items-center justify-center rounded-xl px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted"
+          >
+            Ajouter le justificatif de la dernière révision
           </Link>
         </div>
       </section>

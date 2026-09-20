@@ -28,10 +28,10 @@ import {
   Wrench,
 } from "lucide-react";
 
-import { connaissancesDe, referenceDe } from "@/lib/auto/connaissance/moteur";
+import { connaissancesDe, nombreFichesAVerifier, referenceDe } from "@/lib/auto/connaissance/moteur";
 import { SOURCES } from "@/lib/auto/connaissance/sources";
 import { aujourdhuiIso } from "@/lib/auto/echeances";
-import { boutonLien, carte } from "./elements";
+import { boutonLien, boutonPrincipal, carte } from "./elements";
 import { formaterDate, formaterKm } from "./format";
 
 const ICONES = { securite: ShieldAlert, environnement: Leaf, entretien: Wrench, obligation: CircleCheck };
@@ -286,21 +286,43 @@ function Liste({ fiches, libelleDeplier }) {
   );
 }
 
+// Trois groupes, et un seul au premier plan.
+//
+// Les fiches qui nomment le modèle passent devant ; celles qui nomment une
+// version voisine, et celles dont la période de fabrication exclut la voiture,
+// se déplient. Trier par date seule mettait une « Corsa F, Corsa E » devant
+// deux fiches nommant « Corsa », et laissait le tri au conducteur.
 function Campagnes({ valeur }) {
+  const [voirVoisines, setVoirVoisines] = useState(false);
   const [voirEcartees, setVoirEcartees] = useState(false);
   if (!valeur) return null;
+
   return (
     <>
-      {valeur.retenues.length > 0 ? (
-        <p className="mt-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Fiches qui nomment votre modèle</p>
+      {valeur.principales.length > 0 ? (
+        <>
+          <p className="mt-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Fiches qui nomment votre modèle</p>
+          <Liste fiches={valeur.principales} libelleDeplier="Voir les autres fiches" />
+        </>
       ) : null}
-      <Liste fiches={valeur.retenues} libelleDeplier="Voir les autres fiches" />
+
+      {valeur.voisines.length > 0 ? (
+        <>
+          <button type="button" onClick={() => setVoirVoisines((v) => !v)} className={`${boutonLien} -ml-2 mt-2`}>
+            {voirVoisines
+              ? "Masquer les versions voisines"
+              : `Voir ${valeur.voisines.length} fiche${valeur.voisines.length > 1 ? "s" : ""} qui nomme${valeur.voisines.length > 1 ? "nt" : ""} une version voisine`}
+          </button>
+          {voirVoisines ? <Liste fiches={valeur.voisines} libelleDeplier="Voir les autres" /> : null}
+        </>
+      ) : null}
+
       {valeur.ecartees.length > 0 ? (
         <>
           <button type="button" onClick={() => setVoirEcartees((v) => !v)} className={`${boutonLien} -ml-2 mt-2`}>
             {voirEcartees
               ? "Masquer les fiches hors période de fabrication"
-              : `Voir ${valeur.ecartees.length} fiche${valeur.ecartees.length > 1 ? "s" : ""} hors de la période de fabrication`}
+              : `Voir ${valeur.ecartees.length} fiche${valeur.ecartees.length > 1 ? "s" : ""} dont la période de fabrication exclut votre voiture`}
           </button>
           {voirEcartees ? <Liste fiches={valeur.ecartees} libelleDeplier="Voir les autres" /> : null}
         </>
@@ -314,16 +336,23 @@ function Campagnes({ valeur }) {
 // pour CETTE voiture.
 function Verification({ verification }) {
   if (!verification) return null;
+  const { lien } = verification;
   return (
-    <div className="mt-3 rounded-xl border border-border px-3 py-2.5">
+    <div className="mt-3 rounded-xl border border-border px-3 py-3">
       <p className="text-[15px] font-semibold text-foreground">{verification.titre}</p>
       <p className="mt-0.5 text-[14px] leading-snug text-muted-foreground">{verification.texte}</p>
-      {verification.lien ? (
-        <a href={verification.lien.url} target="_blank" rel="noreferrer noopener" className={`${boutonLien} -ml-2 mt-1`}>
+      {lien?.principal ? (
+        <a href={lien.url} target="_blank" rel="noreferrer noopener" className={`${boutonPrincipal} mt-2.5`}>
+          <ExternalLink className="size-5" aria-hidden="true" />
+          {lien.libelle}
+        </a>
+      ) : lien ? (
+        <a href={lien.url} target="_blank" rel="noreferrer noopener" className={`${boutonLien} -ml-2 mt-1`}>
           <ExternalLink className="size-4" aria-hidden="true" />
-          {verification.lien.libelle}
+          {lien.libelle}
         </a>
       ) : null}
+      {verification.note ? <p className="mt-2 text-[13px] leading-snug text-muted-foreground">{verification.note}</p> : null}
     </div>
   );
 }
@@ -400,7 +429,6 @@ export default function ConnaissanceVoiture({ vehicule, onAction = null }) {
                       <Avertissement texte={c.avertissement} />
                       {c.cle === "campagnes_rappel" ? <Campagnes valeur={c.valeur} /> : null}
                       <Demandes items={c.manques} onAction={onAction} />
-                      <Demandes items={c.precision ? [c.precision] : null} ton="reserve" />
                       <Verification verification={c.verification} />
                       {(c.liens ?? []).map((l) => (
                         <a key={l.url} href={l.url} target="_blank" rel="noreferrer noopener" className={`${boutonLien} -ml-2 mr-3 mt-1`}>
@@ -436,8 +464,7 @@ export function SignalCampagnes({ vehicule }) {
   if (!vehicule || chargement) return null;
 
   const { connaissances } = connaissancesDe({ vehicule, campagnes, aujourdhui: aujourdhuiIso() });
-  const c = connaissances.find((x) => x.cle === "campagnes_rappel");
-  const nombre = c?.etat === "a_verifier" ? c.valeur.retenues.length : 0;
+  const nombre = nombreFichesAVerifier(connaissances);
   if (nombre === 0) return null;
 
   return (
