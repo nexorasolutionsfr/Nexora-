@@ -37,10 +37,12 @@ champs du formulaire, facultatifs, pris sur la carte grise) :
 - **La classe Crit'Air**, établie et expliquée ;
 - **La date du prochain contrôle technique** (déjà en place avant ce chantier).
 
-Et dans tous les cas :
+Et pour l'entretien, selon ce que le constructeur publie vraiment :
 
-- **Le programme d'entretien du constructeur est déclaré indisponible**, avec
-  la raison. Il n'apparaît pas comme un silence.
+- **Un programme** (Tesla Model 3 et Model Y) : les opérations et leurs
+  intervalles, avec leurs conditions ;
+- **un repère de marque** (Volkswagen), annoncé comme tel, sans échéance ;
+- **ou rien**, et la carte dit alors quelle barrière a été rencontrée.
 
 Constaté à l'écran le 20 septembre 2026 sur le jeu de recette : une **Toyota
 Yaris** dont on ne connaît que la marque et le modèle — pas d'énergie, pas de
@@ -74,70 +76,99 @@ testé (`moteur.test.js`), pas seulement promis.
 
 ---
 
-## 4. Décision fournisseur : personne, aujourd'hui
+## 4. Décision fournisseur — ce qui est confirmé, ce qui ne l'est pas
 
-Les quatre fournisseurs cités dans le cadrage ont été examinés le 20 septembre
-2026 sur leurs pages publiques. **Aucun n'est utilisable sans contrat, sans
-création de compte, ou sans dépense.** Rien n'a été souscrit, personne n'a été
-contacté.
+*Corrigé le 20 septembre 2026, après une relecture demandée par Baptiste. La
+version précédente de ce document concluait « TecRMI n'a aucune entrée
+française, aucun contrat n'y change rien ». **Cette conclusion était fausse**,
+et pour une raison qu'il faut nommer : elle confondait la liste des codes
+d'immatriculation nationaux acceptés par UN point d'entrée avec la couverture
+des données d'entretien elles-mêmes. Ce sont deux choses différentes.*
+
+Quatre questions se posent séparément, et les mélanger produit exactement
+l'erreur qu'on vient de corriger :
+
+1. **Par quoi identifie-t-on un véhicule ?** (code national, VIN, ou sélection
+   marque/modèle/type)
+2. **Quelle est la couverture technique** des données pour le marché français ?
+3. **Quel est le coût** ?
+4. **A-t-on le droit d'afficher ces données à un particulier ?**
+
+### Ce qui est CONFIRMÉ
+
+| Point | Ce que les pages publiques établissent |
+|---|---|
+| Identification TecRMI par marque/modèle/type | La séquence `MakeList` → `RangeList` → `TypeList` → `type id` est documentée, et de là toute la chaîne d'entretien (`VehicleHasMaintenance` → `BodiesForMaintenance` → `MaintenancePlanData`). |
+| Étape de variante obligatoire | `BodiesForMaintenance` rend un `bodyQualColId` requis par tous les appels d'entretien. Aucun chemin ne la contourne. |
+| Intégrateurs TecRMI en France | La liste officielle des partenaires TecAlliance montre **deux intégrateurs dont le siège est en France** et qui portent TecRMI (Albalogic SAS, statut GOLD ; Autopartspro, Silver), plus deux autres déclarant la France en région active. |
+| Grille tarifaire Auto Ways | Publiée intégralement : 49 €/mois TTC (400 requêtes) → 1 399 €/mois (100 000), 20 crédits d'essai. |
+
+### Ce qui n'est PAS VÉRIFIÉ
+
+- **La couverture géographique des données d'entretien TecRMI.** Ni la doc
+  REST ni la page partenaires n'en disent un mot. Le dépliant produit qui
+  l'aurait portée **renvoie une erreur 404** : rien n'a pu en être lu.
+- **L'identification par VIN chez TecRMI.** La doc REST mentionne un « Vin
+  filter » comme clé de filtre, pas un décodeur. Un service VIN séparé existe,
+  mais son accès s'obtient sur demande écrite.
+- **Les tarifs** d'autobiz, TecRMI et HaynesPro : non publiés, devis.
+
+### Ce qui exige une RÉPONSE FOURNISSEUR
+
+- Les droits d'affichage **grand public**, de mise en cache et de
+  redistribution. **Aucun des cinq fournisseurs n'en publie un mot**, et tous
+  ciblent des professionnels. C'est le blocage n° 1, avant même le prix.
+- La couverture réelle du parc français, chiffrée.
+- L'existence et le périmètre d'un décodage VIN pour une voiture française.
+
+**Conclusion corrigée : TecRMI n'est pas à écarter pour la France.** Ce qui
+bloque n'est pas le pays — c'est que nous n'avons, sur leurs pages publiques,
+ni chiffre de couverture, ni prix, ni droit d'affichage B2C. Ces trois
+réponses s'obtiennent en une demande écrite, qui reste à décider.
 
 | Fournisseur | Ce qu'il rendrait | Tarif publié | Utilisable aujourd'hui |
 |---|---|---|---|
-| autobizVIN | VIN → caractéristiques, finition, équipements | non publié — devis | Non : aucune API publiée, formulaire de contact |
+| autobizVIN | VIN → caractéristiques, finition, équipements | non publié — devis | Non : aucune API publiée |
 | autobiz API Match | VIN / plaque → marque, modèle, version | Essai « Free » 50 appels/jour ; payant « Custom » | Non : essai conditionné à un compte |
-| Auto Ways | Plaque / VIN → 100+ champs, correspondance TecDoc | **49 €/mois TTC** (400 requêtes) → **1 399 €/mois TTC** (100 000) ; 20 crédits d'essai | Non sans compte — seul fournisseur entièrement chiffrable sans contact |
-| TecRMI (TecAlliance) | Plan d'entretien constructeur | non publié — devis | Non : contrat, clé VIN sur demande écrite |
+| Auto Ways | Plaque / VIN → 100+ champs, correspondance TecDoc | **49 → 1 399 €/mois TTC** | Non sans compte — seul fournisseur entièrement chiffrable sans contact |
+| TecRMI (TecAlliance) | Plan d'entretien constructeur | non publié — devis | Non : contrat. **Deux intégrateurs français existent.** |
 | HaynesPro | Plans d'entretien OEM, temps de réparation | non publié — devis | Non : démo sur demande |
-
-**Deux constats qui changent l'architecture, pas seulement le budget :**
-
-1. **Le trou d'identification côté TecRMI est structurel.** Son énumération
-   `kindOfNationalVehicleNo` est publiée et fermée sur l'Allemagne et la
-   Suisse. Quel que soit le contrat signé, une **plaque française n'entre pas**
-   dans leur arbre véhicule : il faudrait leur service VIN séparé, ou un
-   identifieur tiers rendant un `typeId` TecDoc.
-2. **Aucun des cinq ne publie quoi que ce soit sur l'affichage grand public,
-   le cache ou la redistribution.** Tous ciblent des professionnels. C'est le
-   risque juridique n° 1 d'une application B2C, et il devra être levé **par
-   écrit** avant tout affichage — avant même de parler de prix.
-
-À noter pour la conception : la séquence d'appels publiée par TecRMI impose une
-**étape de variante obligatoire** (`BodiesForMaintenance` → `bodyQualColId`),
-paramètre requis de tous les appels d'entretien. Aucun chemin ne la contourne.
-Autrement dit, le métier lui-même confirme qu'un programme d'entretien sans
-variante précise n'existe pas.
 
 ---
 
-## 5. Le programme d'entretien : bloqué, et on dit pourquoi
+## 5. L'entretien : ce qu'on a trouvé, marque par marque
 
-Les trois constructeurs les plus probables du parc de bêta ont été examinés sur
-leurs portails publics, sans identifiant :
+*Corrigé le 20 septembre 2026. La version précédente disait « aucun
+constructeur ne publie son programme ». **Examiner trois marques n'autorise
+pas à conclure pour tous**, et surtout : « on n'a pas trouvé », « c'est
+derrière un compte », « c'est payant » et « on n'a pas le droit de le
+réutiliser » sont quatre problèmes différents.*
 
-- **Renault Clio V** et **Dacia Sandero 3** : les notices sont publiques, par
-  modèle et par période d'édition, sans VIN ni connexion. Mais la périodicité
-  n'y est pas. Le manuel renvoie, séparément pour l'essence et le Diesel, au
-  « document d'entretien du véhicule » — c'est-à-dire au carnet papier.
-- **Peugeot 208 II** : le guide public existe (`public.servicebox-parts.com`),
-  et ne contient **aucun chapitre « plan d'entretien »**. Le seul outil Peugeot
-  qui l'afficherait demande l'immatriculation ou le numéro de série.
-- Les pages de marque donnent bien des chiffres — Renault « essence tous les
-  10 000 km, diesel tous les 15 000 km », Dacia « tous les ans ou chaque
-  20 000 km » — mais **annoncés pour la marque entière**, sans distinction de
-  motorisation. C'est exactement l'approximation retirée le 18 septembre.
-- Les conditions d'utilisation de Renault, Dacia et Peugeot interdisent la
-  reproduction de leurs contenus.
+| Marque | Ce qui est publié | Barrière rencontrée |
+|---|---|---|
+| **Tesla** | **Un vrai programme, par modèle nommé** : opérations et intervalles, en français, sur une page publique (`service.tesla.com/docs/Public/…`) | Aucune pour lire. Conditions de réutilisation non examinées. |
+| **Volkswagen** | Un calendrier public : entretien annuel ou 15 000 km, « Long Life » jusqu'à 30 000 km ou 2 ans | **Portée « votre Volkswagen »** : aucun modèle, aucune motorisation nommée. Ce n'est pas un programme. |
+| **Toyota** | Une périodicité de marque (« tous les 15 000 km ou tous les ans, **variable selon les modèles** ») | Valeur par modèle **simplement absente** ; renvoi au carnet et au tunnel de rendez-vous. |
+| **Renault, Dacia** | Notices publiques par modèle et par période, sans VIN ni compte | La **périodicité n'y figure pas** : renvoi au « document d'entretien du véhicule », c'est-à-dire au carnet papier. CGU interdisant la reproduction. |
+| **Peugeot** | Guide public sans chapitre « plan d'entretien » | L'outil qui l'afficherait demande **immatriculation ou numéro de série**. |
+| **Citroën** | Rien sur le site grand public | **VIN obligatoire ET espace « Services abonnés »** : double barrière. CGU interdisant la reproduction. |
 
-**Conclusion, écrite dans le code** : `PROGRAMMES` est vide et le restera tant
-qu'une source ne sera pas à la fois citable et autorisée. Le chemin existe et
-est testé — une entrée de programme se rattache à une variante et porte sa clé
-de source — mais y ajouter une ligne sera une décision documentée, pas une
-amélioration discrète.
+**Ce qui en est fait dans le produit — trois niveaux qui ne se confondent
+pas :**
 
-À l'écran, cela donne une carte qui dit : *« Nexora n'a pas le programme du
-constructeur pour cette version. L'intervalle se lit sur votre carnet
-d'entretien. »* Et, si la personne a déjà renseigné son intervalle : *« votre
-suivi repose sur l'intervalle que vous avez renseigné »*.
+1. **Programme** — Tesla Model 3 et Model Y : les opérations et leurs
+   intervalles s'affichent, avec la portée citée par Tesla elle-même
+   (« s'ils s'appliquent à votre véhicule ») et les conditions d'usage.
+2. **Repère de marque** — Volkswagen : affiché comme un repère, **jamais
+   converti en échéance**, avec cette phrase à l'écran : « ce n'est pas la
+   préconisation de VOTRE voiture ; votre carnet fait foi ».
+3. **Non publié** — les autres : la carte le dit, **nomme la barrière
+   rencontrée** (carnet papier, VIN, abonnement) et passe en dernier dans la
+   section. Elle ne domine jamais l'écran.
+
+`PROGRAMMES` reste une liste courte et explicite. Y ajouter une entrée est une
+décision documentée : chaque entrée porte sa clé de source, et sa source porte
+la date de sa dernière relecture humaine.
 
 ---
 
@@ -172,25 +203,32 @@ source, et qu'est-ce qui manque pour le dire ?*
 - Aucune huile, aucune pression, aucun intervalle, aucune distribution n'est
   déduit d'un nom de modèle. Un test le vérifie littéralement.
 
-### Quatre précautions nées des données réelles
+### Cinq précautions nées des données réelles
 
 1. **« 208 » ne doit pas attraper « 2008 ».** Le modèle est cherché comme un
-   mot entier. En revanche « 208 v2 » **est** une 208 : les fiches numérotent
-   les générations, et ce marqueur est reconnu.
-2. **« C3 » trouve « C3 Aircross ».** Impossible à éviter — le champ est du
-   texte libre. La fiche est donc affichée avec **son propre libellé de
-   modèle**, et signalée « plusieurs modèles ».
-3. **Un libellé de voiture n'est pas un nom de catalogue.** Les gens écrivent
-   « 208 (essai) », « Clio IV », « C3 Picasso ». Les fiches officielles
-   écrivent « 208 v2 » ou « clio ». Chercher le libellé entier ne trouverait
-   rien, et Nexora conclurait à tort « aucune campagne ». On cherche donc du
-   plus précis au plus large — le libellé nettoyé de ses parenthèses, puis son
-   premier mot — et **l'écran dit toujours quand la recherche a été élargie**.
+   mot entier.
+2. **Yaris, Yaris Cross et GR Yaris ne sont pas la même voiture.** Une fiche
+   est classée `exacte`, `generation` ou `voisine` selon ce qui entoure le nom
+   dans son texte — et seul un mot collé par une espace compte : dans
+   « aygo, aygo x, yaris, gr yaris », la virgule après « yaris » clôt le nom,
+   donc la fiche nomme bien la Yaris **en plus** de la GR Yaris. Une
+   génération (« 208 v2 ») s'affiche au lieu d'être avalée.
+3. **Un libellé de voiture n'est pas un nom de catalogue.** « 208 (essai) »,
+   « Clio IV », « C3 Picasso ». Le libellé est **lu**, pas découpé : ce qui est
+   entre parenthèses est une annotation de la personne et ne part jamais dans
+   une recherche. Si le nom complet ne trouve rien, on descend d'un palier —
+   et **l'écran dit que la recherche est devenue moins précise**, parce
+   qu'élargir augmente les résultats ET les faux positifs, jamais la certitude.
 4. **La période publiée est une période de fabrication, pas
    d'immatriculation.** Une voiture faite en décembre s'immatricule en janvier.
-   La fenêtre est donc élargie de douze mois par la fin, jamais par le début —
-   et une fiche hors période est **écartée de la liste principale, pas
-   supprimée**.
+   La fenêtre est élargie de douze mois par la fin, jamais par le début — et
+   une fiche hors période est **écartée de la liste principale, pas
+   supprimée**. L'écran écrit « fabriquées du … au … », jamais « concernées ».
+5. **Trois absences différentes.** « Aucune fiche ne nomme ce modèle », « la
+   base n'a pas répondu » et « aucun rappel ne concerne votre voiture » ne se
+   disent pas pareil — et le troisième, Nexora ne peut **jamais** l'affirmer.
+   Dans tous les cas, la carte propose le seul geste qui tranche : le numéro
+   de série, case E de la carte grise, auprès du réseau de la marque.
 
 ### Une question posée seulement quand elle change la réponse
 
@@ -199,6 +237,27 @@ d'un côté, gazole de l'autre, et la classe n'est pas la même. Plutôt que
 d'ajouter un champ au formulaire, l'écran affiche **les deux issues** — « Si
 essence : Crit'Air 1 / Si gazole : Crit'Air 2 ». La personne reconnaît la
 sienne d'un coup d'œil, et Nexora n'a toujours rien affirmé.
+
+### Crit'Air : la norme Euro prime, la date n'est que le repli
+
+*Corrigé le 20 septembre 2026.* L'article 1 de l'arrêté classe « lorsque
+l'information est disponible, en fonction de la norme "Euro" figurant dans la
+rubrique V.9 ; ou, **à défaut**, en fonction de la date de première
+immatriculation ». L'ordre compte : un diesel réceptionné Euro 4 mais
+immatriculé en janvier 2011 est **Crit'Air 3**, alors que la date seule le
+dirait Crit'Air 2 — c'est-à-dire **mieux classé qu'il ne l'est**, ce qui
+exposerait quelqu'un à une amende en zone à faibles émissions.
+
+Le moteur applique donc les deux critères dans le bon ordre, et le teste.
+Nexora ne collecte pas encore la norme Euro — lui ajouter un champ
+obligatoire serait exactement ce qu'on cherche à éviter. En attendant, elle ne
+fait pas semblant : la carte affiche « classée d'après la date de première
+immatriculation, faute de connaître la norme Euro », dit ce que cela peut
+coûter, et renvoie au **simulateur officiel**, qui la prend en compte. Elle
+rappelle aussi qu'elle lit la colonne « Voitures » (catégorie M1), et qu'une
+lecture de la nomenclature **n'est pas une certification**.
+
+
 
 ---
 

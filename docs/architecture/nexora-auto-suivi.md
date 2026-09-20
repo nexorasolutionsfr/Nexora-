@@ -1376,22 +1376,29 @@ lui n'ait rien apporté. Obtenu avec marque et modèle seuls — les campagnes d
 rappel officielles — puis, avec l'énergie et la date de mise en circulation, la
 classe Crit'Air et le contrôle technique.
 
-- **R74 — aucun constructeur ne publie son programme d'entretien par version.**
-  Renault, Dacia et Peugeot ouvrent leurs notices sans VIN ni connexion, mais
-  la périodicité n'y est pas : elles renvoient toutes au « document d'entretien
-  du véhicule », c'est-à-dire au carnet papier. Les chiffres des pages de
-  marque (Renault « essence tous les 10 000 km, diesel tous les 15 000 km »,
-  Dacia « tous les ans ou chaque 20 000 km ») valent pour la marque entière,
-  sans distinction de motorisation : exactement l'approximation retirée le
-  18 septembre. Le programme personnalisé est donc **déclaré indisponible à
-  l'écran**, avec sa raison — pas passé sous silence.
-- **R75 — le trou d'identification de TecRMI est structurel, pas
-  contractuel.** Son énumération `kindOfNationalVehicleNo` est publiée et
-  fermée sur l'Allemagne et la Suisse : une plaque française n'entre pas dans
-  leur arbre véhicule, quel que soit le contrat. Et leur séquence impose une
-  étape de variante obligatoire (`bodyQualColId`) qu'aucun appel ne contourne —
-  le métier confirme lui-même qu'un programme d'entretien sans variante précise
-  n'existe pas.
+- **R74 — « aucun constructeur ne publie son programme » était trop
+  catégorique** *(corrigé le 20 septembre, après relecture de Baptiste)*.
+  Examiner trois marques n'autorise pas à conclure pour toutes. **Tesla publie
+  un vrai programme par modèle nommé**, en français, sur une page publique et
+  sans VIN ni compte : opérations, intervalles et conditions. Volkswagen publie
+  un calendrier, mais pour « votre Volkswagen » — sans nommer de modèle ni de
+  motorisation. Et quatre problèmes distincts se cachaient sous un seul mot :
+  *données non trouvées* (Toyota), *renvoi au carnet papier* (Renault, Dacia),
+  *VIN exigé* (Peugeot), *VIN + abonnement* (Citroën), auxquels s'ajoute le
+  *droit de réutilisation* non établi. Le produit affiche donc trois niveaux
+  qui ne se confondent pas — programme, repère de marque, non publié — et
+  nomme la barrière rencontrée.
+- **R75 — « TecRMI n'a aucune entrée française » était faux** *(corrigé le
+  20 septembre)*. L'erreur : avoir confondu la liste des codes
+  d'immatriculation nationaux acceptés par UN point d'entrée avec la couverture
+  des données d'entretien. Sont confirmés : l'identification par
+  marque/modèle/type, l'étape de variante obligatoire (`bodyQualColId`), et
+  **deux intégrateurs TecRMI dont le siège est en France** sur la liste
+  officielle des partenaires. Ne sont pas vérifiés : la couverture
+  géographique (le dépliant produit renvoie une **erreur 404**) et
+  l'identification par VIN. Exigent une réponse du fournisseur : les droits
+  d'affichage grand public, le cache et la redistribution — **aucun des cinq
+  n'en publie un mot**, et c'est le vrai blocage, avant le prix.
 - **R76 — aucun des cinq fournisseurs ne publie de droit d'affichage grand
   public, de cache ni de redistribution.** Tous ciblent des professionnels.
   C'est le risque juridique n° 1 d'une application B2C, à lever par écrit avant
@@ -1427,3 +1434,38 @@ ajouter une ligne sera une décision documentée, pas une amélioration discrèt
   ses parenthèses, puis premier mot), et un élargissement est **affiché**.
   Constat fait en préparant le lien de vérification pour Baptiste, pas par un
   test : le jeu de recette, lui, nommait ses voitures proprement.
+
+### Relecture du 20 septembre 2026 — ce que Baptiste a corrigé
+
+Quatre affirmations du compte rendu ont été vérifiées dans les sources et
+rectifiées. Les deux premières sont reprises dans R74 et R75 ci-dessus.
+
+- **R82 — Yaris, Yaris Cross et GR Yaris ne sont pas la même voiture.** Une
+  fiche est désormais classée *exacte*, *génération* ou *voisine* selon ce qui
+  entoure le nom dans son texte, et seul un mot collé par une espace compte :
+  dans « aygo, aygo x, yaris, gr yaris », la virgule clôt le nom, donc la fiche
+  nomme bien la Yaris **en plus** de la GR Yaris. Le voisin peut être devant
+  (« gr yaris ») comme derrière (« yaris cross ») : les deux côtés sont lus.
+- **R83 — élargir une recherche ne doit jamais élever la certitude.** Le
+  libellé de la personne est maintenant *lu* et non découpé : une annotation
+  entre parenthèses ne part jamais dans une recherche, et descendre d'un palier
+  s'affiche comme une recherche **moins précise**.
+- **R84 — trois absences qu'il ne faut pas confondre.** « Aucune fiche ne
+  nomme ce modèle », « la base n'a pas répondu » et « aucun rappel ne concerne
+  votre voiture » sont trois choses différentes, et la troisième ne peut
+  **jamais** être affirmée. Dans tous les cas, la carte propose le seul geste
+  qui tranche : le numéro de série, case E, auprès du réseau de la marque.
+- **R85 — Crit'Air : la norme Euro prime, la date n'est que le repli.**
+  L'article 1 de l'arrêté le dit dans cet ordre, et l'inverse donne parfois une
+  classe **trop favorable** — un diesel Euro 4 immatriculé en janvier 2011 est
+  Crit'Air 3, pas 2. Le moteur applique désormais les deux critères dans le bon
+  ordre. Nexora ne collecte pas la norme Euro (ce serait un champ de plus) :
+  elle dit sur quoi elle s'appuie, ce que cela peut coûter, et renvoie au
+  simulateur officiel. Une lecture de la nomenclature n'est pas une
+  certification.
+- **R86 — aucun programmateur ne garantit une heure.** GitHub Actions accepte
+  bien un fuseau IANA, mais documente des exécutions retardées « voire
+  abandonnées » en période de charge. Trois exigences sont déjà tenues par le
+  mécanisme existant (rattrapage, revalidation avant envoi, absence de
+  doublon) ; la quatrième manque — **détecter un passage manqué**, car
+  aujourd'hui le silence ressemble à « rien à envoyer ».

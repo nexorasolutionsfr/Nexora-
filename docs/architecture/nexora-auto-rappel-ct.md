@@ -343,7 +343,8 @@ Le tableau ci-dessus reposait sur des ordres de grandeur. Les quatre options
 ont été relues sur leurs pages officielles, et **deux faits changent le
 classement** :
 
-**1. GitHub Actions sait tenir « 9 h, heure de Paris » sans qu'on s'en occupe.**
+**1. GitHub Actions sait viser « 9 h, heure de Paris » sans qu'on s'en occupe —
+mais viser n'est pas garantir.**
 La documentation publie la prise en charge d'un fuseau IANA dans la
 planification : « By default, scheduled workflows run in UTC. You can
 optionally specify a timezone using an IANA timezone string ». Un
@@ -382,11 +383,37 @@ Les autres constats, à leur place :
   les dépôts **publics** ; pour un dépôt privé comme le nôtre, ce n'est pas
   publié. À vérifier avant de s'y fier seul.
 
-**Recommandation, à votre décision.** GitHub Actions est la seule option
-gratuite qui tienne l'heure de Paris de façon déclarative, avec des secrets
-gérés et des journaux durables. Elle demande un script Node qui rejoue ce que
-fait le workflow n8n, et l'accès Brevo placé dans les secrets du dépôt. Ce
-n'est pas un réglage : c'est un petit chantier, à ouvrir quand vous le
+### Aucune de ces options ne garantit une heure — ce qu'il faut donc prévoir
+
+*Rectifié le 20 septembre 2026.* Il ne faut promettre « 9 h précises » avec
+aucune des quatre. GitHub documente lui-même que l'événement planifié « can be
+delayed during periods of high loads… some queued jobs may be dropped » :
+un déclenchement peut arriver en retard, ou **ne pas arriver du tout**. Vercel
+Hobby annonce une fenêtre d'une heure et aucune reprise après échec.
+
+La bonne formulation pour un automobiliste n'est donc pas « vous recevrez votre
+rappel à 9 h », mais **« le matin »** — ce que le message dit déjà, puisqu'il
+donne une date absolue (« avant le 4 oct. ») et jamais « dans N jours ».
+
+Quatre exigences pour le programmateur, quel qu'il soit. Les trois premières
+sont **déjà tenues** par le mécanisme existant ; la quatrième manque :
+
+| Exigence | État |
+|---|---|
+| **Rattraper les rappels dus** après un passage manqué | Tenue : rien n'est perdu, les rappels restent programmés en base et le passage suivant prend les plus anciens d'abord. |
+| **Revalider avant d'envoyer** | Tenue : `auto_confirmer_transmission` est appelée juste avant la remise au fournisseur, et un rappel dont l'échéance est atteinte est annulé avec son motif plutôt qu'envoyé trop tard. |
+| **Ne pas produire de doublon** | Tenue : l'empreinte et la contrainte d'unicité `(proprietaire, clé, palier, canal)` l'interdisent, et un rappel réservé dont l'issue est inconnue n'est jamais renvoyé. |
+| **Détecter un passage manqué** | **Manque.** Aujourd'hui, si le programmateur ne tourne pas, personne ne le sait : le silence ressemble à « rien à envoyer ». Il faudra une trace de dernier passage réussi et une alerte au-delà d'un seuil. |
+
+**Recommandation, à votre décision.** GitHub Actions reste la seule option
+gratuite qui vise l'heure de Paris de façon déclarative, avec des secrets
+gérés et des journaux durables — à condition d'accepter le retard possible et
+d'ajouter la détection du passage manqué. Deux contraintes à retenir : un
+workflow planifié **ne tourne que sur la branche par défaut**, donc après une
+fusion ; et la désactivation automatique après inactivité n'est publiée que
+pour les dépôts publics, ce qui reste à vérifier pour le nôtre.
+
+Ce n'est pas un réglage : c'est un petit chantier, à ouvrir quand vous le
 voudrez. Rien n'est fait, rien n'est publié, et aucune de ces options n'a été
 activée.
 

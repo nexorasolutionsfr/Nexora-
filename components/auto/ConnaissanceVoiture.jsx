@@ -7,9 +7,11 @@
 // la question d'avant — « qu'est-ce qui s'applique à ma voiture, d'où ça sort,
 // et qu'est-ce que Nexora ne sait pas ? ».
 //
-// Trois principes d'affichage :
-// - chaque carte porte un état visible, y compris « indisponible » : une
-//   information absente se dit, elle ne disparaît pas ;
+// Quatre principes d'affichage :
+// - ce qui est établi passe devant ; une carte « non publié » ne domine
+//   jamais l'écran, elle finit la section ;
+// - chaque carte porte un état visible : une information absente se dit, elle
+//   ne disparaît pas ;
 // - la source se déplie, elle n'envahit pas ;
 // - un manque se présente avec le geste qui le comble, jamais tout seul.
 
@@ -30,22 +32,31 @@ import { connaissancesDe, referenceDe } from "@/lib/auto/connaissance/moteur";
 import { SOURCES } from "@/lib/auto/connaissance/sources";
 import { aujourdhuiIso } from "@/lib/auto/echeances";
 import { boutonLien, carte } from "./elements";
-import { formaterDate } from "./format";
+import { formaterDate, formaterKm } from "./format";
 
 const ICONES = { securite: ShieldAlert, environnement: Leaf, entretien: Wrench, obligation: CircleCheck };
 
 const ETATS = {
   a_verifier: { libelle: "À vérifier", classe: "border-amber-500/40 bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100" },
-  applicable: { libelle: "Établi", classe: "border-primary/30 bg-secondary/60 text-foreground" },
+  applicable: { libelle: "Publié par le constructeur", classe: "border-primary/30 bg-secondary/60 text-foreground" },
+  a_preciser: { libelle: "Repère de marque", classe: "border-border bg-muted text-foreground" },
   donnees_insuffisantes: { libelle: "À compléter", classe: "border-border bg-muted text-foreground" },
-  indisponible: { libelle: "Indisponible", classe: "border-border bg-muted text-muted-foreground" },
-  non_applicable: { libelle: "Sans objet", classe: "border-border bg-muted text-muted-foreground" },
+  indisponible: { libelle: "Non publié", classe: "border-border bg-muted text-muted-foreground" },
+  non_applicable: { libelle: "Rien de publié", classe: "border-border bg-muted text-muted-foreground" },
   source_a_relire: { libelle: "Source à relire", classe: "border-border bg-muted text-muted-foreground" },
 };
 
-function Etiquette({ etat }) {
+// « Publié par le constructeur » convient à un programme d'entretien, pas à
+// une classe Crit'Air. Chaque carte dit donc ce que SON état signifie chez elle.
+const LIBELLES_PAR_CARTE = {
+  critair: { applicable: "Établi" },
+  campagnes_rappel: { non_applicable: "Aucune fiche" },
+};
+
+function Etiquette({ carteCle, etat }) {
   const e = ETATS[etat] ?? ETATS.non_applicable;
-  return <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[12px] font-medium ${e.classe}`}>{e.libelle}</span>;
+  const libelle = LIBELLES_PAR_CARTE[carteCle]?.[etat] ?? e.libelle;
+  return <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[12px] font-medium ${e.classe}`}>{libelle}</span>;
 }
 
 function Provenance({ connaissance }) {
@@ -78,15 +89,19 @@ function Provenance({ connaissance }) {
   );
 }
 
-function Manques({ manques, onAction }) {
-  if (!manques || manques.length === 0) return null;
+// Un manque empêche de répondre, et se comble par un geste. Une réserve dit
+// ce qui pourrait fausser une réponse déjà donnée, et n'appelle aucun geste
+// dans Nexora — elle renvoie ailleurs. Les deux se ressemblent à l'écran,
+// mais ne demandent pas la même chose à la personne.
+function Demandes({ items, onAction, ton = "manque" }) {
+  if (!items || items.length === 0) return null;
   return (
     <ul className="mt-2.5 space-y-2">
-      {manques.map((m) => (
-        <li key={m.cle} className="rounded-xl border border-border bg-muted/60 px-3 py-2.5">
+      {items.map((m) => (
+        <li key={m.cle} className={`rounded-xl border px-3 py-2.5 ${ton === "reserve" ? "border-dashed border-border" : "border-border bg-muted/60"}`}>
           <p className="text-[15px] font-medium text-foreground">{m.libelle}</p>
           {m.pourquoi ? <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">{m.pourquoi}</p> : null}
-          {onAction ? (
+          {m.geste && m.action && onAction ? (
             <button type="button" onClick={() => onAction(m.action)} className={`${boutonLien} -ml-2 mt-1`}>
               {m.geste}
             </button>
@@ -111,16 +126,59 @@ function Alternatives({ alternatives }) {
   );
 }
 
+const FONDEMENTS_CRITAIR = {
+  norme_euro: "d'après la norme Euro de votre carte grise",
+  date_premiere_immatriculation: "d'après la date de première immatriculation, faute de connaître la norme Euro",
+  energie: "d'après son énergie",
+};
+
 function ClasseCritair({ valeur }) {
   if (!valeur) return null;
   return (
-    <p className="mt-2 text-[15px] text-foreground">
-      <span className="font-display text-xl font-bold">{valeur.libelle}</span>
-      {valeur.couleur ? <span className="text-muted-foreground"> · vignette {valeur.couleur}</span> : null}
-      {valeur.norme ? <span className="text-muted-foreground"> · {valeur.norme}</span> : null}
-    </p>
+    <div className="mt-2">
+      <p className="text-[15px] text-foreground">
+        <span className="font-display text-xl font-bold">{valeur.libelle}</span>
+        {valeur.couleur ? <span className="text-muted-foreground"> · vignette {valeur.couleur}</span> : null}
+      </p>
+      {valeur.fondement ? <p className="text-[13px] text-muted-foreground">Classée {FONDEMENTS_CRITAIR[valeur.fondement]}.</p> : null}
+    </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Entretien
+// ---------------------------------------------------------------------------
+
+function intervalleLisible({ mois, km } = {}) {
+  const parts = [];
+  if (mois) parts.push(mois % 12 === 0 ? `${mois / 12} an${mois > 12 ? "s" : ""}` : `${mois} mois`);
+  if (km) parts.push(formaterKm(km));
+  return parts.join(" ou ");
+}
+
+function Programme({ valeur }) {
+  if (valeur?.niveau !== "programme") return null;
+  return (
+    <>
+      <ul className="mt-2.5 divide-y divide-border overflow-hidden rounded-xl border border-border">
+        {valeur.operations.map((o) => (
+          <li key={o.libelle} className="px-3 py-2.5">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span className="text-[15px] text-foreground">{o.libelle}</span>
+              <span className="shrink-0 text-[14px] font-semibold text-foreground">{intervalleLisible(o.intervalle)}</span>
+            </div>
+            {o.condition ? <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">{o.condition}</p> : null}
+          </li>
+        ))}
+      </ul>
+      {valeur.portee ? <p className="mt-2 text-[13px] leading-snug text-muted-foreground">{valeur.portee}</p> : null}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Campagnes de rappel
+// ---------------------------------------------------------------------------
 
 // Une fiche officielle nomme souvent une dizaine de modèles d'un coup et
 // décrit le défaut en un paragraphe. Tout afficher ferait un mur de texte là
@@ -144,13 +202,19 @@ function couper(texte, longueur) {
   return `${coupe.slice(0, coupe.lastIndexOf(" ") > 40 ? coupe.lastIndexOf(" ") : longueur)}…`;
 }
 
+const MARQUEURS = {
+  generation: (f) => `nomme la génération ${f.generation ?? "indiquée"}`,
+  voisine: () => "nomme une version voisine",
+};
+
 function Campagne({ fiche }) {
+  const marqueur = MARQUEURS[fiche.correspondance]?.(fiche) ?? null;
   return (
     <li className="rounded-xl border border-border bg-muted/50 px-3 py-2.5">
       <p className="text-[13px] text-muted-foreground">
         {fiche.publiee_le ? formaterDate(fiche.publiee_le) : "Date de publication inconnue"}
-        {fiche.periode ? ` · fabrication ${formaterDate(fiche.periode.debut)} → ${formaterDate(fiche.periode.fin)}` : " · période non précisée"}
-        {fiche.modeleVoisin ? " · plusieurs modèles" : ""}
+        {fiche.periode ? ` · fabriquées ${formaterDate(fiche.periode.debut)} → ${formaterDate(fiche.periode.fin)}` : " · période non précisée"}
+        {marqueur ? ` · ${marqueur}` : ""}
       </p>
       {fiche.modeles ? <p className="mt-1 text-[15px] font-medium leading-snug text-foreground">{majusculeInitiale(couper(fiche.modeles, LONGUEUR_MODELES))}</p> : null}
       {fiche.motif ? <p className="mt-1 text-[14px] leading-snug text-muted-foreground">{majusculeInitiale(couper(fiche.motif, LONGUEUR_MOTIF))}</p> : null}
@@ -164,7 +228,7 @@ function Campagne({ fiche }) {
   );
 }
 
-// Trois campagnes visibles : de quoi voir qu'il y a quelque chose sans noyer
+// Trois fiches visibles : de quoi voir qu'il y a quelque chose sans noyer
 // l'écran. Les autres sont à un clic, et rien n'est supprimé.
 const VISIBLES = 3;
 
@@ -194,21 +258,37 @@ function Campagnes({ valeur }) {
   if (!valeur) return null;
   return (
     <>
-      <Liste fiches={valeur.retenues} libelleDeplier="Voir les autres campagnes" />
-      {valeur.retenues.some((f) => f.modeleVoisin) ? (
-        <p className="mt-2 text-[13px] leading-snug text-muted-foreground">
-          « Plusieurs modèles » signale une fiche qui en nomme d'autres à côté du vôtre : lisez la liste avant d'aller plus loin.
-        </p>
-      ) : null}
+      <Liste fiches={valeur.retenues} libelleDeplier="Voir les autres fiches" />
       {valeur.ecartees.length > 0 ? (
         <>
           <button type="button" onClick={() => setVoirEcartees((v) => !v)} className={`${boutonLien} -ml-2 mt-2`}>
-            {voirEcartees ? "Masquer les campagnes hors période" : `Voir ${valeur.ecartees.length} campagne${valeur.ecartees.length > 1 ? "s" : ""} hors de la période de fabrication`}
+            {voirEcartees
+              ? "Masquer les fiches hors période de fabrication"
+              : `Voir ${valeur.ecartees.length} fiche${valeur.ecartees.length > 1 ? "s" : ""} hors de la période de fabrication`}
           </button>
           {voirEcartees ? <Liste fiches={valeur.ecartees} libelleDeplier="Voir les autres" /> : null}
         </>
       ) : null}
     </>
+  );
+}
+
+// Le geste qui tranche vraiment. Il vaut autant quand des fiches existent que
+// quand il n'y en a aucune : dans les deux cas, Nexora ne peut pas répondre
+// pour CETTE voiture.
+function Verification({ verification }) {
+  if (!verification) return null;
+  return (
+    <div className="mt-3 rounded-xl border border-border px-3 py-2.5">
+      <p className="text-[15px] font-semibold text-foreground">{verification.titre}</p>
+      <p className="mt-0.5 text-[14px] leading-snug text-muted-foreground">{verification.texte}</p>
+      {verification.lien ? (
+        <a href={verification.lien.url} target="_blank" rel="noreferrer noopener" className={`${boutonLien} -ml-2 mt-1`}>
+          <ExternalLink className="size-4" aria-hidden="true" />
+          {verification.lien.libelle}
+        </a>
+      ) : null}
+    </div>
   );
 }
 
@@ -260,11 +340,14 @@ export default function ConnaissanceVoiture({ vehicule, onAction = null }) {
           return (
             <article key={c.cle} className={carte}>
               <div className="flex items-start gap-2.5">
-                <Icone className={`mt-0.5 size-5 shrink-0 ${c.etat === "a_verifier" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`} aria-hidden="true" />
+                <Icone
+                  className={`mt-0.5 size-5 shrink-0 ${c.etat === "a_verifier" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}
+                  aria-hidden="true"
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                     <h3 className="font-semibold text-foreground">{c.titre}</h3>
-                    {enRecherche ? null : <Etiquette etat={c.etat} />}
+                    {enRecherche ? null : <Etiquette carteCle={c.cle} etat={c.etat} />}
                   </div>
 
                   {enRecherche ? (
@@ -277,14 +360,17 @@ export default function ConnaissanceVoiture({ vehicule, onAction = null }) {
                       <p className="mt-1 text-[15px] leading-snug text-foreground">{c.resume}</p>
                       {c.cle === "critair" ? <ClasseCritair valeur={c.valeur} /> : null}
                       {c.cle === "critair" ? <Alternatives alternatives={c.alternatives} /> : null}
+                      {c.cle === "programme_entretien" ? <Programme valeur={c.valeur} /> : null}
                       {c.cle === "campagnes_rappel" ? <Campagnes valeur={c.valeur} /> : null}
-                      <Manques manques={c.manques} onAction={onAction} />
-                      {c.lien ? (
-                        <a href={c.lien.url} target="_blank" rel="noreferrer noopener" className={`${boutonLien} -ml-2 mt-1`}>
+                      <Demandes items={c.manques} onAction={onAction} />
+                      <Demandes items={c.precision ? [c.precision] : null} ton="reserve" />
+                      <Verification verification={c.verification} />
+                      {(c.liens ?? []).map((l) => (
+                        <a key={l.url} href={l.url} target="_blank" rel="noreferrer noopener" className={`${boutonLien} -ml-2 mr-3 mt-1`}>
                           <ExternalLink className="size-4" aria-hidden="true" />
-                          {c.lien.libelle}
+                          {l.libelle}
                         </a>
-                      ) : null}
+                      ))}
                       <Provenance connaissance={c} />
                     </>
                   )}
@@ -305,8 +391,8 @@ export default function ConnaissanceVoiture({ vehicule, onAction = null }) {
 //
 // Elle ne prend jamais la place de l'action principale, qui est réservée à ce
 // qui a une date. Un rappel de sécurité n'a pas de date : il a une urgence.
-// Pendant la recherche, en cas de panne de la base ou quand rien ne concerne
-// la voiture, cette ligne n'existe pas — un accueil ne se remplit pas pour se
+// Pendant la recherche, en cas de panne de la base ou quand rien ne nomme la
+// voiture, cette ligne n'existe pas — un accueil ne se remplit pas pour se
 // remplir.
 export function SignalCampagnes({ vehicule }) {
   const { chargement, campagnes } = useCampagnes(vehicule?.marque, vehicule?.modele);
@@ -318,16 +404,13 @@ export function SignalCampagnes({ vehicule }) {
   if (nombre === 0) return null;
 
   return (
-    <Link
-      href={`/auto/vehicules/${vehicule.id}#connaissance`}
-      className={`${carte} mb-3 flex items-start gap-2.5 transition hover:border-amber-500/50`}
-    >
+    <Link href={`/auto/vehicules/${vehicule.id}#connaissance`} className={`${carte} mb-3 flex items-start gap-2.5 transition hover:border-amber-500/50`}>
       <ShieldAlert className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
       <span className="min-w-0 flex-1">
         <span className="block font-semibold text-foreground">
-          {nombre} campagne{nombre > 1 ? "s" : ""} de rappel peu{nombre > 1 ? "vent" : "t"} concerner votre {vehicule.marque} {vehicule.modele}
+          {nombre} fiche{nombre > 1 ? "s" : ""} de rappel nomme{nombre > 1 ? "nt" : ""} votre modèle
         </span>
-        <span className="block text-sm text-muted-foreground">Publiées par la DGCCRF. Seul le constructeur peut trancher, à partir du numéro de série.</span>
+        <span className="block text-sm text-muted-foreground">Publiées par la DGCCRF. Se vérifie avec le numéro de série de votre voiture.</span>
       </span>
       <ChevronRight className="mt-1 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
     </Link>
