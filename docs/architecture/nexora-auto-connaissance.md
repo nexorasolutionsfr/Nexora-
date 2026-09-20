@@ -172,7 +172,7 @@ source, et qu'est-ce qui manque pour le dire ?*
 - Aucune huile, aucune pression, aucun intervalle, aucune distribution n'est
   déduit d'un nom de modèle. Un test le vérifie littéralement.
 
-### Trois précautions nées des données réelles
+### Quatre précautions nées des données réelles
 
 1. **« 208 » ne doit pas attraper « 2008 ».** Le modèle est cherché comme un
    mot entier. En revanche « 208 v2 » **est** une 208 : les fiches numérotent
@@ -180,7 +180,13 @@ source, et qu'est-ce qui manque pour le dire ?*
 2. **« C3 » trouve « C3 Aircross ».** Impossible à éviter — le champ est du
    texte libre. La fiche est donc affichée avec **son propre libellé de
    modèle**, et signalée « plusieurs modèles ».
-3. **La période publiée est une période de fabrication, pas
+3. **Un libellé de voiture n'est pas un nom de catalogue.** Les gens écrivent
+   « 208 (essai) », « Clio IV », « C3 Picasso ». Les fiches officielles
+   écrivent « 208 v2 » ou « clio ». Chercher le libellé entier ne trouverait
+   rien, et Nexora conclurait à tort « aucune campagne ». On cherche donc du
+   plus précis au plus large — le libellé nettoyé de ses parenthèses, puis son
+   premier mot — et **l'écran dit toujours quand la recherche a été élargie**.
+4. **La période publiée est une période de fabrication, pas
    d'immatriculation.** Une voiture faite en décembre s'immatricule en janvier.
    La fenêtre est donc élargie de douze mois par la fin, jamais par le début —
    et une fiche hors période est **écartée de la liste principale, pas

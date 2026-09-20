@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { accesAutoServeur } from "@/lib/auto/acces-serveur";
-import { mentionneModele } from "@/lib/auto/connaissance/campagnes";
+import { mentionneModele, termesDeModele } from "@/lib/auto/connaissance/campagnes";
 import { fichesDeLaMarque } from "@/lib/auto/connaissance/campagnes-serveur";
 import { SOURCES } from "@/lib/auto/connaissance/sources";
 
@@ -40,9 +40,15 @@ export async function GET(requete: Request) {
   }
 
   // Filtrage du modèle ici aussi : inutile de faire voyager les 150 fiches
-  // d'une marque jusqu'au téléphone pour en garder deux. Le navigateur
-  // rejouera le même filtre, ce qui ne change rien au résultat.
-  const fiches = lecture.fiches.filter((f: { modeles_ou_references?: string }) => mentionneModele(f.modeles_ou_references ?? "", modele));
+  // d'une marque jusqu'au téléphone pour en garder deux.
+  //
+  // On garde ici ce que N'IMPORTE LEQUEL des termes trouve — « 208 (essai) »
+  // comme « 208 ». C'est le navigateur qui choisira ensuite le terme le plus
+  // précis qui donne un résultat ; envoyer moins l'empêcherait de le faire.
+  const termes = termesDeModele(modele);
+  const fiches = lecture.fiches.filter((f: { modeles_ou_references?: string }) =>
+    termes.some((t) => mentionneModele(f.modeles_ou_references ?? "", t)),
+  );
 
   return NextResponse.json({
     etat: "lues",

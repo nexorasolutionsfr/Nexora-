@@ -1418,3 +1418,12 @@ classe Crit'Air et le contrôle technique.
 Ce qui reste bloqué et pourquoi est écrit noir sur blanc dans le produit
 lui-même : `PROGRAMMES` est vide dans `lib/auto/connaissance/moteur.js`, et y
 ajouter une ligne sera une décision documentée, pas une amélioration discrète.
+
+- **R81 — un libellé de voiture n'est pas un nom de catalogue.** La voiture
+  fictive de l'essai s'appelle « Peugeot 208 (essai) » : chercher ce libellé
+  entier dans les fiches officielles ne trouvait rien, et l'écran aurait
+  conclu « aucune campagne » — faux, et exactement ce qu'on ne veut pas dire.
+  La recherche va maintenant du plus précis au plus large (libellé nettoyé de
+  ses parenthèses, puis premier mot), et un élargissement est **affiché**.
+  Constat fait en préparant le lien de vérification pour Baptiste, pas par un
+  test : le jeu de recette, lui, nommait ses voitures proprement.
