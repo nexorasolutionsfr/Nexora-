@@ -337,6 +337,59 @@ Brevo ailleurs : c'est un chantier à décider, pas une bascule. La seule façon
 de garder le mécanisme actuel tel quel, en continu, est un hébergement
 permanent de n8n (OVH : payant).
 
+### Ce que les documentations disent vraiment (relues le 20 septembre 2026)
+
+Le tableau ci-dessus reposait sur des ordres de grandeur. Les quatre options
+ont été relues sur leurs pages officielles, et **deux faits changent le
+classement** :
+
+**1. GitHub Actions sait tenir « 9 h, heure de Paris » sans qu'on s'en occupe.**
+La documentation publie la prise en charge d'un fuseau IANA dans la
+planification : « By default, scheduled workflows run in UTC. You can
+optionally specify a timezone using an IANA timezone string ». Un
+`cron: '0 9 * * *'` accompagné de `timezone: "Europe/Paris"` tient donc toute
+l'année, heure d'été comprise — et le passage à l'heure d'été est lui-même
+documenté (une heure escamotée avance au créneau valide suivant). Une
+exécution par jour représente de l'ordre de **30 minutes par mois** sur les
+2 000 incluses, pas 720.
+
+**2. L'offre gratuite de Supabase met le projet en pause.** « Free projects
+are paused after 1 week of inactivity. » Que les exécutions de `pg_cron`
+comptent comme de l'activité n'est **pas publié**. Fonder une proactivité sur
+une base susceptible d'être mise en pause demande au minimum une vérification
+préalable — c'est le risque le plus lourd des quatre.
+
+Les autres constats, à leur place :
+
+- **Vercel Cron sur Hobby** est bien inclus (« Cron jobs are included in all
+  plans »), mais l'offre est limitée à **une exécution par jour**, et une
+  expression plus fréquente « fail[s] during deployment ». L'astuce habituelle
+  — tourner toutes les heures et tester l'heure de Paris dans le code — y est
+  donc **impossible**. Le fuseau « is always UTC » : il faudrait modifier
+  l'expression et redéployer **deux fois par an**. Et l'heure n'est pas
+  garantie : un `0 8 * * *` se déclenche « anytime between 08:00:00 and
+  08:59:59 ». Enfin, « Vercel will not retry an invocation if a cron job
+  fails », et les journaux d'exécution ne sont conservés qu'**une heure** sur
+  Hobby.
+- **GitHub Actions** n'est pas garanti non plus : « The `schedule` event can be
+  delayed during periods of high loads… some queued jobs may be dropped ».
+  Pour un rappel à 9 h qui reste utile plusieurs heures, c'est acceptable — le
+  mécanisme de reprise décrit plus bas rattrape le lendemain.
+- **Une contrainte à ne pas oublier** : « Scheduled workflows will only run on
+  the default branch. » Le programmateur devra donc vivre sur `main`, c'est-à-dire
+  **après** une fusion — pas depuis une branche de chantier.
+- La désactivation automatique après 60 jours sans activité est publiée pour
+  les dépôts **publics** ; pour un dépôt privé comme le nôtre, ce n'est pas
+  publié. À vérifier avant de s'y fier seul.
+
+**Recommandation, à votre décision.** GitHub Actions est la seule option
+gratuite qui tienne l'heure de Paris de façon déclarative, avec des secrets
+gérés et des journaux durables. Elle demande un script Node qui rejoue ce que
+fait le workflow n8n, et l'accès Brevo placé dans les secrets du dépôt. Ce
+n'est pas un réglage : c'est un petit chantier, à ouvrir quand vous le
+voudrez. Rien n'est fait, rien n'est publié, et aucune de ces options n'a été
+activée.
+
 **Après une interruption** (programmateur arrêté, Mac en veille) :
 
 - rien n'est perdu : les rappels restent programmés en base ;
