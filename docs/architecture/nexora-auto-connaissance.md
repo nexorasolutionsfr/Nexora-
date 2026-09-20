@@ -143,7 +143,7 @@ suivi repose sur l'intervalle que vous avez renseigné »*.
 
 ## 6. Le moteur
 
-`lib/auto/connaissance/` — modules purs, 29 tests.
+`lib/auto/connaissance/` — modules purs, 33 tests.
 
 | Fichier | Rôle |
 |---|---|
@@ -255,7 +255,7 @@ atteindrait cette adresse ferait échouer le test.
 
 ## 10. Recette
 
-**Automatique** — 329 tests au vert, dont 29 nouveaux. Les cas de référence de
+**Automatique** — 333 tests au vert, dont 33 nouveaux. Les cas de référence de
 Crit'Air ne rejouent pas la formule : ce sont les **dates charnières lues dans
 l'annexe I** avec la classe attendue. Un test balaie tous les mois de 1990 à
 2026 pour vérifier qu'aucune période ne se chevauche ni ne laisse de trou. Les
