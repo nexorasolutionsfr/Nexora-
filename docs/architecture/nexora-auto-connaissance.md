@@ -341,6 +341,33 @@ e-mail) :
 
 ---
 
+### Recette sur la Preview, le 20 septembre 2026 au soir
+
+Exécutée sur la branche **indépendante** (`auto/connaissance-seule`), c'est-à-dire
+sans une ligne du système de rappels, avec un compte de Test en `.invalid` —
+aucun e-mail.
+
+| Scénario | Voiture | Ce qui s'est affiché |
+|---|---|---|
+| Voiture sans programme disponible | Citroën C3 2016 | « Nexora n'a pas trouvé de programme publié pour cette voiture dans les sources qu'elle a examinées », barrière Citroën nommée (VIN + abonnement) |
+| Tesla couverte, sans facture | Tesla Model 3 2023 | 6 opérations, leurs intervalles, **le point de départ de chacune**, et la phrase « ces intervalles disent à quelle fréquence, pas à quelle date » |
+| Condition d'entretien inconnue | Tesla Model 3 | 2 opérations marquées **« à vérifier pour votre voiture »** — étriers (routes salées) et déshydratant (fabriqué avant 2021) — chacune avec sa raison |
+| Rappel nommant le modèle, sans confirmation | Citroën C3 | « 10 fiches publiées nomment ce modèle (2 exactement ce modèle, 5 une autre génération, 3 une version voisine) », puis le bloc « Vérifier pour VOTRE voiture » avec la case E |
+| Modification puis retour sur la fiche | Citroën C3 | Énergie passée d'essence à gazole → « Véhicule modifié. » et la classe Crit'Air passe de **1 à 2**, recalculée sans rechargement |
+
+Deux imprécisions ont été trouvées **par cette recette** et corrigées aussitôt :
+le détail des correspondances ne s'additionnait pas (« 10 fiches (2…, 3…) »,
+cinq fiches sans explication), et la génération se lisait sur la première
+occurrence seulement — une fiche écrivant « c3 aircross v2, c3 v4 » affichait
+« la génération indiquée » au lieu de « v4 ».
+
+**Une conséquence de la séparation, à savoir :** la page `/environnement`
+n'existe pas sur la branche indépendante — elle appartient au lot rappel. La
+preuve d'isolation y repose donc sur autre chose : les voitures de recette
+n'existent que sur Test, et elles s'affichent.
+
+---
+
 ## 11. Ce qui reste ouvert
 
 1. **Couverture actuelle de l'entretien : deux modèles** (Tesla Model 3 et
