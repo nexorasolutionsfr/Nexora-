@@ -188,9 +188,32 @@ Quatre vérifications, toutes en lecture seule, **sans toucher à `reserver_noti
 
 ## 9. Notifications armées sur Test — à ne jamais laisser partir
 
-Les deux passes de recette en ont ajouté **6** (4 atelier, issues des scénarios 2, 3, 6 et 7 ;
-2 devis, semées par `jeu-atelier.mjs`). **Aucune n'a disparu**, aucune n'a été supprimée ni
-réactivée.
+### Ce que comptent 26, 6 et 63
+
+Trois compteurs, trois périmètres différents — ils ne s'additionnent pas entre eux.
+
+| Nombre | Périmètre | Ce qu'il dit |
+|---|---|---|
+| **26** | **tout le projet Test**, les trois files (atelier, devis, factures) | lignes **`en_attente`** : armées, et **jamais prises par personne**. La plus ancienne date du 4 septembre, soit 15,9 jours. C'est ce compteur qui prouve l'isolation : si un traitement sondait Test, elles seraient parties. |
+| **37** | idem | lignes **`envoi_en_cours`** : réservées une fois, par l'instance de recette isolée des 15-16 septembre (locale, SMTP contrôlé). Le socle ne les rejoue jamais — un envoi incertain ne se rejoue pas. |
+| **63** | idem | **le total armé = 26 + 37.** C'est la liste ci-dessous, identifiant par identifiant. |
+| **6** | **les deux passes de recette du 20 septembre** | lignes que CETTE recette a ajoutées au total armé : **4 atelier** (scénarios 2, 3, 6, 7) et **2 devis** (semées par `jeu-atelier.mjs creer`, pas par un geste d'écran). |
+
+**Aucune ligne n'a disparu** : 57 armées avant la recette, 63 après, et les 57 d'origine sont
+toutes encore là. **Aucune n'a été supprimée ni réactivée.**
+
+### Le garage de recette lui-même
+
+`PROTO Atelier 2026-09-20-14h01` (`dd43e432-ad91-4f95-ae9f-7f94514e4bed`) porte au total
+**8 notifications** :
+
+- **5 atelier** — une par voiture prête : 4 `en_attente` (BB-202-BB, BG-707-GG, BH-808-HH
+  autorisées par les scénarios, et l'une d'elles par le scénario 6) et 1 `sans_lien`
+  (BC-303-CC, dont l'autorisation a été refusée à juste titre) ;
+- **3 devis** — semées par le jeu de données, jamais touchées par un geste d'écran.
+
+Toutes les adresses de ce garage sont en `.invalid` : un envoi accidentel ne pourrait
+atteindre personne, le domaine n'existe pas par norme (RFC 2606).
 
 Relevé du 2026-09-20T14:27:47.606Z — projet Test.
 
