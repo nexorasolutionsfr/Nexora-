@@ -158,19 +158,43 @@ function intervalleLisible({ mois, km } = {}) {
   return parts.join(" ou ");
 }
 
+// Une opération publiée pour un modèle n'est pas forcément applicable à CETTE
+// voiture. Celles dont la condition porte sur l'applicabilité le disent en
+// toutes lettres, à leur ligne — une réserve générale en bas de carte ne
+// suffirait pas à les couvrir.
+const DEPARTS_COURTS = {
+  derniere_operation: "à partir de la dernière fois",
+  derniere_operation_ou_controle: "à partir de la dernière fois, ou d'un contrôle d'usure",
+};
+
+function Operation({ operation }) {
+  const aVerifier = operation.condition?.nature === "applicabilite";
+  return (
+    <li className="px-3 py-2.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+        <span className="text-[15px] text-foreground">{operation.libelle}</span>
+        <span className="shrink-0 text-[14px] font-semibold text-foreground">{intervalleLisible(operation.intervalle)}</span>
+      </div>
+      <p className="mt-0.5 text-[13px] text-muted-foreground">
+        {DEPARTS_COURTS[operation.depuis] ?? "point de départ non précisé"}
+        {aVerifier ? (
+          <span className="ml-2 rounded-full border border-amber-500/40 bg-amber-50 px-2 py-0.5 text-[12px] font-medium text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+            à vérifier pour votre voiture
+          </span>
+        ) : null}
+      </p>
+      {operation.condition ? <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">{operation.condition.texte}</p> : null}
+    </li>
+  );
+}
+
 function Programme({ valeur }) {
   if (valeur?.niveau !== "programme") return null;
   return (
     <>
       <ul className="mt-2.5 divide-y divide-border overflow-hidden rounded-xl border border-border">
         {valeur.operations.map((o) => (
-          <li key={o.libelle} className="px-3 py-2.5">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-              <span className="text-[15px] text-foreground">{o.libelle}</span>
-              <span className="shrink-0 text-[14px] font-semibold text-foreground">{intervalleLisible(o.intervalle)}</span>
-            </div>
-            {o.condition ? <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">{o.condition}</p> : null}
-          </li>
+          <Operation key={o.libelle} operation={o} />
         ))}
       </ul>
       {valeur.portee ? <p className="mt-2 text-[13px] leading-snug text-muted-foreground">{valeur.portee}</p> : null}

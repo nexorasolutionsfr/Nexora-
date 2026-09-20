@@ -360,67 +360,64 @@ e-mail) :
    une **estimation**, présentée comme telle, avec un renvoi au simulateur
    officiel.
 5. **L'hébergement du programmateur de rappels** (voir
-   `nexora-auto-rappel-ct.md`, §8) reste la décision qui bloque une
+   le dossier du rappel par e-mail (PR #139), §8) reste la décision qui bloque une
    proactivité réelle. Elle est indépendante de ce chantier.
 
 ---
 
 ## 12. La livraison — ce qui est prêt, et ce qui ne l'est pas
 
-*Préparé le 20 septembre 2026. **Rien n'est fusionné.** L'instruction « ne
-fusionne pas la PR » n'a jamais été levée, et aucune autorisation existante ne
-nomme précisément cette livraison. Ce qui suit est donc une procédure prête,
-pas une procédure exécutée.*
+*Préparé le 20 septembre 2026, révisé le même soir. **Rien n'est fusionné.**
+Ce qui suit est une procédure prête, pas une procédure exécutée — et elle ne
+suppose plus que le système de rappels parte en même temps.*
 
 ### Les deux PR et leur ordre
 
 | PR | Contenu | Migrations | Fusion |
 |---|---|---|---|
 | **#139** `auto/rappel-ct` | Le rappel par e-mail, l'interrupteur des intégrations, la page de contrôle d'environnement | **4**, appliquées sur Test | En premier |
-| **#140** `auto/connaissance-vehicule` | La connaissance véhicule : rappels officiels, Crit'Air, entretien | **aucune** | Ensuite |
+| **#140** `auto/connaissance-vehicule` | La connaissance véhicule : rappels officiels, Crit'Air, entretien | **aucune** | Indépendante — voir ci-dessous |
 
-### Dépendances réelles, vérifiées
+### Dépendances réelles — il n'y en a plus
 
-Plus étroites qu'attendu. **Le seul lien dur de #140 vers #139 est la
-modification de `lib/integrations.test.js`** — un fichier né dans #139, où est
-déclarée l'exception de la lecture publique des rappels. Aucun module de
-`lib/auto/connaissance/` n'importe quoi que ce soit de #139.
+Il en restait une : la modification de `lib/integrations.test.js`, fichier né
+dans #139. **Elle a été supprimée à la racine** plutôt que contournée. Le
+garde-fou de la lecture publique vit maintenant dans son propre test,
+`lib/auto/connaissance/campagnes-serveur.test.js`, qui appartient à ce lot et
+vérifie qu'**un seul fichier** atteint la base officielle des rappels.
 
-Conséquence pratique : si #139 devait rester en attente, #140 pourrait être
-rebasée sur `main` au prix d'un seul ajustement — déplacer cette exception
-dans un garde-fou créé pour l'occasion. Ce n'est pas la voie recommandée, mais
-elle existe.
+**#140 ne dépend donc plus d'aucun fichier de #139.** Aucun module de
+`lib/auto/connaissance/` n'importe quoi que ce soit du lot rappel, et la
+connaissance véhicule peut être publiée sans lui. La branche
+`auto/connaissance-seule`, basée sur `main`, le démontre : mêmes fichiers,
+mêmes tests, sans une ligne du système de rappels.
 
-### Environnement
+Une seule chose reste du côté de #139 : l'étude d'hébergement du programmateur,
+qui est écrite dans le dossier du rappel par e-mail parce qu'elle en traite.
 
-Les deux branches ont leurs **quatre variables de prévisualisation limitées à
-la branche**, pointant sur Test. Vérifié sur le déploiement réellement servi :
-« Projet Test confirmé, côté navigateur **et** côté serveur », intégrations
-sortantes coupées, accès `beta`.
+### Publication et retour arrière — Test et Production ne se mélangent pas
 
-Adresse de recette :
-`https://nexora-dashboard-git-au-a4f1f9-nexorasolutionsfr-4999s-projects.vercel.app/auto`
+**Ce que cette livraison change en Production : uniquement du code.**
+Pas une table, pas une colonne, pas une fonction, pas une politique. La
+connaissance véhicule vit dans des modules versionnés ; la seule écriture
+qu'elle fait sur une base est… aucune. Elle lit `auto_vehicules`, comme
+l'écran le faisait déjà.
 
-Parcours de trois minutes : se connecter avec un compte de Test, ouvrir une
-voiture. Pour voir un programme d'entretien, ajouter une « Tesla / Model 3 ».
+| | **Sur Test** | **En Production** |
+|---|---|---|
+| Ce qu'il faut appliquer pour publier #140 | rien — déjà servi par la Preview | **rien en base** ; un déploiement de code |
+| Retour arrière de #140 | rien à défaire | `git revert` et redéploiement. C'est tout. |
+| Variables d'environnement | 4 variables de prévisualisation limitées à la branche | **aucune nouvelle variable** |
+| Données créées | aucune | aucune |
 
-### Retour arrière — ce qu'un `git revert` fait, et ce qu'il ne fait pas
-
-**#140 seul.** Révocation de code pure. Aucune migration, aucune ligne écrite
-en base, aucun envoi, aucune dépense. Les quatre variables de prévisualisation
-de la branche restent à supprimer à la main le jour où la branche disparaît.
-
-**#139.** Un `git revert` **ne défait pas** ses quatre migrations : elles
-restent appliquées sur Test. Chacune porte sa propre procédure d'annulation en
-tête de fichier, à exécuter dans l'ordre inverse. Un revert ne défait pas non
-plus les lignes de rappel créées sur Test pendant l'essai du 20 septembre, ni
-l'e-mail réellement envoyé ce jour-là.
-
-**L'ensemble.** Le retour arrière de la paire n'est donc pas « deux reverts » :
-c'est deux reverts **plus** quatre annulations SQL sur Test, dans l'ordre
-inverse, plus la décision de ce qu'on fait des lignes de rappel existantes.
-C'est précisément pour cela que l'absence de migration dans #140 ne suffisait
-pas à établir le retour arrière de l'ensemble.
+**Ce qui appartient à #139, et ne doit pas être imputé à #140 :** ses quatre
+migrations existent **sur Test** et devraient être appliquées **en Production**
+au moment de son activation ; chacune porte sa procédure d'annulation en tête
+de fichier, à exécuter dans l'ordre inverse. Un `git revert` ne défait ni une
+migration, ni un e-mail parti, ni les lignes de rappel déjà créées. Ces
+annulations-là sont des opérations de Test tant que #139 n'est pas activée en
+Production — les décrire comme « le retour arrière de la Production » serait
+faux.
 
 ### Ce qui n'est pas activé, et ne le sera pas sans instruction
 
