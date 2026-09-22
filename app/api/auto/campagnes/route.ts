@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { accesAutoServeur } from "@/lib/auto/acces-serveur";
-import { correspondance, paliersDeRecherche } from "@/lib/auto/connaissance/campagnes";
+import { correspondance, marquesEquivalentes, paliersDeRecherche } from "@/lib/auto/connaissance/campagnes";
 import { fichesDeLaMarque } from "@/lib/auto/connaissance/campagnes-serveur";
 import { SOURCES } from "@/lib/auto/connaissance/sources";
 
@@ -34,7 +34,12 @@ export async function GET(requete: Request) {
     return NextResponse.json({ etat: "donnees_insuffisantes", manques: ["marque_modele"] });
   }
 
-  const lecture = await fichesDeLaMarque(marque);
+  // Toutes les orthographes de la marque, pas seulement celle que la personne
+  // a tapée. La base publie les Opel sous « opel » ET sous « opel/vauxhall » :
+  // interroger la première seule laissait 24 fiches officielles invisibles sur
+  // 94 (constaté le 22 septembre 2026). La table d'équivalences existait déjà
+  // et servait au filtrage ; elle manquait à la requête.
+  const lecture = await fichesDeLaMarque(marquesEquivalentes(marque));
   if (lecture.etat !== "lues") {
     return NextResponse.json({ etat: "indisponible", raison: lecture.raison });
   }

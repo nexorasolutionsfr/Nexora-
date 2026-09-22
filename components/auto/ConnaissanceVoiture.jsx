@@ -247,6 +247,9 @@ function Campagne({ fiche }) {
       <p className="text-[13px] text-muted-foreground">
         {fiche.publiee_le ? formaterDate(fiche.publiee_le) : "Date de publication inconnue"}
         {fiche.periode ? ` · fabriquées ${formaterDate(fiche.periode.debut)} → ${formaterDate(fiche.periode.fin)}` : " · période non précisée"}
+        {/* Dit sur la fiche elle-même, pas seulement sur le bouton qui l'a
+            dépliée : une fiche lue seule doit porter sa propre réserve. */}
+        {fiche.applicabilite === "a_verifier" ? " · période à vérifier pour votre voiture" : ""}
         {marqueur ? ` · ${marqueur}` : ""}
       </p>
       {fiche.modeles ? <p className="mt-1 text-[15px] font-medium leading-snug text-foreground">{majusculeInitiale(couper(fiche.modeles, LONGUEUR_MODELES))}</p> : null}
@@ -286,47 +289,66 @@ function Liste({ fiches, libelleDeplier }) {
   );
 }
 
-// Trois groupes, et un seul au premier plan.
+// Un groupe replié : son bouton dit ce qu'il contient et combien, et rien ne
+// s'ouvre tout seul. Replier, ce n'est pas cacher — c'est ne pas alerter.
+function Repli({ fiches, ouvrir, fermer }) {
+  const [ouvert, setOuvert] = useState(false);
+  if (fiches.length === 0) return null;
+  return (
+    <>
+      <button type="button" onClick={() => setOuvert((v) => !v)} className={`${boutonLien} -ml-2 mt-2`}>
+        {ouvert ? fermer : ouvrir(fiches.length)}
+      </button>
+      {ouvert ? <Liste fiches={fiches} libelleDeplier="Voir les autres" /> : null}
+    </>
+  );
+}
+
+const s = (n) => (n > 1 ? "s" : "");
+const nt = (n) => (n > 1 ? "nt" : "");
+
+// Quatre groupes, et un seul au premier plan.
 //
-// Les fiches qui nomment le modèle passent devant ; celles qui nomment une
-// version voisine, et celles dont la période de fabrication exclut la voiture,
-// se déplient. Trier par date seule mettait une « Corsa F, Corsa E » devant
-// deux fiches nommant « Corsa », et laissait le tri au conducteur.
+// Devant : les fiches qui nomment le modèle et que rien ne contredit. Repliés,
+// dans cet ordre : celles dont la période de fabrication reste à vérifier,
+// celles qui nomment une version voisine, celles dont la fabrication a
+// commencé après la mise en circulation de la voiture.
+//
+// Le deuxième groupe existe pour une raison précise. Douze mois entre
+// fabrication et immatriculation, c'est une hypothèse : elle ne suffit pas à
+// écarter une fiche. Mais lever cette exclusion ne doit pas non plus promouvoir
+// ces fiches en alertes — sinon un doute devient un signal. Elles vivent donc
+// entre les deux : accessibles, comptées, jamais mises en avant, et le bouton
+// pour vérifier au numéro de série reste dessous dans tous les cas.
 function Campagnes({ valeur }) {
-  const [voirVoisines, setVoirVoisines] = useState(false);
-  const [voirEcartees, setVoirEcartees] = useState(false);
   if (!valeur) return null;
+  const principales = valeur.principales ?? [];
+  const aConfirmer = valeur.aConfirmer ?? [];
 
   return (
     <>
-      {valeur.principales.length > 0 ? (
+      {principales.length > 0 ? (
         <>
           <p className="mt-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Fiches qui nomment votre modèle</p>
-          <Liste fiches={valeur.principales} libelleDeplier="Voir les autres fiches" />
+          <Liste fiches={principales} libelleDeplier="Voir les autres fiches" />
         </>
       ) : null}
 
-      {valeur.voisines.length > 0 ? (
-        <>
-          <button type="button" onClick={() => setVoirVoisines((v) => !v)} className={`${boutonLien} -ml-2 mt-2`}>
-            {voirVoisines
-              ? "Masquer les versions voisines"
-              : `Voir ${valeur.voisines.length} fiche${valeur.voisines.length > 1 ? "s" : ""} qui nomme${valeur.voisines.length > 1 ? "nt" : ""} une version voisine`}
-          </button>
-          {voirVoisines ? <Liste fiches={valeur.voisines} libelleDeplier="Voir les autres" /> : null}
-        </>
-      ) : null}
-
-      {valeur.ecartees.length > 0 ? (
-        <>
-          <button type="button" onClick={() => setVoirEcartees((v) => !v)} className={`${boutonLien} -ml-2 mt-2`}>
-            {voirEcartees
-              ? "Masquer les fiches hors période de fabrication"
-              : `Voir ${valeur.ecartees.length} fiche${valeur.ecartees.length > 1 ? "s" : ""} dont la période de fabrication exclut votre voiture`}
-          </button>
-          {voirEcartees ? <Liste fiches={valeur.ecartees} libelleDeplier="Voir les autres" /> : null}
-        </>
-      ) : null}
+      <Repli
+        fiches={aConfirmer}
+        ouvrir={(n) => `Voir ${n} fiche${s(n)} dont la période de fabrication reste à vérifier`}
+        fermer="Masquer les fiches dont la période reste à vérifier"
+      />
+      <Repli
+        fiches={valeur.voisines ?? []}
+        ouvrir={(n) => `Voir ${n} fiche${s(n)} qui nomme${nt(n)} une version voisine`}
+        fermer="Masquer les versions voisines"
+      />
+      <Repli
+        fiches={valeur.ecartees ?? []}
+        ouvrir={(n) => `Voir ${n} fiche${s(n)} dont la fabrication a commencé après la mise en circulation de votre voiture`}
+        fermer="Masquer ces fiches"
+      />
     </>
   );
 }
