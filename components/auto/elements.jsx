@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CircleAlert, Car, LayoutGrid, LoaderCircle, Sun, UserRound } from "lucide-react";
+import { Check, CircleAlert, Car, Copy, LayoutGrid, LoaderCircle, Sun, UserRound } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { effacerBrouillons, stockageNavigateur } from "@/lib/auto/brouillon";
@@ -252,6 +252,55 @@ export function SqueletteVehicules() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// Copier, c'est la façon dont ce résumé sert vraiment : on le colle dans un
+// message, on le lit au téléphone.
+//
+// L'état « Copié » se déduit du texte copié — pas de minuterie à nettoyer, et
+// il retombe dès que la phrase change.
+//
+// Le presse-papiers peut être refusé (permission, navigateur ancien, page sans
+// activation). Mesuré le 18 sept. 2026 : dans un navigateur embarqué,
+// writeText rend « Write permission denied ». Un message d'échec seul
+// laisserait la personne recopier à la main : on sélectionne alors le texte
+// pour elle, et son propre « Copier » fait le reste.
+export function BoutonCopier({ texte, cibleRef = null, libelle = "Copier ce texte" }) {
+  const [copieDe, setCopieDe] = useState(null);
+  const [aSelectionner, setASelectionner] = useState(false);
+  const copie = Boolean(texte) && copieDe === texte;
+
+  async function copier() {
+    setASelectionner(false);
+    try {
+      await navigator.clipboard.writeText(texte);
+      setCopieDe(texte);
+      return;
+    } catch {
+      // Refusé : on passe à la sélection, qui ne demande aucune permission.
+    }
+    const noeud = cibleRef?.current;
+    if (noeud) {
+      const plage = document.createRange();
+      plage.selectNodeContents(noeud);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(plage);
+    }
+    setASelectionner(true);
+  }
+
+  return (
+    <div>
+      <button type="button" onClick={copier} disabled={!texte} className={boutonSecondaire}>
+        {copie ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
+        {copie ? "Copié" : libelle}
+      </button>
+      <p aria-live="polite" className={aSelectionner ? `${aide} mt-1.5` : "sr-only"}>
+        {copie ? "Texte copié." : aSelectionner ? "Votre navigateur n'autorise pas la copie automatique. Le texte est sélectionné : utilisez « Copier »." : ""}
+      </p>
     </div>
   );
 }

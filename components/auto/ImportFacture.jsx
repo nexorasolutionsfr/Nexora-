@@ -50,7 +50,7 @@ import { LIMITES_LECTURE } from "@/lib/auto/lecture/limites";
 import { ouvrirDocument } from "@/components/auto/Documents";
 import ChoixFichier from "@/components/auto/ChoixFichier";
 import EditeurOperations from "@/components/auto/EditeurOperations";
-import { Alerte, PageAuto, Plaque, SqueletteVehicules, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, champ, deconnexionVolontaire, etiquette, focaliserPremiereErreur, puce, puceEtat, useSessionAuto, voitureCourante } from "@/components/auto/elements";
+import { Alerte, PageAuto, Plaque, SqueletteVehicules, aide, boutonLien, boutonPrincipal, boutonSecondaire, carte, champ, deconnexionVolontaire, etiquette, focaliserPremiereErreur, memoriserVoitureCourante, puce, puceEtat, useSessionAuto, voitureCourante } from "@/components/auto/elements";
 import { TYPES_INTERVENTION, formaterDate, formaterEuros, formaterKm, libelleDe, messageErreurAuto } from "@/components/auto/format";
 
 const ACCEPTES = "application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif";
@@ -220,7 +220,13 @@ export function NouvelleFacture({ vehiculeId = null }) {
                   <button
                     key={v.id}
                     type="button"
-                    onClick={() => setChoisi(v.id)}
+                    // Choisir une voiture ici la choisit partout : sans ce
+                    // geste, on déposait un document sur la voiture B et
+                    // l'accueil rouvrait sur la voiture A.
+                    onClick={() => {
+                      memoriserVoitureCourante(v.id);
+                      setChoisi(v.id);
+                    }}
                     aria-pressed={v.id === vehicule.id}
                     className={`${puce} ${puceEtat(v.id === vehicule.id)}`}
                   >
