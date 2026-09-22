@@ -179,8 +179,8 @@ test("Ensemble : voitures archivées exclues, groupes, reports, trois prochaines
   assert.deepEqual(r.groupes.plusTard.map((el) => el.cle), ["controle_technique:v-clio:2027-04-29"]);
   assert.deepEqual(r.groupes.sansDate.map((el) => el.cle), ["tache:t3"]);
   assert.deepEqual(r.groupes.aCompleter.map((el) => el.cle).sort(), [
-    "controle_technique:v-208:a_completer:mise_en_circulation",
-    "revision:v-208:a_completer:intervalle_a_renseigner",
+    "controle_technique:v-208:a_completer",
+    "revision:v-208:a_completer",
   ]);
   // Report en cours : visible dans la liste, absent du rappel ; report échu : sans effet.
   assert.equal(r.groupes.bientot[0].reporteJusquau, "2026-09-23");
@@ -212,7 +212,7 @@ test("Envois externes : un palier une seule fois, rien pour un report ou une inf
   const elements = [
     { cle: "controle_technique:v:2026-10-10", etat: "a_faire", joursRestants: 24 },
     { cle: "revision:v:2025-10-01", etat: "a_faire", joursRestants: 5, reporteJusquau: "2026-09-20" },
-    { cle: "controle_technique:w:a_completer:mise_en_circulation", etat: "a_completer", joursRestants: null },
+    { cle: "controle_technique:w:a_completer", etat: "a_completer", joursRestants: null },
     { cle: "tache:t9", etat: "a_faire", joursRestants: -2 },
   ];
   assert.deepEqual(rappelsADeclencher(elements, { canal: "email", dejaEnvoyes: [{ cle: "tache:t9", palier: "retard", canal: "email" }] }), [
@@ -328,4 +328,42 @@ test("le contrôle technique porte la provenance de la ligne qui l'a fondé", ()
   assert.equal(elementControle(vehicule, { aujourdhui: "2026-09-18" }).provenance, "proprietaire");
   vehicule.historique[0].source = "prestation";
   assert.equal(elementControle(vehicule, { aujourdhui: "2026-09-18" }).provenance, "prestation");
+});
+
+// Correctif du 22 septembre 2026. La clé d'un report portait le motif du
+// manque : `revision:<id>:a_completer:dernier_entretien_a_renseigner`. Combler
+// une information sur deux faisait basculer la clé vers
+// `…:intervalle_a_renseigner`, le report ne correspondait plus, et la carte
+// mise à « plus tard » revenait dans la minute. « Plus tard » porte sur la
+// demande, pas sur la façon dont elle était formulée ce jour-là.
+test("répondre à la moitié d'une question ne ressuscite pas un « plus tard »", () => {
+  const nue = { id: "v-x", marque: "Opel", modele: "Corsa", date_mise_en_circulation: "2007-05-20", releves: [], historique: [] };
+
+  const avant = elementRevision(nue, { aujourdhui: AUJOURDHUI });
+  assert.equal(avant.etat, "a_completer");
+  assert.equal(avant.cle, "revision:v-x:a_completer", "la clé ne porte pas le motif du manque");
+
+  // La personne renseigne l'intervalle : il manque encore la dernière révision,
+  // donc l'élément reste « à compléter » — mais c'est la MÊME demande.
+  const apres = elementRevision({ ...nue, intervalle_entretien_km: 15000 }, { aujourdhui: AUJOURDHUI });
+  assert.equal(apres.etat, "a_completer");
+  assert.equal(apres.cle, avant.cle, "la clé doit survivre à une réponse partielle");
+
+  // Donc le report tient, et la carte ne revient pas.
+  const reporte = construireAPrevoir({
+    vehicules: [{ ...nue, intervalle_entretien_km: 15000 }],
+    reports: [{ cle: avant.cle, reporte_jusqu_au: "2026-10-16" }],
+    aujourdhui: AUJOURDHUI,
+  });
+  assert.ok(
+    reporte.elements.find((e) => e.cle === avant.cle)?.reporteJusquau,
+    "l'élément doit rester reporté après une réponse partielle",
+  );
+
+  // Même règle pour le contrôle technique, dont le motif a trois valeurs.
+  const sansDate = elementControle({ ...nue, date_mise_en_circulation: null }, { aujourdhui: AUJOURDHUI });
+  const sansControle = elementControle(nue, { aujourdhui: AUJOURDHUI });
+  assert.equal(sansDate.etat, "a_completer");
+  assert.equal(sansControle.etat, "a_completer");
+  assert.equal(sansDate.cle, sansControle.cle, "un motif de manque différent ne change pas la clé");
 });

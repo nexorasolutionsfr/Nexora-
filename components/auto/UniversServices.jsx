@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, BatteryCharging, CalendarCheck, CalendarX2, Car, Check, ChevronRight, CircleAlert, CircleCheck, CircleDot, ClipboardCheck, Copy, Crosshair, Disc, Droplet, LifeBuoy, LoaderCircle, Minus, Plus, Snowflake, Sparkles, SprayCan, Stethoscope, ThermometerSnowflake, Wrench } from "lucide-react";
+import { ArrowLeft, BatteryCharging, CalendarCheck, CalendarX2, Car, Check, ChevronRight, CircleAlert, CircleCheck, CircleDot, ClipboardCheck, Crosshair, Disc, Droplet, LifeBuoy, LoaderCircle, Minus, Plus, Snowflake, Sparkles, SprayCan, Stethoscope, ThermometerSnowflake, Wrench } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -21,7 +21,8 @@ import { BESOINS, CONSTATS, DEPUIS, besoinParCode, immobilise, precisionsPour, p
 import { etatEntretien } from "@/lib/auto/entretien";
 import { construireAPrevoir } from "@/components/auto/aPrevoir";
 import { chargerDossiers } from "@/components/auto/dossiers";
-import { Alerte, PageAuto, Pastille, Plaque, SqueletteVehicules, aide, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, etiquette, iconeLigne, memoriserVoitureCourante, puce, puceEtat, useSessionAuto, voitureCourante } from "@/components/auto/elements";
+import Preparation from "@/components/auto/Preparation";
+import { Alerte, BoutonCopier, PageAuto, Pastille, Plaque, SqueletteVehicules, aide, boutonPrincipal, boutonSecondaire, carte, carteListe, champ, etiquette, iconeLigne, memoriserVoitureCourante, puce, puceEtat, useSessionAuto, voitureCourante } from "@/components/auto/elements";
 import { ENERGIES, formaterDate, libelleDe, messageErreurAuto } from "@/components/auto/format";
 import {
   MODES,
@@ -111,7 +112,9 @@ export function CatalogueServices({ vehiculeId = null, mode = null, besoin = nul
   }
 
   const { actives, vehicule } = choisirVehicule(donnees.dossiers?.vehicules ?? [], vehiculeId);
-  const { elements } = construireAPrevoir({ vehicules: actives, taches: donnees.dossiers?.taches ?? [], aujourdhui: aujourdhuiIso() });
+  // `reports` manquait ici : un élément mis à « plus tard » se représentait
+  // intact sur cet écran, alors que l'accueil et « À prévoir » le respectaient.
+  const { elements } = construireAPrevoir({ vehicules: actives, taches: donnees.dossiers?.taches ?? [], reports: donnees.dossiers?.reports ?? [], aujourdhui: aujourdhuiIso() });
   const taches = donnees.dossiers?.taches ?? [];
   const besoinChoisi = besoinParCode(besoin);
   // Un besoin ne filtre pas par « façon de faire » : il rassemble ce qui y répond.
@@ -159,8 +162,15 @@ export function CatalogueServices({ vehiculeId = null, mode = null, besoin = nul
 
       {/* Un besoin doit parler de LA voiture choisie, pas seulement en porter
           le nom en en-tête : « Entretenir ma voiture » menait à cinq
-          prestations à trier soi-même (constat du 18 sept. 2026). */}
-      {besoinChoisi?.code === "entretenir" ? <SuiviEntretien vehicule={vehicule} elements={elements} /> : null}
+          prestations à trier soi-même (constat du 18 sept. 2026).
+          Et quand le suivi n'est pas calculable, l'état seul était une impasse :
+          il listait trois manques, et les trois sorties réclamaient une
+          information que le propriétaire n'a pas (constat du 22 sept. 2026).
+          C'est alors la préparation qui prend la place — pas qui s'y ajoute,
+          sinon les mêmes trois lignes s'afficheraient deux fois. */}
+      {besoinChoisi?.preparation && vehicule ? (
+        <Aide besoin={besoinChoisi} vehicule={vehicule} elements={elements} />
+      ) : null}
 
       {/* Par besoin d'abord : personne ne se réveille en pensant « géométrie ».
           Le catalogue reste dessous, entier. */}
@@ -172,7 +182,13 @@ export function CatalogueServices({ vehiculeId = null, mode = null, besoin = nul
           <ul className={carteListe}>
             {BESOINS.map((b) => (
               <li key={b.code}>
-                <Link href={adresse("/auto/services", { vehicule: vehicule?.id, besoin: b.code })} className="flex items-center gap-3 px-4 py-3.5 transition hover:bg-muted/60">
+                {/* Un besoin dont la réponse est déjà écrite ailleurs y mène
+                    directement : un écran intermédiaire qui ne ferait que
+                    reposer le lien est une étape sans utilité. */}
+                <Link
+                  href={b.fiche && vehicule ? `/auto/vehicules/${vehicule.id}#${b.fiche}` : adresse("/auto/services", { vehicule: vehicule?.id, besoin: b.code })}
+                  className="flex items-center gap-3 px-4 py-3.5 transition hover:bg-muted/60"
+                >
                   <span className="min-w-0 flex-1 break-words">
                     <span className="block font-semibold leading-snug text-foreground">{b.titre}</span>
                     <span className="block text-sm leading-snug text-muted-foreground">{b.resume}</span>
@@ -687,46 +703,28 @@ function Liste({ lignes }) {
 // tombait au milieu de celle-ci.
 const sansMajuscule = (texte) => (texte ? texte.charAt(0).toLowerCase() + texte.slice(1) : texte);
 
+// Où l'on est, puis ce qu'on peut faire — et jamais les deux fois la même
+// chose. Quand l'échéance se calcule, l'état suffit : il porte une date, qui
+// est la réponse. Quand elle ne se calcule pas, l'état ne dirait que des
+// manques : c'est la préparation qui répond, et elle prend toute la place.
+function Aide({ besoin, vehicule, elements }) {
+  const calculable = besoin.code !== "entretenir" || etatEntretien({ vehicule, elements }).cas !== "a_preciser";
+
+  return (
+    <>
+      {besoin.code === "entretenir" && calculable ? <SuiviEntretien vehicule={vehicule} elements={elements} /> : null}
+      <Preparation vehicule={vehicule} intention={besoin.code} />
+    </>
+  );
+}
+
 function SuiviEntretien({ vehicule, elements }) {
   const etat = etatEntretien({ vehicule, elements });
   if (etat.cas === "sans_voiture") return null;
 
-  if (etat.cas === "a_preciser") {
-    const geste = etat.manques[0];
-    return (
-      <section className={`${carte} mt-4`} aria-labelledby="titre-suivi-entretien">
-        <h2 id="titre-suivi-entretien" className="font-display text-lg font-semibold text-foreground">
-          {etat.titre}
-        </h2>
-        <p className="mt-1 text-[15px] leading-snug text-muted-foreground">{etat.texte}</p>
-        <ul className="mt-3 space-y-1.5">
-          {etat.manques.map((manque) => (
-            <li key={manque.cle} className="flex items-start gap-2 text-sm leading-snug text-foreground">
-              <Minus className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-              <span className="min-w-0">{manque.libelle}</span>
-            </li>
-          ))}
-        </ul>
-        {/* L'entrée sans document passe devant. Le justificatif reste offert,
-            en dessous : c'est un enrichissement, pas le péage d'entrée
-            (constat de Baptiste sur sa Corsa, en Production, le 20 sept. 2026). */}
-        <div className="mt-4 space-y-2">
-          <Link href={`/auto/vehicules/${vehicule.id}#connaissance`} className={boutonPrincipal}>
-            Voir ce que Nexora sait de cette voiture
-          </Link>
-          <Link href={`/auto/vehicules/${vehicule.id}?action=${geste.action}`} className={boutonSecondaire}>
-            {geste.geste}
-          </Link>
-          <Link
-            href={`/auto/factures/nouvelle?vehicule=${vehicule.id}`}
-            className="flex min-h-11 items-center justify-center rounded-xl px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted"
-          >
-            Ajouter le justificatif de la dernière révision
-          </Link>
-        </div>
-      </section>
-    );
-  }
+  // Le cas « à préciser » ne passe plus ici : `Aide` confie alors l'écran à
+  // `Preparation`, qui donne un résultat au lieu d'une liste de manques. Garder
+  // ce bloc, c'était garder deux réponses possibles à la même situation.
 
   if (etat.cas === "echeance") {
     return (
@@ -816,7 +814,7 @@ function DecrireLeProbleme({ vehicule, onEnregistre }) {
           {resume}
         </p>
         <div className="mt-4 space-y-3">
-          <BoutonCopier texte={resume} cibleRef={resumeRef} />
+          <BoutonCopier texte={resume} cibleRef={resumeRef} libelle="Copier cette description" />
           <Link href={`/auto/a-prevoir?vehicule=${vehicule.id}`} className={boutonSecondaire}>
             Voir dans À prévoir
           </Link>
@@ -883,7 +881,7 @@ function DecrireLeProbleme({ vehicule, onEnregistre }) {
             </p>
             <p className="mt-2 text-[13px] leading-snug text-muted-foreground">Nexora ne dit pas d'où cela vient : seul un professionnel peut le constater sur la voiture.</p>
             <div className="mt-3">
-              <BoutonCopier texte={resume} cibleRef={resumeRef} />
+              <BoutonCopier texte={resume} cibleRef={resumeRef} libelle="Copier cette description" />
             </div>
           </section>
 
@@ -956,51 +954,3 @@ function ConseilConstat({ constat, precision }) {
   return null;
 }
 
-// Copier, c'est la façon dont ce résumé sert vraiment : on le colle dans un
-// message, on le lit au téléphone.
-//
-// L'état « Copié » se déduit du texte copié — pas de minuterie à nettoyer, et
-// il retombe dès que la phrase change.
-//
-// Le presse-papiers peut être refusé (permission, navigateur ancien, page sans
-// activation). Mesuré le 18 sept. 2026 : dans un navigateur embarqué,
-// writeText rend « Write permission denied ». Un message d'échec seul
-// laisserait la personne recopier à la main : on sélectionne alors le texte
-// pour elle, et son propre « Copier » fait le reste.
-function BoutonCopier({ texte, cibleRef = null }) {
-  const [copieDe, setCopieDe] = useState(null);
-  const [aSelectionner, setASelectionner] = useState(false);
-  const copie = Boolean(texte) && copieDe === texte;
-
-  async function copier() {
-    setASelectionner(false);
-    try {
-      await navigator.clipboard.writeText(texte);
-      setCopieDe(texte);
-      return;
-    } catch {
-      // Refusé : on passe à la sélection, qui ne demande aucune permission.
-    }
-    const noeud = cibleRef?.current;
-    if (noeud) {
-      const plage = document.createRange();
-      plage.selectNodeContents(noeud);
-      const selection = window.getSelection();
-      selection?.removeAllRanges();
-      selection?.addRange(plage);
-    }
-    setASelectionner(true);
-  }
-
-  return (
-    <div>
-      <button type="button" onClick={copier} disabled={!texte} className={boutonSecondaire}>
-        {copie ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
-        {copie ? "Copié" : "Copier cette description"}
-      </button>
-      <p aria-live="polite" className={aSelectionner ? `${aide} mt-1.5` : "sr-only"}>
-        {copie ? "Description copiée." : aSelectionner ? "Votre navigateur n'autorise pas la copie automatique. Le texte est sélectionné : utilisez « Copier »." : ""}
-      </p>
-    </div>
-  );
-}

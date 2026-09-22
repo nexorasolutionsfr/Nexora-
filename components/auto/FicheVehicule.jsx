@@ -522,7 +522,11 @@ export default function FicheVehicule({ vehiculeId, actionInitiale = null, bienv
         <CarteEcheance id="echeance-revision" icone={Wrench} element={elementRev} lienService={archive ? null : `/auto/services/revision?vehicule=${vehicule.id}`} onAction={faireAction}>
           {ouvert === "intervalle" ? (
             <FormulaireIntervalle
-              vehicule={vehicule}
+              // La ligne brute n'emporte ni relevés ni historique : le
+              // formulaire concluait alors que la dernière révision manquait
+              // TOUJOURS, et contredisait la carte d'échéance juste au-dessus,
+              // qui lit les mêmes règles avec le dossier complet.
+              vehicule={{ ...vehicule, releves, historique }}
               element={elementRev}
               proprietaireId={session.user.id}
               onAnnuler={() => setOuvert(null)}
@@ -1199,17 +1203,24 @@ function FormulaireIntervalle({ vehicule, element, proprietaireId, onAnnuler, on
     onReporte?.(texte);
   }
 
-  // La sortie : elle REMPLACE le formulaire. Une phrase, un retour, et la
-  // possibilité de ne plus être sollicité — rien de plus à lire.
+  // La sortie : elle REMPLACE le formulaire. Une phrase, une suite, un retour,
+  // et la possibilité de ne plus être sollicité — rien de plus à lire.
+  //
+  // « Je ne sais pas » ne se terminait nulle part : l'écran disait que
+  // l'échéance serait calculée « le jour où vous aurez ces informations », sans
+  // dire comment les obtenir. Or c'est précisément ce qu'un garage sait.
   if (sansReponse) {
     return (
       <div className="mt-4 space-y-4 border-t border-border pt-4">
         <p className="text-[15px] leading-relaxed text-foreground">
-          Votre suivi reste disponible : contrôle technique, historique, documents et dépenses. La prochaine révision sera calculée le jour où vous aurez ces
-          informations.
+          C'est écrit sur le carnet d'entretien, et un garage le sait. Nexora peut préparer la question — avec votre voiture déjà résumée, sans rien à
+          téléverser. Votre suivi reste disponible en attendant : contrôle technique, historique, documents et dépenses.
         </p>
         {erreurEnvoi ? <Alerte>{erreurEnvoi}</Alerte> : null}
-        <button type="button" onClick={onAnnuler} className={boutonPrincipal}>
+        <Link href={`/auto/services?besoin=entretenir&vehicule=${vehicule.id}`} className={boutonPrincipal}>
+          Préparer la question pour un garage
+        </Link>
+        <button type="button" onClick={onAnnuler} className={boutonSecondaire}>
           Revenir à ma voiture
         </button>
         <div className="space-y-1 border-t border-border pt-3">

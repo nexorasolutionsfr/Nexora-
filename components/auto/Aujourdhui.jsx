@@ -15,12 +15,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { BookOpen, CalendarClock, ChevronRight, CircleAlert, FileText, Gauge, Plus, ReceiptText, Wrench } from "lucide-react";
+import { BookOpen, CalendarClock, ChevronRight, CircleAlert, ClipboardList, FileText, Gauge, Plus, ReceiptText, Wrench } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { ajouterJours, aujourdhuiIso, dernierKilometrage, joursEntre } from "@/lib/auto/echeances";
 import { estimerKilometrage } from "@/lib/auto/kilometrage";
 import { choisirVoiture, etatAujourdhui, sollicitationKilometrage } from "@/lib/auto/aujourdhui";
+import { preparerLaVisite } from "@/lib/auto/preparation";
+import { programmePour } from "@/lib/auto/connaissance/moteur";
 import { construireAPrevoir, libelleFondement, pastilleElement } from "@/components/auto/aPrevoir";
 import { chargerDossiers } from "@/components/auto/dossiers";
 import { SignalCampagnes } from "@/components/auto/ConnaissanceVoiture";
@@ -222,6 +224,16 @@ function MaVoiture({ vehicule, km, aujourdhui, actives, onChoisir }) {
 //   une fausse promesse. On demande directement la seule donnée qui débloque.
 //
 // Dans les deux cas : « Plus tard » existe, et il tient.
+// La situation de l'entretien, dite une seule fois pour toute l'application.
+//
+// L'accueil et l'écran « Comprendre l'entretien » lisaient deux phrases
+// écrites séparément : elles auraient divergé au premier changement. Elles
+// viennent maintenant du même calcul, qui sait si un programme est publié
+// pour ce modèle et ce qu'il manque au carnet.
+function explicationEntretien(vehicule) {
+  return preparerLaVisite({ vehicule, intention: "entretenir", programmeConnu: Boolean(programmePour(vehicule)) }).explication;
+}
+
 function Preparer({ etat, vehicule, onPlusTard }) {
   const { element } = etat.principale;
   const premiere = element.actions?.[0] ?? null;
@@ -238,11 +250,13 @@ function Preparer({ etat, vehicule, onPlusTard }) {
 
       {parLeDocument ? (
         <>
-          <p className="mt-1 text-[15px] leading-snug text-foreground">
-            Nexora ne peut pas encore calculer votre prochaine révision. En attendant, elle a regardé ce qui concerne cette voiture.
-          </p>
+          {/* La MÊME phrase que l'écran « Comprendre l'entretien » : elle vient
+              du même calcul (lib/auto/preparation.js), donc les deux écrans ne
+              peuvent pas décrire la situation différemment. Deux textes écrits
+              à la main auraient divergé au premier changement. */}
+          <p className="mt-1 text-[15px] leading-snug text-foreground">{explicationEntretien(vehicule)}</p>
           <p className="mt-2 text-[13px] leading-snug text-muted-foreground">
-            Rappels de sécurité publiés, classe Crit'Air, et ce que le constructeur publie pour ce modèle : rien de tout cela ne demande un document.
+            Aucun document n'est nécessaire.
           </p>
         </>
       ) : (
@@ -252,28 +266,23 @@ function Preparer({ etat, vehicule, onPlusTard }) {
       <div className="mt-4 space-y-2">
         {parLeDocument ? (
           <>
-            {/* L'entrée utile d'abord : elle ne demande aucun document. Le
-                justificatif était le bouton principal, et rendait le parcours
-                dominant manuel pour une voiture dont le programme n'est pas
-                publié (constat de Baptiste sur sa Corsa, le 20 sept. 2026). */}
-            <Link href={`/auto/vehicules/${vehicule.id}#connaissance`} className={boutonPrincipal}>
-              <BookOpen className="size-5" aria-hidden="true" />
-              Voir ce que Nexora sait
+            {/* Deux sorties, pas quatre. Le justificatif était le bouton
+                principal, et rendait le parcours dominant manuel pour une
+                voiture dont le programme n'est pas publié (constat du
+                20 sept. 2026) ; le formulaire et la facture sont ensuite
+                restés là sans rien produire par eux-mêmes. Ils vivent
+                maintenant au bout de la préparation, qui donne un résultat
+                d'abord — et dans « Enregistrer ou consulter », juste dessous. */}
+            <Link href={`/auto/services?besoin=entretenir&vehicule=${vehicule.id}`} className={boutonPrincipal}>
+              <ClipboardList className="size-5" aria-hidden="true" />
+              Préparer ma visite chez un garage
             </Link>
-            {premiere ? (
-              <Link
-                href={`/auto/vehicules/${vehicule.id}?action=${premiere.code}`}
-                className="flex min-h-11 items-center justify-center rounded-xl px-3 text-sm font-semibold text-primary transition hover:bg-secondary"
-              >
-                {premiere.libelle}
-              </Link>
-            ) : null}
             <Link
-              href={`/auto/factures/nouvelle?vehicule=${vehicule.id}`}
-              className="flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted"
+              href={`/auto/vehicules/${vehicule.id}#connaissance`}
+              className="flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-primary transition hover:bg-secondary"
             >
-              <ReceiptText className="size-4" aria-hidden="true" />
-              Ajouter une facture
+              <BookOpen className="size-4" aria-hidden="true" />
+              Voir ce que Nexora sait
             </Link>
           </>
         ) : premiere ? (

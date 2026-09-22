@@ -82,7 +82,10 @@ export function elementControle(vehicule, { aujourdhui } = {}) {
     return {
       ...base,
       ...manques[ct.manque],
-      cle: `controle_technique:${vehicule.id}:a_completer:${ct.manque}`,
+      // La clé ne porte PAS le motif du manque. Avec `:${ct.manque}`, combler
+      // une information sur deux changeait la clé, le report ne correspondait
+      // plus, et la carte reportée revenait dans la minute.
+      cle: `controle_technique:${vehicule.id}:a_completer`,
       etat: "a_completer",
       titre: "Contrôle technique",
       quand: "Pas encore calculé",
@@ -202,7 +205,9 @@ export function elementRevision(vehicule, { aujourdhui } = {}) {
     return {
       ...base,
       ...aCompleter,
-      cle: `revision:${vehicule.id}:a_completer:${e.etat}`,
+      // Même règle que pour le contrôle : le motif ne rentre pas dans la clé.
+      // « Plus tard » porte sur la demande, pas sur sa formulation du jour.
+      cle: `revision:${vehicule.id}:a_completer`,
       etat: "a_completer",
       // Combien il en manque : « Une information manque » se lisait au-dessus
       // d'une liste de deux.
