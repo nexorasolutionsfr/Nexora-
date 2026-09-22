@@ -1326,3 +1326,31 @@ rectifiées. Les deux premières sont reprises dans R74 et R75 ci-dessus.
   incompatible » est devenu « licence B2C à confirmer » : non confirmée ne
   veut pas dire impossible, et TecAlliance présente publiquement des
   intégrations pour le commerce en ligne.
+
+### Pertinence et applicabilité, deux axes séparés (22 septembre 2026)
+
+- **R91 — une marge n'est pas une preuve.** Les douze mois tolérés entre la
+  fin de fabrication et la première immatriculation sont une **hypothèse** :
+  une voiture de stock, de démonstration ou importée s'immatricule plus tard
+  sans cesser d'appartenir au lot fabriqué. Les dépasser ne peut donc pas
+  fonder une exclusion. `situerDansLaPeriode` distingue maintenant
+  `posterieure` (douteux, jamais démontré) de `anterieure` (la voiture roulait
+  avant que cette fabrication commence — une contradiction de dates, qui ne
+  dépend d'aucune marge). Seule `anterieure` écarte. L'écran ne dit plus
+  « hors période de fabrication » : il nomme le fait observé, « la fabrication
+  a commencé après la mise en circulation de votre voiture ».
+- **R92 — lever une exclusion ne doit pas fabriquer une alerte.** Les fiches
+  autrefois écartées sur la seule marge remontent dans un **quatrième groupe**,
+  « période de fabrication à vérifier » : replié, compté sur son propre bouton,
+  jamais au premier plan et jamais dans le compteur de l'accueil. Deux axes
+  désormais nommés séparément dans les données : `correspondance` répond
+  « cette fiche parle-t-elle de mon modèle ? », `applicabilite` répond « ma
+  voiture peut-elle faire partie du lot ? », et sa meilleure réponse reste
+  « rien ne s'y oppose ». La vérification par numéro de série reste offerte
+  dans tous les cas, y compris quand plus aucune fiche n'est au premier plan.
+- **R93 — une marque s'écrit de plusieurs façons, et la requête n'en lisait
+  qu'une.** Constaté en vérifiant R91 : la base publie les Opel sous « opel »
+  (70 fiches) **et** sous « opel/vauxhall » (24 fiches). La table
+  d'équivalences servait au filtrage mais pas à l'interrogation ; un quart des
+  campagnes Opel était donc invisible. Corrigé dans la route, avec un test qui
+  vérifie que les deux orthographes partent dans la même requête.
